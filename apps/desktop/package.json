@@ -16,7 +16,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && electron-vite build",
     "app-icon": "node scripts/make-icon.mjs",
-    "dev": "electron-vite dev",
+    "dev": "node scripts/dev.mjs",
     "dist:dev": "electron-builder --mac --dir --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false",
     "dist:mac": "electron-builder --mac --universal --publish never",
     "lint": "eslint .",

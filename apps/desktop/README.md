@@ -3,7 +3,7 @@
 The OpenBots Mac app: an Electron shell around the web app (plan section 14.4, Phase 7).
 
 ```sh
-pnpm --filter @openbots/desktop dev     # electron-vite dev: main, preload and the app pages
+pnpm --filter @openbots/desktop dev     # electron-vite dev, as .dev/OpenBots.app on macOS (scripts/dev.mjs)
 pnpm exec turbo run build --filter=@openbots/desktop   # tsc for src/release, then electron-vite into dist/
 cd apps/desktop && pnpm dist:dev       # unsigned .app in release/ (macOS), see RELEASING.md
 ```
