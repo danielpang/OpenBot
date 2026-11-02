@@ -19,15 +19,17 @@ import {
   startComputer,
   stopComputer,
   updateComputerSettings,
+  wakeComputer,
   type ComputerRow,
   type ScreenRow,
 } from '../services/computer.js';
 import { fileTooLarge, uploadLimit } from '../services/files.js';
 
 // The account's computer (plan 9, 14.1; K1, K3, K7): its status, start,
-// stop and restart, the owner's idle settings (always on, idle timeout; plan
-// 4.5, 9.5), the file browser over /home/bot (list, download, upload; K7) and
-// taking a Bot's screen over or handing it back (K3). The terminal and the
+// stop and restart, a background wake (the Mac app's launch; plan 9.5), the
+// owner's idle settings (always on, idle timeout; plan 4.5, 9.5), the file
+// browser over /home/bot (list, download, upload; K7) and taking a Bot's
+// screen over or handing it back (K3). The terminal and the
 // screen view are WebSockets proxied in ws/computer.ts. File routes never
 // start the computer: while it is off they answer 409 `COMPUTER_OFF`, and the
 // web UI offers Start.
@@ -247,6 +249,34 @@ export const computerRoutes = createRouter()
     async (c) => {
       const { computer } = await startComputer(c.var.deps, c.var.user);
       return c.json(await computerOut(c, computer), 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: 'post',
+      path: '/computer/wake',
+      tags: ['computer'],
+      summary: 'Start the computer in the background if it is off',
+      description:
+        'For the Mac app on This Mac, right after it signs the owner in: creates the computer on first use and starts it when stopped, without waiting for it. Does nothing when it is running or a start is under way, or when the install has no computer. The start reports through `computer.status`, a failure as `error`.',
+      middleware: [requireUser] as const,
+      security: authenticated,
+      responses: {
+        202: {
+          description: 'Whether there is a computer, and its state as the wake found it',
+          content: { 'application/json': { schema: ComputerStateSchema } },
+        },
+        ...authProblems,
+      },
+    }),
+    async (c) => {
+      const { deps, user } = c.var;
+      await wakeComputer(deps, user, { create: true });
+      const row = await getComputer(deps, user);
+      return c.json(
+        { available: computerAvailable(deps), computer: row ? await computerOut(c, row) : null },
+        202,
+      );
     },
   )
   .openapi(

@@ -5,7 +5,7 @@ import { EVENTS_CHANNEL, OWNER_HAS_SCREEN, type MessagePart, type WsEvent } from
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
-import { registerRunHooks, RUNS_QUEUE, type RunJob } from '../services/runs.js';
+import { enqueueRun, registerRunHooks, RUNS_QUEUE, type RunJob } from '../services/runs.js';
 import { useTestComputer, type TestComputer } from '../test-computer.js';
 import { createTestApp, type TestApp } from '../test-app.js';
 import { createRunWorker, type RunModel, type RunWorkerOptions } from './runs.js';
@@ -67,6 +67,13 @@ describe('computer tools in a run', () => {
     models.set(bot.id, { model, info: null, providerOptions: {} });
     return { ...bot, model };
   }
+
+  /**
+   * A run no owner message came before: an owner's message wakes a stopped
+   * computer itself (plan 9.5), so a webhook's run is the one that boots it.
+   */
+  const webhookRun = (bot: { id: string; chatId: string }) =>
+    enqueueRun(t.ownerDeps, { botId: bot.id, chatId: bot.chatId, trigger: 'webhook' });
 
   async function runOf(botId: string, status: string) {
     return until(async () => {
@@ -259,7 +266,7 @@ describe('computer tools in a run', () => {
       [{ tool: 'list_dir', args: {}, id: 'b2' }],
       [{ text: 'Listed.' }],
     ]);
-    await call('POST', `/chats/${bot.chatId}/messages`, { text: 'List home' });
+    await webhookRun(bot);
     const run = await runOf(bot.id, 'completed');
     const rows = await startedRows(bot.chatId);
     expect(rows).toHaveLength(1);
@@ -294,7 +301,7 @@ describe('computer tools in a run', () => {
         [{ tool: 'list_dir', args: {}, id: 'u1' }],
         [{ text: 'Listed.' }],
       ]);
-      await call('POST', `/chats/${bot.chatId}/messages`, { text: 'List home' });
+      await webhookRun(bot);
       await runOf(bot.id, 'completed');
       const parts = (
         await t.db.select().from(schema.messages).where(eq(schema.messages.chatId, bot.chatId))

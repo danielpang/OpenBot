@@ -2,14 +2,19 @@
 import type { WsClient } from '@openbots/api-client';
 import { COMPUTER_OFF_CLOSE_CODE, type WsEvent, type WsEventOf } from '@openbots/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, type ReactNode } from 'react';
+import { act, useState, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { capabilitiesQuery } from '../../app/api.js';
 import { RightPanelProvider, useRightPanel } from '../../app/right-panel.js';
 import { BotTitleBar } from '../bots/bot-view.js';
 import { applyBotState, botsQuery, type Bot } from '../bots/queries.js';
-import { RealtimeContext, type Realtime } from '../transcript/realtime.js';
+import {
+  RealtimeContext,
+  RealtimeStatusContext,
+  type Realtime,
+  type RealtimeStatus,
+} from '../transcript/realtime.js';
 import {
   applyComputerStatus,
   applyScreenControl,
@@ -606,6 +611,43 @@ describe('the Computer page', () => {
     );
     expect(host.textContent).toContain('image pull failed');
     expect(button('Start')).toBeDefined();
+  });
+
+  it('follows a start the server began on its own, with no reload (plan 9.5)', async () => {
+    state = { available: true, computer: computer('stopped') };
+    render(<ComputerPage />);
+    await until(() => host.querySelector('[data-status]')?.textContent === 'Stopped', 'stopped');
+    // The Mac app's launch, or an owner's message to a Bot, woke it.
+    live.emit('computer.status', { computerId: COMPUTER, status: 'starting' }, { user_id: USER });
+    await until(() => host.querySelector('[data-status]')?.textContent === 'Starting', 'starting');
+    live.emit('computer.status', { computerId: COMPUTER, status: 'running' }, { user_id: USER });
+    await until(() => host.querySelector('[data-status]')?.textContent === 'Running', 'running');
+    expect(button('Restart')).toBeDefined();
+    expect(posts('/api/v1/computer/start')).toHaveLength(0);
+  });
+
+  it('catches up on a start it missed before the socket opened', async () => {
+    state = { available: true, computer: computer('stopped') };
+    let connect!: () => void;
+    function Connecting({ children }: { children: ReactNode }) {
+      const [status, setStatus] = useState<RealtimeStatus>({
+        status: 'connecting',
+        everOpen: false,
+      });
+      connect = () => setStatus({ status: 'open', everOpen: true });
+      return <RealtimeStatusContext value={status}>{children}</RealtimeStatusContext>;
+    }
+    render(
+      <Connecting>
+        <ComputerPage />
+      </Connecting>,
+    );
+    await until(() => host.querySelector('[data-status]')?.textContent === 'Stopped', 'stopped');
+    // Started while no socket was open: its events went nowhere.
+    state = { available: true, computer: computer('running') };
+    act(() => connect());
+    await until(() => host.querySelector('[data-status]')?.textContent === 'Running', 'running');
+    expect(posts('/api/v1/computer/start')).toHaveLength(0);
   });
 
   it('shows that a start is updating the computer after an upgrade (plan 16.3)', async () => {

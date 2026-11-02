@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
-import { useRealtime } from '../transcript/realtime.js';
+import { useRealtime, useRealtimeStatus } from '../transcript/realtime.js';
 import {
   applyComputerStatus,
   applyScreenControl,
@@ -14,7 +14,9 @@ import {
 // The account's computer kept current from the shared socket:
 // `computer.status` reaches every socket of the owner, `screen.control` comes
 // with the Bot subscriptions the shell already holds. An event the cache cannot
-// place (no computer yet, a new screen) refetches instead.
+// place (no computer yet, a new screen) refetches instead, and so does every
+// (re)connect: a start the server began on its own (the Mac app's launch, an
+// owner's message, plan 9.5) may have moved on before the socket was open.
 
 export function useComputer() {
   const query = useQuery(computerQuery);
@@ -41,6 +43,13 @@ export function useComputer() {
       offControl();
     };
   }, [client, queryClient]);
+
+  const { status } = useRealtimeStatus();
+  useEffect(() => {
+    if (status === 'open') {
+      void queryClient.invalidateQueries({ queryKey: computerQuery.queryKey, exact: true });
+    }
+  }, [status, queryClient]);
 
   return { ...query, statusError: error };
 }

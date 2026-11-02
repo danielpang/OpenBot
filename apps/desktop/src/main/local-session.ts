@@ -1,6 +1,6 @@
 import type { ServerProfile } from '../ipc.js';
 import { serverPath } from './navigation.js';
-import { isSessionCookie, type SessionToken } from './tokens.js';
+import { cookieHeader, isSessionCookie, type SessionToken } from './tokens.js';
 
 // This Mac has no sign-in (plan 14.4). The stack's `.env` holds
 // OPENBOTS_LOCAL_TOKEN (stack/manager.ts); the main process, and only it,
@@ -10,9 +10,15 @@ import { isSessionCookie, type SessionToken } from './tokens.js';
 // The token goes in a header of a request made here, never into a URL, the
 // window, the renderer or a log. Plain, so it is tested without Electron;
 // ./index.ts wires it to the window's session.
+//
+// Once signed in, the app wakes the owner's computer on This Mac
+// (`POST /api/v1/computer/wake`, plan 9.5), once per launch and without
+// waiting: the server starts it in the background and the web app follows it
+// through `computer.status`. A remote or cloud connection starts nothing.
 
 export const LOCAL_SESSION_PATH = '/api/v1/local/session';
 export const LOCAL_TOKEN_HEADER = 'x-openbots-local-token';
+export const COMPUTER_WAKE_PATH = '/api/v1/computer/wake';
 
 /** The owner's name when macOS gives none. */
 export const DEFAULT_OWNER_NAME = 'Me';
@@ -159,6 +165,55 @@ export function createLocalSignIn(options: LocalSignInOptions): LocalSignIn {
       lastRenew = now();
       reusable = await request(serverUrl);
       return reusable;
+    },
+  };
+}
+
+export interface ComputerWakeOptions {
+  fetch: LocalFetch;
+  /** Told why a wake did not work. */
+  log?: (message: string) => void;
+  timeoutMs?: number;
+}
+
+export interface ComputerWake {
+  /**
+   * After a sign-in: wakes This Mac's computer, once per launch for each
+   * server. Returns at once; the request goes on in the background. A failed
+   * request is logged and tried again at the next sign-in.
+   */
+  afterSignIn(profile: ServerProfile, session: SessionToken | null): void;
+}
+
+export function createComputerWake(options: ComputerWakeOptions): ComputerWake {
+  const log = options.log ?? (() => undefined);
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const woken = new Set<string>();
+  return {
+    afterSignIn(profile, session) {
+      if (profile.kind !== 'local' || !session || woken.has(profile.url)) return;
+      woken.add(profile.url);
+      const retry = (message: string) => {
+        woken.delete(profile.url);
+        log(message);
+      };
+      options
+        .fetch(new URL(COMPUTER_WAKE_PATH, profile.url).toString(), {
+          method: 'POST',
+          headers: { cookie: cookieHeader(session) },
+          signal: AbortSignal.timeout(timeoutMs),
+          redirect: 'manual',
+        })
+        .then(
+          // 404: a release from before the wake; it starts the computer on first use instead.
+          (res) => {
+            if (!res.ok && res.status !== 404) retry(`computer wake refused with ${res.status}`);
+          },
+          (error: unknown) =>
+            retry(
+              `computer wake failed: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+        );
     },
   };
 }

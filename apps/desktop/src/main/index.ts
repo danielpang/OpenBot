@@ -44,7 +44,12 @@ import {
 } from './deep-links.js';
 import { registerDesktopIpc } from './ipc.js';
 import { connectionHeader, createLauncher } from './launcher.js';
-import { createLocalSignIn, needsLocalSignIn, ownerName } from './local-session.js';
+import {
+  createComputerWake,
+  createLocalSignIn,
+  needsLocalSignIn,
+  ownerName,
+} from './local-session.js';
 import { fileMenu } from './menu.js';
 import { navigationVerdict, serverPath } from './navigation.js';
 import { createOAuthBrowser } from './oauth.js';
@@ -187,6 +192,10 @@ const localSignIn = createLocalSignIn({
           execFile('id', ['-F'], (error, stdout) => (error ? fail(error) : done(stdout))),
         ),
     ),
+  log: (message) => console.error(message),
+});
+const computerWake = createComputerWake({
+  fetch: (url, init) => fetch(url, init),
   log: (message) => console.error(message),
 });
 
@@ -360,13 +369,16 @@ async function restoreToken(profile: ServerProfile, ses: Session): Promise<void>
  * fresh one for the owner, put into the window's session before it loads.
  */
 async function signInLocally(profile: ServerProfile): Promise<void> {
+  let token: SessionToken | null = null;
   try {
-    const token = await localSignIn.ensure(profile.url, await tokens.get(profile.id));
+    token = await localSignIn.ensure(profile.url, await tokens.get(profile.id));
     if (token) await tokens.set(profile.id, token);
   } catch (error) {
     console.error('could not sign in on This Mac', error);
   }
   await restoreToken(profile, profileSession(profile));
+  // The computer starts in the background; the window loads meanwhile.
+  computerWake.afterSignIn(profile, token);
 }
 
 /** The window reached /sign-in on This Mac, or the session ended: sign in again and reload. */

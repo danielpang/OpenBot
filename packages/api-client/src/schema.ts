@@ -4965,6 +4965,54 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/computer/wake': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start the computer in the background if it is off
+     * @description For the Mac app on This Mac, right after it signs the owner in: creates the computer on first use and starts it when stopped, without waiting for it. Does nothing when it is running or a start is under way, or when the install has no computer. The start reports through `computer.status`, a failure as `error`.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Whether there is a computer, and its state as the wake found it */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ComputerState'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/computer/stop': {
     parameters: {
       query?: never;

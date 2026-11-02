@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../ipc.js';
 import {
+  COMPUTER_WAKE_PATH,
+  createComputerWake,
   createLocalSignIn,
   DEFAULT_OWNER_NAME,
   isSignInPath,
@@ -209,6 +211,91 @@ describe('opening This Mac', () => {
     });
     await opener.open(local);
     expect(steps).toEqual(['cookie abc.sig', `load ${URL_}/`]);
+  });
+});
+
+describe('waking the computer on This Mac (plan 9.5)', () => {
+  const cloud: ServerProfile = {
+    id: 'cloud',
+    name: 'OpenBots Cloud',
+    url: 'https://cloud.openbots.example',
+    kind: 'cloud',
+  };
+  const session = { name: 'better-auth.session_token', value: 'abc.sig' };
+
+  it('asks for it after the sign-in, and the window loads without waiting', async () => {
+    const steps: string[] = [];
+    const signInFetch = server({ session: { status: 200, setCookie: [COOKIE] } });
+    const { signer } = signIn(signInFetch);
+    // The wake never answers: the window must load all the same.
+    const wakeFetch = vi.fn<LocalFetch>(() => new Promise(() => undefined));
+    const wake = createComputerWake({ fetch: wakeFetch });
+    const gate: ServerGate = {
+      verify: async () => ({ ok: true, setupRequired: false }),
+      admit: async () => null,
+    };
+    const opener = createOpener<string>({
+      gate,
+      windows: {
+        forProfile: async () => 'window',
+        showsServer: () => false,
+        signIn: async (profile) => {
+          const token = await signer.ensure(profile.url, undefined);
+          steps.push(`cookie ${token?.value}`);
+          wake.afterSignIn(profile, token);
+        },
+        signOut: () => undefined,
+        load: async (_window, url) => void steps.push(`load ${url}`),
+        navigate: () => undefined,
+        showStart: async () => undefined,
+      },
+    });
+    await opener.open(local);
+    expect(steps).toEqual(['cookie abc.sig', `load ${URL_}/`]);
+    expect(wakeFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = wakeFetch.mock.calls[0]!;
+    expect(url).toBe(`${URL_}${COMPUTER_WAKE_PATH}`);
+    expect(init.method).toBe('POST');
+    // The session, never the local token.
+    expect(init.headers).toEqual({ cookie: 'better-auth.session_token=abc.sig' });
+  });
+
+  it('asks once per launch, and again after a failure', async () => {
+    const answers: (Answer | 'down')[] = ['down', { status: 202 }, { status: 202 }];
+    const log = vi.fn<(message: string) => void>();
+    const fetch = vi.fn<LocalFetch>(async () => {
+      const answer = answers.shift()!;
+      if (answer === 'down') throw new TypeError('fetch failed');
+      return { ok: true, status: answer.status, headers: { getSetCookie: () => [] } };
+    });
+    const wake = createComputerWake({ fetch, log });
+    wake.afterSignIn(local, session);
+    await vi.waitFor(() => expect(log).toHaveBeenCalledWith('computer wake failed: fetch failed'));
+    wake.afterSignIn(local, session);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    wake.afterSignIn(local, session);
+    wake.afterSignIn(local, session);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('is wired into the sign-in on This Mac only, not awaited', () => {
+    const main = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
+    const signInLocally = main.slice(
+      main.indexOf('async function signInLocally'),
+      main.indexOf('async function renewLocally'),
+    );
+    expect(signInLocally).toMatch(/^ {2}computerWake\.afterSignIn\(profile, token\);$/m);
+    expect(main.match(/computerWake\.afterSignIn/g)).toHaveLength(1);
+  });
+
+  it('is never asked of a remote or cloud server, or without a session', () => {
+    const fetch = vi.fn<LocalFetch>();
+    const wake = createComputerWake({ fetch });
+    wake.afterSignIn(remote, session);
+    wake.afterSignIn(cloud, session);
+    wake.afterSignIn(local, null);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

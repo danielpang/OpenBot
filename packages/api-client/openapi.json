@@ -11891,6 +11891,43 @@
         }
       }
     },
+    "/api/v1/computer/wake": {
+      "post": {
+        "tags": ["computer"],
+        "summary": "Start the computer in the background if it is off",
+        "description": "For the Mac app on This Mac, right after it signs the owner in: creates the computer on first use and starts it when stopped, without waiting for it. Does nothing when it is running or a start is under way, or when the install has no computer. The start reports through `computer.status`, a failure as `error`.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Whether there is a computer, and its state as the wake found it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComputerState"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/computer/stop": {
       "post": {
         "tags": ["computer"],

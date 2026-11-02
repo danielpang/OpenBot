@@ -388,6 +388,7 @@ export interface Started {
 }
 
 const starting = new Map<string, Promise<Started>>();
+const startKey = (owner: Owner) => `${owner.workspaceId}:${owner.id}`;
 
 /** Starts the owner's computer (creating it on first use) and waits for its agent. */
 export function startComputer(
@@ -395,7 +396,7 @@ export function startComputer(
   owner: Owner,
   by: AuditActor = { type: 'user', id: owner.id },
 ): Promise<Started> {
-  const key = `${owner.workspaceId}:${owner.id}`;
+  const key = startKey(owner);
   const pending = starting.get(key);
   if (pending) return pending;
   const started = start(deps, owner, by).finally(() => starting.delete(key));
@@ -448,6 +449,62 @@ async function start(deps: AppDeps, owner: Owner, by: AuditActor): Promise<Start
     .setWallpaper()
     .catch((error: unknown) => deps.logger.warn({ err: error }, 'wallpaper failed'));
   return { computer: row, durationMs: Date.now() - began, updated };
+}
+
+/** What `wakeComputer` did. */
+export type Wake =
+  /** No computer provider: nothing to start. */
+  | 'unavailable'
+  /** No computer yet, and this wake does not create one. */
+  | 'none'
+  /** Already running (marked used when asked). */
+  | 'running'
+  /** A start, an update or a stop is under way: left to finish. */
+  | 'busy'
+  /** A start began in the background. */
+  | 'starting';
+
+export interface WakeOptions {
+  /** Creates the computer on first use (the Mac app's launch); a message never does. */
+  create?: boolean;
+  /** Marks a running computer used: a message is activity, the app's launch is not. */
+  touch?: boolean;
+  by?: AuditActor;
+}
+
+/** Statuses a wake leaves alone. */
+const BUSY = new Set<string>(['creating', 'updating', 'starting', 'stopping']);
+
+/**
+ * Starts the owner's computer in the background when it is off (plan 9.5):
+ * the Mac app's launch on This Mac, and an owner's message to their Bots. It
+ * returns once the start began, without waiting for it: a failed start is
+ * logged and leaves the computer `error`, as any start does. One start runs per
+ * computer at a time, and a computer already starting, updating or stopping
+ * is left alone. It never changes the idle settings, so the idle sweep stops
+ * the computer again once it goes unused.
+ */
+export async function wakeComputer(
+  deps: AppDeps,
+  owner: Owner,
+  { create = false, touch: used = false, by = { type: 'user', id: owner.id } }: WakeOptions = {},
+): Promise<Wake> {
+  if (!computerAvailable(deps)) return 'unavailable';
+  if (starting.has(startKey(owner))) return 'busy';
+  const row = await getComputer(deps, owner);
+  if (!row && !create) return 'none';
+  if (row?.status === 'running') {
+    if (used) await touchComputer(deps, row.id);
+    return 'running';
+  }
+  if (row && BUSY.has(row.status)) return 'busy';
+  startComputer(deps, owner, by).catch((error: unknown) =>
+    deps.logger.warn(
+      { err: error, ownerId: owner.id, workspaceId: owner.workspaceId },
+      'computer wake failed',
+    ),
+  );
+  return 'starting';
 }
 
 /**
@@ -953,6 +1010,39 @@ export interface ComputerRunOptions {
   /** How long a screen action waits for a hand back; `TAKEOVER_WAIT_MS` by default. */
   takeoverWaitMs?: number;
   takeoverPollMs?: number;
+  /** How often a running command marks the computer used; `EXEC_TOUCH_MS` by default. */
+  execTouchMs?: number;
+}
+
+/** How often a command still running marks the computer used. */
+export const EXEC_TOUCH_MS = 60_000;
+
+/**
+ * The agent, with a command marking the computer used while it runs: `bash`
+ * may run for 30 minutes, longer than the shortest idle timeout, and the idle
+ * sweep must not stop the computer under it (plan 9.5).
+ */
+function inUse(
+  deps: AppDeps,
+  computerId: string,
+  agent: ComputerAgentClient,
+  everyMs = EXEC_TOUCH_MS,
+): ComputerAgentClient {
+  return {
+    ...agent,
+    async exec(request, options) {
+      const timer = setInterval(() => {
+        touchComputer(deps, computerId).catch((error: unknown) =>
+          deps.logger.warn({ err: error, computerId }, 'marking the computer used failed'),
+        );
+      }, everyMs);
+      try {
+        return await agent.exec(request, options);
+      } finally {
+        clearInterval(timer);
+      }
+    },
+  };
 }
 
 /** The computer tools' backend for one run (the agent's `ComputerServices`). */
@@ -977,7 +1067,8 @@ export function computerServices(deps: AppDeps, options: ComputerRunOptions): Co
         deps.logger.warn({ err: error, runId }, 'computer started event failed');
       });
     }
-    return { computer, agent: agentFor(deps, computer) };
+    const agent = inUse(deps, computer.id, agentFor(deps, computer), options.execTouchMs);
+    return { computer, agent };
   };
   // While the owner holds the screen, wait for the hand back (K3).
   const holdForOwner = async (screen: ScreenRow | null, tool: string) => {

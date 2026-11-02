@@ -8,12 +8,14 @@ import {
 import { and, asc, count, desc, eq, inArray, isNull, lt, max, ne, or, type SQL } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { nextSeq, schema, type Db } from '../db/client.js';
+import { inWorkspace } from '../db/scope.js';
 import { DomainError, notFound } from '../errors.js';
 import { publishEvent } from '../infra/index.js';
 import { assertBotOwner, assertChatOwner } from '../ownership.js';
 import { toMessage, type Message } from '../schemas.js';
 import { clearBlockedOnOpen } from './bot-state.js';
 import { chatBotIds } from './chats.js';
+import { computerAvailable, wakeComputer } from './computer.js';
 import { noteAttachmentChat, ownedAttachments } from './files.js';
 import { runUserMessageHooks } from './hooks.js';
 import { referableSkill } from './skills.js';
@@ -335,8 +337,27 @@ export async function postUserMessage(
     mentionEveryone: Boolean(input.mentionEveryone) || mentioned.everyone,
   });
   await noteAttachmentChat(db, fileIds, chatId);
+  wakeForMessage(deps, owner, chat!);
   await runUserMessageHooks(deps, message);
   return message;
+}
+
+/**
+ * An owner's message to their Bots wakes the owner's computer in the chat's
+ * organization, or marks it used while it runs, so a conversation keeps it
+ * awake (plan 9.5). It runs in the background: the message and the Bots'
+ * replies never wait for it. Bot, webhook and Routine messages do not come
+ * through here; their runs start the computer when a computer tool needs it.
+ */
+function wakeForMessage(deps: AppDeps, owner: Owner, chat: ChatRow) {
+  if (!computerAvailable(deps)) return;
+  const workspaceId = chat.workspaceId;
+  inWorkspace(workspaceId, async () => {
+    if (!(await chatBotIds(deps.db, chat)).length) return;
+    await wakeComputer(deps, { id: owner.id, workspaceId }, { touch: true });
+  }).catch((error: unknown) =>
+    deps.logger.warn({ err: error, chatId: chat.id }, 'computer wake failed'),
+  );
 }
 
 /** A complete message from the system, a webhook or a Routine, e.g. a W3 event row. */
