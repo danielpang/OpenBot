@@ -26,6 +26,8 @@ async function newPage(browser: Browser) {
 
 test('organizations: onboarding, invites, switching and isolation', async ({ browser, page }) => {
   test.skip(!(await managed(page)), 'needs the managed server');
+  // One long scenario with two people in two browsers.
+  test.setTimeout(120_000);
 
   // Ada signs up without an invite: she creates Acme in one step and owns it.
   await signUp(page, 'Ada', ADA, { organization: `Acme ${stamp}` });
@@ -40,7 +42,7 @@ test('organizations: onboarding, invites, switching and isolation', async ({ bro
   await page.getByRole('button', { name: 'Invite' }).click();
   const link = await page.getByLabel('Invite link').inputValue();
   expect(link).toContain('/sign-up?invite=');
-  await expect(page.getByText(BEA)).toBeVisible();
+  await expect(page.getByText(BEA, { exact: true })).toBeVisible();
 
   // Bea signs up through the link: no onboarding step, just Join.
   const bea = await newPage(browser);
