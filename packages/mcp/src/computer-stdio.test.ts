@@ -181,13 +181,14 @@ describe('McpManager with computer stdio sessions', () => {
     expect(textOf(await manager.callTool('c1', 'echo', { text: 'two' }))).toBe('two');
   });
 
-  it('gives up after too many exits in a row, and records why', async () => {
+  it('gives up after too many exits in a row, and records why', { timeout: 30_000 }, async () => {
     const { manager, errors, channel } = managed();
     await manager.host('c1');
+    // Starting a child process can take over a second on a loaded CI runner.
     for (let i = 0; i < 4; i++) {
-      await vi.waitFor(() => expect(manager.running('c1')).toBe(true));
+      await vi.waitFor(() => expect(manager.running('c1')).toBe(true), { timeout: 5000 });
       channel.children.at(-1)!.kill('SIGKILL');
-      await vi.waitFor(() => expect(manager.running('c1')).toBe(false));
+      await vi.waitFor(() => expect(manager.running('c1')).toBe(false), { timeout: 5000 });
     }
     await new Promise((r) => setTimeout(r, 150));
     expect(manager.running('c1')).toBe(false);

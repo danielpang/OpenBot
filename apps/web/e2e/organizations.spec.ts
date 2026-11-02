@@ -32,7 +32,7 @@ test('organizations: onboarding, invites, switching and isolation', async ({ bro
   await page.goto('/settings/organization');
   await expect(page.getByLabel('Name')).toHaveValue(`Acme ${stamp}`);
   // One organization: no switcher yet.
-  await expect(page.getByRole('button', { name: 'Organization' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Organization', exact: true })).toHaveCount(0);
 
   // Ada invites Bea from Settings > Members and copies the link.
   await page.goto('/settings/members');
@@ -67,7 +67,7 @@ test('organizations: onboarding, invites, switching and isolation', async ({ bro
   await bea.getByLabel('Name').last().fill(`Bea Co ${stamp}`);
   await bea.getByRole('button', { name: 'Create organization' }).click();
   await expect(bea).toHaveURL('/');
-  const switcher = bea.getByRole('button', { name: 'Organization' });
+  const switcher = bea.getByRole('button', { name: 'Organization', exact: true });
   await expect(switcher).toContainText(`Bea Co ${stamp}`);
   // Her Acme Bot is not here: each organization has its own.
   await expect(bea.getByRole('navigation').getByText(`Acme helper ${stamp}`)).toHaveCount(0);
