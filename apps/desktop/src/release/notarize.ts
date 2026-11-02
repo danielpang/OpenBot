@@ -19,7 +19,7 @@ import type {
 //     APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
 //
 // With neither set the build is left un-notarized (the unsigned dev build),
-// unless OPENBOT_REQUIRE_NOTARIZATION=1, which the release workflow sets so a
+// unless OPENBOTS_REQUIRE_NOTARIZATION=1, which the release workflow sets so a
 // missing secret fails the release instead of shipping an app Gatekeeper blocks.
 
 export type NotarizeCredentials = NotaryToolApiKeyCredentials | NotaryToolPasswordCredentials;
@@ -64,7 +64,7 @@ export async function notarizeApp(context: AfterSignContext, deps: AfterSignDeps
 
   const credentials = notarizeCredentials(env);
   if (credentials == null) {
-    if (env.OPENBOT_REQUIRE_NOTARIZATION === '1') {
+    if (env.OPENBOTS_REQUIRE_NOTARIZATION === '1') {
       throw new Error(
         'Notarization credentials are missing: set APPLE_API_KEY, APPLE_API_KEY_ID and ' +
           'APPLE_API_ISSUER, or APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID.',

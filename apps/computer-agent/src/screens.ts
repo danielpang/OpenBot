@@ -91,7 +91,7 @@ export const downloadsDir = (home: string) => path.join(home, 'Downloads');
 
 /** Where the profiles were before 8.4j, on the shared home. */
 export const legacyProfilesDir = (home: string) =>
-  path.join(home, '.config', 'openbot', 'chromium');
+  path.join(home, '.config', 'openbots', 'chromium');
 
 /**
  * As the bot user, before any screen starts: makes the downloads directory
@@ -187,8 +187,8 @@ if (typeof prefs !== 'object' || prefs === null || Array.isArray(prefs)) prefs =
 prefs.download = { ...prefs.download, default_directory: dir, prompt_for_download: false, directory_upgrade: true };
 prefs.savefile = { ...prefs.savefile, default_directory: dir };
 fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-fs.writeFileSync(file + '.openbot', JSON.stringify(prefs), { mode: 0o600 });
-fs.renameSync(file + '.openbot', file);`;
+fs.writeFileSync(file + '.openbots', JSON.stringify(prefs), { mode: 0o600 });
+fs.renameSync(file + '.openbots', file);`;
 
 // Run as the screen's user with node. Argument: x11vnc's socket. Pipes its
 // stdin and stdout to the socket, which the agent may not reach itself.

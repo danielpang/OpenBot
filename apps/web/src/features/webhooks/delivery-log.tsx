@@ -1,4 +1,4 @@
-import { Button, cn } from '@openbot/ui';
+import { Button, cn } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { formatWhen } from '../routines/routines-tab.js';

@@ -15,7 +15,7 @@ import { ensureWorkspace } from '../workspace.js';
 // provider key through the providers API, starts the sandbox image pull and
 // creates a first Bot through the Bots API.
 //
-// The Mac app's local mode (OPENBOT_LOCAL_TOKEN) has no account step: the app
+// The Mac app's local mode (OPENBOTS_LOCAL_TOKEN) has no account step: the app
 // creates the owner as it signs them in (routes/local.ts). Its wizard starts at
 // the providers and shows until the first Bot exists.
 
@@ -50,7 +50,11 @@ export async function wizardRequired(deps: Pick<AppDeps, 'db' | 'config'>): Prom
 }
 
 export const setupComplete = () =>
-  new DomainError(409, 'SETUP_COMPLETE', 'This OpenBot is already set up. Sign in instead.');
+  new DomainError(
+    409,
+    'SETUP_COMPLETE',
+    'This OpenBots server is already set up. Sign in instead.',
+  );
 
 export interface AdminInput {
   name: string;
@@ -78,7 +82,7 @@ export async function createAdmin(
   if (deps.config.localToken) throw new DomainError(403, 'LOCAL_ONLY', LOCAL_ONLY_MESSAGE);
   const origin = new URL(deps.config.publicUrl).origin;
   if (requestOrigin !== undefined && requestOrigin !== origin) {
-    throw forbidden('Create the first account from the OpenBot page itself');
+    throw forbidden('Create the first account from the OpenBots page itself');
   }
   if (!(await setupRequired(deps.db))) throw setupComplete();
   const res = await deps.auth.handler(

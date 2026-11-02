@@ -1,4 +1,4 @@
-import { SKILL_NAME_MAX, SkillContentSchema } from '@openbot/shared';
+import { SKILL_NAME_MAX, SkillContentSchema } from '@openbots/shared';
 import { z } from 'zod';
 import { defineWidget } from './types.js';
 

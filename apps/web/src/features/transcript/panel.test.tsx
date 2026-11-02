@@ -98,7 +98,7 @@ describe('the right panel per Bot', () => {
   });
 
   it('ignores a malformed stored value', () => {
-    localStorage.setItem('openbot.panel.a', '{"kind":"nope"}');
+    localStorage.setItem('openbots.panel.a', '{"kind":"nope"}');
     expect(readPanel('a')).toBeNull();
   });
 });

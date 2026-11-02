@@ -14,7 +14,7 @@ import {
 const question = {
   question: 'Which repo?',
   options: [
-    { id: 'a', label: 'openbot' },
+    { id: 'a', label: 'openbots' },
     { id: 'b', label: 'website' },
   ],
 };

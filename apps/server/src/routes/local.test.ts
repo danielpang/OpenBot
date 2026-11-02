@@ -31,7 +31,7 @@ function localSession(
     {
       method: 'POST',
       headers: {
-        ...(token == null ? {} : { 'x-openbot-local-token': token }),
+        ...(token == null ? {} : { 'x-openbots-local-token': token }),
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         ...headers,
       },
@@ -87,7 +87,7 @@ describe('POST /api/v1/local/session without a local token', () => {
 describe('POST /api/v1/local/session on a new install', () => {
   let t: TestApp;
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_LOCAL_TOKEN: TOKEN });
+    t = await createTestApp({ OPENBOTS_LOCAL_TOKEN: TOKEN });
   });
   afterAll(() => t.close());
 
@@ -108,7 +108,7 @@ describe('POST /api/v1/local/session on a new install', () => {
 
   it('does not take the token in the query string', async () => {
     const res = await t.app.request(
-      `/api/v1/local/session?token=${TOKEN}&x-openbot-local-token=${TOKEN}`,
+      `/api/v1/local/session?token=${TOKEN}&x-openbots-local-token=${TOKEN}`,
       { method: 'POST' },
       from(),
     );
@@ -138,7 +138,7 @@ describe('POST /api/v1/local/session on a new install', () => {
         headers: {
           origin: ORIGIN,
           'access-control-request-method': 'POST',
-          'access-control-request-headers': 'x-openbot-local-token',
+          'access-control-request-headers': 'x-openbots-local-token',
         },
       },
       from(),
@@ -240,7 +240,7 @@ describe('POST /api/v1/local/session on a new install', () => {
   });
 
   it('names the owner Me when the app sends no name', async () => {
-    const other = await createTestApp({ OPENBOT_LOCAL_TOKEN: TOKEN });
+    const other = await createTestApp({ OPENBOTS_LOCAL_TOKEN: TOKEN });
     try {
       const res = await localSession(other);
       expect(res.status).toBe(200);

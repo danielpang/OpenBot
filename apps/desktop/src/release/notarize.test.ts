@@ -65,7 +65,7 @@ describe('notarizeApp', () => {
   it('fails a release that requires notarization but has no credentials', async () => {
     const notarize = vi.fn(async () => undefined);
     await expect(
-      notarizeApp(context, { env: { OPENBOT_REQUIRE_NOTARIZATION: '1' }, notarize }),
+      notarizeApp(context, { env: { OPENBOTS_REQUIRE_NOTARIZATION: '1' }, notarize }),
     ).rejects.toThrow(/credentials are missing/);
   });
 

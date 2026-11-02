@@ -1,26 +1,26 @@
 // The docker guard process, run as the `docker-guard` compose service
-// (`openbot docker-guard` in the server image). It holds no secrets: just the
+// (`openbots docker-guard` in the server image). It holds no secrets: just the
 // sandbox image it allows and the socket proxy it forwards to. For development
-// on the host, `pnpm --filter @openbot/computer docker-guard` runs it from
+// on the host, `pnpm --filter @openbots/computer docker-guard` runs it from
 // source in front of the Docker socket, on 127.0.0.1 only.
 //
-//   OPENBOT_DOCKER_UPSTREAM  the socket proxy (default tcp://docker-socket-proxy:2375)
-//   OPENBOT_SANDBOX_IMAGE    the only image computers may run
-//   OPENBOT_SANDBOX_NETWORK  the only network they may join (default openbot-sandbox)
-//   OPENBOT_SANDBOX_BRIDGE   its bridge name (default the network's name)
-//   OPENBOT_DOCKER_GUARD_PORT  where it listens (default 2375)
-//   OPENBOT_DOCKER_GUARD_HOST  the address it listens on (default every interface)
+//   OPENBOTS_DOCKER_UPSTREAM  the socket proxy (default tcp://docker-socket-proxy:2375)
+//   OPENBOTS_SANDBOX_IMAGE    the only image computers may run
+//   OPENBOTS_SANDBOX_NETWORK  the only network they may join (default openbots-sbx)
+//   OPENBOTS_SANDBOX_BRIDGE   its bridge name (default the network's name)
+//   OPENBOTS_DOCKER_GUARD_PORT  where it listens (default 2375)
+//   OPENBOTS_DOCKER_GUARD_HOST  the address it listens on (default every interface)
 import { createDockerGuard } from './docker-guard.js';
 import { DEFAULT_SANDBOX_IMAGE, resolveSandboxNetwork } from './docker.js';
 
-const upstream = process.env.OPENBOT_DOCKER_UPSTREAM || 'tcp://docker-socket-proxy:2375';
-const image = process.env.OPENBOT_SANDBOX_IMAGE || DEFAULT_SANDBOX_IMAGE;
-const port = Number(process.env.OPENBOT_DOCKER_GUARD_PORT || 2375);
-const host = process.env.OPENBOT_DOCKER_GUARD_HOST || undefined;
+const upstream = process.env.OPENBOTS_DOCKER_UPSTREAM || 'tcp://docker-socket-proxy:2375';
+const image = process.env.OPENBOTS_SANDBOX_IMAGE || DEFAULT_SANDBOX_IMAGE;
+const port = Number(process.env.OPENBOTS_DOCKER_GUARD_PORT || 2375);
+const host = process.env.OPENBOTS_DOCKER_GUARD_HOST || undefined;
 // Throws, so the guard does not start, on a name the firewall cannot match.
 const network = resolveSandboxNetwork(
-  process.env.OPENBOT_SANDBOX_NETWORK,
-  process.env.OPENBOT_SANDBOX_BRIDGE,
+  process.env.OPENBOTS_SANDBOX_NETWORK,
+  process.env.OPENBOTS_SANDBOX_BRIDGE,
 );
 
 const log = (fields: Record<string, unknown>) =>

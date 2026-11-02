@@ -1,4 +1,4 @@
-import type { PolicyDecision, ToolPolicy } from '@openbot/shared';
+import type { PolicyDecision, ToolPolicy } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import { gated, NeedsApproval } from '../gated.js';
 import { createPolicy, evaluatePolicy, type PolicyInput } from './engine.js';
@@ -62,7 +62,7 @@ describe('policy engine', () => {
     expect(decide('github__list_issues', mcp({ readOnlyHint: true }))).toMatchObject({
       decision: 'auto',
       trace: [{ rule: 'annotations', decision: 'auto' }],
-      reason: 'github__list_issues is marked read-only, reaching outside OpenBot',
+      reason: 'github__list_issues is marked read-only, reaching outside OpenBots',
     });
     expect(
       decide('github__list_issues', mcp({ readOnlyHint: true, openWorldHint: false })).reason,

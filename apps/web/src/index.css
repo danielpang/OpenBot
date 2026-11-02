@@ -1,4 +1,4 @@
 @import 'tailwindcss';
-@import '@openbot/ui/styles.css';
-@import '@openbot/avatars/styles.css';
-@import '@openbot/widgets/styles.css';
+@import '@openbots/ui/styles.css';
+@import '@openbots/avatars/styles.css';
+@import '@openbots/widgets/styles.css';

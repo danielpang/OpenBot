@@ -1,5 +1,5 @@
-import { describePreset } from '@openbot/routines';
-import { Button } from '@openbot/ui';
+import { describePreset } from '@openbots/routines';
+import { Button } from '@openbots/ui';
 import { useState } from 'react';
 import type { RoutineProposalProps, RoutineProposalState } from '../kinds/routine_proposal.js';
 import type { WidgetRendererProps } from './types.js';

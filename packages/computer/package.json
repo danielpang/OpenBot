@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/computer",
+  "name": "@openbots/computer",
   "version": "0.0.0",
   "private": true,
   "description": "ComputerProvider, docker provider, agent client, screen locks",
@@ -7,26 +7,26 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./testing": {
-      "@openbot/source": "./src/testing.ts",
+      "@openbots/source": "./src/testing.ts",
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "docker-guard": "OPENBOT_DOCKER_UPSTREAM=${OPENBOT_DOCKER_UPSTREAM:-unix:///var/run/docker.sock} OPENBOT_DOCKER_GUARD_HOST=${OPENBOT_DOCKER_GUARD_HOST:-127.0.0.1} tsx --conditions=@openbot/source src/docker-guard-main.ts",
+    "docker-guard": "OPENBOTS_DOCKER_UPSTREAM=${OPENBOTS_DOCKER_UPSTREAM:-unix:///var/run/docker.sock} OPENBOTS_DOCKER_GUARD_HOST=${OPENBOTS_DOCKER_GUARD_HOST:-127.0.0.1} tsx --conditions=@openbots/source src/docker-guard-main.ts",
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openbot/computer-agent": "workspace:*",
-    "@openbot/shared": "workspace:*",
+    "@openbots/computer-agent": "workspace:*",
+    "@openbots/shared": "workspace:*",
     "dockerode": "^4.0.12",
     "ws": "catalog:",
     "zod": "catalog:"

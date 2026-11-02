@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { OAuthMode } from '@openbot/mcp';
+import type { OAuthMode } from '@openbots/mcp';
 
 // The page a connector's OAuth sign-in ends on (plan 8): the provider sends
 // the browser to `GET /api/v1/connectors/oauth/callback`, which answers with
@@ -12,10 +12,10 @@ import type { OAuthMode } from '@openbot/mcp';
 // under a per-response CSP nonce; it sends no referrer and is never cached.
 
 /** The `postMessage` data type the web app listens for. */
-export const OAUTH_MESSAGE_TYPE = 'openbot:oauth';
+export const OAUTH_MESSAGE_TYPE = 'openbots:oauth';
 
-/** Opens the Mac app (it registers the `openbot:` scheme) at the Connectors page. */
-export const APP_LINK = 'openbot://connectors';
+/** Opens the Mac app (it registers the `openbots:` scheme) at the Connectors page. */
+export const APP_LINK = 'openbots://connectors';
 
 export interface OAuthPageInput {
   ok: boolean;
@@ -26,7 +26,7 @@ export interface OAuthPageInput {
   connectorId: string | null;
   /** Unknown when the state did not check out. */
   mode: OAuthMode | null;
-  /** `OPENBOT_PUBLIC_URL`: the only origin the page posts to. */
+  /** `OPENBOTS_PUBLIC_URL`: the only origin the page posts to. */
   publicUrl: string;
 }
 

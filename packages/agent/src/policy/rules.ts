@@ -1,8 +1,8 @@
-import type { PolicyDecision, ToolGroupName } from '@openbot/shared';
+import type { PolicyDecision, ToolGroupName } from '@openbots/shared';
 import type { PolicyRule } from './policy.js';
 
 // The built-in defaults (plan 8, T5): reads run, anything that can change
-// something outside OpenBot asks. A tool is judged, in order, by a rule for
+// something outside OpenBots asks. A tool is judged, in order, by a rule for
 // its name, then by its annotations (MCP's, or a built-in's own), then by its
 // group. Nothing here reads the Bot's settings; engine.ts layers those on top.
 // An MCP server's read-only hint is its own claim, so it counts only for
@@ -132,7 +132,7 @@ export function defaultRule(toolName: string, args: unknown, facts: ToolFacts): 
       };
     }
     if (hints.readOnlyHint === true) {
-      const where = hints.openWorldHint === false ? '' : ', reaching outside OpenBot';
+      const where = hints.openWorldHint === false ? '' : ', reaching outside OpenBots';
       return { ...read(`${toolName} is marked read-only${where}`), rule: 'annotations' };
     }
     const why = hints.destructiveHint

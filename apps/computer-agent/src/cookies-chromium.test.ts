@@ -15,10 +15,10 @@ import { screenInfo } from './screens.js';
 
 // Shared logins against real Chromium (K1): headless, each "screen" its own
 // profile, reached the way the agent reaches it, over the DevTools pipe and
-// Playwright. Runs wherever Playwright's Chromium (or OPENBOT_CHROMIUM) is
+// Playwright. Runs wherever Playwright's Chromium (or OPENBOTS_CHROMIUM) is
 // installed; the X side of a screen is display.test.ts's.
 
-const chromiumPath = process.env.OPENBOT_CHROMIUM ?? chromium.executablePath();
+const chromiumPath = process.env.OPENBOTS_CHROMIUM ?? chromium.executablePath();
 
 describe.skipIf(!existsSync(chromiumPath))('shared cookies in real Chromium (K1)', () => {
   let site: Server;
@@ -41,7 +41,7 @@ describe.skipIf(!existsSync(chromiumPath))('shared cookies in real Chromium (K1)
   let sync = newSync();
 
   async function launch(n: number, profile?: string) {
-    const dir = profile ?? (await mkdtemp(path.join(tmpdir(), `openbot-profile-${n}-`)));
+    const dir = profile ?? (await mkdtemp(path.join(tmpdir(), `openbots-profile-${n}-`)));
     profiles.push(dir);
     const child = spawn(
       chromiumPath,

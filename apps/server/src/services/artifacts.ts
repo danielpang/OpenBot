@@ -1,5 +1,10 @@
 import type { Readable } from 'node:stream';
-import type { ArtifactBody, ArtifactChange, ArtifactServices, ArtifactWrite } from '@openbot/agent';
+import type {
+  ArtifactBody,
+  ArtifactChange,
+  ArtifactServices,
+  ArtifactWrite,
+} from '@openbots/agent';
 import {
   applyUnifiedPatch,
   artifactFileName,
@@ -8,8 +13,8 @@ import {
   isTextMime,
   mimeForName,
   PatchError,
-} from '@openbot/artifacts';
-import { isTextArtifactKind, wsEvent, type ArtifactKind } from '@openbot/shared';
+} from '@openbots/artifacts';
+import { isTextArtifactKind, wsEvent, type ArtifactKind } from '@openbots/shared';
 import { and, desc, eq } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';

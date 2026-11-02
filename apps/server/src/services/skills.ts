@@ -4,15 +4,15 @@ import {
   type ReferencedSkill,
   type SkillIndexEntry,
   type SkillServices,
-} from '@openbot/agent';
+} from '@openbots/agent';
 import {
   SKILL_NAME_MAX,
   skillSlug,
   skillSummary,
   type MessagePart,
   type SkillSource,
-} from '@openbot/shared';
-import type { SkillDraftProps, SkillDraftState } from '@openbot/widgets';
+} from '@openbots/shared';
+import type { SkillDraftProps, SkillDraftState } from '@openbots/widgets';
 import type { LanguageModel } from 'ai';
 import { and, asc, count, desc, eq, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';

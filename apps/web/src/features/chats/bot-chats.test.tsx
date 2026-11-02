@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { WsClient } from '@openbot/api-client';
+import type { WsClient } from '@openbots/api-client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';

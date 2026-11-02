@@ -1,14 +1,14 @@
 import { envValue, setEnvValue } from './env.js';
 
 // The sandbox network of the Mac app's stack (plan 9.5, 14.4). A source
-// checkout's stack uses openbot-sandbox on 172.30.255.0/24, the defaults in
+// checkout's stack uses openbots-sbx on 172.30.255.0/24, the defaults in
 // docker/docker-compose.yml. The app's stack gets a network of its own, on a
 // free /24 from APP_SUBNETS, so the two can run side by side on one Mac
-// (OPENBOT_SANDBOX_NETWORK in .env.example).
+// (OPENBOTS_SANDBOX_NETWORK in .env.example).
 
 /** The compose defaults, which a stack without these keys in `.env` runs on. */
 export const DEFAULT_SANDBOX = {
-  network: 'openbot-sandbox',
+  network: 'openbots-sbx',
   subnet: '172.30.255.0/24',
 } as const;
 
@@ -22,11 +22,11 @@ export const APP_SUBNETS = { prefix: '172.30', first: 254, last: 1 } as const;
 
 /** The `.env` keys that place a stack's sandbox network. */
 export const SANDBOX_KEYS = [
-  'OPENBOT_SANDBOX_NETWORK',
-  'OPENBOT_SANDBOX_BRIDGE',
-  'OPENBOT_SANDBOX_SUBNET',
-  'OPENBOT_SANDBOX_SERVER_IP',
-  'OPENBOT_SANDBOX_EGRESS_PROXY_IP',
+  'OPENBOTS_SANDBOX_NETWORK',
+  'OPENBOTS_SANDBOX_BRIDGE',
+  'OPENBOTS_SANDBOX_SUBNET',
+  'OPENBOTS_SANDBOX_SERVER_IP',
+  'OPENBOTS_SANDBOX_EGRESS_PROXY_IP',
 ] as const;
 
 export interface SandboxChoice {
@@ -40,12 +40,16 @@ export interface SandboxChoice {
   proxyIp: string;
 }
 
-/** The app's network on 172.30.<octet>.0/24, named after it so a new choice never reuses a name. */
+/**
+ * The app's network on 172.30.<octet>.0/24, named after it so a new choice never
+ * reuses a name. Its bridge is `openbots-a-<octet>` ("a" for the app), within
+ * the 15 characters a bridge name may have.
+ */
 export function appSandbox(octet: number): SandboxChoice {
   const net = `${APP_SUBNETS.prefix}.${octet}`;
   return {
-    network: `openbot-app-sandbox-${octet}`,
-    bridge: `openbot-app-${octet}`,
+    network: `openbots-app-sandbox-${octet}`,
+    bridge: `openbots-a-${octet}`,
     subnet: `${net}.0/24`,
     serverIp: `${net}.2`,
     proxyIp: `${net}.3`,
@@ -111,27 +115,27 @@ export function chooseSandbox(
  * network's proxy address follows it to the new one.
  */
 export function withSandbox(env: string, choice: SandboxChoice): string {
-  const oldProxyIp = envValue(env, 'OPENBOT_SANDBOX_EGRESS_PROXY_IP')?.trim();
+  const oldProxyIp = envValue(env, 'OPENBOTS_SANDBOX_EGRESS_PROXY_IP')?.trim();
   let next = env;
-  next = setEnvValue(next, 'OPENBOT_SANDBOX_NETWORK', choice.network);
-  next = setEnvValue(next, 'OPENBOT_SANDBOX_BRIDGE', choice.bridge);
-  next = setEnvValue(next, 'OPENBOT_SANDBOX_SUBNET', choice.subnet);
-  next = setEnvValue(next, 'OPENBOT_SANDBOX_SERVER_IP', choice.serverIp);
-  next = setEnvValue(next, 'OPENBOT_SANDBOX_EGRESS_PROXY_IP', choice.proxyIp);
-  const proxy = envValue(next, 'OPENBOT_SANDBOX_EGRESS_PROXY')?.trim();
+  next = setEnvValue(next, 'OPENBOTS_SANDBOX_NETWORK', choice.network);
+  next = setEnvValue(next, 'OPENBOTS_SANDBOX_BRIDGE', choice.bridge);
+  next = setEnvValue(next, 'OPENBOTS_SANDBOX_SUBNET', choice.subnet);
+  next = setEnvValue(next, 'OPENBOTS_SANDBOX_SERVER_IP', choice.serverIp);
+  next = setEnvValue(next, 'OPENBOTS_SANDBOX_EGRESS_PROXY_IP', choice.proxyIp);
+  const proxy = envValue(next, 'OPENBOTS_SANDBOX_EGRESS_PROXY')?.trim();
   if (proxy && oldProxyIp) {
     const moved = proxy.replace(
       new RegExp(`^(https?://(?:[^/@]+@)?)${oldProxyIp.replace(/\./g, '\\.')}(:\\d+/?)$`),
       `$1${choice.proxyIp}$2`,
     );
-    if (moved !== proxy) next = setEnvValue(next, 'OPENBOT_SANDBOX_EGRESS_PROXY', moved);
+    if (moved !== proxy) next = setEnvValue(next, 'OPENBOTS_SANDBOX_EGRESS_PROXY', moved);
   }
   return next;
 }
 
 /** The network a stack's `.env` names, or null when it names none (compose's default). */
 export function envNetwork(env: string): string | null {
-  return envValue(env, 'OPENBOT_SANDBOX_NETWORK')?.trim() || null;
+  return envValue(env, 'OPENBOTS_SANDBOX_NETWORK')?.trim() || null;
 }
 
 /** Whether `docker container ls` with NETWORKS_FORMAT lists a container of `projectDir` on `network`. */

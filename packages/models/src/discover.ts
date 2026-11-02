@@ -1,4 +1,4 @@
-import { DEFAULT_CAPABILITIES, type ModelCapabilities, type ModelPricing } from '@openbot/shared';
+import { DEFAULT_CAPABILITIES, type ModelCapabilities, type ModelPricing } from '@openbots/shared';
 import { endpointHeaders, splitBaseUrl, type ProviderConfig } from './adapters.js';
 import { catalogModel } from './catalog.js';
 

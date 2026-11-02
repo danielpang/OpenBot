@@ -19,7 +19,7 @@ import {
 const PATH = '/user-data/profiles.json';
 const LOCAL = 'http://localhost:3000';
 const CLOUD = 'https://app.openbots.example';
-const SELF = 'https://openbot.example.com';
+const SELF = 'https://openbots.example.com';
 const BENTO = 'http://localhost:3000';
 
 /** Another app's dev server on the stack's port: HTML on every path. */
@@ -41,7 +41,7 @@ const ready = {
 };
 const running: StackStatus = {
   docker: ready,
-  services: [{ service: 'openbot', state: 'running', health: 'healthy' }],
+  services: [{ service: 'openbots', state: 'running', health: 'healthy' }],
   upgrade: null,
   port: { port: 3000, taken: false, free: null },
 };

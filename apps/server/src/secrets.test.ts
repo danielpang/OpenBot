@@ -115,7 +115,7 @@ describe('secrets', () => {
     const sealedOld = encryptSecret('left over', keyringFromKeys(oldKey));
     const withoutOld = keyringFromKeys(generateMasterKey());
     expect(() => decryptSecret(sealedOld, withoutOld)).toThrow(
-      /no configured master key opens this secret[\s\S]*OPENBOT_MASTER_KEY_PREVIOUS[\s\S]*rotate-key/,
+      /no configured master key opens this secret[\s\S]*OPENBOTS_MASTER_KEY_PREVIOUS[\s\S]*rotate-key/,
     );
   });
 
@@ -141,7 +141,7 @@ describe('secrets', () => {
     expect(openEnvelope(encryptSecret('a', ring), ring).current).toBe(true);
   });
 
-  it('builds one keyring per config from OPENBOT_MASTER_KEY and OPENBOT_MASTER_KEY_PREVIOUS', () => {
+  it('builds one keyring per config from OPENBOTS_MASTER_KEY and OPENBOTS_MASTER_KEY_PREVIOUS', () => {
     const config = { masterKey: generateMasterKey(), previousMasterKeys: [generateMasterKey()] };
     const ring = keyringFromConfig(config);
     expect(ring).toBe(keyringFromConfig(config));

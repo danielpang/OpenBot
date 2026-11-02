@@ -28,7 +28,7 @@ describe('ownership', () => {
   let workspaceId: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     alice = (await t.signUp('alice@example.com')).cookie!;
     bob = (await t.signUp('bob@example.com')).cookie!;
     const users = await t.db.select().from(schema.users);

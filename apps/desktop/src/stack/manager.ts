@@ -121,7 +121,7 @@ export interface StackFiles {
 export interface StackManagerOptions {
   paths: StackPaths;
   /**
-   * The app's release: the image tag written to OPENBOT_VERSION in a new
+   * The app's release: the image tag written to OPENBOTS_VERSION in a new
    * `.env`, and the one an older `.env` moves to. The template's when omitted
    * (development), and then an existing `.env` is never upgraded.
    */
@@ -207,14 +207,14 @@ export interface StackManager {
   /** Reads only `.env`, so it needs no Docker. */
   pendingUpgrade(): Promise<StackUpgrade | null>;
   /**
-   * OPENBOT_LOCAL_TOKEN from `.env`, which the main process signs the owner
+   * OPENBOTS_LOCAL_TOKEN from `.env`, which the main process signs the owner
    * in with (main/local-session.ts); null before a start wrote one. Main
    * process only: it never crosses the preload bridge.
    */
   localToken(): Promise<string | null>;
   /**
    * Moves a stack that is not running to the first free port (and its
-   * localhost OPENBOT_PUBLIC_URL with it), for when another app took its port.
+   * localhost OPENBOTS_PUBLIC_URL with it), for when another app took its port.
    */
   changePort(): Promise<StackStatus>;
   /**
@@ -247,8 +247,9 @@ const nodeFiles: StackFiles = {
 
 export { envValue, setEnvValue };
 
-const TEMPLATE_DATABASE_URL = 'DATABASE_URL=postgres://openbot:change-me@postgres:5432/openbot';
-const DATABASE_URL_PASSWORD = /^DATABASE_URL=postgres:\/\/openbot:([^@]*)@postgres:5432\/openbot$/;
+const TEMPLATE_DATABASE_URL = 'DATABASE_URL=postgres://openbots:change-me@postgres:5432/openbots';
+const DATABASE_URL_PASSWORD =
+  /^DATABASE_URL=postgres:\/\/openbots:([^@]*)@postgres:5432\/openbots$/;
 
 /**
  * The compose Postgres password (threat model S-3), exactly as install.sh sets
@@ -269,34 +270,34 @@ export function withDatabasePassword(env: string, generate: () => string): strin
     .split('\n')
     .map((line) =>
       line.replace(/\r$/, '') === TEMPLATE_DATABASE_URL
-        ? `DATABASE_URL=postgres://openbot:${password}@postgres:5432/openbot`
+        ? `DATABASE_URL=postgres://openbots:${password}@postgres:5432/openbots`
         : line,
     );
   return setEnvValue(lines.join('\n'), 'POSTGRES_PASSWORD', password);
 }
 
 /**
- * The Mac app's local owner token (OPENBOT_LOCAL_TOKEN): with it the main
+ * The Mac app's local owner token (OPENBOTS_LOCAL_TOKEN): with it the main
  * process signs the owner in, so This Mac has no sign-in (main/local-session.ts).
  * An existing one is kept; a `.env` without one, new or from before, gets one.
  */
 export function withLocalToken(env: string, generate: () => string): string {
-  if (envValue(env, 'OPENBOT_LOCAL_TOKEN')?.trim()) return env;
-  return setEnvValue(env, 'OPENBOT_LOCAL_TOKEN', generate());
+  if (envValue(env, 'OPENBOTS_LOCAL_TOKEN')?.trim()) return env;
+  return setEnvValue(env, 'OPENBOTS_LOCAL_TOKEN', generate());
 }
 
 /**
- * The password of openbot_app, the database role the server works as under
- * row-level security (OPENBOT_DB_APP_PASSWORD). An existing one is kept; a
+ * The password of openbots_app, the database role the server works as under
+ * row-level security (OPENBOTS_DB_APP_PASSWORD). An existing one is kept; a
  * `.env` without one, new or from before, gets one.
  */
 export function withAppDbPassword(env: string, generate: () => string): string {
-  if (envValue(env, 'OPENBOT_DB_APP_PASSWORD')?.trim()) return env;
-  return setEnvValue(env, 'OPENBOT_DB_APP_PASSWORD', generate());
+  if (envValue(env, 'OPENBOTS_DB_APP_PASSWORD')?.trim()) return env;
+  return setEnvValue(env, 'OPENBOTS_DB_APP_PASSWORD', generate());
 }
 
 /**
- * The address the stack's web port is published on (OPENBOT_HTTP_BIND in
+ * The address the stack's web port is published on (OPENBOTS_HTTP_BIND in
  * docker/docker-compose.yml): this Mac's loopback, so other machines on the
  * network cannot reach a server that signs its owner in without a password.
  */
@@ -304,8 +305,8 @@ export const LOOPBACK_BIND = '127.0.0.1:';
 
 /** Publishes the web port on loopback only, unless the owner set an address themselves. */
 export function withLoopbackPort(env: string): string {
-  if (envValue(env, 'OPENBOT_HTTP_BIND') != null) return env;
-  return setEnvValue(env, 'OPENBOT_HTTP_BIND', LOOPBACK_BIND);
+  if (envValue(env, 'OPENBOTS_HTTP_BIND') != null) return env;
+  return setEnvValue(env, 'OPENBOTS_HTTP_BIND', LOOPBACK_BIND);
 }
 
 /** 32 random bytes, base64url: nothing to quote in `.env`. */
@@ -318,10 +319,10 @@ export function generateDatabasePassword(): string {
   return randomBytes(24).toString('hex');
 }
 
-/** The stack's web port: OPENBOT_HTTP_PORT, or Compose's default of 3000. */
+/** The stack's web port: OPENBOTS_HTTP_PORT, or Compose's default of 3000. */
 export function envPort(env: string): number {
   const port = Number(
-    envValue(env, 'OPENBOT_HTTP_PORT')
+    envValue(env, 'OPENBOTS_HTTP_PORT')
       ?.trim()
       .replace(/^["']|["']$/g, ''),
   );
@@ -329,17 +330,17 @@ export function envPort(env: string): number {
 }
 
 /**
- * Publishes the stack on `port`: OPENBOT_HTTP_PORT, and OPENBOT_PUBLIC_URL
+ * Publishes the stack on `port`: OPENBOTS_HTTP_PORT, and OPENBOTS_PUBLIC_URL
  * when it is the localhost address of the old port (or missing). A public URL
  * the owner pointed at a tunnel or a domain stays.
  */
 export function withPort(env: string, port: number): string {
   const before = envPort(env);
-  const url = envValue(env, 'OPENBOT_PUBLIC_URL')?.trim();
+  const url = envValue(env, 'OPENBOTS_PUBLIC_URL')?.trim();
   const local = new RegExp(`^https?://(localhost|127\\.0\\.0\\.1):${before}/?$`);
-  let next = setEnvValue(env, 'OPENBOT_HTTP_PORT', String(port));
+  let next = setEnvValue(env, 'OPENBOTS_HTTP_PORT', String(port));
   if (!url || local.test(url)) {
-    next = setEnvValue(next, 'OPENBOT_PUBLIC_URL', `http://localhost:${port}`);
+    next = setEnvValue(next, 'OPENBOTS_PUBLIC_URL', `http://localhost:${port}`);
   }
   return next;
 }
@@ -347,8 +348,8 @@ export function withPort(env: string, port: number): string {
 /** Writes the development image overrides, if any, into `.env`. */
 export function withImages(env: string, images: ImageOverrides | undefined): string {
   let next = env;
-  if (images?.prefix) next = setEnvValue(next, 'OPENBOT_IMAGE_PREFIX', images.prefix);
-  if (images?.version) next = setEnvValue(next, 'OPENBOT_VERSION', images.version);
+  if (images?.prefix) next = setEnvValue(next, 'OPENBOTS_IMAGE_PREFIX', images.prefix);
+  if (images?.version) next = setEnvValue(next, 'OPENBOTS_VERSION', images.version);
   return next;
 }
 
@@ -356,15 +357,15 @@ const IMAGE_PREFIX = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 const IMAGE_TAG = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 
 /**
- * OPENBOT_IMAGE_PREFIX and OPENBOT_VERSION from the environment `pnpm dev`
+ * OPENBOTS_IMAGE_PREFIX and OPENBOTS_VERSION from the environment `pnpm dev`
  * runs in, for testing the local stack against images built from source
- * (`openbot-local` and `dev`). A packaged app ignores them: it runs its own
+ * (`openbots-local` and `dev`). A packaged app ignores them: it runs its own
  * release. A value that is not an image prefix or tag is ignored.
  */
 export function devImageOverrides(env: NodeJS.ProcessEnv, packaged: boolean): ImageOverrides {
   if (packaged) return {};
-  const prefix = env.OPENBOT_IMAGE_PREFIX?.trim();
-  const version = env.OPENBOT_VERSION?.trim();
+  const prefix = env.OPENBOTS_IMAGE_PREFIX?.trim();
+  const version = env.OPENBOTS_VERSION?.trim();
   return {
     ...(prefix && IMAGE_PREFIX.test(prefix) ? { prefix } : {}),
     ...(version && IMAGE_TAG.test(version) ? { version } : {}),
@@ -377,12 +378,12 @@ export function renderEnv(
   values: {
     masterKey: string;
     databasePassword: string;
-    /** OPENBOT_LOCAL_TOKEN; left as the template has it when omitted. */
+    /** OPENBOTS_LOCAL_TOKEN; left as the template has it when omitted. */
     localToken?: string;
-    /** OPENBOT_DB_APP_PASSWORD; left as the template has it when omitted. */
+    /** OPENBOTS_DB_APP_PASSWORD; left as the template has it when omitted. */
     appDbPassword?: string;
     serverVersion?: string;
-    /** The free port the stack publishes, with the matching OPENBOT_PUBLIC_URL. */
+    /** The free port the stack publishes, with the matching OPENBOTS_PUBLIC_URL. */
     port?: number;
     /** The Compose project, recorded so a later start keeps it. */
     project?: string;
@@ -391,17 +392,18 @@ export function renderEnv(
     images?: ImageOverrides;
   },
 ): string {
-  let env = setEnvValue(template, 'OPENBOT_MASTER_KEY', values.masterKey);
+  let env = setEnvValue(template, 'OPENBOTS_MASTER_KEY', values.masterKey);
   env = withDatabasePassword(env, () => values.databasePassword);
   if (values.appDbPassword != null) env = withAppDbPassword(env, () => values.appDbPassword!);
   if (values.localToken != null) {
     env = withLocalToken(env, () => values.localToken!);
     env = withLoopbackPort(env);
   }
-  if (values.serverVersion != null) env = setEnvValue(env, 'OPENBOT_VERSION', values.serverVersion);
+  if (values.serverVersion != null)
+    env = setEnvValue(env, 'OPENBOTS_VERSION', values.serverVersion);
   if (values.port != null) {
-    env = setEnvValue(env, 'OPENBOT_HTTP_PORT', String(values.port));
-    env = setEnvValue(env, 'OPENBOT_PUBLIC_URL', `http://localhost:${values.port}`);
+    env = setEnvValue(env, 'OPENBOTS_HTTP_PORT', String(values.port));
+    env = setEnvValue(env, 'OPENBOTS_PUBLIC_URL', `http://localhost:${values.port}`);
   }
   if (values.project != null) env = setEnvValue(env, 'COMPOSE_PROJECT_NAME', values.project);
   if (values.sandbox != null) env = withSandbox(env, values.sandbox);
@@ -410,7 +412,7 @@ export function renderEnv(
 
 /**
  * The environment `docker compose` runs with: the stack's settings come from
- * its `.env` alone, so OPENBOT_* values and Compose's project, file and
+ * its `.env` alone, so OPENBOTS_* values and Compose's project, file and
  * profile choices in the app's own environment do not reach it (a shell
  * variable would win over `.env`).
  */
@@ -422,7 +424,7 @@ export function composeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     'COMPOSE_ENV_FILES',
   ]);
   return Object.fromEntries(
-    Object.entries(env).filter(([name]) => !name.startsWith('OPENBOT_') && !ignored.has(name)),
+    Object.entries(env).filter(([name]) => !name.startsWith('OPENBOTS_') && !ignored.has(name)),
   );
 }
 
@@ -494,7 +496,7 @@ function anyRunning(services: ServiceState[]): boolean {
 /** The stack's server has its container up, so the port is this stack's own. */
 function holdsPort(services: ServiceState[]): boolean {
   return services.some(
-    (s) => s.service === 'openbot' && ['running', 'restarting', 'paused'].includes(s.state),
+    (s) => s.service === 'openbots' && ['running', 'restarting', 'paused'].includes(s.state),
   );
 }
 
@@ -530,7 +532,7 @@ export function compareReleases(a: string, b: string): number | null {
  * build) was chosen by the owner and is left alone, as is a newer one.
  */
 export function pendingUpgrade(env: string, appVersion: string | undefined): StackUpgrade | null {
-  const from = envValue(env, 'OPENBOT_VERSION')?.trim();
+  const from = envValue(env, 'OPENBOTS_VERSION')?.trim();
   if (appVersion == null || !from) return null;
   return compareReleases(appVersion, from) === 1 ? { from, to: appVersion } : null;
 }
@@ -574,8 +576,8 @@ export function createStackManager(options: StackManagerOptions): StackManager {
 
   /**
    * The install predates the app's own project name: containers of the
-   * `openbot` project have the app's stack directory as their working
-   * directory. A source checkout's `openbot` stack (any other directory) is
+   * `openbots` project have the app's stack directory as their working
+   * directory. A source checkout's `openbots` stack (any other directory) is
    * never taken over.
    */
   async function hasLegacyContainers(cli: string): Promise<boolean> {
@@ -592,7 +594,7 @@ export function createStackManager(options: StackManagerOptions): StackManager {
 
   /**
    * The Compose project of this install: the one `.env` records, else
-   * `openbot` for an install from before the app had its own name (see
+   * `openbots` for an install from before the app had its own name (see
    * hasLegacyContainers), else PROJECT_NAME. A start records it in `.env`.
    */
   async function project(cli: string): Promise<string> {
@@ -665,13 +667,13 @@ export function createStackManager(options: StackManagerOptions): StackManager {
   async function sandboxFor(cli: string, name: string, env: string): Promise<string> {
     if (envNetwork(env) != null) return env;
     if (await usesNetwork(cli, name, DEFAULT_SANDBOX.network)) {
-      return setEnvValue(env, 'OPENBOT_SANDBOX_NETWORK', DEFAULT_SANDBOX.network);
+      return setEnvValue(env, 'OPENBOTS_SANDBOX_NETWORK', DEFAULT_SANDBOX.network);
     }
-    const subnet = envValue(env, 'OPENBOT_SANDBOX_SUBNET')?.trim();
+    const subnet = envValue(env, 'OPENBOTS_SANDBOX_SUBNET')?.trim();
     if (subnet && subnet !== DEFAULT_SANDBOX.subnet) {
       // The owner's own subnet: only the names move.
-      let next = setEnvValue(env, 'OPENBOT_SANDBOX_NETWORK', 'openbot-app-sandbox');
-      next = setEnvValue(next, 'OPENBOT_SANDBOX_BRIDGE', 'openbot-app-sbx');
+      let next = setEnvValue(env, 'OPENBOTS_SANDBOX_NETWORK', 'openbots-app-sandbox');
+      next = setEnvValue(next, 'OPENBOTS_SANDBOX_BRIDGE', 'openbots-a-sbx');
       return next;
     }
     return withSandbox(env, await freeSandbox(cli));
@@ -774,14 +776,14 @@ export function createStackManager(options: StackManagerOptions): StackManager {
     if (!loader || !version || options.images?.prefix || options.images?.version) return false;
     if (!imagesUnavailable(pullOutput)) return false;
     const current = await files.readFile(paths.envFile);
-    if (envValue(current, 'OPENBOT_VERSION')?.trim() !== version) return false;
+    if (envValue(current, 'OPENBOTS_VERSION')?.trim() !== version) return false;
     const listed = await compose(cli, name, { kind: 'images' });
     const prefix = releaseImagePrefix(listed.code === 0 ? parseImages(listed.stdout) : [], version);
     if (prefix == null) return false;
     // The computer image is not a compose service, but the server pulls it
     // from the same registry, which would refuse it the same way.
     const wanted = RELEASE_IMAGES.filter(
-      (image) => image !== 'computer' || !envValue(current, 'OPENBOT_SANDBOX_IMAGE')?.trim(),
+      (image) => image !== 'computer' || !envValue(current, 'OPENBOTS_SANDBOX_IMAGE')?.trim(),
     );
     const missing: ReleaseImage[] = [];
     for (const image of wanted) {
@@ -846,7 +848,7 @@ export function createStackManager(options: StackManagerOptions): StackManager {
     }
     const upgrade = pendingUpgrade(current, options.serverVersion);
     if (upgrade) {
-      await files.writeFile(paths.envFile, setEnvValue(current, 'OPENBOT_VERSION', upgrade.to));
+      await files.writeFile(paths.envFile, setEnvValue(current, 'OPENBOTS_VERSION', upgrade.to));
     }
     if (pull || !(await imagesPresent(docker.cli, name))) {
       onPhase?.('pulling');
@@ -888,7 +890,7 @@ export function createStackManager(options: StackManagerOptions): StackManager {
 
     async localToken() {
       if (!(await files.exists(paths.envFile))) return null;
-      return envValue(await files.readFile(paths.envFile), 'OPENBOT_LOCAL_TOKEN')?.trim() || null;
+      return envValue(await files.readFile(paths.envFile), 'OPENBOTS_LOCAL_TOKEN')?.trim() || null;
     },
 
     async changePort() {
@@ -919,7 +921,8 @@ export function createStackManager(options: StackManagerOptions): StackManager {
       }
       const current = await files.readFile(paths.envFile);
       // A new subnet, never the one it is leaving.
-      const leaving = envValue(current, 'OPENBOT_SANDBOX_SUBNET')?.trim() || DEFAULT_SANDBOX.subnet;
+      const leaving =
+        envValue(current, 'OPENBOTS_SANDBOX_SUBNET')?.trim() || DEFAULT_SANDBOX.subnet;
       const choice = await freeSandbox(docker.cli, [leaving]);
       await files.writeFile(paths.envFile, withSandbox(current, choice));
       return statusOf(docker, name);

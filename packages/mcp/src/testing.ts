@@ -24,7 +24,7 @@ export interface TestHttpServer {
 }
 
 function buildServer(extraTools: string[]): McpServer {
-  const server = new McpServer({ name: 'openbot-test-http', version: '1.0.0' });
+  const server = new McpServer({ name: 'openbots-test-http', version: '1.0.0' });
   server.registerTool(
     'add',
     {

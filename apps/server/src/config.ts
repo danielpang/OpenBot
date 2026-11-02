@@ -2,9 +2,9 @@ import {
   DEFAULT_SANDBOX_IMAGE,
   resolveSandboxNetwork,
   type SandboxNetwork,
-} from '@openbot/computer';
-import { DEFAULT_CATALOG_INSTALL_DIR, type CatalogInstall } from '@openbot/mcp';
-import { isValidTimezone } from '@openbot/routines';
+} from '@openbots/computer';
+import { DEFAULT_CATALOG_INSTALL_DIR, type CatalogInstall } from '@openbots/mcp';
+import { isValidTimezone } from '@openbots/routines';
 import {
   LIMIT_ENV_VARS,
   PROCESS_LIMIT_ENV_VARS,
@@ -12,7 +12,7 @@ import {
   resolveProcessLimits,
   type Limits,
   type ProcessLimits,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { z } from 'zod';
 import { isCidr } from './client-ip.js';
 import { resolveSecretFiles } from './env-files.js';
@@ -40,7 +40,7 @@ const masterKey = z.string().refine(
   { message: 'must be 32 bytes, base64-encoded (generate one with `keygen`)' },
 );
 
-/** Master keys being rotated out (plan 4.9): comma-separated, each like OPENBOT_MASTER_KEY. */
+/** Master keys being rotated out (plan 4.9): comma-separated, each like OPENBOTS_MASTER_KEY. */
 const masterKeyList = z
   .string()
   .transform((value) =>
@@ -84,47 +84,47 @@ const limitsShape = Object.fromEntries(
 );
 
 const envSchema = z.object({
-  OPENBOT_PUBLIC_URL: withDefault(z.url(), 'http://localhost:3000'),
-  OPENBOT_MASTER_KEY: masterKey,
-  OPENBOT_MASTER_KEY_PREVIOUS: withDefault(masterKeyList, ''),
+  OPENBOTS_PUBLIC_URL: withDefault(z.url(), 'http://localhost:3000'),
+  OPENBOTS_MASTER_KEY: masterKey,
+  OPENBOTS_MASTER_KEY_PREVIOUS: withDefault(masterKeyList, ''),
   DATABASE_URL: z.string().min(1),
-  OPENBOT_DB_APP_PASSWORD: optional(
+  OPENBOTS_DB_APP_PASSWORD: optional(
     z.string().regex(/^[A-Za-z0-9_-]{16,128}$/, 'use 16 to 128 letters, digits, - or _'),
   ),
   REDIS_URL: optional(z.string()),
   DOCKER_HOST: optional(z.string()),
-  OPENBOT_SANDBOX_IMAGE: withDefault(z.string(), DEFAULT_SANDBOX_IMAGE),
+  OPENBOTS_SANDBOX_IMAGE: withDefault(z.string(), DEFAULT_SANDBOX_IMAGE),
   // Checked together by resolveSandboxNetwork below.
-  OPENBOT_SANDBOX_NETWORK: optional(z.string()),
-  OPENBOT_SANDBOX_BRIDGE: optional(z.string()),
-  OPENBOT_SANDBOX_EGRESS_PROXY: optional(proxyUrl),
-  OPENBOT_SANDBOX_NO_PROXY: optional(z.string()),
-  OPENBOT_TIMEZONE: withDefault(
+  OPENBOTS_SANDBOX_NETWORK: optional(z.string()),
+  OPENBOTS_SANDBOX_BRIDGE: optional(z.string()),
+  OPENBOTS_SANDBOX_EGRESS_PROXY: optional(proxyUrl),
+  OPENBOTS_SANDBOX_NO_PROXY: optional(z.string()),
+  OPENBOTS_TIMEZONE: withDefault(
     z.string().refine(isValidTimezone, {
       message: 'must be an IANA timezone name, e.g. Europe/London',
     }),
     'UTC',
   ),
-  OPENBOT_COMPUTER_AGENT_URL: optional(z.url()),
-  OPENBOT_COMPUTER_AGENT_TOKEN: optional(z.string()),
-  OPENBOT_COMPUTER_AGENT_SHARED: withDefault(z.stringbool(), 'false'),
-  OPENBOT_DEPLOYMENT: withDefault(z.enum(['self_hosted', 'managed']), 'self_hosted'),
-  OPENBOT_LOCAL_TOKEN: optional(
+  OPENBOTS_COMPUTER_AGENT_URL: optional(z.url()),
+  OPENBOTS_COMPUTER_AGENT_TOKEN: optional(z.string()),
+  OPENBOTS_COMPUTER_AGENT_SHARED: withDefault(z.stringbool(), 'false'),
+  OPENBOTS_DEPLOYMENT: withDefault(z.enum(['self_hosted', 'managed']), 'self_hosted'),
+  OPENBOTS_LOCAL_TOKEN: optional(
     z.string().min(32, { message: 'must be 32 characters or more (the Mac app generates one)' }),
   ),
-  OPENBOT_LOCAL_ENDPOINTS: optional(z.stringbool()),
-  OPENBOT_CUSTOM_STDIO: optional(z.stringbool()),
-  OPENBOT_STDIO_RUNNER: optional(z.enum(['host', 'computer'])),
-  OPENBOT_ALLOW_HOST_STDIO: withDefault(z.stringbool(), 'false'),
-  OPENBOT_SIGNUP_MODE: withDefault(
+  OPENBOTS_LOCAL_ENDPOINTS: optional(z.stringbool()),
+  OPENBOTS_CUSTOM_STDIO: optional(z.stringbool()),
+  OPENBOTS_STDIO_RUNNER: optional(z.enum(['host', 'computer'])),
+  OPENBOTS_ALLOW_HOST_STDIO: withDefault(z.stringbool(), 'false'),
+  OPENBOTS_SIGNUP_MODE: withDefault(
     z.enum(['first_user_admin', 'invite', 'open']),
     'first_user_admin',
   ),
-  OPENBOT_FILES_DIR: withDefault(z.string(), '/data/files'),
-  OPENBOT_MCP_DIR: withDefault(z.string(), DEFAULT_CATALOG_INSTALL_DIR),
-  OPENBOT_MCP_NPX_FALLBACK: withDefault(z.stringbool(), 'false'),
-  OPENBOT_ROLE: withDefault(z.enum(['api', 'worker', 'all']), 'all'),
-  OPENBOT_METRICS_TOKEN: optional(z.string().min(16)),
+  OPENBOTS_FILES_DIR: withDefault(z.string(), '/data/files'),
+  OPENBOTS_MCP_DIR: withDefault(z.string(), DEFAULT_CATALOG_INSTALL_DIR),
+  OPENBOTS_MCP_NPX_FALLBACK: withDefault(z.stringbool(), 'false'),
+  OPENBOTS_ROLE: withDefault(z.enum(['api', 'worker', 'all']), 'all'),
+  OPENBOTS_METRICS_TOKEN: optional(z.string().min(16)),
   TRUSTED_PROXIES: withDefault(cidrList, ''),
   ANTHROPIC_API_KEY: optional(z.string()),
   OPENAI_API_KEY: optional(z.string()),
@@ -151,7 +151,7 @@ export interface Config {
   /** Base64; seals every new secret. Open secrets with `keyringFromConfig`. */
   masterKey: string;
   /**
-   * Base64 keys being rotated out (OPENBOT_MASTER_KEY_PREVIOUS): they still
+   * Base64 keys being rotated out (OPENBOTS_MASTER_KEY_PREVIOUS): they still
    * open secrets sealed under them until `rotate-key` re-seals those.
    */
   previousMasterKeys: string[];
@@ -159,7 +159,7 @@ export interface Config {
   secretsFromEnvironment: string[];
   databaseUrl: string;
   /**
-   * OPENBOT_DB_APP_PASSWORD: the app connects as openbot_app with it, a role
+   * OPENBOTS_DB_APP_PASSWORD: the app connects as openbots_app with it, a role
    * that owns nothing and does not bypass row-level security (db/app-role.ts).
    * Without it the app connects as DATABASE_URL's user and switches to that
    * role in every transaction.
@@ -170,7 +170,7 @@ export interface Config {
   sandboxImage: string;
   /**
    * The network computers are created on and its bridge
-   * (OPENBOT_SANDBOX_NETWORK, OPENBOT_SANDBOX_BRIDGE): compose's sandbox
+   * (OPENBOTS_SANDBOX_NETWORK, OPENBOTS_SANDBOX_BRIDGE): compose's sandbox
    * network, which the docker guard and the sandbox firewall are set to as well.
    */
   sandboxNetwork: SandboxNetwork;
@@ -189,7 +189,7 @@ export interface Config {
    */
   computerAgent?: { url: string; token: string; shared: boolean };
   /**
-   * What kind of install this is (OPENBOT_DEPLOYMENT). `self_hosted`, the
+   * What kind of install this is (OPENBOTS_DEPLOYMENT). `self_hosted`, the
    * default, is a personal install with one account, its owner: sign-up
    * closes once it exists, and the members, invites and audit log routes
    * answer 404. `managed` is the hosted OpenBots service, where admins
@@ -197,7 +197,7 @@ export interface Config {
    */
   deployment: Deployment;
   /**
-   * The Mac app's local owner token (OPENBOT_LOCAL_TOKEN), self-hosted only.
+   * The Mac app's local owner token (OPENBOTS_LOCAL_TOKEN), self-hosted only.
    * With it the Mac app that runs this stack signs its owner in through
    * `POST /api/v1/local/session` instead of a password: the install has no
    * sign-in, sign-up or sign-out. Only the app's main process holds it.
@@ -213,25 +213,25 @@ export interface Config {
   /**
    * Whether admins may mark a provider, connector or event subscription as
    * on their own network, so it may reach private addresses (S-8,
-   * OPENBOT_LOCAL_ENDPOINTS). On by default for a self-hosted install; off by
+   * OPENBOTS_LOCAL_ENDPOINTS). On by default for a self-hosted install; off by
    * default on the managed service, whose network every organization shares.
    */
   localEndpoints: boolean;
   /**
    * Whether an organization's admins may turn custom stdio connectors on at
-   * all (S-1, OPENBOT_CUSTOM_STDIO): each runs a command on the server. On by
+   * all (S-1, OPENBOTS_CUSTOM_STDIO): each runs a command on the server. On by
    * default for a self-hosted install; off by default on the managed
    * service, whose server every organization shares.
    */
   customStdio: boolean;
   /**
-   * Where stdio connectors run (OPENBOT_STDIO_RUNNER). `host`, the default
+   * Where stdio connectors run (OPENBOTS_STDIO_RUNNER). `host`, the default
    * for a self-hosted install, runs them as child processes of this server,
    * as an unprivileged user. `computer`, the default on the managed service,
    * runs each in its owner's computer for that organization, so no two
    * accounts or organizations share a process or a filesystem. The managed
    * service refuses `host` unless the operator sets
-   * OPENBOT_ALLOW_HOST_STDIO, and then warns at every start.
+   * OPENBOTS_ALLOW_HOST_STDIO, and then warns at every start.
    */
   stdioRunner: StdioRunner;
   filesDir: string;
@@ -260,7 +260,7 @@ export interface Config {
   limits: Limits;
   /**
    * Approval expiry, the MCP idle stop and the web_fetch caps
-   * (OPENBOT_APPROVAL_TTL_MINUTES and so on): set at start, not admin settings.
+   * (OPENBOTS_APPROVAL_TTL_MINUTES and so on): set at start, not admin settings.
    */
   processLimits: ProcessLimits;
 }
@@ -273,26 +273,30 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new Error(`invalid configuration:\n${issues.join('\n')}`);
   }
   const e = parsed.data;
-  if (e.OPENBOT_MASTER_KEY_PREVIOUS.includes(e.OPENBOT_MASTER_KEY.trim())) {
+  if (e.OPENBOTS_MASTER_KEY_PREVIOUS.includes(e.OPENBOTS_MASTER_KEY.trim())) {
     throw new Error(
-      'invalid configuration:\n  OPENBOT_MASTER_KEY_PREVIOUS: holds OPENBOT_MASTER_KEY itself; list only the keys being replaced',
+      'invalid configuration:\n  OPENBOTS_MASTER_KEY_PREVIOUS: holds OPENBOTS_MASTER_KEY itself; list only the keys being replaced',
     );
   }
-  if (e.OPENBOT_LOCAL_TOKEN && e.OPENBOT_DEPLOYMENT !== 'self_hosted') {
+  if (e.OPENBOTS_LOCAL_TOKEN && e.OPENBOTS_DEPLOYMENT !== 'self_hosted') {
     throw new Error(
-      'invalid configuration:\n  OPENBOT_LOCAL_TOKEN: only a self-hosted install signs in with the Mac app; unset it for managed',
+      'invalid configuration:\n  OPENBOTS_LOCAL_TOKEN: only a self-hosted install signs in with the Mac app; unset it for managed',
     );
   }
   const stdioRunner =
-    e.OPENBOT_STDIO_RUNNER ?? (e.OPENBOT_DEPLOYMENT === 'managed' ? 'computer' : 'host');
-  if (e.OPENBOT_DEPLOYMENT === 'managed' && stdioRunner === 'host' && !e.OPENBOT_ALLOW_HOST_STDIO) {
+    e.OPENBOTS_STDIO_RUNNER ?? (e.OPENBOTS_DEPLOYMENT === 'managed' ? 'computer' : 'host');
+  if (
+    e.OPENBOTS_DEPLOYMENT === 'managed' &&
+    stdioRunner === 'host' &&
+    !e.OPENBOTS_ALLOW_HOST_STDIO
+  ) {
     throw new Error(
-      "invalid configuration:\n  OPENBOT_STDIO_RUNNER: host would run every organization's stdio connectors on this one server; use computer, or set OPENBOT_ALLOW_HOST_STDIO=1 to accept that",
+      "invalid configuration:\n  OPENBOTS_STDIO_RUNNER: host would run every organization's stdio connectors on this one server; use computer, or set OPENBOTS_ALLOW_HOST_STDIO=1 to accept that",
     );
   }
   let sandboxNetwork: SandboxNetwork;
   try {
-    sandboxNetwork = resolveSandboxNetwork(e.OPENBOT_SANDBOX_NETWORK, e.OPENBOT_SANDBOX_BRIDGE);
+    sandboxNetwork = resolveSandboxNetwork(e.OPENBOTS_SANDBOX_NETWORK, e.OPENBOTS_SANDBOX_BRIDGE);
   } catch (error) {
     throw new Error(`invalid configuration:\n  ${(error as Error).message}`, { cause: error });
   }
@@ -309,37 +313,37 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     processOverrides[key] = raw[name] as number | undefined;
   }
   return {
-    publicUrl: e.OPENBOT_PUBLIC_URL,
-    masterKey: e.OPENBOT_MASTER_KEY,
-    previousMasterKeys: e.OPENBOT_MASTER_KEY_PREVIOUS,
+    publicUrl: e.OPENBOTS_PUBLIC_URL,
+    masterKey: e.OPENBOTS_MASTER_KEY,
+    previousMasterKeys: e.OPENBOTS_MASTER_KEY_PREVIOUS,
     secretsFromEnvironment: secrets.fromEnvironment,
     databaseUrl: e.DATABASE_URL,
-    ...(e.OPENBOT_DB_APP_PASSWORD ? { dbAppPassword: e.OPENBOT_DB_APP_PASSWORD } : {}),
+    ...(e.OPENBOTS_DB_APP_PASSWORD ? { dbAppPassword: e.OPENBOTS_DB_APP_PASSWORD } : {}),
     redisUrl: e.REDIS_URL,
     dockerHost: e.DOCKER_HOST,
-    sandboxImage: e.OPENBOT_SANDBOX_IMAGE,
+    sandboxImage: e.OPENBOTS_SANDBOX_IMAGE,
     sandboxNetwork,
-    sandboxProxy: e.OPENBOT_SANDBOX_EGRESS_PROXY
-      ? { url: e.OPENBOT_SANDBOX_EGRESS_PROXY, noProxy: e.OPENBOT_SANDBOX_NO_PROXY }
+    sandboxProxy: e.OPENBOTS_SANDBOX_EGRESS_PROXY
+      ? { url: e.OPENBOTS_SANDBOX_EGRESS_PROXY, noProxy: e.OPENBOTS_SANDBOX_NO_PROXY }
       : undefined,
-    timezone: e.OPENBOT_TIMEZONE,
-    computerAgent: e.OPENBOT_COMPUTER_AGENT_URL
+    timezone: e.OPENBOTS_TIMEZONE,
+    computerAgent: e.OPENBOTS_COMPUTER_AGENT_URL
       ? {
-          url: e.OPENBOT_COMPUTER_AGENT_URL,
-          token: e.OPENBOT_COMPUTER_AGENT_TOKEN ?? '',
-          shared: e.OPENBOT_COMPUTER_AGENT_SHARED,
+          url: e.OPENBOTS_COMPUTER_AGENT_URL,
+          token: e.OPENBOTS_COMPUTER_AGENT_TOKEN ?? '',
+          shared: e.OPENBOTS_COMPUTER_AGENT_SHARED,
         }
       : undefined,
-    deployment: e.OPENBOT_DEPLOYMENT,
-    localToken: e.OPENBOT_LOCAL_TOKEN,
-    signupMode: e.OPENBOT_SIGNUP_MODE,
-    localEndpoints: e.OPENBOT_LOCAL_ENDPOINTS ?? e.OPENBOT_DEPLOYMENT === 'self_hosted',
-    customStdio: e.OPENBOT_CUSTOM_STDIO ?? e.OPENBOT_DEPLOYMENT === 'self_hosted',
+    deployment: e.OPENBOTS_DEPLOYMENT,
+    localToken: e.OPENBOTS_LOCAL_TOKEN,
+    signupMode: e.OPENBOTS_SIGNUP_MODE,
+    localEndpoints: e.OPENBOTS_LOCAL_ENDPOINTS ?? e.OPENBOTS_DEPLOYMENT === 'self_hosted',
+    customStdio: e.OPENBOTS_CUSTOM_STDIO ?? e.OPENBOTS_DEPLOYMENT === 'self_hosted',
     stdioRunner,
-    filesDir: e.OPENBOT_FILES_DIR,
-    mcpCatalog: { dir: e.OPENBOT_MCP_DIR, allowNpx: e.OPENBOT_MCP_NPX_FALLBACK },
-    role: e.OPENBOT_ROLE,
-    metricsToken: e.OPENBOT_METRICS_TOKEN,
+    filesDir: e.OPENBOTS_FILES_DIR,
+    mcpCatalog: { dir: e.OPENBOTS_MCP_DIR, allowNpx: e.OPENBOTS_MCP_NPX_FALLBACK },
+    role: e.OPENBOTS_ROLE,
+    metricsToken: e.OPENBOTS_METRICS_TOKEN,
     trustedProxies: e.TRUSTED_PROXIES,
     providerKeys: {
       anthropic: e.ANTHROPIC_API_KEY,

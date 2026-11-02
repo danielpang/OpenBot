@@ -35,19 +35,19 @@ import { COMPUTER_HOME, STATE_DIR } from './types.js';
 // received, so a duplicate or differently cased key cannot mean one thing here
 // and another to the daemon's JSON decoder.
 
-const CONTAINER_NAME = /^openbot-computer-[A-Za-z0-9-]+$/;
-const HOME_VOLUME = /^openbot-home-[A-Za-z0-9-]+$/;
-const STATE_VOLUME = /^openbot-state-[A-Za-z0-9-]+$/;
+const CONTAINER_NAME = /^openbots-computer-[A-Za-z0-9-]+$/;
+const HOME_VOLUME = /^openbots-home-[A-Za-z0-9-]+$/;
+const STATE_VOLUME = /^openbots-state-[A-Za-z0-9-]+$/;
 const computerVolume = (name: string) => HOME_VOLUME.test(name) || STATE_VOLUME.test(name);
 const ID = '[A-Za-z0-9][A-Za-z0-9_.-]*';
 const VERSION_PREFIX = /^(\/v\d+\.\d+)?(\/.*)$/;
 const MAX_BODY_BYTES = 256 * 1024;
 
 export interface DockerGuardPolicy {
-  /** OPENBOT_SANDBOX_IMAGE: the only image that may be pulled, inspected or run. */
+  /** OPENBOTS_SANDBOX_IMAGE: the only image that may be pulled, inspected or run. */
   image: string;
   /**
-   * OPENBOT_SANDBOX_NETWORK and its bridge: the only network computers may
+   * OPENBOTS_SANDBOX_NETWORK and its bridge: the only network computers may
    * join, inspect or create, and the only bridge name it may be created
    * with. The default network without.
    */
@@ -292,7 +292,7 @@ function checkContainerBody(
   // A home volume at the home, and the computer's own state volume at the
   // state directory; nothing else.
   const mounts = host.Mounts ?? [];
-  const state = stateVolumeName(name.slice('openbot-computer-'.length));
+  const state = stateVolumeName(name.slice('openbots-computer-'.length));
   if (
     !Array.isArray(mounts) ||
     !mounts.every(

@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
-import { wsEvent, type ServerFrame } from '@openbot/shared';
+import { wsEvent, type ServerFrame } from '@openbots/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import { schema } from '../db/client.js';
@@ -24,8 +24,8 @@ describe('WS gateway', () => {
     // Over Redis pub/sub when REDIS_URL is set, in-process otherwise.
     const redis = process.env.REDIS_URL;
     t = await createTestApp({
-      OPENBOT_DEPLOYMENT: 'managed',
-      OPENBOT_SIGNUP_MODE: 'open',
+      OPENBOTS_DEPLOYMENT: 'managed',
+      OPENBOTS_SIGNUP_MODE: 'open',
       ...(redis ? { REDIS_URL: redis } : {}),
     });
     server = await new Promise<ServerType>((resolve) => {

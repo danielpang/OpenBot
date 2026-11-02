@@ -2,7 +2,7 @@ import { useRouter } from '@tanstack/react-router';
 import { useEffect } from 'react';
 
 // Where the app runs (plan 14.4). In the Mac app the preload exposes
-// `window.openbot` with a `platform` context; a browser has none. Native
+// `window.openbots` with a `platform` context; a browser has none. Native
 // features turn on from it: the shell shows notifications (N1), deep links
 // and the tray open paths in the app through `onNavigate`, and the sidebar
 // shows how the app is connected through `connection`.
@@ -56,7 +56,7 @@ export interface DesktopOAuth {
 
 function desktopBridge(): DesktopBridge | null {
   if (typeof window === 'undefined') return null;
-  const bridge = (window as { openbot?: Partial<DesktopBridge> }).openbot;
+  const bridge = (window as { openbots?: Partial<DesktopBridge> }).openbots;
   return bridge?.platform?.kind === 'desktop' && typeof bridge.onNavigate === 'function'
     ? (bridge as DesktopBridge)
     : null;

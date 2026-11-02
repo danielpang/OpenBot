@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PACKAGE_NAME } from './index.js';
 
-describe('@openbot/server', () => {
+describe('@openbots/server', () => {
   it('exports its package name', () => {
-    expect(PACKAGE_NAME).toBe('@openbot/server');
+    expect(PACKAGE_NAME).toBe('@openbots/server');
   });
 });

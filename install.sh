@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Installs OpenBot with Docker Compose (plan 16.3, D1): clones the repository,
-# copies .env.example to .env, generates OPENBOT_MASTER_KEY and the database
+# Installs OpenBots with Docker Compose (plan 16.3, D1): clones the repository,
+# copies .env.example to .env, generates OPENBOTS_MASTER_KEY and the database
 # passwords and starts the stack. Then open the printed URL; the first-run
 # wizard creates the admin.
 #
@@ -8,17 +8,17 @@
 #   bash install.sh [--dir <path>] [--ref <branch or tag>] [--no-start]
 #
 # Run from inside a checkout, or from the compose bundle a GitHub Release
-# carries (openbot-compose-<version>.tar.gz), it uses that directory instead
+# carries (openbots-compose-<version>.tar.gz), it uses that directory instead
 # of cloning and needs no git. It never overwrites an existing .env, master
 # key or database password, so running it again is safe. Environment:
-# OPENBOT_GITHUB_OWNER (default danielpang; a new .env pulls that owner's
-# images), OPENBOT_REPO (clone URL, default that owner's OpenBot), OPENBOT_DIR
-# (default ./OpenBot).
+# OPENBOTS_GITHUB_OWNER (default danielpang; a new .env pulls that owner's
+# images), OPENBOTS_REPO (clone URL, default that owner's OpenBots), OPENBOTS_DIR
+# (default ./OpenBots).
 set -euo pipefail
 
-GITHUB_OWNER="${OPENBOT_GITHUB_OWNER:-danielpang}"
-REPO_URL="${OPENBOT_REPO:-https://github.com/$GITHUB_OWNER/OpenBots.git}"
-DIR="${OPENBOT_DIR:-OpenBot}"
+GITHUB_OWNER="${OPENBOTS_GITHUB_OWNER:-danielpang}"
+REPO_URL="${OPENBOTS_REPO:-https://github.com/$GITHUB_OWNER/OpenBots.git}"
+DIR="${OPENBOTS_DIR:-OpenBots}"
 REF=""
 START=1
 
@@ -60,7 +60,7 @@ if [ "$START" = 1 ]; then
   minor="${version#*.}"
   minor="${minor%%.*}"
   if [ "${major:-0}" -lt 2 ] || { [ "$major" = 2 ] && [ "${minor:-0}" -lt 24 ]; }; then
-    die "Docker Compose $version is too old; OpenBot needs 2.24 or later"
+    die "Docker Compose $version is too old; OpenBots needs 2.24 or later"
   fi
 fi
 
@@ -72,7 +72,7 @@ if [ -n "$here" ] && [ -f "$here/compose.yaml" ] && [ -f "$here/.env.example" ];
 elif [ -d "$DIR/.git" ]; then
   log "Using the existing clone in $DIR"
 else
-  [ ! -e "$DIR" ] || die "$DIR exists and is not an OpenBot clone; pass --dir"
+  [ ! -e "$DIR" ] || die "$DIR exists and is not an OpenBots clone; pass --dir"
   command -v git >/dev/null 2>&1 || die "git is not installed"
   log "Cloning $REPO_URL into $DIR"
   git clone --depth 1 ${REF:+--branch "$REF"} "$REPO_URL" "$DIR"
@@ -84,10 +84,10 @@ if [ -f .env ]; then
 else
   log "Creating .env from .env.example"
   (umask 077 && cp .env.example .env)
-  # The release workflow publishes to ghcr.io/<owner in lower case>/openbot.
-  prefix="ghcr.io/$(printf '%s' "$GITHUB_OWNER" | tr '[:upper:]' '[:lower:]')/openbot"
+  # The release workflow publishes to ghcr.io/<owner in lower case>/openbots.
+  prefix="ghcr.io/$(printf '%s' "$GITHUB_OWNER" | tr '[:upper:]' '[:lower:]')/openbots"
   awk -v prefix="$prefix" '
-    /^OPENBOT_IMAGE_PREFIX=/ { print "OPENBOT_IMAGE_PREFIX=" prefix; next }
+    /^OPENBOTS_IMAGE_PREFIX=/ { print "OPENBOTS_IMAGE_PREFIX=" prefix; next }
     { print }
   ' .env >.env.tmp
   chmod 600 .env.tmp
@@ -103,16 +103,16 @@ generate_key() {
   fi
 }
 
-if grep -Eq '^OPENBOT_MASTER_KEY=.+' .env; then
-  log "Keeping the existing OPENBOT_MASTER_KEY"
+if grep -Eq '^OPENBOTS_MASTER_KEY=.+' .env; then
+  log "Keeping the existing OPENBOTS_MASTER_KEY"
 else
-  log "Generating OPENBOT_MASTER_KEY"
+  log "Generating OPENBOTS_MASTER_KEY"
   key="$(generate_key)"
   # awk, not sed: the key may contain / and +.
   awk -v key="$key" '
-    /^OPENBOT_MASTER_KEY=/ { print "OPENBOT_MASTER_KEY=" key; found = 1; next }
+    /^OPENBOTS_MASTER_KEY=/ { print "OPENBOTS_MASTER_KEY=" key; found = 1; next }
     { print }
-    END { if (!found) print "OPENBOT_MASTER_KEY=" key }
+    END { if (!found) print "OPENBOTS_MASTER_KEY=" key }
   ' .env >.env.tmp
   chmod 600 .env.tmp
   mv .env.tmp .env
@@ -134,11 +134,11 @@ generate_password() {
 if grep -Eq '^POSTGRES_PASSWORD=.+' .env; then
   log "Keeping the existing POSTGRES_PASSWORD"
 else
-  current="$(sed -n 's#^DATABASE_URL=postgres://openbot:\([^@]*\)@postgres:5432/openbot$#\1#p' .env | tail -n 1)"
+  current="$(sed -n 's#^DATABASE_URL=postgres://openbots:\([^@]*\)@postgres:5432/openbots$#\1#p' .env | tail -n 1)"
   if [ -n "$current" ] && [ "$current" != "change-me" ]; then
     log "Setting POSTGRES_PASSWORD to the password already in DATABASE_URL"
     password="$current"
-    if [ "$password" = openbot ]; then
+    if [ "$password" = openbots ]; then
       log "Your database still has the old fixed password; .env.example says how to change it"
     fi
   else
@@ -147,8 +147,8 @@ else
   fi
   awk -v pw="$password" '
     /^POSTGRES_PASSWORD=/ { print "POSTGRES_PASSWORD=" pw; found = 1; next }
-    /^DATABASE_URL=postgres:\/\/openbot:change-me@postgres:5432\/openbot$/ {
-      print "DATABASE_URL=postgres://openbot:" pw "@postgres:5432/openbot"
+    /^DATABASE_URL=postgres:\/\/openbots:change-me@postgres:5432\/openbots$/ {
+      print "DATABASE_URL=postgres://openbots:" pw "@postgres:5432/openbots"
       next
     }
     { print }
@@ -158,23 +158,23 @@ else
   mv .env.tmp .env
 fi
 
-# The password of openbot_app, the database role the server works as under
+# The password of openbots_app, the database role the server works as under
 # row-level security between organizations. An existing one is kept.
-if grep -Eq '^OPENBOT_DB_APP_PASSWORD=.+' .env; then
-  log "Keeping the existing OPENBOT_DB_APP_PASSWORD"
+if grep -Eq '^OPENBOTS_DB_APP_PASSWORD=.+' .env; then
+  log "Keeping the existing OPENBOTS_DB_APP_PASSWORD"
 else
-  log "Generating OPENBOT_DB_APP_PASSWORD"
+  log "Generating OPENBOTS_DB_APP_PASSWORD"
   app_password="$(generate_password)"
   awk -v pw="$app_password" '
-    /^OPENBOT_DB_APP_PASSWORD=/ { print "OPENBOT_DB_APP_PASSWORD=" pw; found = 1; next }
+    /^OPENBOTS_DB_APP_PASSWORD=/ { print "OPENBOTS_DB_APP_PASSWORD=" pw; found = 1; next }
     { print }
-    END { if (!found) print "OPENBOT_DB_APP_PASSWORD=" pw }
+    END { if (!found) print "OPENBOTS_DB_APP_PASSWORD=" pw }
   ' .env >.env.tmp
   chmod 600 .env.tmp
   mv .env.tmp .env
 fi
 
-url="$(sed -n 's/^OPENBOT_PUBLIC_URL=//p' .env | tail -n 1)"
+url="$(sed -n 's/^OPENBOTS_PUBLIC_URL=//p' .env | tail -n 1)"
 url="${url:-http://localhost:3000}"
 
 if [ "$START" = 0 ]; then
@@ -185,8 +185,8 @@ fi
 log "Starting the stack (the first start pulls or builds images and can take a few minutes)"
 docker compose up -d
 
-log "Waiting for OpenBot to be ready"
-port="$(sed -n 's/^OPENBOT_HTTP_PORT=//p' .env | tail -n 1)"
+log "Waiting for OpenBots to be ready"
+port="$(sed -n 's/^OPENBOTS_HTTP_PORT=//p' .env | tail -n 1)"
 ready=0
 for _ in $(seq 1 90); do
   command -v curl >/dev/null 2>&1 || break
@@ -197,14 +197,14 @@ for _ in $(seq 1 90); do
   sleep 2
 done
 if [ "$ready" = 0 ]; then
-  log "OpenBot is not answering yet; check with: cd $DIR && docker compose logs openbot"
+  log "OpenBots is not answering yet; check with: cd $DIR && docker compose logs openbots"
 fi
 
 cat <<EOF
 
-OpenBot is running. Open $url to finish setup: the wizard creates the admin
+OpenBots is running. Open $url to finish setup: the wizard creates the admin
 account, asks for a model provider key and creates your first Bot.
 
-Your master key is in $DIR/.env (OPENBOT_MASTER_KEY). Keep a copy somewhere
+Your master key is in $DIR/.env (OPENBOTS_MASTER_KEY). Keep a copy somewhere
 safe: without it, stored secrets and backups cannot be decrypted.
 EOF

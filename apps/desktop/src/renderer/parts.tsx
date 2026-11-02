@@ -1,4 +1,4 @@
-import { Alert, AlertDescription, AlertTitle, cn } from '@openbot/ui';
+import { Alert, AlertDescription, AlertTitle, cn } from '@openbots/ui';
 import type { ReactNode } from 'react';
 import type { ServerProfile } from '../ipc.js';
 import { AlertCircleIcon, AlertTriangleIcon, ChevronRightIcon, InfoIcon } from './icons.js';
@@ -131,7 +131,7 @@ export function StatusDot({ tone, pulse }: { tone: keyof typeof DOT; pulse?: boo
 
 const KIND_LABEL = { local: 'This Mac', remote: 'Self-hosted', cloud: 'OpenBots account' };
 
-/** A connection's kind and host, e.g. "Self-hosted · openbot.example.com". */
+/** A connection's kind and host, e.g. "Self-hosted · openbots.example.com". */
 export function connectionLine(profile: ServerProfile): string {
   const host = new URL(profile.url).host;
   const kind = KIND_LABEL[profile.kind];

@@ -5,14 +5,14 @@ import {
   type PolicyDecision,
   type ToolGroupName,
   type ToolPolicy,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import type { BotConnectorPermission, BotTool } from './api.js';
 
 // The Bot tools tab's model (T1, T5): the stored `tool_policy` in the strict
-// shape from `@openbot/shared`, the per-connector allow and deny lists, and
+// shape from `@openbots/shared`, the per-connector allow and deny lists, and
 // the defaults shown beside each setting. The defaults are the policy
 // engine's own: `GET /bots/{id}/tools` lists every tool the Bot can have with
-// the decision `@openbot/agent` gives it, so nothing here restates its rules.
+// the decision `@openbots/agent` gives it, so nothing here restates its rules.
 
 export const DECISION_LABELS: Record<PolicyDecision, string> = {
   auto: 'Run without asking',

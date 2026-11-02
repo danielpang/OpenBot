@@ -7,7 +7,7 @@ import {
   ModelConfigSchema,
   ToolPolicySchema,
   type Avatar,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { requireUser } from '../middleware/auth.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import {

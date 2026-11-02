@@ -43,7 +43,7 @@ describe("a suspended or removed member's Bots", () => {
     });
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     await t.signUp('owner@example.com');
     cookie = (await t.signUp('max@example.com')).cookie!;
     userId = await t.userId('max@example.com');

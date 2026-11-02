@@ -5,7 +5,7 @@
 # hand; until then installs cannot pull the images.
 #
 #   bash scripts/release-check-public.sh <image prefix> <tag> [image ...]
-#   bash scripts/release-check-public.sh ghcr.io/danielpang/openbot 1.2.0
+#   bash scripts/release-check-public.sh ghcr.io/danielpang/openbots 1.2.0
 #
 # Asks the registry anonymously, as `docker pull` does without a login: an
 # anonymous token, then the manifest. Prints one line per image, "public" or

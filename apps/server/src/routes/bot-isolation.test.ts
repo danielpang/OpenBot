@@ -48,7 +48,7 @@ describe('Bots are visible only to their owner (U2)', () => {
     });
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     alice = (await t.signUp('alice@example.com')).cookie!; // first user: the admin
     bob = (await t.signUp('bob@example.com')).cookie!;
     for (const [who, cookie, name] of [

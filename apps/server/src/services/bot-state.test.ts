@@ -1,4 +1,4 @@
-import { EVENTS_CHANNEL, type WsEvent } from '@openbot/shared';
+import { EVENTS_CHANNEL, type WsEvent } from '@openbots/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { schema } from '../db/client.js';
 import { createTestApp, type TestApp } from '../test-app.js';

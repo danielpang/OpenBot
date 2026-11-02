@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { runSoak } from './soak.js';
 
 // The soak harness on a few seconds instead of an hour, so CI keeps it
-// working; `pnpm --filter @openbot/server soak` is the full run (plan 18.9).
+// working; `pnpm --filter @openbots/server soak` is the full run (plan 18.9).
 
 describe('soak', () => {
   it('keeps twenty runs in flight across ten Bots in order, and leaks nothing', async () => {

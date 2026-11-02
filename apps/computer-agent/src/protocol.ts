@@ -232,7 +232,7 @@ export const PtyClientMessageSchema = z.discriminatedUnion('type', [
 // --- WS /mcp/stdio -------------------------------------------------------------
 //
 // A stdio MCP server run inside the computer for a connector of the owner (the
-// managed service's OPENBOT_STDIO_RUNNER=computer). The server opens one socket
+// managed service's OPENBOTS_STDIO_RUNNER=computer). The server opens one socket
 // per process: its first frame is `start`, then `stdin` frames carry what the
 // MCP client writes. The agent answers `started` once the process runs, then
 // relays its output; `exit` (or `error`) is the last frame. Closing the socket

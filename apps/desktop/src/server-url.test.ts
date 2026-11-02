@@ -3,12 +3,12 @@ import { HTTP_WARNING, isPrivateHost, parseServerAddress, ServerUrlError } from 
 
 describe('parseServerAddress', () => {
   it('uses https by default and keeps the origin only', () => {
-    expect(parseServerAddress(' openbot.example.com ')).toEqual({
-      url: 'https://openbot.example.com',
+    expect(parseServerAddress(' openbots.example.com ')).toEqual({
+      url: 'https://openbots.example.com',
       warning: null,
     });
-    expect(parseServerAddress('https://openbot.example.com:8443/app?x=1').url).toBe(
-      'https://openbot.example.com:8443',
+    expect(parseServerAddress('https://openbots.example.com:8443/app?x=1').url).toBe(
+      'https://openbots.example.com:8443',
     );
   });
 
@@ -37,11 +37,11 @@ describe('parseServerAddress', () => {
   });
 
   it('refuses http on the internet, other schemes, credentials and blanks', () => {
-    expect(() => parseServerAddress('http://openbot.example.com')).toThrow(/Use https/);
+    expect(() => parseServerAddress('http://openbots.example.com')).toThrow(/Use https/);
     expect(() => parseServerAddress('http://8.8.8.8')).toThrow(/Use https/);
     expect(() => parseServerAddress('http://172.32.0.1')).toThrow(/Use https/);
-    expect(() => parseServerAddress('ftp://openbot.example.com')).toThrow(/starts with https/);
-    expect(() => parseServerAddress('https://me:pw@openbot.example.com')).toThrow(/user name/);
+    expect(() => parseServerAddress('ftp://openbots.example.com')).toThrow(/starts with https/);
+    expect(() => parseServerAddress('https://me:pw@openbots.example.com')).toThrow(/user name/);
     expect(() => parseServerAddress('   ')).toThrow(ServerUrlError);
     expect(() => parseServerAddress('https://')).toThrow(ServerUrlError);
   });
@@ -51,7 +51,7 @@ describe('parseServerAddress', () => {
     expect(isPrivateHost('box.lan')).toBe(true);
     expect(isPrivateHost('169.254.1.1')).toBe(true);
     expect(isPrivateHost('[fe80::1]')).toBe(true);
-    expect(isPrivateHost('openbot.example.com')).toBe(false);
+    expect(isPrivateHost('openbots.example.com')).toBe(false);
     expect(isPrivateHost('100.128.0.1')).toBe(false);
     expect(isPrivateHost('2001:db8::1')).toBe(false);
   });

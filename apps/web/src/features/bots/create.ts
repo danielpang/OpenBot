@@ -1,5 +1,5 @@
-import { unwrap, type components } from '@openbot/api-client';
-import { newBotAvatar, type AvatarParams, type GeneratedAvatar } from '@openbot/avatars';
+import { unwrap, type components } from '@openbots/api-client';
+import { newBotAvatar, type AvatarParams, type GeneratedAvatar } from '@openbots/avatars';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../app/api.js';
 import { botsQuery } from './queries.js';

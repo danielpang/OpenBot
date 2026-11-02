@@ -1,4 +1,4 @@
-import { DEFAULT_CAPABILITIES } from '@openbot/shared';
+import { DEFAULT_CAPABILITIES } from '@openbots/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { createModelFactory, type ProviderConfig, type SdkFactories } from './adapters.js';
 import { presetById } from './catalog.js';

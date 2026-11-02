@@ -1,10 +1,15 @@
-import { checkCron, describePreset, InvalidScheduleError, presetNextRuns } from '@openbot/routines';
+import {
+  checkCron,
+  describePreset,
+  InvalidScheduleError,
+  presetNextRuns,
+} from '@openbots/routines';
 import {
   INTERVAL_MINUTES_MAX,
   INTERVAL_MINUTES_MIN,
   SchedulePresetSchema,
   type SchedulePreset,
-} from '@openbot/shared';
+} from '@openbots/shared';
 
 // The schedule editor's model (R1): a draft with a field for every preset,
 // so switching presets keeps what was typed, turned into a `SchedulePreset`

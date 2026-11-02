@@ -26,9 +26,9 @@ import type { ComputerSpec } from './types.js';
 const spec: ComputerSpec = {
   computerId: '11111111-1111-4111-8111-111111111111',
   ownerId: '22222222-2222-4222-8222-222222222222',
-  image: 'ghcr.io/openbot/computer:latest',
+  image: 'ghcr.io/openbots/computer:latest',
   agentToken: 'secret-agent-token',
-  volumeName: 'openbot-home-11111111-1111-4111-8111-111111111111',
+  volumeName: 'openbots-home-11111111-1111-4111-8111-111111111111',
 };
 
 // Plan 18.5: "a test that the sandbox cannot reach Postgres or the Docker
@@ -71,8 +71,8 @@ describe('sandbox isolation (plan 9.5)', () => {
       { Type: 'volume', Source: spec.volumeName, Target: '/home/bot', ReadOnly: false },
       {
         Type: 'volume',
-        Source: `openbot-state-${spec.computerId}`,
-        Target: '/var/lib/openbot',
+        Source: `openbots-state-${spec.computerId}`,
+        Target: '/var/lib/openbots',
         ReadOnly: false,
       },
     ]);
@@ -132,7 +132,7 @@ describe('sandbox isolation (plan 9.5)', () => {
   });
 
   it('keeps the agent token out of its environment (S-7)', () => {
-    expect(SANDBOX_ENV_NAMES).not.toContain('OPENBOT_AGENT_TOKEN');
+    expect(SANDBOX_ENV_NAMES).not.toContain('OPENBOTS_AGENT_TOKEN');
     expect(JSON.stringify(created)).not.toContain(spec.agentToken);
   });
 
@@ -140,10 +140,10 @@ describe('sandbox isolation (plan 9.5)', () => {
     const key = Object.entries(compose.networks).find(([, n]) => n.name === NETWORK_NAME)?.[0];
     expect(key).toBeDefined();
     // The server, and the `egress` profile's proxy (tested below).
-    expect(servicesOn(key!)).toEqual(['openbot', 'egress-proxy']);
+    expect(servicesOn(key!)).toEqual(['openbots', 'egress-proxy']);
     // The server reaches the Docker API only through the guard; only the
     // guard reaches the socket proxy. Both networks are internal.
-    expect(servicesOn('docker-api')).toEqual(['openbot', 'docker-guard']);
+    expect(servicesOn('docker-api')).toEqual(['openbots', 'docker-guard']);
     expect(servicesOn('docker-raw')).toEqual(['docker-guard', 'docker-socket-proxy']);
     expect(compose.networks['docker-api']!.internal).toBe(true);
     expect(compose.networks['docker-raw']!.internal).toBe(true);
@@ -160,17 +160,17 @@ describe('sandbox isolation (plan 9.5)', () => {
 
   it('names the network and its bridge from .env, with the defaults the code has', () => {
     // The network's own name, and the bridge named like it unless set apart.
-    expect(NETWORK_NAME).toBe(`\${OPENBOT_SANDBOX_NETWORK:-${SANDBOX_NETWORK}}`);
-    expect(BRIDGE_NAME).toBe(`\${OPENBOT_SANDBOX_BRIDGE:-${NETWORK_NAME}}`);
+    expect(NETWORK_NAME).toBe(`\${OPENBOTS_SANDBOX_NETWORK:-${SANDBOX_NETWORK}}`);
+    expect(BRIDGE_NAME).toBe(`\${OPENBOTS_SANDBOX_BRIDGE:-${NETWORK_NAME}}`);
     expect(SANDBOX_BRIDGE).toBe(SANDBOX_NETWORK);
     // The server, the docker guard and the firewall get the same values.
     const env = (service: string) =>
       compose.services[service]!.environment as Record<string, string | undefined>;
-    for (const service of ['openbot', 'docker-guard']) {
-      expect(env(service).OPENBOT_SANDBOX_NETWORK).toBe(NETWORK_NAME);
-      expect(env(service).OPENBOT_SANDBOX_BRIDGE).toBe(BRIDGE_NAME);
+    for (const service of ['openbots', 'docker-guard']) {
+      expect(env(service).OPENBOTS_SANDBOX_NETWORK).toBe(NETWORK_NAME);
+      expect(env(service).OPENBOTS_SANDBOX_BRIDGE).toBe(BRIDGE_NAME);
     }
-    expect(env('sandbox-firewall').OPENBOT_SANDBOX_BRIDGE).toBe(BRIDGE_NAME);
+    expect(env('sandbox-firewall').OPENBOTS_SANDBOX_BRIDGE).toBe(BRIDGE_NAME);
   });
 
   it('gives the server the fixed sandbox address the firewall lets through', () => {
@@ -178,21 +178,21 @@ describe('sandbox isolation (plan 9.5)', () => {
       new URL('../../../docker/sandbox-firewall.sh', import.meta.url),
       'utf8',
     );
-    const openbot = compose.services.openbot!;
-    const sandbox = (openbot.networks as Record<string, { ipv4_address?: string }>).sandbox!;
+    const openbots = compose.services.openbots!;
+    const sandbox = (openbots.networks as Record<string, { ipv4_address?: string }>).sandbox!;
     // The same ${VAR:-default} in both, so the defaults agree.
-    expect(sandbox.ipv4_address).toMatch(/^\$\{OPENBOT_SANDBOX_SERVER_IP:-[\d.]+\}$/);
+    expect(sandbox.ipv4_address).toMatch(/^\$\{OPENBOTS_SANDBOX_SERVER_IP:-[\d.]+\}$/);
     expect(script).toContain(`SERVER="${sandbox.ipv4_address}"`);
     const subnet = compose.networks.sandbox!.ipam!.config[0]!.subnet;
-    expect(subnet).toMatch(/^\$\{OPENBOT_SANDBOX_SUBNET:-[\d./]+\}$/);
+    expect(subnet).toMatch(/^\$\{OPENBOTS_SANDBOX_SUBNET:-[\d./]+\}$/);
     expect(script).toContain(`SUBNET="${subnet}"`);
     expect(script).toContain(
-      `BRIDGE="\${OPENBOT_SANDBOX_BRIDGE:-\${OPENBOT_SANDBOX_NETWORK:-${SANDBOX_BRIDGE}}}"\n`,
+      `BRIDGE="\${OPENBOTS_SANDBOX_BRIDGE:-\${OPENBOTS_SANDBOX_NETWORK:-${SANDBOX_BRIDGE}}}"\n`,
     );
     expect(script).toContain(`AGENT_PORT=${AGENT_PORT}\n`);
     const firewall = compose.services['sandbox-firewall']!;
     expect(firewall).toMatchObject({ network_mode: 'host', cap_add: ['NET_ADMIN', 'NET_RAW'] });
-    expect(openbot.depends_on).toMatchObject({
+    expect(openbots.depends_on).toMatchObject({
       'docker-guard': { condition: 'service_healthy' },
       'sandbox-firewall': { condition: 'service_healthy' },
     });
@@ -270,14 +270,16 @@ describe('compose files', () => {
     const networks = proxy.networks as Record<string, { ipv4_address?: string }>;
     expect(Object.keys(networks)).toEqual(['sandbox']);
     // Inside the sandbox subnet, and the address .env.example points the computers at.
-    expect(networks.sandbox!.ipv4_address).toBe('${OPENBOT_SANDBOX_EGRESS_PROXY_IP:-172.30.255.3}');
+    expect(networks.sandbox!.ipv4_address).toBe(
+      '${OPENBOTS_SANDBOX_EGRESS_PROXY_IP:-172.30.255.3}',
+    );
     const example = readFileSync(new URL('../../../.env.example', import.meta.url), 'utf8');
-    expect(example).toContain('OPENBOT_SANDBOX_EGRESS_PROXY_IP=172.30.255.3\n');
+    expect(example).toContain('OPENBOTS_SANDBOX_EGRESS_PROXY_IP=172.30.255.3\n');
     expect(example).toContain('http://172.30.255.3:8888');
     // Its config and allowlist come from the checkout, read-only.
     expect(proxy.volumes).toEqual([
       './docker/egress-proxy/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro',
-      '${OPENBOT_SANDBOX_EGRESS_ALLOWLIST:-./docker/egress-proxy/allowlist}:/etc/tinyproxy/allowlist:ro',
+      '${OPENBOTS_SANDBOX_EGRESS_ALLOWLIST:-./docker/egress-proxy/allowlist}:/etc/tinyproxy/allowlist:ro',
     ]);
     const conf = readFileSync(
       new URL('../../../docker/egress-proxy/tinyproxy.conf', import.meta.url),
@@ -288,16 +290,16 @@ describe('compose files', () => {
     expect(conf).toMatch(/^FilterDefaultDeny Yes$/m);
     // The firewall learns the proxy's address from the same variable as the server.
     const firewall = compose.services['sandbox-firewall']!.environment as Record<string, string>;
-    expect(firewall.OPENBOT_SANDBOX_EGRESS_PROXY).toBe('${OPENBOT_SANDBOX_EGRESS_PROXY:-}');
-    expect(firewall.OPENBOT_SANDBOX_EGRESS_PROXY_ONLY).toBe(
-      '${OPENBOT_SANDBOX_EGRESS_PROXY_ONLY:-false}',
+    expect(firewall.OPENBOTS_SANDBOX_EGRESS_PROXY).toBe('${OPENBOTS_SANDBOX_EGRESS_PROXY:-}');
+    expect(firewall.OPENBOTS_SANDBOX_EGRESS_PROXY_ONLY).toBe(
+      '${OPENBOTS_SANDBOX_EGRESS_PROXY_ONLY:-false}',
     );
   });
 
   it('runs the docker guard from the server image', () => {
     const guard = compose.services['docker-guard']!;
-    expect(guard.image).toBe(compose.services.openbot!.image);
-    expect(guard.build).toEqual(compose.services.openbot!.build);
+    expect(guard.image).toBe(compose.services.openbots!.image);
+    expect(guard.build).toEqual(compose.services.openbots!.build);
   });
 });
 
@@ -429,7 +431,7 @@ describe('docker provider', () => {
 
   it('creates computers on the configured network, with its own bridge', async () => {
     const docker = mockDocker();
-    const network = { name: 'openbot-app-sandbox-254', bridge: 'openbot-app-254' };
+    const network = { name: 'openbots-app-sandbox-254', bridge: 'openbots-a-254' };
     const provider = createDockerProvider({ docker, network });
     await provider.create(spec);
     const made = docker.calls.find((c) => c.op === 'createNetwork')!.args[0] as Record<
@@ -461,46 +463,44 @@ describe('docker provider', () => {
 });
 
 describe('sandbox network settings', () => {
-  it('defaults to openbot-sandbox, bridge and all', () => {
+  it('defaults to openbots-sbx, bridge and all', () => {
     expect(resolveSandboxNetwork()).toEqual(DEFAULT_SANDBOX_NETWORK);
     expect(resolveSandboxNetwork('', ' ')).toEqual({
-      name: 'openbot-sandbox',
-      bridge: 'openbot-sandbox',
+      name: 'openbots-sbx',
+      bridge: 'openbots-sbx',
     });
   });
 
   it('names the bridge like the network unless told otherwise', () => {
-    expect(resolveSandboxNetwork('openbot-dev')).toEqual({
-      name: 'openbot-dev',
-      bridge: 'openbot-dev',
+    expect(resolveSandboxNetwork('openbots-dev')).toEqual({
+      name: 'openbots-dev',
+      bridge: 'openbots-dev',
     });
-    expect(resolveSandboxNetwork('openbot-app-sandbox-254', 'openbot-app-254')).toEqual({
-      name: 'openbot-app-sandbox-254',
-      bridge: 'openbot-app-254',
+    expect(resolveSandboxNetwork('openbots-app-sandbox-254', 'openbots-a-254')).toEqual({
+      name: 'openbots-app-sandbox-254',
+      bridge: 'openbots-a-254',
     });
   });
 
-  it('asks for OPENBOT_SANDBOX_BRIDGE when the network name is too long for a bridge', () => {
-    expect(() => resolveSandboxNetwork('openbot-app-sandbox')).toThrow(
-      /OPENBOT_SANDBOX_BRIDGE: needed/,
+  it('asks for OPENBOTS_SANDBOX_BRIDGE when the network name is too long for a bridge', () => {
+    expect(() => resolveSandboxNetwork('openbots-app-sandbox')).toThrow(
+      /OPENBOTS_SANDBOX_BRIDGE: needed/,
     );
   });
 
   it.each([
-    ['a name longer than 15 characters', 'openbot-sandbox-x'],
-    ['upper case', 'OpenBot'],
-    ["iptables' wildcard", 'openbot+'],
-    ['a leading dash', '-openbot'],
+    ['a name longer than 15 characters', 'openbots-sandbox-x'],
+    ['upper case', 'OpenBots'],
+    ["iptables' wildcard", 'openbots+'],
+    ['a leading dash', '-openbots'],
     ['a slash', 'a/b'],
   ])('refuses a bridge with %s', (_, bridge) => {
     expect(isBridgeName(bridge)).toBe(false);
-    expect(() => resolveSandboxNetwork('openbot-sandbox', bridge)).toThrow(
-      /OPENBOT_SANDBOX_BRIDGE/,
-    );
+    expect(() => resolveSandboxNetwork('openbots-sbx', bridge)).toThrow(/OPENBOTS_SANDBOX_BRIDGE/);
   });
 
   it('refuses a network name Docker would not take', () => {
-    expect(() => resolveSandboxNetwork('open bot')).toThrow(/OPENBOT_SANDBOX_NETWORK/);
-    expect(() => resolveSandboxNetwork('x'.repeat(65), 'x')).toThrow(/OPENBOT_SANDBOX_NETWORK/);
+    expect(() => resolveSandboxNetwork('open bot')).toThrow(/OPENBOTS_SANDBOX_NETWORK/);
+    expect(() => resolveSandboxNetwork('x'.repeat(65), 'x')).toThrow(/OPENBOTS_SANDBOX_NETWORK/);
   });
 });

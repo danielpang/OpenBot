@@ -1,19 +1,19 @@
 // Email through Resend (plan 21.5), when RESEND_API_KEY and
-// OPENBOT_EMAIL_FROM are set: invitations and sign-up codes. Without them
+// OPENBOTS_EMAIL_FROM are set: invitations and sign-up codes. Without them
 // an invitation is still made and the inviter copies its link. Links and
 // codes in these emails are credentials: a failed send logs why, never the
 // link or code, and only a development server that sends no email may log
-// sign-up codes (OPENBOT_DEV_LOG_EMAIL_LINKS).
+// sign-up codes (OPENBOTS_DEV_LOG_EMAIL_LINKS).
 
 export interface EmailOptions {
   /** RESEND_API_KEY. */
   apiKey?: string;
-  /** OPENBOT_EMAIL_FROM, such as `OpenBots <hi@example.com>`. */
+  /** OPENBOTS_EMAIL_FROM, such as `OpenBots <hi@example.com>`. */
   from?: string;
   /** The HTTP client; tests stand in a fake. */
   fetch?: typeof fetch;
   /**
-   * OPENBOT_DEV_LOG_EMAIL_LINKS: with no email set up, log sign-up codes so
+   * OPENBOTS_DEV_LOG_EMAIL_LINKS: with no email set up, log sign-up codes so
    * a developer can enter them. Refused with NODE_ENV=production.
    */
   logLinks?: boolean;

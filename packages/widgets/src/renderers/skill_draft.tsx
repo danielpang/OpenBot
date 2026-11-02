@@ -1,5 +1,5 @@
-import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbot/shared';
-import { Button, Input, Textarea } from '@openbot/ui';
+import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbots/shared';
+import { Button, Input, Textarea } from '@openbots/ui';
 import { useState } from 'react';
 import type { SkillDraftAction, SkillDraftProps, SkillDraftState } from '../kinds/skill_draft.js';
 import type { WidgetRendererProps } from './types.js';

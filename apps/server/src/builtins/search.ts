@@ -1,4 +1,4 @@
-import type { SearchResult } from '@openbot/agent';
+import type { SearchResult } from '@openbots/agent';
 
 // web_search backends (plan 5.4, T2): Brave Search when the Web search
 // connector has a Brave key, else Tavily when it has a Tavily key, else none

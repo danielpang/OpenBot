@@ -1,4 +1,4 @@
-import type { ModelCapabilities, ProviderTestResult } from '@openbot/shared';
+import type { ModelCapabilities, ProviderTestResult } from '@openbots/shared';
 
 // Display helpers and form parsing shared by Settings > Models and the picker.
 

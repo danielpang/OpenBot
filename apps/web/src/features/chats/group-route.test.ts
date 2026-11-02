@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { Route as BotRoute } from '../../routes/_app/bots/$botId/index.js';
 import { Route as GroupRoute } from '../../routes/_app/groups/$chatId.js';
 
-// A group deep link (`openbot://chat/{id}/message/{seq}`, the Mac app) opens
+// A group deep link (`openbots://chat/{id}/message/{seq}`, the Mac app) opens
 // `/groups/{id}?seq=N`; the group route reads `?seq=` as the Bot route does.
-// A message in a Bot to Bot chat (`openbot://bot/{id}/message/{seq}?chat=`)
+// A message in a Bot to Bot chat (`openbots://bot/{id}/message/{seq}?chat=`)
 // opens `/bots/{id}?chat={chat id}&seq=N`, that chat under the transcript.
 
 const CHAT = '7f0c1d2e-3a4b-4c5d-8e6f-708192a3b4c5';

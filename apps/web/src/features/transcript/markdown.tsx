@@ -120,7 +120,7 @@ export function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const frame = 'my-2 overflow-x-auto rounded-md border bg-muted/40 p-3 font-mono text-xs';
   return (
     <>
-      <style href="openbot-shiki" precedence="default">
+      <style href="openbots-shiki" precedence="default">
         {SHIKI_CSS}
       </style>
       {html ? (

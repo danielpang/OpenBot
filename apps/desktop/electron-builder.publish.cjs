@@ -7,8 +7,8 @@
 // in CI the repository is GITHUB_REPOSITORY, so a fork's release workflow
 // publishes to the fork; elsewhere it is the default.
 //
-// The hosted OpenBots server, OPENBOT_CLOUD_URL, goes into the packaged
-// package.json as `openbot.cloudUrl` (src/main/app-config.ts reads it). Unset,
+// The hosted OpenBots server, OPENBOTS_CLOUD_URL, goes into the packaged
+// package.json as `openbots.cloudUrl` (src/main/app-config.ts reads it). Unset,
 // the app shows "Sign in to an OpenBots account" disabled. The packaged
 // package.json also gets electron-updater's installed version in place of
 // pnpm's `catalog:`, which electron-builder cannot read.
@@ -44,16 +44,16 @@ function publishConfig(env = process.env) {
 
 /** The cloud URL's origin; throws on anything but https, so a bad value fails the build. */
 function cloudUrl(env = process.env) {
-  const value = (env.OPENBOT_CLOUD_URL || '').trim();
+  const value = (env.OPENBOTS_CLOUD_URL || '').trim();
   if (value === '') return null;
   let url;
   try {
     url = new URL(value);
   } catch {
-    throw new Error(`OPENBOT_CLOUD_URL is not a URL: ${value}`);
+    throw new Error(`OPENBOTS_CLOUD_URL is not a URL: ${value}`);
   }
   if (url.protocol !== 'https:' || url.username || url.password) {
-    throw new Error(`OPENBOT_CLOUD_URL must be an https URL without credentials: ${value}`);
+    throw new Error(`OPENBOTS_CLOUD_URL must be an https URL without credentials: ${value}`);
   }
   return url.origin;
 }
@@ -73,7 +73,7 @@ function appConfig(env = process.env) {
   return {
     extraMetadata: {
       dependencies: updaterDependency(),
-      ...(url ? { openbot: { cloudUrl: url } } : {}),
+      ...(url ? { openbots: { cloudUrl: url } } : {}),
     },
   };
 }

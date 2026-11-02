@@ -170,7 +170,7 @@ describe('the status page', () => {
 
   it('shows the logs in a panel', async () => {
     await show(fakeBridge({ profiles: saved }), 'profile=local&logs=1');
-    expect($('#logs')?.textContent).toBe('openbot-1 | listening\npostgres-1 | ready');
+    expect($('#logs')?.textContent).toBe('openbots-1 | listening\npostgres-1 | ready');
     expect($('#stack-logs')?.textContent).toBe('Hide logs');
   });
 });

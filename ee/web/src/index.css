@@ -1,4 +1,4 @@
-@import '@openbot/web/index.css';
+@import '@openbots/web/index.css';
 
 /* The core app's components, which Tailwind would not find from here. */
 @source '../../../apps/web/src';

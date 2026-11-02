@@ -1,5 +1,5 @@
-import { Button, Input } from '@openbot/ui';
-import { PRODUCT_NAME } from '@openbot/shared';
+import { Button, Input } from '@openbots/ui';
+import { PRODUCT_NAME } from '@openbots/shared';
 import type { ComponentProps, FormEvent, ReactNode } from 'react';
 
 export function AuthCard({ title, children }: { title: string; children: ReactNode }) {

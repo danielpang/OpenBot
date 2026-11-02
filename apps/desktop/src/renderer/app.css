@@ -3,7 +3,7 @@
  * as apps/web/src/index.css imports them.
  */
 @import 'tailwindcss';
-@import '@openbot/ui/styles.css';
+@import '@openbots/ui/styles.css';
 @source './';
 
 @layer base {

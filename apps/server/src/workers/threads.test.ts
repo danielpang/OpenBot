@@ -1,6 +1,6 @@
-import { localEmbedder, SUMMARY_PROMPT } from '@openbot/agent';
-import { promptText, scriptedModel, type ScriptedTurn } from '@openbot/agent/testing';
-import { EVENTS_CHANNEL, type WsEvent } from '@openbot/shared';
+import { localEmbedder, SUMMARY_PROMPT } from '@openbots/agent';
+import { promptText, scriptedModel, type ScriptedTurn } from '@openbots/agent/testing';
+import { EVENTS_CHANNEL, type WsEvent } from '@openbots/shared';
 import type { LanguageModel } from 'ai';
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -29,7 +29,7 @@ describe('threads, reactions and chat summaries', () => {
   const smallModels = new Map<string, LanguageModel>();
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     cookie = (await t.signUp('dana@example.com')).cookie!;
     unhook = registerRunHooks();
     await t.deps.infra.bus.subscribe<WsEvent>(EVENTS_CHANNEL, (e) => events.push(e));

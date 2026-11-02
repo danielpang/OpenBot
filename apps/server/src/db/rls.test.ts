@@ -60,7 +60,7 @@ describe('row-level security between organizations', () => {
   let owner: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     await t.signUp('ada@example.com');
     owner = await t.userId('ada@example.com');
     orgA = await t.defaultOrganization();

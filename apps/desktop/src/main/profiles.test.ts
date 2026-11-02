@@ -44,29 +44,29 @@ function store(
 
 describe('server URLs', () => {
   it('keeps the origin of an http or https URL', () => {
-    expect(normalizeServerUrl('https://openbot.example.com/some/path?x=1')).toBe(
-      'https://openbot.example.com',
+    expect(normalizeServerUrl('https://openbots.example.com/some/path?x=1')).toBe(
+      'https://openbots.example.com',
     );
     expect(normalizeServerUrl(' http://192.168.1.4:3000 ')).toBe('http://192.168.1.4:3000');
-    expect(normalizeServerUrl('openbot.example.com')).toBe('https://openbot.example.com');
+    expect(normalizeServerUrl('openbots.example.com')).toBe('https://openbots.example.com');
   });
 
   it('rejects other schemes, credentials and garbage', () => {
     expect(() => normalizeServerUrl('file:///etc/passwd')).toThrow(ProfileError);
     expect(() => normalizeServerUrl('javascript://alert(1)')).toThrow(ProfileError);
-    expect(() => normalizeServerUrl('https://me:secret@openbot.example.com')).toThrow(/user name/);
+    expect(() => normalizeServerUrl('https://me:secret@openbots.example.com')).toThrow(/user name/);
     expect(() => normalizeServerUrl('http://')).toThrow(ProfileError);
   });
 
   it('reads the local port from the stack .env', () => {
     expect(localServerUrl()).toBe('http://localhost:3000');
-    expect(localServerUrl('OPENBOT_HTTP_PORT=8080\n')).toBe('http://localhost:8080');
-    expect(localServerUrl('# OPENBOT_HTTP_PORT=9\nOPENBOT_HTTP_PORT="4000"\n')).toBe(
+    expect(localServerUrl('OPENBOTS_HTTP_PORT=8080\n')).toBe('http://localhost:8080');
+    expect(localServerUrl('# OPENBOTS_HTTP_PORT=9\nOPENBOTS_HTTP_PORT="4000"\n')).toBe(
       'http://localhost:4000',
     );
-    expect(localServerUrl('OPENBOT_HTTP_PORT=99999\n')).toBe('http://localhost:3000');
+    expect(localServerUrl('OPENBOTS_HTTP_PORT=99999\n')).toBe('http://localhost:3000');
     // As Compose reads .env: the last line wins.
-    expect(localServerUrl('OPENBOT_HTTP_PORT=3000\nOPENBOT_HTTP_PORT=3002\n')).toBe(
+    expect(localServerUrl('OPENBOTS_HTTP_PORT=3000\nOPENBOTS_HTTP_PORT=3002\n')).toBe(
       'http://localhost:3002',
     );
   });
@@ -194,15 +194,15 @@ describe('profile store', () => {
 
   it('adds, activates and persists a remote profile', async () => {
     const { profiles, data } = store();
-    const added = await profiles.add({ url: 'https://openbot.example.com/app' });
+    const added = await profiles.add({ url: 'https://openbots.example.com/app' });
     expect(added).toEqual({
       id: 'p1',
-      name: 'openbot.example.com',
-      url: 'https://openbot.example.com',
+      name: 'openbots.example.com',
+      url: 'https://openbots.example.com',
       kind: 'remote',
     });
     await profiles.setActive('p1');
-    expect((await profiles.active()).url).toBe('https://openbot.example.com');
+    expect((await profiles.active()).url).toBe('https://openbots.example.com');
     // The local profile's URL is not stored: it follows the stack.
     expect(JSON.parse(data.get(PATH)!)).toEqual({
       activeId: 'p1',
@@ -249,7 +249,7 @@ describe('profile store', () => {
     const { profiles, data } = store();
     await expect(profiles.add({ url: 'file:///x' })).rejects.toThrow(ProfileError);
     // Plain http only for this Mac or a private network.
-    await expect(profiles.add({ url: 'http://openbot.example.com' })).rejects.toThrow(/https/);
+    await expect(profiles.add({ url: 'http://openbots.example.com' })).rejects.toThrow(/https/);
     expect(data.has(PATH)).toBe(false);
   });
 

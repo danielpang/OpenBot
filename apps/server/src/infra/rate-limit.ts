@@ -26,7 +26,7 @@ export interface RateLimiter {
   close(): Promise<void>;
 }
 
-const KEY_PREFIX = 'openbot:rl:';
+const KEY_PREFIX = 'openbots:rl:';
 
 interface Bucket {
   tokens: number;

@@ -1,4 +1,4 @@
-import { ARTIFACT_KIND_LABELS, ArtifactKindIcon } from '@openbot/widgets/react';
+import { ARTIFACT_KIND_LABELS, ArtifactKindIcon } from '@openbots/widgets/react';
 import { useQuery } from '@tanstack/react-query';
 import { useBotPanel } from '../transcript/panel.js';
 import { botArtifactsQuery } from './api.js';

@@ -1,4 +1,4 @@
-import { WebhookSignatureSchema } from '@openbot/shared';
+import { WebhookSignatureSchema } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 import { clientIp } from '../client-ip.js';

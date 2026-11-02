@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mcpStdioSession } from '@openbot/computer-agent/mcp-stdio';
+import { mcpStdioSession } from '@openbots/computer-agent/mcp-stdio';
 import {
   BROWSER_ACTIONS,
   BrowserActionSchemas,
@@ -17,13 +17,13 @@ import {
   type InputAction,
   type McpStdioStart,
   type ScreenInfo,
-} from '@openbot/computer-agent/protocol';
+} from '@openbots/computer-agent/protocol';
 import type Docker from 'dockerode';
 import { WebSocketServer } from 'ws';
 import { GUARD_NAME, GUARD_PATH, type DockerApi } from './docker.js';
 
 // Test doubles: an in-process control agent speaking
-// `@openbot/computer-agent/protocol` (requests are validated with the agent's
+// `@openbots/computer-agent/protocol` (requests are validated with the agent's
 // own schemas, so a client that drifts from the agent fails here), with a
 // memory filesystem under the home, scripted exec, screens, a 1x1 PNG
 // screenshot, echoing pty and vnc sockets, and the agent's own `/mcp/stdio`
@@ -86,7 +86,7 @@ export async function startFakeAgent({ token = 'agent-token' } = {}): Promise<Fa
     healthy: true,
     mcpStdio: [],
     mcpLaunch: (start) => start,
-    home: mkdtempSync(join(tmpdir(), 'openbot-fake-home-')),
+    home: mkdtempSync(join(tmpdir(), 'openbots-fake-home-')),
     close: async () => {},
   };
 

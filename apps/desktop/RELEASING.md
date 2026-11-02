@@ -4,30 +4,30 @@ One version tag, `v<version>`, releases everything together (plan sections 3, 14
 and 19):
 
 - the server, computer and sandbox firewall images for linux/amd64 and linux/arm64, pushed to
-  `ghcr.io/<owner>/openbot/{server,computer,sandbox-firewall}` as `<version>`, `<major>.<minor>`
+  `ghcr.io/<owner>/openbots/{server,computer,sandbox-firewall}` as `<version>`, `<major>.<minor>`
   and `latest` (a prerelease such as `1.3.0-rc.1` gets only its own tag);
 - the Mac app: a universal (Apple Silicon and Intel) DMG, the zip and `latest-mac.yml` that
   electron-updater reads, and a rendered Homebrew cask;
 - a GitHub Release for the tag with notes generated from the commits since the previous release
-  tag, carrying the DMG, the zip, the cask, the compose bundle `openbot-compose-<version>.tar.gz`,
+  tag, carrying the DMG, the zip, the cask, the compose bundle `openbots-compose-<version>.tar.gz`,
   a gzipped `docker load` archive of each image per architecture
-  (`openbot-<image>-<version>-linux-<arch>.tar.gz`) and `SHA256SUMS` covering every file.
+  (`openbots-<image>-<version>-linux-<arch>.tar.gz`) and `SHA256SUMS` covering every file.
 
-| File                                     | What it does                                                        |
-| ---------------------------------------- | ------------------------------------------------------------------- |
-| `.github/workflows/release.yml`          | The release: version check, then the jobs below, then the Release   |
-| `.github/workflows/release-images.yml`   | Builds and pushes the images and writes their archives              |
-| `.github/workflows/release-mac.yml`      | Packages the Mac app, signed and notarized when the secrets are set |
-| `scripts/release-version.mjs`            | Bumps the release version, and checks a tag against it              |
-| `scripts/release-bundle.sh`              | Packs the compose bundle                                            |
-| `scripts/release-notes.sh`               | Writes the release notes                                            |
-| `scripts/release-check-public.sh`        | Checks that anyone can pull the images                              |
-| `electron-builder.yml`                   | Targets, hardened runtime, entitlements, bundled stack              |
-| `electron-builder.publish.cjs`           | The repository the app updates from (`GITHUB_REPOSITORY` in CI)     |
-| `build/entitlements.mac.plist`           | Hardened runtime entitlements (JIT only)                            |
-| `src/release/notarize.ts`                | `afterSign` hook: notarizes with `@electron/notarize`               |
-| `src/images/release-archive.ts`          | Loads a release's image archives when the Mac app cannot pull       |
-| `packaging/homebrew/openbot.rb.template` | Homebrew cask, rendered per release                                 |
+| File                                      | What it does                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| `.github/workflows/release.yml`           | The release: version check, then the jobs below, then the Release   |
+| `.github/workflows/release-images.yml`    | Builds and pushes the images and writes their archives              |
+| `.github/workflows/release-mac.yml`       | Packages the Mac app, signed and notarized when the secrets are set |
+| `scripts/release-version.mjs`             | Bumps the release version, and checks a tag against it              |
+| `scripts/release-bundle.sh`               | Packs the compose bundle                                            |
+| `scripts/release-notes.sh`                | Writes the release notes                                            |
+| `scripts/release-check-public.sh`         | Checks that anyone can pull the images                              |
+| `electron-builder.yml`                    | Targets, hardened runtime, entitlements, bundled stack              |
+| `electron-builder.publish.cjs`            | The repository the app updates from (`GITHUB_REPOSITORY` in CI)     |
+| `build/entitlements.mac.plist`            | Hardened runtime entitlements (JIT only)                            |
+| `src/release/notarize.ts`                 | `afterSign` hook: notarizes with `@electron/notarize`               |
+| `src/images/release-archive.ts`           | Loads a release's image archives when the Mac app cannot pull       |
+| `packaging/homebrew/openbots.rb.template` | Homebrew cask, rendered per release                                 |
 
 ## Cutting a release
 
@@ -59,7 +59,7 @@ and 19):
    whether each package is public and warns when one is not.
 5. Check the release page: the notes, the DMG, the bundle, six image archives, `SHA256SUMS` and,
    for a signed build, `latest-mac.yml`. Install the DMG on a clean Mac.
-6. For Homebrew, copy `openbot.rb` from the release into the tap's `Casks/` directory and open a
+6. For Homebrew, copy `openbots.rb` from the release into the tap's `Casks/` directory and open a
    pull request there.
 
 A failed job can be rerun from the Actions tab. Rerunning `GitHub Release` updates the release
@@ -67,14 +67,14 @@ that exists instead of failing. To redo a release from a new commit, delete the 
 tag (`git push --delete origin v1.2.0`), fix, and tag again.
 
 The release goes to the repository the workflow runs in, and the images to
-`ghcr.io/<that repository's owner in lower case>/openbot`, so a fork releases to itself. The
+`ghcr.io/<that repository's owner in lower case>/openbots`, so a fork releases to itself. The
 packaged app's updater and the cask point at the same repository.
 
 ### Making the images public (once)
 
 GHCR makes every new package private, and GitHub's REST API has no endpoint to change a package's
-visibility, so after the first release the owner does it by hand for each of `openbot/server`,
-`openbot/computer` and `openbot/sandbox-firewall`:
+visibility, so after the first release the owner does it by hand for each of `openbots/server`,
+`openbots/computer` and `openbots/sandbox-firewall`:
 
 1. Open `https://github.com/<owner>?tab=packages` (for an organization, its Packages tab) and
    choose the package.
@@ -86,7 +86,7 @@ local stack cannot pull. The release notes say so and point at the image archive
 Check afterwards with:
 
 ```sh
-bash scripts/release-check-public.sh ghcr.io/<owner>/openbot 1.2.0
+bash scripts/release-check-public.sh ghcr.io/<owner>/openbots 1.2.0
 ```
 
 The packages stay public for later releases.
@@ -111,7 +111,7 @@ Chromium under QEMU. That build first runs for a real tag.
 Signing is optional. With all five secrets below set, the tag build signs with the Developer ID
 certificate, notarizes and staples in the `afterSign` hook, and verifies with `codesign`, `spctl`
 and `stapler`; it fails rather than ship a signed app that is not notarized
-(`OPENBOT_REQUIRE_NOTARIZATION=1`).
+(`OPENBOTS_REQUIRE_NOTARIZATION=1`).
 
 With none of them set, the release still goes out with an unsigned (ad-hoc signed) app, and the
 notes say "Unsigned build: right-click Open on first launch". Squirrel.Mac only installs updates
@@ -141,30 +141,30 @@ is valid for five years: when either changes, update the secrets.
 ### The OpenBots account server
 
 "Sign in to an OpenBots account" on the welcome screen opens the hosted OpenBots server. Its URL
-is set at build time: `OPENBOT_CLOUD_URL` (an https origin, such as `https://app.openbots.example`)
+is set at build time: `OPENBOTS_CLOUD_URL` (an https origin, such as `https://app.openbots.example`)
 goes through `electron-builder.publish.cjs` into the packaged `package.json` as
-`openbot.cloudUrl`, which the app reads (`src/main/app-config.ts`). The release workflow takes it
-from the repository variable `OPENBOT_CLOUD_URL` (Settings, Secrets and variables, Actions,
+`openbots.cloudUrl`, which the app reads (`src/main/app-config.ts`). The release workflow takes it
+from the repository variable `OPENBOTS_CLOUD_URL` (Settings, Secrets and variables, Actions,
 Variables). Unset, the choice shows disabled with "OpenBots accounts are not available yet"; a
 value that is not https fails the build. A packaged app ignores the variable on the Mac it runs
-on. In development (`pnpm --filter @openbot/desktop dev`) the app reads `OPENBOT_CLOUD_URL` from
+on. In development (`pnpm --filter @openbots/desktop dev`) the app reads `OPENBOTS_CLOUD_URL` from
 the environment.
 
 ## The image archives
 
 Each archive is one image for one architecture, in the format `docker save` writes, gzipped:
-`docker load -i openbot-computer-1.2.0-linux-arm64.tar.gz` gives
-`ghcr.io/<owner>/openbot/computer:1.2.0`. They are made by the same build as the pushed images,
+`docker load -i openbots-computer-1.2.0-linux-arm64.tar.gz` gives
+`ghcr.io/<owner>/openbots/computer:1.2.0`. They are made by the same build as the pushed images,
 from its cache, and the workflow fails if one reaches GitHub's 2 GiB limit for a release asset.
 
 When the registry refuses the Mac app's images (a private package, or one not published yet), a
 packaged app falls back to its release: the stack manager (`src/stack/manager.ts`) asks
 `src/images/release-archive.ts` to download the archives of the images missing on this Mac, for the
 app's version and the Mac's architecture, from the repository in the app's `app-update.yml`. Each
-is checked against `SHA256SUMS`, loaded and tagged with the stack's `OPENBOT_IMAGE_PREFIX`, and the
+is checked against `SHA256SUMS`, loaded and tagged with the stack's `OPENBOTS_IMAGE_PREFIX`, and the
 start goes on as after a pull; "Download OpenBots" shows the image and its percentage meanwhile.
 When that fails too, the start shows the registry's error, with the download's reason under "Show
-details". A development build, or one with `OPENBOT_IMAGE_PREFIX` or `OPENBOT_VERSION` overrides,
+details". A development build, or one with `OPENBOTS_IMAGE_PREFIX` or `OPENBOTS_VERSION` overrides,
 never falls back, and neither does a stack whose `.env` pins another version.
 
 ## Manual signed build
@@ -173,12 +173,12 @@ On a Mac with the Developer ID Application certificate in the login keychain:
 
 ```sh
 pnpm install
-pnpm exec turbo run build --filter=@openbot/desktop
+pnpm exec turbo run build --filter=@openbots/desktop
 cd apps/desktop
 # One of the two credential sets the afterSign hook reads:
 export APPLE_API_KEY=~/keys/AuthKey_XXXX.p8 APPLE_API_KEY_ID=XXXX APPLE_API_ISSUER=<uuid>
 #   or: export APPLE_ID=you@example.com APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx APPLE_TEAM_ID=ABCDE12345
-export OPENBOT_REQUIRE_NOTARIZATION=1
+export OPENBOTS_REQUIRE_NOTARIZATION=1
 pnpm dist:mac
 codesign --verify --deep --strict --verbose=2 release/mac-universal/OpenBots.app
 spctl --assess --type execute --verbose=2 release/mac-universal/OpenBots.app

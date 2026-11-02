@@ -1,5 +1,5 @@
 import { Readability } from '@mozilla/readability';
-import type { FetchedPage, HttpRequestInput, HttpResponse } from '@openbot/agent';
+import type { FetchedPage, HttpRequestInput, HttpResponse } from '@openbots/agent';
 import { parseHTML } from 'linkedom';
 import TurndownService from 'turndown';
 import { guardedFetch, type NetOptions } from './net.js';
@@ -12,7 +12,7 @@ import { guardedFetch, type NetOptions } from './net.js';
 export const MAX_FETCH_BYTES = 3 * 1024 * 1024;
 export const MAX_HTTP_BODY_CHARS = 40_000;
 
-const USER_AGENT = 'OpenBot/1.0 (+https://github.com/openbot)';
+const USER_AGENT = 'OpenBots/1.0 (+https://github.com/danielpang/OpenBots)';
 
 const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 turndown.remove(['script', 'style', 'noscript', 'iframe']);

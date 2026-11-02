@@ -36,7 +36,7 @@ export interface VerifyOptions {
   fetch: FetchLike;
   /**
    * This Mac's stack. Null when the local profile points at a development
-   * server instead (OPENBOT_DESKTOP_LOCAL_URL), which only has to answer as
+   * server instead (OPENBOTS_DESKTOP_LOCAL_URL), which only has to answer as
    * OpenBots.
    */
   stack: Pick<StackManager, 'status'> | null;
@@ -91,7 +91,7 @@ export async function verifyServer(
   });
   // A failed Docker check leaves the stack unknown: then only the port says anything.
   const status = await stack.status().catch(() => null);
-  const server = status?.services.find((s) => s.service === 'openbot');
+  const server = status?.services.find((s) => s.service === 'openbots');
   const healthy =
     server?.state === 'running' && (server.health === '' || server.health === 'healthy');
   if (!healthy) {

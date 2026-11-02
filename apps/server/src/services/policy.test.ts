@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { asEvaluation } from '@openbot/agent';
+import { asEvaluation } from '@openbots/agent';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { schema } from '../db/client.js';
@@ -17,7 +17,7 @@ describe('loadRunPolicy', () => {
   let t: TestApp;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     await t.signUp('dana@example.com');
   });
   afterAll(async () => {

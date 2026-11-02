@@ -1,4 +1,4 @@
-import { packageName } from '@openbot/shared';
+import { packageName } from '@openbots/shared';
 
 // Artifacts (plan 12.1, 18.4), shared by the server and the viewer: line
 // diffs and their `+14 −10` summaries, unified-diff patches, and mime types.

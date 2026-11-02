@@ -1,4 +1,4 @@
-import { Button, cn, Input } from '@openbot/ui';
+import { Button, cn, Input } from '@openbots/ui';
 import { useState } from 'react';
 import type { z } from 'zod';
 import type { ApprovalPropsSchema, ApprovalState } from '../kinds/approval.js';
@@ -15,7 +15,7 @@ type TraceStep = NonNullable<ApprovalProps['trace']>[number];
 
 /** The stored state plus what `approval.resolved` adds. */
 export type ApprovalWidgetState = ApprovalState & {
-  /** The user who decided; null when OpenBot closed it (expiry, a cancelled run). */
+  /** The user who decided; null when OpenBots closed it (expiry, a cancelled run). */
   decidedBy?: string | null;
   decidedAt?: string | null;
 };

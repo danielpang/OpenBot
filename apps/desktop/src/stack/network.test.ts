@@ -19,8 +19,8 @@ describe('the app stack sandbox network', () => {
       expect(choice.serverIp).toBe(`172.30.${octet}.2`);
     }
     expect(appSandbox(254)).toEqual({
-      network: 'openbot-app-sandbox-254',
-      bridge: 'openbot-app-254',
+      network: 'openbots-app-sandbox-254',
+      bridge: 'openbots-a-254',
       subnet: '172.30.254.0/24',
       serverIp: '172.30.254.2',
       proxyIp: '172.30.254.3',
@@ -48,7 +48,7 @@ describe('the app stack sandbox network', () => {
 
   it('picks the first free /24 from 172.30.254.0 down, never the default 172.30.255.0', () => {
     expect(chooseSandbox([])?.subnet).toBe('172.30.254.0/24');
-    expect(chooseSandbox([{ name: 'openbot-sandbox', subnets: ['172.30.255.0/24'] }])?.subnet).toBe(
+    expect(chooseSandbox([{ name: 'openbots-sbx', subnets: ['172.30.255.0/24'] }])?.subnet).toBe(
       '172.30.254.0/24',
     );
     expect(
@@ -59,8 +59,8 @@ describe('the app stack sandbox network', () => {
     ).toBe('172.30.252.0/24');
     // A name in use is skipped though its subnet is free.
     expect(
-      chooseSandbox([{ name: 'openbot-app-sandbox-254', subnets: ['10.0.0.0/24'] }])?.network,
-    ).toBe('openbot-app-sandbox-253');
+      chooseSandbox([{ name: 'openbots-app-sandbox-254', subnets: ['10.0.0.0/24'] }])?.network,
+    ).toBe('openbots-app-sandbox-253');
     expect(chooseSandbox([], ['172.30.254.0/24'])?.subnet).toBe('172.30.253.0/24');
     // Docker's whole default pool overlaps every one.
     expect(chooseSandbox([{ name: 'wide', subnets: ['172.16.0.0/12'] }])).toBeNull();
@@ -69,37 +69,37 @@ describe('the app stack sandbox network', () => {
   it('writes every key, keeps the rest, and moves a proxy URL that pointed at the old proxy', () => {
     const env = [
       '# mine',
-      'OPENBOT_SANDBOX_SUBNET=172.30.255.0/24',
-      'OPENBOT_SANDBOX_EGRESS_PROXY_IP=172.30.255.3',
-      'OPENBOT_SANDBOX_EGRESS_PROXY=http://bot:pw@172.30.255.3:8888/',
+      'OPENBOTS_SANDBOX_SUBNET=172.30.255.0/24',
+      'OPENBOTS_SANDBOX_EGRESS_PROXY_IP=172.30.255.3',
+      'OPENBOTS_SANDBOX_EGRESS_PROXY=http://bot:pw@172.30.255.3:8888/',
       '',
     ].join('\n');
     expect(withSandbox(env, appSandbox(250))).toBe(
       [
         '# mine',
-        'OPENBOT_SANDBOX_SUBNET=172.30.250.0/24',
-        'OPENBOT_SANDBOX_EGRESS_PROXY_IP=172.30.250.3',
-        'OPENBOT_SANDBOX_EGRESS_PROXY=http://bot:pw@172.30.250.3:8888/',
-        'OPENBOT_SANDBOX_NETWORK=openbot-app-sandbox-250',
-        'OPENBOT_SANDBOX_BRIDGE=openbot-app-250',
-        'OPENBOT_SANDBOX_SERVER_IP=172.30.250.2',
+        'OPENBOTS_SANDBOX_SUBNET=172.30.250.0/24',
+        'OPENBOTS_SANDBOX_EGRESS_PROXY_IP=172.30.250.3',
+        'OPENBOTS_SANDBOX_EGRESS_PROXY=http://bot:pw@172.30.250.3:8888/',
+        'OPENBOTS_SANDBOX_NETWORK=openbots-app-sandbox-250',
+        'OPENBOTS_SANDBOX_BRIDGE=openbots-a-250',
+        'OPENBOTS_SANDBOX_SERVER_IP=172.30.250.2',
         '',
       ].join('\n'),
     );
     // A proxy elsewhere stays.
     const elsewhere =
-      'OPENBOT_SANDBOX_EGRESS_PROXY_IP=172.30.255.3\nOPENBOT_SANDBOX_EGRESS_PROXY=http://10.0.0.5:3128\n';
+      'OPENBOTS_SANDBOX_EGRESS_PROXY_IP=172.30.255.3\nOPENBOTS_SANDBOX_EGRESS_PROXY=http://10.0.0.5:3128\n';
     expect(withSandbox(elsewhere, appSandbox(250))).toContain(
-      'OPENBOT_SANDBOX_EGRESS_PROXY=http://10.0.0.5:3128\n',
+      'OPENBOTS_SANDBOX_EGRESS_PROXY=http://10.0.0.5:3128\n',
     );
   });
 
   it("finds this install's containers on a network, by directory", () => {
-    const listed = '/a/stack\topenbot-app_default,openbot-sandbox\n/b/src\topenbot-sandbox\n';
+    const listed = '/a/stack\topenbots-app_default,openbots-sbx\n/b/src\topenbots-sbx\n';
     const own = (dir: string) => dir === '/a/stack';
-    expect(containersOnNetwork(listed, 'openbot-sandbox', own)).toBe(true);
-    expect(containersOnNetwork(listed, 'openbot-app_docker-api', own)).toBe(false);
-    expect(containersOnNetwork('/b/src\topenbot-sandbox\n', 'openbot-sandbox', own)).toBe(false);
-    expect(containersOnNetwork('', 'openbot-sandbox', own)).toBe(false);
+    expect(containersOnNetwork(listed, 'openbots-sbx', own)).toBe(true);
+    expect(containersOnNetwork(listed, 'openbots-app_docker-api', own)).toBe(false);
+    expect(containersOnNetwork('/b/src\topenbots-sbx\n', 'openbots-sbx', own)).toBe(false);
+    expect(containersOnNetwork('', 'openbots-sbx', own)).toBe(false);
   });
 });

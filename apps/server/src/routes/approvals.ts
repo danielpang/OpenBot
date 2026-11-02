@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { ApprovalStatusSchema } from '@openbot/shared';
+import { ApprovalStatusSchema } from '@openbots/shared';
 import { requireUser } from '../middleware/auth.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import { decideApproval, listPendingApprovals } from '../services/approvals.js';

@@ -4,7 +4,7 @@ import {
   type MessagePart,
   type PartDelta,
   type TextDelta,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { and, asc, count, desc, eq, inArray, isNull, lt, max, ne, or, type SQL } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { nextSeq, schema, type Db } from '../db/client.js';

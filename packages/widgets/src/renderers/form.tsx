@@ -1,4 +1,4 @@
-import { Button, Input } from '@openbot/ui';
+import { Button, Input } from '@openbots/ui';
 import { useId, useState, type FormEvent } from 'react';
 import type { FormField, FormProps, FormState, FormValues } from '../kinds/form.js';
 import type { WidgetRendererProps } from './types.js';

@@ -53,7 +53,7 @@ export interface AnthropicComputerInput {
   duration?: number;
 }
 
-/** The plan's action for a native Anthropic call; throws for actions OpenBot does not offer. */
+/** The plan's action for a native Anthropic call; throws for actions OpenBots does not offer. */
 export function fromAnthropicAction(input: AnthropicComputerInput): ComputerAction {
   const at = () => {
     if (!input.coordinate) throw new Error(`${input.action} needs a coordinate`);

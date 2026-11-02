@@ -7,8 +7,8 @@ import { schema, type Db } from './db/client.js';
 import { keyringFromConfig, resealSecret } from './secrets.js';
 import { forEachWorkspace } from './db/scope.js';
 
-// Master key rotation (plan 4.9). After OPENBOT_MASTER_KEY is replaced and the
-// old key moved to OPENBOT_MASTER_KEY_PREVIOUS, this re-seals every stored
+// Master key rotation (plan 4.9). After OPENBOTS_MASTER_KEY is replaced and the
+// old key moved to OPENBOTS_MASTER_KEY_PREVIOUS, this re-seals every stored
 // secret under the new key: each sealed column below, and the sign-in
 // providers' OAuth tokens, which better-auth encrypts with a secret derived
 // from the master key (auth.ts). `rotate-key` (rotate-key.ts) runs it, and so

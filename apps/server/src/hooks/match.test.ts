@@ -1,4 +1,4 @@
-import { EndpointMatchSchema, type EndpointMatch } from '@openbot/shared';
+import { EndpointMatchSchema, type EndpointMatch } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import { describeEvent, githubEvents, globMatches, matchesRule } from './match.js';
 import { frameEvent, renderTemplate } from './template.js';

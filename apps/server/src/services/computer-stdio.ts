@@ -1,5 +1,5 @@
-import type { McpStdioLaunch } from '@openbot/computer';
-import { RestartSkipped, type ComputerStdioSpec } from '@openbot/mcp';
+import type { McpStdioLaunch } from '@openbots/computer';
+import { RestartSkipped, type ComputerStdioSpec } from '@openbots/mcp';
 import type { AppDeps } from '../context.js';
 import {
   agentFor,
@@ -9,7 +9,7 @@ import {
   touchComputer,
 } from './computer.js';
 
-// Stdio connectors in their owner's computer (OPENBOT_STDIO_RUNNER=computer,
+// Stdio connectors in their owner's computer (OPENBOTS_STDIO_RUNNER=computer,
 // the managed service's default). Each connector's server runs in the
 // computer of the account that owns it, in the organization it belongs to:
 // one computer per (organization, owner), its own container, firewall and

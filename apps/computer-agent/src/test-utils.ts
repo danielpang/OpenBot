@@ -104,7 +104,7 @@ export function fakeRun(stdout: (call: RunCall) => Buffer | string = () => ''): 
 }
 
 export async function tempHome(): Promise<string> {
-  return realpath(await mkdtemp(path.join(tmpdir(), 'openbot-home-')));
+  return realpath(await mkdtemp(path.join(tmpdir(), 'openbots-home-')));
 }
 
 /** The app over a temporary home, fake X programs and a fake `run`. */

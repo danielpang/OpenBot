@@ -1,9 +1,9 @@
-export const PRODUCT_NAME = 'OpenBot';
+export const PRODUCT_NAME = 'OpenBots';
 
-export type PackageName = `@openbot/${string}`;
+export type PackageName = `@openbots/${string}`;
 
 export function packageName(name: string): PackageName {
-  return `@openbot/${name}`;
+  return `@openbots/${name}`;
 }
 
 export * from './limits.js';

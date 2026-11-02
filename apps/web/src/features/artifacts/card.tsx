@@ -1,4 +1,4 @@
-import { Widget } from '@openbot/widgets/react';
+import { Widget } from '@openbots/widgets/react';
 import { useArtifactCardState } from './live.js';
 
 // An `artifact` message part in the transcript (plan 12.1, A2): the widgets

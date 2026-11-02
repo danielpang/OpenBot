@@ -1,5 +1,5 @@
-import { TINY_PNG } from '@openbot/computer/testing';
-import { DEFAULT_LIMITS, EVENTS_CHANNEL, type WsEvent } from '@openbot/shared';
+import { TINY_PNG } from '@openbots/computer/testing';
+import { DEFAULT_LIMITS, EVENTS_CHANNEL, type WsEvent } from '@openbots/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { schema } from '../db/client.js';
 import { artifactServices, createArtifact, writeArtifact } from '../services/artifacts.js';
@@ -31,7 +31,7 @@ describe('Artifacts API', () => {
   const events: WsEvent[] = [];
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     const a = await t.signUp('alice@example.com');
     alice = a.cookie!;
     bob = (await t.signUp('bob@example.com')).cookie!;

@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/ee-server",
+  "name": "@openbots/ee-server",
   "version": "0.0.0",
   "private": true,
   "description": "The managed OpenBots server: organizations, invitations and roles on top of the core server",
@@ -7,24 +7,24 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "tsx watch --conditions=@openbot/source src/main.ts",
+    "dev": "tsx watch --conditions=@openbots/source src/main.ts",
     "start": "node dist/main.js",
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "openapi": "tsx --conditions=@openbot/source src/openapi-cli.ts"
+    "openapi": "tsx --conditions=@openbots/source src/openapi-cli.ts"
   },
   "dependencies": {
     "@hono/zod-openapi": "catalog:",
-    "@openbot/server": "workspace:*",
-    "@openbot/shared": "workspace:*",
+    "@openbots/server": "workspace:*",
+    "@openbots/shared": "workspace:*",
     "better-auth": "catalog:",
     "drizzle-orm": "catalog:",
     "hono": "catalog:",

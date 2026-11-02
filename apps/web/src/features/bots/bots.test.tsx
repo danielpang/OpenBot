@@ -1,5 +1,5 @@
-import { DEFAULT_LIMITS } from '@openbot/shared';
-import { Dialog } from '@openbot/ui';
+import { DEFAULT_LIMITS } from '@openbots/shared';
+import { Dialog } from '@openbots/ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, RouterContextProvider, RouterProvider } from '@tanstack/react-router';
 import type { ReactNode } from 'react';

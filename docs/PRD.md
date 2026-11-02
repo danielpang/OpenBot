@@ -1,6 +1,6 @@
-# OpenBot Product Requirements
+# OpenBots Product Requirements
 
-OpenBot is a source available, self-hosted Grok Bot. This PRD is anchored on xAI's "Designing Grok Bot" essay and the Grok Bot documentation. Where OpenBot deliberately differs (self-hosting, Docker sandboxes, an open connector model), the difference is called out.
+OpenBots is a source available, self-hosted Grok Bot. This PRD is anchored on xAI's "Designing Grok Bot" essay and the Grok Bot documentation. Where OpenBots deliberately differs (self-hosting, Docker sandboxes, an open connector model), the difference is called out.
 
 The test for every feature in this document is the one xAI used: **"Did this help someone delegate, or did it give them one more thing to manage?"**
 
@@ -10,7 +10,7 @@ The test for every feature in this document is the one xAI used: **"Did this hel
 
 Grok Bot's thesis: chat sessions are the wrong primary object for an agent that "persists beyond any one session and can carry responsibility on its own." The interface should be built around persistent agents, and "as agents take on more responsibility, the interface should ask less of the person."
 
-OpenBot adopts the following principles from the essay as product requirements:
+OpenBots adopts the following principles from the essay as product requirements:
 
 1. **Bots, not conversations, are the main objects.** "A Bot has a name. It has an avatar and a title. It remembers its conversations with you. It has its own computer and tools. When you come back tomorrow, you are coming back to the same Bot."
 2. **Only five concepts are visible.** Bots, Chats, Prompts, Tools, Artifacts. "Everything else could remain beneath the interface until the user had a reason to care about it." Runs, queues, models, sandboxes, and MCP sessions are implementation detail and stay out of the primary UI.
@@ -21,26 +21,26 @@ OpenBot adopts the following principles from the essay as product requirements:
 7. **Capabilities are shared, context is isolated.** "Tools and Skills live at the account level... Memory and Routines belong to the Bot."
 8. **Coordination is done by Bots, not by dashboards.** No assignment boards or explicit handoff controls. "Coordinating Bots handle routine routing and bring the user in when a decision requires judgment."
 9. **Work starts without the user.** "A prompt can start a session, but so can a schedule, an event, or another Bot."
-10. **Remove rather than add.** Grok Bot shipped after removing window and panel controls, computer-view options, and agent metadata. OpenBot's UI reviews use the same bar.
+10. **Remove rather than add.** Grok Bot shipped after removing window and panel controls, computer-view options, and agent metadata. The OpenBots UI reviews use the same bar.
 
 ---
 
 ## 2. The five objects
 
-| Object | Grok Bot definition | OpenBot |
+| Object | Grok Bot definition | OpenBots |
 | --- | --- | --- |
 | **Bot** | "persistent agents with their own identity, memory, runtime, and tools" | A named agent with an avatar, label, description (standing rules), model, memory, Routines, enabled Skills, tool permissions, and a screen on the owner's computer |
 | **Chat** | "the conversational interface for working with a Bot" | Each Bot has one persistent direct transcript with its owner. Group chats hold two to six Bots. Threads hang off a result or an approval. Bots also message each other directly |
 | **Prompt** | "give a Bot context or instructions. They can be used once, saved as Skills, or triggered automatically as Routines" | A message (used once), a Skill (saved in the account library, referenced with `/`), or a Routine (a prompt or Skill run by a schedule or an event, owned by a Bot) |
 | **Tool** | "let Bots access information and take action through software, APIs, connectors, the shell, or computer use" | Built-in tools, connectors (MCP servers and first-party integrations) at the account level, and the computer (shell, files, browser) |
-| **Artifact** | "documents, designs, code, data, and other durable outputs that Bots create or modify" | Versioned outputs stored by OpenBot, shown as cards in the transcript, openable in a viewer |
+| **Artifact** | "documents, designs, code, data, and other durable outputs that Bots create or modify" | Versioned outputs stored by OpenBots, shown as cards in the transcript, openable in a viewer |
 
 ---
 
 ## 3. Users
 
-- **Individual self-hoster.** Runs OpenBot with Docker on a Mac or a VPS, uses the Mac app or the web app, exposes it through a tunnel for webhooks and connector OAuth. A self-hosted install has one account, its owner, who owns all Bots and sets every setting. There is no admin concept: no members, invites, roles or audit log screens, and sign-up closes once the owner exists.
-- **Teams on the managed service.** The hosted OpenBots service is one server shared by many organizations. People sign up, create an organization or join one through an invite, and can belong to several. In each organization every member owns their own Bots, computer, connectors, Skills library and providers; owners and admins invite, suspend and remove members, set the organization's providers, limits and connector policy, and read its audit log, but never see members' Bots. Nothing crosses between organizations, even for someone in two of them. Organizations, roles, invites and the audit log are for this service only (`OPENBOT_DEPLOYMENT=managed`, built from `ee/`).
+- **Individual self-hoster.** Runs OpenBots with Docker on a Mac or a VPS, uses the Mac app or the web app, exposes it through a tunnel for webhooks and connector OAuth. A self-hosted install has one account, its owner, who owns all Bots and sets every setting. There is no admin concept: no members, invites, roles or audit log screens, and sign-up closes once the owner exists.
+- **Teams on the managed service.** The hosted OpenBots service is one server shared by many organizations. People sign up, create an organization or join one through an invite, and can belong to several. In each organization every member owns their own Bots, computer, connectors, Skills library and providers; owners and admins invite, suspend and remove members, set the organization's providers, limits and connector policy, and read its audit log, but never see members' Bots. Nothing crosses between organizations, even for someone in two of them. Organizations, roles, invites and the audit log are for this service only (`OPENBOTS_DEPLOYMENT=managed`, built from `ee/`).
 - **Integrator.** Wires external systems (GitHub, Slack, cron, scripts) to Bots through Routines and webhook endpoints, and reads Bot output through outbound events and Artifacts.
 
 ---
@@ -101,7 +101,7 @@ Each requirement has an ID for traceability into the technical plan. "Must" is v
 | ID | Requirement | Priority |
 | --- | --- | --- |
 | T1 | Tools live at the account level and are available to every Bot the account owns, subject to per-Bot permissions. | Must |
-| T2 | Connectors: add any MCP server (stdio or Streamable HTTP with OAuth 2.1) from a catalog, a custom form, or pasted `mcpServers` JSON. Every member can add catalog servers (stdio ones included, which run the catalog's pinned command) and any Streamable HTTP server. A custom stdio command runs a program on the OpenBot server, so only a workspace admin can add one, and only after an admin turns custom stdio servers on (off by default; see [SECURITY.md](SECURITY.md) S-1). Pasted JSON imports every server the member may add and lists each refused one with the reason. Connecting an account is one click where the provider registers OpenBots itself (dynamic client registration: Cloudflare, Vercel, Supabase, Neon, Railway, and any pasted URL whose server offers it): Connect opens the provider's sign-in (a popup in the browser, the default browser in the Mac app), the owner logs in and authorizes OpenBots, and the page says "<Provider> is connected. You can close this window." while the card turns Connected. A pasted URL needs nothing else; OpenBot finds out whether it needs OAuth. Providers without registration (GitHub, Slack, Gmail, Google Docs for now) take the owner's own OAuth app under Advanced. Expired or revoked sign-ins show one Reconnect button. First-party built-ins at 1.0: web search, web fetch, HTTP request, email (SMTP and IMAP), GitHub. | Must |
+| T2 | Connectors: add any MCP server (stdio or Streamable HTTP with OAuth 2.1) from a catalog, a custom form, or pasted `mcpServers` JSON. Every member can add catalog servers (stdio ones included, which run the catalog's pinned command) and any Streamable HTTP server. A custom stdio command runs a program on the OpenBots server, so only a workspace admin can add one, and only after an admin turns custom stdio servers on (off by default; see [SECURITY.md](SECURITY.md) S-1). Pasted JSON imports every server the member may add and lists each refused one with the reason. Connecting an account is one click where the provider registers OpenBots itself (dynamic client registration: Cloudflare, Vercel, Supabase, Neon, Railway, and any pasted URL whose server offers it): Connect opens the provider's sign-in (a popup in the browser, the default browser in the Mac app), the owner logs in and authorizes OpenBots, and the page says "<Provider> is connected. You can close this window." while the card turns Connected. A pasted URL needs nothing else; OpenBots finds out whether it needs OAuth. Providers without registration (GitHub, Slack, Gmail, Google Docs for now) take the owner's own OAuth app under Advanced. Expired or revoked sign-ins show one Reconnect button. First-party built-ins at 1.0: web search, web fetch, HTTP request, email (SMTP and IMAP), GitHub. | Must |
 | T3 | A workspace admin can block a connector for all members; blocked connectors show as "Disabled by admin". | Must |
 | T4 | Bots prefer connectors over the computer when a connector covers the task, and fall back to computer use otherwise. | Must |
 | T5 | Every side-effecting action passes an approval policy (auto, ask, deny) configurable per Bot and per tool, with safe defaults. Approval requests are widgets in the transcript and notifications on desktop. | Must |
@@ -136,7 +136,7 @@ Each requirement has an ID for traceability into the technical plan. "Must" is v
 
 ### 4.8 Webhook endpoints
 
-Grok Bot exposes webhooks only as a Routine trigger. OpenBot keeps that and adds a direct endpoint per Bot because self-hosters integrate with scripts and services that just want to "message the Bot."
+Grok Bot exposes webhooks only as a Routine trigger. OpenBots keeps that and adds a direct endpoint per Bot because self-hosters integrate with scripts and services that just want to "message the Bot."
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
@@ -269,8 +269,8 @@ Key screens:
 | Run records kept per Routine | 20 | Docs |
 | Computers per account | 1 | Docs |
 | Concurrent computer-use tasks per Bot | 1 | Docs |
-| Webhook payload size | 1 MB | OpenBot |
-| Sync webhook wait | 60 s | OpenBot |
+| Webhook payload size | 1 MB | OpenBots |
+| Sync webhook wait | 60 s | OpenBots |
 
 The admin can change the other limits (B8, U3). One computer per account and one computer-use task per Bot at a time are fixed in 1.0: the data model and the screen lock build them in, so they are not settings.
 

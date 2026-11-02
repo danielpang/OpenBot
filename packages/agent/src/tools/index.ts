@@ -1,4 +1,4 @@
-import { ToolGroupNameSchema, type ToolGroupName } from '@openbot/shared';
+import { ToolGroupNameSchema, type ToolGroupName } from '@openbots/shared';
 import { defaultSummary, type DefaultSummary, type ToolFacts } from '../policy/index.js';
 import { artifactTools } from './artifacts.js';
 import { builtinTools, NEEDS_CONNECTOR, TOOL_CONNECTOR, type BuiltinConnector } from './builtin.js';

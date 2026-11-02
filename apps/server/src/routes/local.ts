@@ -5,7 +5,7 @@ import { CLIENT_IP_HEADER, clientIp } from '../client-ip.js';
 import { DomainError, notFound } from '../errors.js';
 import { createRouter, problemResponse } from '../openapi.js';
 
-// The Mac app's sign-in for the stack it runs on This Mac (OPENBOT_LOCAL_TOKEN).
+// The Mac app's sign-in for the stack it runs on This Mac (OPENBOTS_LOCAL_TOKEN).
 // The app's main process holds the token and calls this before it loads the
 // web app, and again whenever the window lands on /sign-in: the owner never
 // sees a sign-in, sign-up or sign-out. The answer is an ordinary better-auth
@@ -19,7 +19,7 @@ import { createRouter, problemResponse } from '../openapi.js';
 // configured the route does not exist.
 
 export const LOCAL_SESSION_PATH = '/api/v1/local/session';
-export const LOCAL_TOKEN_HEADER = 'x-openbot-local-token';
+export const LOCAL_TOKEN_HEADER = 'x-openbots-local-token';
 
 /** The name an owner gets when the app sends none. */
 export const DEFAULT_OWNER_NAME = 'Me';
@@ -53,7 +53,7 @@ export const localRoutes = createRouter().openapi(
     tags: ['auth'],
     summary: 'Sign in the owner of the Mac app’s local stack (its main process only)',
     description:
-      'Needs OPENBOT_LOCAL_TOKEN in the `x-openbot-local-token` header. Creates the owner when there is none, then sets an ordinary session cookie. Browsers are refused.',
+      'Needs OPENBOTS_LOCAL_TOKEN in the `x-openbots-local-token` header. Creates the owner when there is none, then sets an ordinary session cookie. Browsers are refused.',
     request: {
       headers: z.object({ [LOCAL_TOKEN_HEADER]: z.string().optional() }),
       body: { required: false, content: { 'application/json': { schema: LocalSessionBody } } },

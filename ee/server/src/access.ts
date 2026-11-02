@@ -1,6 +1,6 @@
 import { createAccessControl } from 'better-auth/plugins/access';
 import { defaultStatements } from 'better-auth/plugins/organization/access';
-import type { Role } from '@openbot/server/workspace';
+import type { Role } from '@openbots/server/workspace';
 
 // Roles in an organization (plan 21.6), through better-auth's access
 // control. Owners and admins manage members, invitations, the organization's

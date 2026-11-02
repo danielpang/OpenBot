@@ -22,7 +22,7 @@ const local: ServerProfile = { id: 'local', name: 'This Mac', url: URL_, kind: '
 const remote: ServerProfile = {
   id: 'r1',
   name: 'Self-hosted',
-  url: 'https://openbot.example.com',
+  url: 'https://openbots.example.com',
   kind: 'remote',
 };
 
@@ -232,7 +232,7 @@ describe('the token stays in the main process', () => {
     const main = read('./index.ts');
     const uses = main.split('\n').filter((line) => /localToken|LOCAL_TOKEN/.test(line));
     expect(uses.map((line) => line.trim())).toEqual([
-      '? (process.env.OPENBOT_LOCAL_TOKEN ?? null)',
+      '? (process.env.OPENBOTS_LOCAL_TOKEN ?? null)',
       ': stack.localToken(),',
     ]);
     expect(main).not.toMatch(/additionalArguments[^\]]*[Tt]oken/);

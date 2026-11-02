@@ -11,24 +11,24 @@ export { errorParts, NETWORK_CLASH } from './error-parts.js';
 // keeps this module importable without Electron.
 
 export const STACK_CHANNELS = {
-  status: 'openbot:stack:status',
-  start: 'openbot:stack:start',
-  stop: 'openbot:stack:stop',
-  upgrade: 'openbot:stack:upgrade',
-  changePort: 'openbot:stack:change-port',
-  useOwnNetwork: 'openbot:stack:use-own-network',
-  startRuntime: 'openbot:stack:start-runtime',
-  logsStart: 'openbot:stack:logs:start',
-  logsStop: 'openbot:stack:logs:stop',
-  logsLine: 'openbot:stack:logs:line',
-  logsExit: 'openbot:stack:logs:exit',
+  status: 'openbots:stack:status',
+  start: 'openbots:stack:start',
+  stop: 'openbots:stack:stop',
+  upgrade: 'openbots:stack:upgrade',
+  changePort: 'openbots:stack:change-port',
+  useOwnNetwork: 'openbots:stack:use-own-network',
+  startRuntime: 'openbots:stack:start-runtime',
+  logsStart: 'openbots:stack:logs:start',
+  logsStop: 'openbots:stack:logs:stop',
+  logsLine: 'openbots:stack:logs:line',
+  logsExit: 'openbots:stack:logs:exit',
   /** main → renderer: the step a start or update has reached. */
-  progress: 'openbot:stack:progress',
+  progress: 'openbots:stack:progress',
 } as const;
 
 export const MAX_LOG_TAIL = 5000;
 
-/** What the renderer gets as `window.openbot.stack`. */
+/** What the renderer gets as `window.openbots.stack`. */
 export interface StackBridge {
   status(): Promise<StackStatus>;
   start(): Promise<StackStatus>;

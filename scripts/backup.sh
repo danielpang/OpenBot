@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backs up an OpenBot install (plan 16.3): the database, the files directory
+# Backs up an OpenBots install (plan 16.3): the database, the files directory
 # and every computer's home volume, then verifies what it wrote.
 #
 #   bash scripts/backup.sh [output dir]   # default: backups/<UTC timestamp>
@@ -11,16 +11,16 @@
 #
 # With Docker running it backs up the compose stack in this checkout (run it
 # from anywhere; the stack can be up or down). Without Docker it backs up a
-# development install from DATABASE_URL and OPENBOT_FILES_DIR (computers need
+# development install from DATABASE_URL and OPENBOTS_FILES_DIR (computers need
 # Docker and are skipped).
 #
-# The backup does not contain OPENBOT_MASTER_KEY. Keep .env (or at least the
+# The backup does not contain OPENBOTS_MASTER_KEY. Keep .env (or at least the
 # key) somewhere safe as well: stored secrets cannot be decrypted without it.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Any image with tar works; the Postgres image is already on the machine.
-HELPER_IMAGE="${OPENBOT_BACKUP_HELPER_IMAGE:-pgvector/pgvector:pg16}"
+HELPER_IMAGE="${OPENBOTS_BACKUP_HELPER_IMAGE:-pgvector/pgvector:pg16}"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() {
@@ -66,16 +66,16 @@ sha256() {
 archived_files() { tar -tvzf "$1" | grep -c '^-' || true; }
 
 compose() { (cd "$REPO_DIR" && docker compose "$@"); }
-# Runs a command on the files volume in a one-off openbot container. The
+# Runs a command on the files volume in a one-off openbots container. The
 # volume holds the server's files (uid 1000) and what stdio MCP servers wrote
-# as nobody, each private to its owner (S-1), and the openbot service holds no
+# as nobody, each private to its owner (S-1), and the openbots service holds no
 # capability that reads past file modes. So this runs as root with
 # DAC_READ_SEARCH and nothing else: it can read every file and change none.
 files_run() {
   local entrypoint="$1"
   shift
   compose run --rm --no-deps -T --user 0:0 --cap-add DAC_READ_SEARCH \
-    --entrypoint "$entrypoint" openbot "$@"
+    --entrypoint "$entrypoint" openbots "$@"
 }
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
@@ -84,14 +84,14 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   compose up -d --wait postgres
 
   log "Database"
-  compose exec -T postgres pg_dump -U openbot -d openbot -Fc >"$OUT/database.dump"
+  compose exec -T postgres pg_dump -U openbots -d openbots -Fc >"$OUT/database.dump"
   list_dump() { compose exec -T postgres pg_restore --list <"$OUT/database.dump"; }
 
   log "Files"
   files_run tar --numeric-owner -C /data/files -czf - . >"$OUT/files.tar.gz"
   source_files="$(files_run sh -c 'find /data/files -type f | wc -l' | tr -d '[:space:]')"
 
-  volumes="$(compose exec -T postgres psql -U openbot -d openbot -tA \
+  volumes="$(compose exec -T postgres psql -U openbots -d openbots -tA \
     -c 'SELECT volume_name FROM computers WHERE volume_name IS NOT NULL')"
   for volume in $volumes; do
     if ! docker volume inspect "$volume" >/dev/null 2>&1; then
@@ -106,7 +106,7 @@ else
   MODE=local
   [ -n "${DATABASE_URL:-}" ] || die "Docker is not running and DATABASE_URL is not set"
   command -v pg_dump >/dev/null 2>&1 || die "pg_dump is not installed"
-  FILES_DIR="${OPENBOT_FILES_DIR:-/data/files}"
+  FILES_DIR="${OPENBOTS_FILES_DIR:-/data/files}"
   log "Docker is not running; backing up the database and $FILES_DIR into $OUT"
 
   log "Database"
@@ -129,7 +129,7 @@ log "Verifying"
 # The dump must be readable by pg_restore and hold the users table's data.
 list_dump >"$OUT/database.list" || die "pg_restore cannot read database.dump"
 grep -q 'TABLE DATA public users ' "$OUT/database.list" ||
-  die "database.dump has no users table; is this an OpenBot database?"
+  die "database.dump has no users table; is this an OpenBots database?"
 rm "$OUT/database.list"
 # Each archive must be complete.
 for archive in "$OUT/files.tar.gz" "$OUT"/computers/*.tar.gz; do
@@ -143,7 +143,7 @@ if [ "$backed_up" != "$source_files" ]; then
 fi
 
 {
-  echo "# OpenBot backup; scripts/restore.sh checks this before restoring"
+  echo "# OpenBots backup; scripts/restore.sh checks this before restoring"
   echo "created $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "mode $MODE"
   echo "files $backed_up"

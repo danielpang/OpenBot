@@ -6,7 +6,7 @@ import { skillImportOverLimit, skillLimitReached } from './services/skills.js';
 import { createTestApp, ORIGIN, type TestApp } from './test-app.js';
 import { ensureWorkspace, updateSettings } from './workspace.js';
 
-// OPENBOT_DEPLOYMENT: a self-hosted install (the default) is one implicit
+// OPENBOTS_DEPLOYMENT: a self-hosted install (the default) is one implicit
 // organization with one account, its owner (plan 21.2). Sign-up closes once
 // it exists; there are no organization routes, which the managed build
 // (ee/server) adds; the settings that only matter with members keep their
@@ -141,7 +141,7 @@ describe('the managed service', () => {
   let admin: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     admin = (await t.signUp('ada@example.com')).cookie!;
   });
   afterAll(() => t.close());
@@ -163,7 +163,7 @@ describe('the single owner', () => {
   // PGlite runs the two one after the other; on Postgres the recheck under the
   // workspace lock in auth.ts is what keeps a second owner out.
   it('goes to one of two first signups sent together', async () => {
-    const t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    const t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     try {
       const results = await Promise.all(
         ['ada@example.com', 'bob@example.com'].map((email) => t.signUp(email)),
@@ -176,7 +176,7 @@ describe('the single owner', () => {
   });
 
   it('is the only account that gets in once a managed install turns self-hosted', async () => {
-    const t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    const t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     try {
       const ada = (await t.signUp('ada@example.com')).cookie!;
       const bob = (await t.signUp('bob@example.com')).cookie!;

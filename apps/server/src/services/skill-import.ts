@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
-import { defuse } from '@openbot/agent';
-import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbot/shared';
+import { defuse } from '@openbots/agent';
+import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbots/shared';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { BlockedAddressError, guardedFetch } from '../builtins/net.js';
@@ -193,7 +193,7 @@ class GithubReader {
     if (timeoutMs <= 0) throw timedOut();
     const headers: Record<string, string> = {
       accept,
-      'user-agent': 'OpenBot',
+      'user-agent': 'OpenBots',
       'x-github-api-version': '2022-11-28',
     };
     if (this.token) headers.authorization = `Bearer ${this.token}`;

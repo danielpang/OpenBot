@@ -33,7 +33,7 @@ export async function ownerActive(
 }
 
 /** The bus channel that tells API instances to close a member's sockets in one organization. */
-export const MEMBERSHIP_ENDED_CHANNEL = 'openbot:membership-ended';
+export const MEMBERSHIP_ENDED_CHANNEL = 'openbots:membership-ended';
 
 export interface MembershipEnded {
   userId: string;

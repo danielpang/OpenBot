@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
-import { COMPUTER_OFF_CLOSE_CODE } from '@openbot/shared';
+import { COMPUTER_OFF_CLOSE_CODE } from '@openbots/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
@@ -31,7 +31,7 @@ describe('computer socket proxies', () => {
   let botId: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     computer = await useTestComputer(t.ownerDeps);
     server = await new Promise<ServerType>((resolve) => {
       const s = serve({ fetch: t.app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s));

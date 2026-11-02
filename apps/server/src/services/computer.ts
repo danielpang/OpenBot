@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { labelFor, OwnerHasScreen, type ComputerServices, type StepRecord } from '@openbot/agent';
+import { labelFor, OwnerHasScreen, type ComputerServices, type StepRecord } from '@openbots/agent';
 import {
   AgentError,
   browserProfileDir,
@@ -15,8 +15,8 @@ import {
   type ComputerAgentClient,
   type ComputerProvider,
   type ComputerRef,
-} from '@openbot/computer';
-import { COMPUTER_OFF, wsEvent, type ComputerStatus } from '@openbot/shared';
+} from '@openbots/computer';
+import { COMPUTER_OFF, wsEvent, type ComputerStatus } from '@openbots/shared';
 import {
   and,
   asc,
@@ -43,7 +43,7 @@ import { MCP_CONTROL_CHANNEL, type McpControl } from './mcp-control.js';
 
 // The account's computer (plan 4.5, 9; K1 to K7). One `computers` row per
 // owner, created on first use through the configured provider (`remote` when
-// OPENBOT_COMPUTER_AGENT_URL is set, else `docker` when DOCKER_HOST is set,
+// OPENBOTS_COMPUTER_AGENT_URL is set, else `docker` when DOCKER_HOST is set,
 // else none: the computer tools are not offered). Starting it brings the
 // machine up and waits for its control agent; the idle sweep stops it after
 // `idle_timeout_min` (default 30) unless `always_on`, and the home volume
@@ -63,7 +63,7 @@ import { MCP_CONTROL_CHANNEL, type McpControl } from './mcp-control.js';
 // The remote provider is one machine for the whole install (plan 9.2): every
 // row gets the same agent, so its files under /home/bot and its cookie store
 // would be every account's. The first account to use it keeps it, and the
-// others are refused, unless the operator sets OPENBOT_COMPUTER_AGENT_SHARED.
+// others are refused, unless the operator sets OPENBOTS_COMPUTER_AGENT_SHARED.
 // Displays are numbered per machine, so on a shared agent each account's Bots
 // get displays no other account's Bot holds.
 
@@ -130,14 +130,14 @@ function envChanged(deps: AppDeps, row: ComputerRow): boolean {
 
 /**
  * True when the machine was made on another sandbox network than the
- * configured one (OPENBOT_SANDBOX_NETWORK changed, for example when the Mac
+ * configured one (OPENBOTS_SANDBOX_NETWORK changed, for example when the Mac
  * app moved its stack off a network another stack holds).
  */
 function networkChanged(deps: AppDeps, row: ComputerRow): boolean {
   return (specOf(row).network ?? SANDBOX_NETWORK) !== deps.config.sandboxNetwork.name;
 }
 
-/** True when the machine runs another image than the configured one: OpenBot was upgraded. */
+/** True when the machine runs another image than the configured one: OpenBots was upgraded. */
 function imageChanged(deps: AppDeps, row: ComputerRow): boolean {
   return (specOf(row).image ?? deps.config.sandboxImage) !== deps.config.sandboxImage;
 }
@@ -161,11 +161,11 @@ export const computerOff = () =>
   new DomainError(409, COMPUTER_OFF, 'The computer is off. Start it first.');
 
 const NO_PROVIDER =
-  'This install has no computer: set DOCKER_HOST (the docker guard) or OPENBOT_COMPUTER_AGENT_URL';
+  'This install has no computer: set DOCKER_HOST (the docker guard) or OPENBOTS_COMPUTER_AGENT_URL';
 
 const REMOTE_TAKEN =
   "This install's computer is one remote machine, and another account already uses it. " +
-  'An administrator can set OPENBOT_COMPUTER_AGENT_SHARED=true to let every account share it, ' +
+  'An administrator can set OPENBOTS_COMPUTER_AGENT_SHARED=true to let every account share it, ' +
   'files and logins included.';
 
 // One provider per process: keyed by its config, which every deps of the process shares.
@@ -181,7 +181,7 @@ export function computerProvider(deps: AppDeps): ComputerProvider | null {
     const { computerAgent, dockerHost } = deps.config;
     if (computerAgent?.shared) {
       deps.logger.warn(
-        'OPENBOT_COMPUTER_AGENT_SHARED is on: every account shares the remote computer, its files and its logins',
+        'OPENBOTS_COMPUTER_AGENT_SHARED is on: every account shares the remote computer, its files and its logins',
       );
     }
     providers.set(
@@ -288,7 +288,7 @@ export async function ensureComputer(
     await deps.db.transaction(async (tx) => {
       // Two accounts asking at once: one takes the remote machine.
       if (machines.name === 'remote') {
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('openbot:remote-computer'))`);
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('openbots:remote-computer'))`);
       }
       await assertRemoteFor(deps, owner, tx);
       await tx
@@ -411,7 +411,7 @@ async function start(deps: AppDeps, owner: Owner, by: AuditActor): Promise<Start
     return { computer: await touch(deps, row), durationMs: null, updated: false };
   }
   const began = Date.now();
-  // Removed behind OpenBot's back: made again, same home volume.
+  // Removed behind the server's back: made again, same home volume.
   if (machine === 'missing') row = await createMachine(deps, row, by);
   // Made from an older image (an upgrade, plan 16.3), before the egress
   // proxy or the timezone changed, or on another sandbox network: made again,
@@ -758,7 +758,7 @@ export async function ensureScreen(
       const shared = computer.provider === 'remote' && computer.agentUrl;
       if (shared) {
         await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtext(${`openbot:screens:${computer.agentUrl}`}))`,
+          sql`select pg_advisory_xact_lock(hashtext(${`openbots:screens:${computer.agentUrl}`}))`,
         );
       }
       const taken = await tx

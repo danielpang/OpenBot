@@ -1,4 +1,4 @@
-import type { PolicyDecision } from '@openbot/shared';
+import type { PolicyDecision } from '@openbots/shared';
 import { z } from 'zod';
 import type { ToolAnnotations } from '../policy/index.js';
 import type { AnyAgentTool, LoginNotice, ToolContext, ToolGroup } from './types.js';

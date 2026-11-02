@@ -1,4 +1,4 @@
-import type { ModelConfig, ProviderKind, ProviderProtocol } from '@openbot/shared';
+import type { ModelConfig, ProviderKind, ProviderProtocol } from '@openbots/shared';
 import type { JSONValue } from 'ai';
 
 // `model_config.reasoning` to AI SDK `providerOptions` (plan 5.9). The Bot's

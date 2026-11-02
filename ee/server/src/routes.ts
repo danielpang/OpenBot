@@ -4,22 +4,22 @@ import {
   requireAdmin,
   requireManaged,
   requireUser,
-} from '@openbot/server/middleware/auth';
+} from '@openbots/server/middleware/auth';
 import {
   adminProblems,
   authenticated,
   authProblems,
   createRouter,
   problemResponse,
-} from '@openbot/server/openapi';
-import { listAudit, type AuditListing } from '@openbot/server/services/audit';
-import { getOrganization } from '@openbot/server/workspace';
+} from '@openbots/server/openapi';
+import { listAudit, type AuditListing } from '@openbots/server/services/audit';
+import { getOrganization } from '@openbots/server/workspace';
 import type { Context } from 'hono';
-import type { AppEnv } from '@openbot/server/context';
+import type { AppEnv } from '@openbots/server/context';
 import { setCookie } from 'hono/cookie';
 import { and, eq, gt } from 'drizzle-orm';
-import { schema } from '@openbot/server/db/client';
-import { notFound } from '@openbot/server/errors';
+import { schema } from '@openbots/server/db/client';
+import { notFound } from '@openbots/server/errors';
 import type { EmailOptions } from './email.js';
 import { INVITE_COOKIE, INVITE_COOKIE_SECONDS, signInviteCookie } from './plugin.js';
 import {
@@ -40,7 +40,7 @@ import {
   type MemberView,
   type OrganizationsDeps,
 } from './organizations.js';
-import { asDirectory } from '@openbot/server/db/scope';
+import { asDirectory } from '@openbots/server/db/scope';
 
 // The managed service's organization routes (plan 21.5), under /api/v1:
 //

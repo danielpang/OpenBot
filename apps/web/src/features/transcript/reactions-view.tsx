@@ -1,4 +1,4 @@
-import { cn } from '@openbot/ui';
+import { cn } from '@openbots/ui';
 import { useState } from 'react';
 import type { Reaction } from './api.js';
 import { REACTION_EMOJI, type ReactionChip } from './reactions.js';

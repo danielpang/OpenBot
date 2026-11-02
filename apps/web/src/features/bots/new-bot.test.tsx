@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import type { WsClient } from '@openbot/api-client';
-import { Dialog } from '@openbot/ui';
+import type { WsClient } from '@openbots/api-client';
+import { Dialog } from '@openbots/ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,

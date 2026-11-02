@@ -1,5 +1,5 @@
-import { Avatar } from '@openbot/avatars/react';
-import { cn } from '@openbot/ui';
+import { Avatar } from '@openbots/avatars/react';
+import { cn } from '@openbots/ui';
 import type { Bot } from '../bots/queries.js';
 import { GROUP_MIN } from './api.js';
 

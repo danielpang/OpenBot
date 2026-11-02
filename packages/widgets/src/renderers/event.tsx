@@ -1,4 +1,4 @@
-import { cn } from '@openbot/ui';
+import { cn } from '@openbots/ui';
 import type { z } from 'zod';
 import type { EventPropsSchema } from '../kinds/event.js';
 import type { WidgetRendererProps } from './types.js';

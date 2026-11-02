@@ -1,8 +1,8 @@
-import { startFakeOpenAI, type FakeOpenAI } from '@openbot/models/testing';
+import { startFakeOpenAI, type FakeOpenAI } from '@openbots/models/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { schema } from '../db/client.js';
-import type { ComputerProvider } from '@openbot/computer';
+import type { ComputerProvider } from '@openbots/computer';
 import { setComputerProvider } from '../services/computer.js';
 import { sealPlaintextProviderHeaders } from '../services/providers.js';
 import { createTestApp, type TestApp } from '../test-app.js';
@@ -54,10 +54,10 @@ describe('/api/v1/providers', () => {
 
   beforeAll(async () => {
     t = await createTestApp({
-      OPENBOT_DEPLOYMENT: 'managed',
-      OPENBOT_SIGNUP_MODE: 'open',
+      OPENBOTS_DEPLOYMENT: 'managed',
+      OPENBOTS_SIGNUP_MODE: 'open',
       // The fakes listen on 127.0.0.1; the hosted service keeps this off.
-      OPENBOT_LOCAL_ENDPOINTS: 'true',
+      OPENBOTS_LOCAL_ENDPOINTS: 'true',
     });
     admin = (await t.signUp('admin@example.com')).cookie!;
     member = (await t.signUp('member@example.com')).cookie!;

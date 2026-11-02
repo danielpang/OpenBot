@@ -1,5 +1,5 @@
-import { Avatar } from '@openbot/avatars/react';
-import { Button, cn, XIcon } from '@openbot/ui';
+import { Avatar } from '@openbots/avatars/react';
+import { Button, cn, XIcon } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
   useId,

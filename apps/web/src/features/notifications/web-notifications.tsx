@@ -4,8 +4,8 @@ import {
   type Notice,
   type NoticeContext,
   type WsEvent,
-} from '@openbot/shared';
-import { Button } from '@openbot/ui';
+} from '@openbots/shared';
+import { Button } from '@openbots/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -17,7 +17,7 @@ import { useRealtime } from '../transcript/realtime.js';
 
 // Browser notifications (T5, P1, N1) for the kinds the Mac app shows:
 // approvals, questions, mentions of the owner, Routine exceptions and long
-// tasks that finished. Which events notify is decided in @openbot/shared
+// tasks that finished. Which events notify is decided in @openbots/shared
 // (notices.ts), the same watcher the Mac app uses. They listen on the one
 // realtime socket and need a one-time permission from Settings > Account.
 // Clicking one focuses the window, opens the Bot (or the group the event is

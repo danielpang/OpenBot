@@ -1,4 +1,4 @@
-import { ArtifactKindSchema } from '@openbot/shared';
+import { ArtifactKindSchema } from '@openbots/shared';
 import { z } from 'zod';
 import { defineWidget } from './types.js';
 

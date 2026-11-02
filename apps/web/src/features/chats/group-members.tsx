@@ -1,4 +1,4 @@
-import { Avatar } from '@openbot/avatars/react';
+import { Avatar } from '@openbots/avatars/react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -6,7 +6,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@openbot/ui';
+} from '@openbots/ui';
 import type { Bot } from '../bots/queries.js';
 import { GROUP_MIN } from './api.js';
 

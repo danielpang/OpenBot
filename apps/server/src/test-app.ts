@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DEFAULT_CAPABILITIES } from '@openbot/shared';
+import { DEFAULT_CAPABILITIES } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import { createApp, type App } from './app.js';
 import { createAuth } from './auth.js';
@@ -20,12 +20,12 @@ import { ensureWorkspace, organizationSlug, type Role } from './workspace.js';
 // drive it the way a browser or script would.
 //
 // The config is built from `env` alone, never from process.env, so anything
-// the server would default to a path in the image (OPENBOT_FILES_DIR is
+// the server would default to a path in the image (OPENBOTS_FILES_DIR is
 // /data/files) has to be given here. Each app stores files in its own
 // temporary directory, removed on close, unless the test names one.
 //
 // Apps are self-hosted, like the server's default: one account, and a second
-// signup is refused. Tests with several users pass `OPENBOT_DEPLOYMENT:
+// signup is refused. Tests with several users pass `OPENBOTS_DEPLOYMENT:
 // 'managed'`. The core alone makes no organizations (plan 21.5), so without
 // an organizations extension `signUp` puts each new user in the default
 // organization, the first as its owner, and makes it their session's active
@@ -100,15 +100,15 @@ export async function createTestApp(
   { rateLimit = false, extensions }: TestAppOptions = {},
 ): Promise<TestApp> {
   const testDb = await createTestDb();
-  const ownFilesDir = env.OPENBOT_FILES_DIR
+  const ownFilesDir = env.OPENBOTS_FILES_DIR
     ? undefined
-    : await mkdtemp(path.join(tmpdir(), 'openbot-test-files-'));
+    : await mkdtemp(path.join(tmpdir(), 'openbots-test-files-'));
   const config: Config = loadConfig({
-    OPENBOT_MASTER_KEY: generateMasterKey(),
+    OPENBOTS_MASTER_KEY: generateMasterKey(),
     DATABASE_URL: 'postgres://unused',
-    OPENBOT_PUBLIC_URL: ORIGIN,
-    OPENBOT_DEPLOYMENT: 'self_hosted',
-    ...(ownFilesDir ? { OPENBOT_FILES_DIR: ownFilesDir } : {}),
+    OPENBOTS_PUBLIC_URL: ORIGIN,
+    OPENBOTS_DEPLOYMENT: 'self_hosted',
+    ...(ownFilesDir ? { OPENBOTS_FILES_DIR: ownFilesDir } : {}),
     ...env,
   });
   const logger = createLogger('silent');

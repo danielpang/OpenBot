@@ -1,4 +1,4 @@
-import { EVENTS_CHANNEL, type EventBus, type JobQueue, type WsEvent } from '@openbot/shared';
+import { EVENTS_CHANNEL, type EventBus, type JobQueue, type WsEvent } from '@openbots/shared';
 import type { Config } from '../config.js';
 import { currentWorkspace, inWorkspace } from '../db/scope.js';
 import { RedisEventBus } from './bus-redis.js';
@@ -9,7 +9,7 @@ import { MemoryRateLimiter, RedisRateLimiter, type RateLimiter } from './rate-li
 
 // Queues, the event bus and the rate limiter: Redis-backed when REDIS_URL is
 // set, in-process otherwise. In-process only works when the API and the
-// workers share one process (OPENBOT_ROLE=all).
+// workers share one process (OPENBOTS_ROLE=all).
 
 export interface Infra {
   kind: 'redis' | 'memory';

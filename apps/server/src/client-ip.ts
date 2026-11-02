@@ -10,7 +10,7 @@ import type { AppEnv } from './context.js';
 // the header is ignored and the peer is the client.
 
 /** Set by `createApp` on requests it hands to better-auth; any inbound copy is replaced. */
-export const CLIENT_IP_HEADER = 'x-openbot-client-ip';
+export const CLIENT_IP_HEADER = 'x-openbots-client-ip';
 
 /** `::ffff:1.2.3.4` as `1.2.3.4`, so one client has one key and one allowlist match. */
 export function normalizeIp(address: string): string {

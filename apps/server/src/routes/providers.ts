@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { loadCatalog } from '@openbot/models';
+import { loadCatalog } from '@openbots/models';
 import {
   botModelNeeds,
   ModelCapabilitiesSchema,
@@ -12,7 +12,7 @@ import {
   ProviderProtocolSchema,
   ProviderStatusSchema,
   ProviderTestResultSchema,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import type { Context } from 'hono';
 import type { AppEnv, CurrentUser } from '../context.js';
 import { forbidden } from '../errors.js';

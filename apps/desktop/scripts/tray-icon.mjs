@@ -2,7 +2,7 @@
 // template images the tray loads: trayTemplate.png (16 px) and
 // trayTemplate@2x.png (32 px). The "Template" suffix tells macOS to tint the
 // black-and-alpha image for a light or dark menu bar. The PNGs are committed;
-// run `pnpm --filter @openbot/desktop tray-icon` after changing the SVG.
+// run `pnpm --filter @openbots/desktop tray-icon` after changing the SVG.
 // src/main/tray-icon.test.ts checks that the committed files match.
 
 import { readFileSync, writeFileSync } from 'node:fs';

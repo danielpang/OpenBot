@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/ee-web",
+  "name": "@openbots/ee-web",
   "version": "0.0.0",
   "private": true,
   "description": "The managed OpenBots web app: the core app with organizations",
@@ -14,10 +14,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openbot/api-client": "workspace:*",
-    "@openbot/shared": "workspace:*",
-    "@openbot/ui": "workspace:*",
-    "@openbot/web": "workspace:*",
+    "@openbots/api-client": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "@openbots/ui": "workspace:*",
+    "@openbots/web": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "openapi-fetch": "catalog:",

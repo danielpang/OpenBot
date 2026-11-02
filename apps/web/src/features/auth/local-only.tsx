@@ -10,7 +10,7 @@ export function LocalOnly() {
   return (
     <AuthCard title={LOCAL_ONLY_TITLE}>
       <p className="text-center text-sm text-muted-foreground">
-        This OpenBots runs on your Mac, and the app signs you in.
+        This OpenBots server runs on your Mac, and the app signs you in.
       </p>
     </AuthCard>
   );

@@ -1,4 +1,4 @@
-import { withHandleSuffix } from '@openbot/shared';
+import { withHandleSuffix } from '@openbots/shared';
 import { eq } from 'drizzle-orm';
 import { schema, type Db } from '../db/client.js';
 

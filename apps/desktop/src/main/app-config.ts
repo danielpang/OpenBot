@@ -1,7 +1,7 @@
 // What the build tells the app (plan 14.4). A release build sets
-// OPENBOT_CLOUD_URL, the hosted OpenBots server behind "Sign in to an OpenBots
+// OPENBOTS_CLOUD_URL, the hosted OpenBots server behind "Sign in to an OpenBots
 // account", and electron-builder.publish.cjs writes it into the packaged
-// package.json as `openbot.cloudUrl`. A development run reads the variable
+// package.json as `openbots.cloudUrl`. A development run reads the variable
 // itself. Without it the choice is shown, but disabled.
 
 /** The hosted server's origin when `value` is an https URL (http only for this Mac, in development). */
@@ -29,7 +29,7 @@ export function cloudUrl(options: {
   packageJson?: unknown;
   env: NodeJS.ProcessEnv;
 }): string | null {
-  if (!options.packaged) return parseCloudUrl(options.env.OPENBOT_CLOUD_URL);
-  const config = (options.packageJson as { openbot?: { cloudUrl?: unknown } } | null)?.openbot;
+  if (!options.packaged) return parseCloudUrl(options.env.OPENBOTS_CLOUD_URL);
+  const config = (options.packageJson as { openbots?: { cloudUrl?: unknown } } | null)?.openbots;
   return parseCloudUrl(config?.cloudUrl);
 }

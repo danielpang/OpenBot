@@ -1,5 +1,5 @@
-import type { ToolNameMap } from '@openbot/models';
-import type { MessagePart } from '@openbot/shared';
+import type { ToolNameMap } from '@openbots/models';
+import type { MessagePart } from '@openbots/shared';
 import {
   stepCountIs,
   streamText,

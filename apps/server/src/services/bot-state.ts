@@ -1,4 +1,4 @@
-import { wsEvent, type BotStateKindSchema, type JobHandler } from '@openbot/shared';
+import { wsEvent, type BotStateKindSchema, type JobHandler } from '@openbots/shared';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { z } from 'zod';
 import type { AppDeps } from '../context.js';
@@ -27,7 +27,7 @@ export interface SettleJob {
 
 export interface SetStateOptions {
   runId?: string | null;
-  /** The activity label shown on hover (I3), from `labelFor` in `@openbot/agent`. */
+  /** The activity label shown on hover (I3), from `labelFor` in `@openbots/agent`. */
   currentAction?: string | null;
   /** The tool running while `working`; a computer tool lights the title-bar icon (I5). */
   currentTool?: string | null;

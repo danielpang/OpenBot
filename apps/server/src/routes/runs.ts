@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { EVENTS_CHANNEL, RunStatusSchema, RunStepTypeSchema, type WsEvent } from '@openbot/shared';
+import { EVENTS_CHANNEL, RunStatusSchema, RunStepTypeSchema, type WsEvent } from '@openbots/shared';
 import { streamSSE } from 'hono/streaming';
 import { requireUser } from '../middleware/auth.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';

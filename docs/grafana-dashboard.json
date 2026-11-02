@@ -22,10 +22,10 @@
       "version": "1.0.0"
     }
   ],
-  "title": "OpenBot",
-  "uid": "openbot-overview",
-  "description": "Runs, the run queue, webhooks and provider latency from OpenBot /metrics (plan 16.3)",
-  "tags": ["openbot"],
+  "title": "OpenBots",
+  "uid": "openbots-overview",
+  "description": "Runs, the run queue, webhooks and provider latency from OpenBots /metrics (plan 16.3)",
+  "tags": ["openbots"],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
@@ -84,7 +84,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(openbot_runs{status=\"queued\"})"
+          "expr": "max(openbots_runs{status=\"queued\"})"
         }
       ]
     },
@@ -130,7 +130,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(openbot_runs{status=\"running\"})"
+          "expr": "max(openbots_runs{status=\"running\"})"
         }
       ]
     },
@@ -176,7 +176,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(openbot_runs{status=\"waiting\"})"
+          "expr": "max(openbots_runs{status=\"waiting\"})"
         }
       ]
     },
@@ -222,7 +222,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(openbot_runs_finished_total[1h]))"
+          "expr": "sum(increase(openbots_runs_finished_total[1h]))"
         }
       ]
     },
@@ -269,7 +269,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (status) (rate(openbot_runs_finished_total[5m])) * 60",
+          "expr": "sum by (status) (rate(openbots_runs_finished_total[5m])) * 60",
           "legendFormat": "{{status}}"
         }
       ]
@@ -318,7 +318,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max by (status) (openbot_runs)",
+          "expr": "max by (status) (openbots_runs)",
           "legendFormat": "{{status}}"
         }
       ]
@@ -367,7 +367,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(openbot_run_duration_seconds_bucket[15m])))",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(openbots_run_duration_seconds_bucket[15m])))",
           "legendFormat": "p50"
         },
         {
@@ -376,7 +376,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(openbot_run_duration_seconds_bucket[15m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(openbots_run_duration_seconds_bucket[15m])))",
           "legendFormat": "p95"
         }
       ]
@@ -425,7 +425,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(openbot_provider_step_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, provider) (rate(openbots_provider_step_duration_seconds_bucket[5m])))",
           "legendFormat": "{{provider}}"
         }
       ]
@@ -473,7 +473,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (outcome) (rate(openbot_webhook_deliveries_total{direction=\"inbound\"}[5m])) * 60",
+          "expr": "sum by (outcome) (rate(openbots_webhook_deliveries_total{direction=\"inbound\"}[5m])) * 60",
           "legendFormat": "{{outcome}}"
         }
       ]
@@ -521,7 +521,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (outcome) (rate(openbot_webhook_deliveries_total{direction=\"outbound\"}[5m])) * 60",
+          "expr": "sum by (outcome) (rate(openbots_webhook_deliveries_total{direction=\"outbound\"}[5m])) * 60",
           "legendFormat": "{{outcome}}"
         }
       ]

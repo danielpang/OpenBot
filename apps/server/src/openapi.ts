@@ -54,7 +54,7 @@ export function openApiDocument(
   return app.getOpenAPI31Document({
     openapi: '3.1.0',
     info: {
-      title: 'OpenBot API',
+      title: 'OpenBots API',
       version: '0.0.0',
       description: 'Accounts and sessions live under `/api/auth/*` (better-auth).',
     },

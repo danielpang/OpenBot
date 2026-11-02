@@ -1,5 +1,5 @@
-import { unwrap, type components } from '@openbot/api-client';
-import type { ModelNeed } from '@openbot/shared';
+import { unwrap, type components } from '@openbots/api-client';
+import type { ModelNeed } from '@openbots/shared';
 import { queryOptions } from '@tanstack/react-query';
 import { api } from '../../app/api.js';
 

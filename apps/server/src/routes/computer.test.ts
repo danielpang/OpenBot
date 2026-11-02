@@ -1,6 +1,6 @@
-import { createRemoteProvider } from '@openbot/computer';
-import { startFakeAgent, type FakeAgent } from '@openbot/computer/testing';
-import { EVENTS_CHANNEL, type WsEvent } from '@openbot/shared';
+import { createRemoteProvider } from '@openbots/computer';
+import { startFakeAgent, type FakeAgent } from '@openbots/computer/testing';
+import { EVENTS_CHANNEL, type WsEvent } from '@openbots/shared';
 import { desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
@@ -25,7 +25,7 @@ describe('computer API', () => {
   const events: WsEvent[] = [];
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     computer = await useTestComputer(t.ownerDeps);
     dana = (await t.signUp('dana@example.com')).cookie!;
     eve = (await t.signUp('eve@example.com')).cookie!;
@@ -80,7 +80,7 @@ describe('computer API', () => {
     expect(created.HostConfig).toMatchObject({
       CapDrop: ['ALL'],
       ReadonlyRootfs: true,
-      NetworkMode: 'openbot-sandbox',
+      NetworkMode: 'openbots-sbx',
     });
     // The token goes in as a file, not in the container's environment (S-7).
     expect(JSON.stringify(created)).not.toContain(computer.agent.token);
@@ -91,7 +91,7 @@ describe('computer API', () => {
       .from(schema.computers)
       .where(eq(schema.computers.ownerId, danaId));
     expect(Buffer.from(row!.agentToken!).toString()).not.toContain(computer.agent.token);
-    expect(row!.volumeName).toBe(`openbot-home-${row!.id}`);
+    expect(row!.volumeName).toBe(`openbots-home-${row!.id}`);
 
     const statuses = events.filter((e) => e.type === 'computer.status');
     expect(statuses.map((e) => e.payload.status)).toEqual([
@@ -508,15 +508,15 @@ describe('computer API', () => {
       (await t.db.select().from(schema.computers).where(eq(schema.computers.ownerId, danaId)))[0]!
         .spec as Record<string, unknown>;
     // Made on the default network, and recorded so.
-    expect(await specOf()).toMatchObject({ network: 'openbot-sandbox' });
+    expect(await specOf()).toMatchObject({ network: 'openbots-sbx' });
     const made = creates().length;
 
     const old = t.deps.config.sandboxNetwork;
-    t.deps.config.sandboxNetwork = { name: 'openbot-app-sandbox-254', bridge: 'openbot-app-254' };
+    t.deps.config.sandboxNetwork = { name: 'openbots-app-sandbox-254', bridge: 'openbots-a-254' };
     try {
       expect((await call(dana, 'POST', '/computer/start')).status).toBe(200);
       expect(creates()).toHaveLength(made + 1);
-      expect(await specOf()).toMatchObject({ network: 'openbot-app-sandbox-254' });
+      expect(await specOf()).toMatchObject({ network: 'openbots-app-sandbox-254' });
       expect(computer.docker.volumes).toEqual(volumes);
       await call(dana, 'POST', '/computer/stop');
       // Unchanged since: started as it is.
@@ -529,7 +529,7 @@ describe('computer API', () => {
     // Back on the default network: made again there.
     expect((await call(dana, 'POST', '/computer/start')).status).toBe(200);
     expect(creates()).toHaveLength(made + 2);
-    expect(await specOf()).toMatchObject({ network: 'openbot-sandbox' });
+    expect(await specOf()).toMatchObject({ network: 'openbots-sbx' });
     await call(dana, 'POST', '/computer/stop');
   });
 
@@ -574,7 +574,7 @@ describe('computer API', () => {
     expect((await call(dana, 'POST', '/computer/start')).status).toBe(200);
     const made = creates().length;
 
-    t.deps.config.sandboxImage = 'ghcr.io/danielpang/openbot/computer:9.9.9';
+    t.deps.config.sandboxImage = 'ghcr.io/danielpang/openbots/computer:9.9.9';
     try {
       // Running: it keeps its container, so no task loses its machine.
       expect((await call(dana, 'POST', '/computer/start')).status).toBe(200);
@@ -585,14 +585,14 @@ describe('computer API', () => {
       const seen = events.length;
       expect((await call(dana, 'POST', '/computer/start')).status).toBe(200);
       expect(creates()).toHaveLength(made + 1);
-      expect(imageOf(-1)).toBe('ghcr.io/danielpang/openbot/computer:9.9.9');
+      expect(imageOf(-1)).toBe('ghcr.io/danielpang/openbots/computer:9.9.9');
       expect(statusesSince(seen)).toEqual(['updating', 'stopped', 'starting', 'running']);
       expect(computer.docker.volumes).toEqual(volumes);
       const [row] = await t.db
         .select()
         .from(schema.computers)
         .where(eq(schema.computers.ownerId, danaId));
-      expect(row!.spec).toMatchObject({ image: 'ghcr.io/danielpang/openbot/computer:9.9.9' });
+      expect(row!.spec).toMatchObject({ image: 'ghcr.io/danielpang/openbots/computer:9.9.9' });
       const [audit] = await t.db
         .select()
         .from(schema.auditLog)
@@ -601,7 +601,7 @@ describe('computer API', () => {
         .limit(1);
       expect(audit!.metadata).toMatchObject({
         updated: true,
-        image: 'ghcr.io/danielpang/openbot/computer:9.9.9',
+        image: 'ghcr.io/danielpang/openbots/computer:9.9.9',
       });
 
       // Up to date since: started as it is.
@@ -782,8 +782,8 @@ describe('computer API', () => {
 
   it('answers 503 without a computer provider', async () => {
     const other = await createTestApp({
-      OPENBOT_DEPLOYMENT: 'managed',
-      OPENBOT_SIGNUP_MODE: 'open',
+      OPENBOTS_DEPLOYMENT: 'managed',
+      OPENBOTS_SIGNUP_MODE: 'open',
     });
     try {
       setComputerProvider(other.ownerDeps, null);
@@ -813,7 +813,7 @@ describe('the remote computer (plan 9.2)', () => {
   let eve: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     agent = await startFakeAgent({ token: 'remote-token' });
     t.deps.config.computerAgent = { url: agent.url, token: 'remote-token', shared: false };
     setComputerProvider(
@@ -851,7 +851,7 @@ describe('the remote computer (plan 9.2)', () => {
     expect(refused.status).toBe(503);
     expect(await refused.json()).toMatchObject({
       code: 'COMPUTER_UNAVAILABLE',
-      title: expect.stringContaining('OPENBOT_COMPUTER_AGENT_SHARED'),
+      title: expect.stringContaining('OPENBOTS_COMPUTER_AGENT_SHARED'),
     });
     const bot = (await (await call(eve, 'POST', '/bots', { name: 'Eve bot' })).json()) as {
       id: string;

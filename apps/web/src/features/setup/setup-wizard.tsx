@@ -7,7 +7,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@openbot/ui';
+} from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -91,7 +91,7 @@ function AccountStep({ onDone }: { onDone: () => void }) {
   return (
     <>
       <p className="text-sm text-muted-foreground">
-        This is a new OpenBot. Your account will be its owner.
+        This is a new OpenBots server. Your account will be its owner.
       </p>
       <AuthForm
         submitLabel="Create account"

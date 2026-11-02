@@ -149,7 +149,7 @@ describe('catalog.json', () => {
 
 describe('catalogLaunch (S-20)', () => {
   const filesystem = () => catalogEntry('filesystem')!;
-  const bin = '/opt/openbot/mcp/node_modules/.bin/mcp-server-filesystem';
+  const bin = '/opt/openbots/mcp/node_modules/.bin/mcp-server-filesystem';
   const install = { dir: DEFAULT_CATALOG_INSTALL_DIR, allowNpx: false };
 
   it('runs the pre-installed binary without the npx prefix', () => {
@@ -170,7 +170,7 @@ describe('catalogLaunch (S-20)', () => {
       `Filesystem is not installed: ${bin} is missing.`,
     );
     expect(() => catalogLaunch(filesystem(), install, () => false)).toThrow(
-      /OPENBOT_MCP_NPX_FALLBACK=true/,
+      /OPENBOTS_MCP_NPX_FALLBACK=true/,
     );
   });
 
@@ -209,7 +209,7 @@ describe('docker/mcp-catalog', () => {
   });
 
   // The server image runs them on the host; the computer image in each
-  // owner's computer (OPENBOT_STDIO_RUNNER=computer), at the same path.
+  // owner's computer (OPENBOTS_STDIO_RUNNER=computer), at the same path.
   it.each(['server.Dockerfile', 'computer.Dockerfile'])(
     'is installed into %s from the lockfile',
     (name) => {

@@ -1,4 +1,4 @@
-import { Button, cn } from '@openbot/ui';
+import { Button, cn } from '@openbots/ui';
 import { useMutation } from '@tanstack/react-query';
 import { ErrorText } from '../models/error-text.js';
 import { updateComputerSettings, type Computer } from './api.js';

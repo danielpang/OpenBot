@@ -1,4 +1,4 @@
-import { Button } from '@openbot/ui';
+import { Button } from '@openbots/ui';
 import { ErrorText } from '../models/error-text.js';
 import { useStartComputer } from './live.js';
 

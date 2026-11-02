@@ -7,7 +7,7 @@ import {
   type AnyAgentTool,
   type BuiltinServices,
   type ToolContext,
-} from '@openbot/agent';
+} from '@openbots/agent';
 import { SMTPServer } from 'smtp-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { schema } from '../db/client.js';
@@ -541,7 +541,7 @@ describe('loadBuiltins', () => {
   let cookie: string;
   let botId: string;
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     cookie = (await t.signUp('dana@example.com')).cookie!;
     const res = await call('POST', '/bots', {
       name: 'Scout',

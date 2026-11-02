@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream';
 import { createRoute, z } from '@hono/zod-openapi';
-import { artifactFileName } from '@openbot/artifacts';
-import { ARTIFACT_KINDS } from '@openbot/shared';
+import { artifactFileName } from '@openbots/artifacts';
+import { ARTIFACT_KINDS } from '@openbots/shared';
 import type { Context } from 'hono';
 import type { AppEnv } from '../context.js';
 import { requireUser } from '../middleware/auth.js';

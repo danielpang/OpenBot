@@ -12,7 +12,7 @@ describe('health routes', () => {
     t.app.request('/metrics', { headers: { authorization: `Bearer ${token}` } });
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_METRICS_TOKEN: METRICS_TOKEN });
+    t = await createTestApp({ OPENBOTS_METRICS_TOKEN: METRICS_TOKEN });
   });
   afterAll(() => t.close());
 
@@ -70,20 +70,20 @@ describe('health routes', () => {
     observeWebhook('outbound', 'failed');
     observeProviderStep('anthropic', 'claude-opus-5-5', 1_500);
     const body = await (await metrics()).text();
-    expect(body).toMatch(/openbot_runs_finished_total\{status="completed",trigger="routine"\} 1/);
+    expect(body).toMatch(/openbots_runs_finished_total\{status="completed",trigger="routine"\} 1/);
     expect(body).not.toContain('status="running",trigger');
-    expect(body).toMatch(/openbot_run_duration_seconds_sum\{status="completed"\} 3/);
+    expect(body).toMatch(/openbots_run_duration_seconds_sum\{status="completed"\} 3/);
     for (const status of ['queued', 'running', 'waiting']) {
-      expect(body).toContain(`openbot_runs{status="${status}"} 0`);
+      expect(body).toContain(`openbots_runs{status="${status}"} 0`);
     }
     expect(body).toMatch(
-      /openbot_webhook_deliveries_total\{direction="inbound",outcome="started"\} 1/,
+      /openbots_webhook_deliveries_total\{direction="inbound",outcome="started"\} 1/,
     );
     expect(body).toMatch(
-      /openbot_webhook_deliveries_total\{direction="outbound",outcome="failed"\} 1/,
+      /openbots_webhook_deliveries_total\{direction="outbound",outcome="failed"\} 1/,
     );
     expect(body).toMatch(
-      /openbot_provider_step_duration_seconds_sum\{provider="anthropic",model="claude-opus-5-5"\} 1.5/,
+      /openbots_provider_step_duration_seconds_sum\{provider="anthropic",model="claude-opus-5-5"\} 1.5/,
     );
   });
 

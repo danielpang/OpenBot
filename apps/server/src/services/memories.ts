@@ -4,8 +4,8 @@ import {
   type Embedder,
   type MemoryItem,
   type MemoryKind,
-} from '@openbot/agent';
-import { ModelConfigSchema, PRIORITY, type JobHandler } from '@openbot/shared';
+} from '@openbots/agent';
+import { ModelConfigSchema, PRIORITY, type JobHandler } from '@openbots/shared';
 import { and, cosineDistance, desc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
@@ -16,7 +16,7 @@ import { providerSource } from './providers.js';
 // Memory v0 (M1 to M3; plan 4.8, 5.3). Each Bot has its own `bot_memories`:
 // what it saved with `remember`, what post-run extraction proposed, and what
 // the owner wrote or edited on the Memory tab. Every row carries an embedding
-// and the source that made it (see `@openbot/agent` memory/embed.ts for the
+// and the source that made it (see `@openbots/agent` memory/embed.ts for the
 // provider and local sources) so context assembly can pick memories similar
 // to the conversation. A query is compared only with memories of its own
 // source; when a Bot's source changes (a new provider, a key added, a failed

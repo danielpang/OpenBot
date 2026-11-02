@@ -25,8 +25,8 @@ const cloud: DesktopConnectionInfo = {
 const remote: DesktopConnectionInfo = {
   kind: 'remote',
   label: 'Self-hosted',
-  host: 'openbot.example.com',
-  url: 'https://openbot.example.com',
+  host: 'openbots.example.com',
+  url: 'https://openbots.example.com',
 };
 const local = (state: 'running' | 'unhealthy' | 'stopped'): DesktopConnectionInfo => ({
   kind: 'local',
@@ -45,7 +45,7 @@ describe('indicatorState', () => {
       tooltip: 'OpenBots account (app.openbots.example): Connected',
     });
     expect(indicatorState(remote, open).tooltip).toBe(
-      'Self-hosted (openbot.example.com): Connected',
+      'Self-hosted (openbots.example.com): Connected',
     );
     expect(indicatorState(local('running'), open).tooltip).toBe('This Mac (Docker): Connected');
   });
@@ -105,7 +105,7 @@ describe('the connection indicator', () => {
     act(() => root.unmount());
     host.remove();
     vi.unstubAllGlobals();
-    delete (window as { openbot?: unknown }).openbot;
+    delete (window as { openbots?: unknown }).openbots;
   });
 
   const items = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
@@ -130,7 +130,7 @@ describe('the connection indicator', () => {
 
   it("appears in the Mac app from the bridge's connection", async () => {
     const connection = fakeConnection(remote);
-    (window as { openbot?: unknown }).openbot = {
+    (window as { openbots?: unknown }).openbots = {
       platform: { kind: 'desktop', os: 'darwin', version: '1.0.0', nativeNotifications: true },
       onNavigate: () => () => {},
       connection,
@@ -138,7 +138,7 @@ describe('the connection indicator', () => {
     await act(async () => root.render(<ConnectionIndicator />));
     // Outside the shell's realtime provider the connection has not opened yet.
     expect(trigger()?.getAttribute('aria-label')).toBe(
-      'Self-hosted (openbot.example.com): Connecting…',
+      'Self-hosted (openbots.example.com): Connecting…',
     );
     expect(connection.info).toHaveBeenCalled();
   });
@@ -162,7 +162,7 @@ describe('the connection indicator', () => {
     await render(remote, lost);
     expect(trigger()?.dataset.tone).toBe('warning');
     expect(trigger()?.getAttribute('aria-label')).toBe(
-      'Self-hosted (openbot.example.com): Reconnecting…',
+      'Self-hosted (openbots.example.com): Reconnecting…',
     );
   });
 

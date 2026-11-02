@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/models",
+  "name": "@openbots/models",
   "version": "0.0.0",
   "private": true,
   "description": "provider registry, presets catalog, adapters, discover and test",
@@ -7,12 +7,12 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./testing": {
-      "@openbot/source": "./src/testing.ts",
+      "@openbots/source": "./src/testing.ts",
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
     }
@@ -29,7 +29,7 @@
     "@ai-sdk/openai": "catalog:",
     "@ai-sdk/openai-compatible": "catalog:",
     "@ai-sdk/xai": "catalog:",
-    "@openbot/shared": "workspace:*",
+    "@openbots/shared": "workspace:*",
     "ai": "catalog:",
     "zod": "catalog:"
   },

@@ -1,5 +1,5 @@
-import type { PolicyDecision, TriggerOverride, WebhookSignaturePreset } from '@openbot/shared';
-import { Button, cn, Input } from '@openbot/ui';
+import type { PolicyDecision, TriggerOverride, WebhookSignaturePreset } from '@openbots/shared';
+import { Button, cn, Input } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { Routine } from '../routines/api.js';
@@ -17,7 +17,7 @@ import { DeliveryLog } from './delivery-log.js';
 // message the Bot answers), which every Bot has, is in Bot Settings, as PRD
 // section 5 places the Bot's webhook settings; each event Routine's endpoint
 // is shown with its Routine in the Routines tab. Each shows its URL; the
-// token and any signing secret OpenBot chose are shown once, when issued. An
+// token and any signing secret OpenBots chose are shown once, when issued. An
 // endpoint starts without a token and refuses deliveries until the owner
 // generates one.
 // The signing secret field is write-only (P3): it starts empty, says whether
@@ -127,7 +127,7 @@ export function RoutineEndpoint({ botId, routine }: { botId: string; routine: Ro
             actions.create.mutate(
               {
                 routineId: routine.id,
-                // GitHub signs with a secret OpenBot issues; Slack's must be pasted first.
+                // GitHub signs with a secret OpenBots issues; Slack's must be pasted first.
                 ...(source === 'github' ? { signature: { preset: 'github' as const } } : {}),
               },
               { onSuccess: show },
@@ -275,8 +275,8 @@ export function EndpointCard({
           {shown.token && <ShownOnce label="Token" value={shown.token} />}
           {shown.signingSecret && <ShownOnce label="Signing secret" value={shown.signingSecret} />}
           <p className="text-xs text-muted-foreground">
-            Send the token as <code>Authorization: Bearer …</code>, as <code>X-OpenBot-Token</code>,
-            or at the end of the URL.
+            Send the token as <code>Authorization: Bearer …</code>, as <code>X-OpenBots-Token</code>
+            , or at the end of the URL.
           </p>
           <Button variant="ghost" size="sm" className="self-end" onClick={onDismiss}>
             Done

@@ -4,7 +4,7 @@
 // own module so the computer service can say a computer stopped without
 // importing the connectors service, which imports it.
 
-export const MCP_CONTROL_CHANNEL = 'openbot:mcp-control';
+export const MCP_CONTROL_CHANNEL = 'openbots:mcp-control';
 
 export type McpControl =
   | { type: 'stop'; connectorIds: string[] }

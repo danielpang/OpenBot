@@ -10,8 +10,8 @@ import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:
 //
 // The two header bytes are bound as additional authenticated data, so editing
 // either fails decryption. A key's id comes from the key itself, so operators
-// never number keys: OPENBOT_MASTER_KEY seals, and the keys listed in
-// OPENBOT_MASTER_KEY_PREVIOUS still open what they sealed until `rotate-key`
+// never number keys: OPENBOTS_MASTER_KEY seals, and the keys listed in
+// OPENBOTS_MASTER_KEY_PREVIOUS still open what they sealed until `rotate-key`
 // (rotation.ts) re-seals it under the current one. Envelopes from before key
 // ids carry kid 1. One byte of id can collide, so `kid` only picks which key
 // to try first: GCM authentication decides, and every other configured key
@@ -43,7 +43,7 @@ export interface Keyring {
   previous: readonly MasterKey[];
 }
 
-/** A new master key, base64: what `pnpm keygen` prints for OPENBOT_MASTER_KEY. */
+/** A new master key, base64: what `pnpm keygen` prints for OPENBOTS_MASTER_KEY. */
 export function generateMasterKey(): string {
   return randomBytes(KEY_BYTES).toString('base64');
 }
@@ -58,7 +58,7 @@ export function parseMasterKey(base64: string): Buffer {
 
 /** A key's id in envelope headers: one byte of an HMAC under the key, which says nothing about it. */
 export function keyId(key: Buffer): number {
-  return createHmac('sha256', key).update('openbot:master-key-id').digest()[0]!;
+  return createHmac('sha256', key).update('openbots:master-key-id').digest()[0]!;
 }
 
 export function masterKey(base64: string): MasterKey {
@@ -73,7 +73,7 @@ export function keyringFromKeys(current: string, previous: readonly string[] = [
 
 const keyrings = new WeakMap<object, Keyring>();
 
-/** The keyring of OPENBOT_MASTER_KEY and OPENBOT_MASTER_KEY_PREVIOUS, built once per config. */
+/** The keyring of OPENBOTS_MASTER_KEY and OPENBOTS_MASTER_KEY_PREVIOUS, built once per config. */
 export function keyringFromConfig(config: {
   masterKey: string;
   previousMasterKeys: readonly string[];
@@ -143,7 +143,7 @@ export function openEnvelope(
   }
   throw new Error(
     `no configured master key opens this secret (sealed under key id ${env.kid}): ` +
-      'it was tampered with, or sealed under a key no longer in OPENBOT_MASTER_KEY or OPENBOT_MASTER_KEY_PREVIOUS ' +
+      'it was tampered with, or sealed under a key no longer in OPENBOTS_MASTER_KEY or OPENBOTS_MASTER_KEY_PREVIOUS ' +
       '(was a previous key removed before `rotate-key` finished?)',
   );
 }

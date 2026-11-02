@@ -1,9 +1,9 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { BlockList, isIP } from 'node:net';
-import type { WebhookSignature } from '@openbot/shared';
+import type { WebhookSignature } from '@openbots/shared';
 
 // Who may deliver to an endpoint (plan 11, H3): the IP allowlist, the
-// endpoint token (bearer, `X-OpenBot-Token` or the last path segment) and the
+// endpoint token (bearer, `X-OpenBots-Token` or the last path segment) and the
 // HMAC presets for GitHub, Slack, Stripe and a generic header. Every
 // comparison of a secret value is constant-time.
 
@@ -43,13 +43,13 @@ export function tokenMatches(presented: string, tokenHash: string): boolean {
   return safeEqual(hashToken(presented), tokenHash);
 }
 
-/** The token from `Authorization: Bearer`, `X-OpenBot-Token`, or the path. */
+/** The token from `Authorization: Bearer`, `X-OpenBots-Token`, or the path. */
 export function presentedToken(
   headers: Record<string, string>,
   pathToken: string | undefined,
 ): string | undefined {
   const bearer = /^Bearer\s+(\S+)$/i.exec(headers['authorization'] ?? '')?.[1];
-  return bearer ?? headers['x-openbot-token'] ?? pathToken;
+  return bearer ?? headers['x-openbots-token'] ?? pathToken;
 }
 
 // IP allowlist

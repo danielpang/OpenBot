@@ -1,4 +1,4 @@
-import { DEFAULT_PROCESS_LIMITS } from '@openbot/shared';
+import { DEFAULT_PROCESS_LIMITS } from '@openbots/shared';
 import type { McpHost, McpHostOptions, ToolCallResult } from './host.js';
 import type { McpSnapshot, McpTool } from './types.js';
 
@@ -58,7 +58,7 @@ export interface McpManagerOptions {
   onToolsChanged?(connectorId: string, tools: McpTool[]): Promise<void> | void;
   /** When a start, ping or session fails. */
   onError?(connectorId: string, error: Error): Promise<void> | void;
-  /** A session unused this long is stopped; the server passes OPENBOT_MCP_IDLE_STOP_MINUTES. */
+  /** A session unused this long is stopped; the server passes OPENBOTS_MCP_IDLE_STOP_MINUTES. */
   idleMs?: number;
   healthIntervalMs?: number;
   requestTimeoutMs?: number;

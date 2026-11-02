@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/agent",
+  "name": "@openbots/agent",
   "version": "0.0.0",
   "private": true,
   "description": "run loop, context assembly, tool registry, policy, steering, activity labels",
@@ -7,12 +7,12 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./testing": {
-      "@openbot/source": "./src/testing.ts",
+      "@openbots/source": "./src/testing.ts",
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
     }
@@ -26,11 +26,11 @@
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
     "@ai-sdk/openai": "catalog:",
-    "@openbot/computer": "workspace:*",
-    "@openbot/models": "workspace:*",
-    "@openbot/routines": "workspace:*",
-    "@openbot/shared": "workspace:*",
-    "@openbot/widgets": "workspace:*",
+    "@openbots/computer": "workspace:*",
+    "@openbots/models": "workspace:*",
+    "@openbots/routines": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "@openbots/widgets": "workspace:*",
     "ai": "catalog:",
     "zod": "catalog:"
   },

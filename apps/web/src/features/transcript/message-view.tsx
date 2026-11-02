@@ -1,6 +1,6 @@
-import { Avatar } from '@openbot/avatars/react';
-import { cn } from '@openbot/ui';
-import { EventRow, FileCard, Widget } from '@openbot/widgets/react';
+import { Avatar } from '@openbots/avatars/react';
+import { cn } from '@openbots/ui';
+import { EventRow, FileCard, Widget } from '@openbots/widgets/react';
 import { memo, type ReactNode } from 'react';
 import { ArtifactPart } from '../artifacts/card.js';
 import type { Bot } from '../bots/queries.js';

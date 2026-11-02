@@ -1,4 +1,4 @@
-import { startWeb } from '@openbot/web/start';
+import { startWeb } from '@openbots/web/start';
 import { managedWeb } from './extensions.js';
 import './index.css';
 

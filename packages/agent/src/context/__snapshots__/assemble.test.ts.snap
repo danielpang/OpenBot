@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`assembleContext > assembles the prompt stable to volatile 1`] = `
-"You are Scout (@scout), a Bot in OpenBot.
+"You are Scout (@scout), a Bot in OpenBots.
 Your role: Research assistant
 
 ## Standing rules from your owner
@@ -102,7 +102,7 @@ exports[`assembleContext > assembles the prompt stable to volatile 2`] = `
 `;
 
 exports[`assembleContext > scopes a thread to its root and replies, with the summary and a thread note 1`] = `
-"You are Scout (@scout), a Bot in OpenBot.
+"You are Scout (@scout), a Bot in OpenBots.
 Your role: Research assistant
 
 ## Standing rules from your owner

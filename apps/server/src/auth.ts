@@ -21,7 +21,7 @@ import { ensureWorkspace, lockWorkspace } from './workspace.js';
 // better-auth (plan section 3): email and password, optional GitHub and Google
 // sign-in, cookie sessions, and API keys (U4). Mounted at `/api/auth/*`.
 //
-// Organizations (plan section 21): a self-hosted install (OPENBOT_DEPLOYMENT)
+// Organizations (plan section 21): a self-hosted install (OPENBOTS_DEPLOYMENT)
 // is one person's, in one implicit organization. Its first account is the
 // owner and every later signup is refused, whatever the request. That policy
 // lives in the user-create hooks so it covers every way an account is made,
@@ -41,7 +41,7 @@ import { ensureWorkspace, lockWorkspace } from './workspace.js';
 // `auth.sign_in_failed` with the address tried, in each organization the
 // account belongs to.
 //
-// The Mac app's local mode (OPENBOT_LOCAL_TOKEN, routes/local.ts) has no
+// The Mac app's local mode (OPENBOTS_LOCAL_TOKEN, routes/local.ts) has no
 // sign-in at all: `createLocalSession`, a server-only endpoint (no HTTP path),
 // makes the owner if there is none yet, through the same user hooks as the
 // setup wizard, and gives them an ordinary session. That owner has a
@@ -66,12 +66,12 @@ export const API_KEY_PREFIX = 'obk_';
 export const LOCAL_OWNER_EMAIL = 'owner@openbots.local';
 
 /** better-auth's path for `createLocalSession`, which no HTTP request reaches. */
-const LOCAL_SESSION_PATH = '/openbot/local-session';
+const LOCAL_SESSION_PATH = '/openbots/local-session';
 
 /** Every way in but the Mac app's, refused when it signs the owner in (see the top). */
 const SIGN_IN_PATHS = /^\/api\/auth\/(sign-up|sign-in|callback|oauth2)(\/|$)/;
 
-export const LOCAL_ONLY_MESSAGE = 'This OpenBots signs in from the Mac app only.';
+export const LOCAL_ONLY_MESSAGE = 'This OpenBots server signs in from the Mac app only.';
 
 const localOnly = () =>
   new APIError('FORBIDDEN', { code: 'LOCAL_ONLY', message: LOCAL_ONLY_MESSAGE });
@@ -114,7 +114,7 @@ export interface Auth {
 const signupClosed = () =>
   new APIError('FORBIDDEN', {
     code: 'SIGNUP_CLOSED',
-    message: 'This OpenBot already has its owner. Sign in instead.',
+    message: 'This OpenBots server already has its owner. Sign in instead.',
   });
 
 export function createAuth({
@@ -140,7 +140,7 @@ export function createAuth({
   const selfHosted = () => config.deployment === 'self_hosted';
 
   const instance = betterAuth({
-    appName: 'OpenBot',
+    appName: 'OpenBots',
     baseURL: config.publicUrl,
     basePath: '/api/auth',
     secret: authSecret(config.masterKey),
@@ -251,7 +251,7 @@ export function createAuth({
             if (member && member.role !== 'owner') {
               throw new APIError('FORBIDDEN', {
                 code: 'NOT_OWNER',
-                message: 'This OpenBot has one account, its owner.',
+                message: 'This OpenBots server has one account, its owner.',
               });
             }
           },
@@ -352,7 +352,7 @@ async function findOwner(db: Db): Promise<string | undefined> {
 /** `createLocalSession` (see the top of this file). */
 function localSessionPlugin(db: Db) {
   return {
-    id: 'openbot-local-session',
+    id: 'openbots-local-session',
     endpoints: {
       createLocalSession: createAuthEndpoint(
         LOCAL_SESSION_PATH,
@@ -370,7 +370,7 @@ function localSessionPlugin(db: Db) {
               // The user hooks above make the first user the owner, as for setup.
               const user = await adapter.createUser(
                 { email: LOCAL_OWNER_EMAIL, name: ctx.body.name, emailVerified: false },
-                { method: 'openbot-local' },
+                { method: 'openbots-local' },
               );
               ownerId = user.id;
             } catch (error) {
@@ -516,6 +516,6 @@ export async function encryptStoredOAuthTokens({
  * `rotateMasterKey` re-encrypts the OAuth tokens.
  */
 export function authSecret(masterKey: string): string {
-  const key = hkdfSync('sha256', parseMasterKey(masterKey), '', 'openbot:better-auth', 32);
+  const key = hkdfSync('sha256', parseMasterKey(masterKey), '', 'openbots:better-auth', 32);
   return Buffer.from(key).toString('base64');
 }

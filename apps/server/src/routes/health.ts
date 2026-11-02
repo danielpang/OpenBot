@@ -6,7 +6,7 @@ import { createRouter, problemResponse } from '../openapi.js';
 import { databaseReady, redisReady } from '../readiness.js';
 
 // Liveness, readiness, and Prometheus metrics (plan 16.3). Liveness and
-// readiness are unauthenticated. Metrics are off unless OPENBOT_METRICS_TOKEN
+// readiness are unauthenticated. Metrics are off unless OPENBOTS_METRICS_TOKEN
 // is set, and then need it as a bearer token (threat model S-17).
 
 const CheckSchema = z.enum(['ok', 'error']);
@@ -71,15 +71,15 @@ export const healthRoutes = createRouter()
       responses: {
         200: { description: 'Metrics', content: { 'text/plain': { schema: z.string() } } },
         401: problemResponse('Missing or wrong metrics token'),
-        404: problemResponse('Metrics are off (no OPENBOT_METRICS_TOKEN)'),
+        404: problemResponse('Metrics are off (no OPENBOTS_METRICS_TOKEN)'),
       },
     }),
     async (c) => {
       const token = c.var.deps.config.metricsToken;
-      if (!token) throw notFound('Metrics are off; set OPENBOT_METRICS_TOKEN to turn them on');
+      if (!token) throw notFound('Metrics are off; set OPENBOTS_METRICS_TOKEN to turn them on');
       const presented = /^Bearer (.+)$/i.exec(c.req.header('authorization') ?? '')?.[1] ?? '';
       if (!safeEqual(presented, token)) {
-        throw unauthorized('Send OPENBOT_METRICS_TOKEN as a bearer token');
+        throw unauthorized('Send OPENBOTS_METRICS_TOKEN as a bearer token');
       }
       // A database outage leaves the run gauges at their last value rather than failing the scrape.
       await collectRunGauges(c.var.deps.db).catch((err: unknown) =>

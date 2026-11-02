@@ -1,4 +1,4 @@
-import { wsEvent } from '@openbot/shared';
+import { wsEvent } from '@openbots/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWsClient, type WebSocketLike, type WsClientOptions } from './ws.js';
 

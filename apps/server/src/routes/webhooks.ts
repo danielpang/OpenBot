@@ -9,7 +9,7 @@ import {
   WebhookResponseModeSchema,
   WebhookSignaturePresetSchema,
   WebhookSignatureSchema,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import type { Context } from 'hono';
 import type { Config } from '../config.js';
 import type { AppEnv } from '../context.js';
@@ -103,7 +103,7 @@ const IssuedEndpointSchema = z
     signingSecret: z
       .string()
       .optional()
-      .openapi({ description: 'Shown once, when OpenBot chose it (GitHub, generic)' }),
+      .openapi({ description: 'Shown once, when OpenBots chose it (GitHub, generic)' }),
   })
   .openapi('IssuedWebhookEndpoint');
 
@@ -111,7 +111,7 @@ const SignatureInputSchema = z
   .strictObject({
     ...WebhookSignatureSchema.shape,
     secret: z.string().min(8).max(500).optional().openapi({
-      description: 'Required for Slack and Stripe; OpenBot chooses one for GitHub and generic',
+      description: 'Required for Slack and Stripe; OpenBots chooses one for GitHub and generic',
     }),
   })
   .openapi('WebhookSignatureInput');
@@ -191,7 +191,7 @@ const IssuedSubscriptionSchema = z
     subscription: SubscriptionSchema,
     secret: z.string().optional().openapi({
       description:
-        'Shown once. Deliveries carry `X-OpenBot-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">`',
+        'Shown once. Deliveries carry `X-OpenBots-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">`',
     }),
   })
   .openapi('IssuedEventSubscription');
@@ -412,7 +412,7 @@ export const webhookRoutes = createRouter()
       request: { params, ...body(UpdateEndpointSchema) },
       responses: {
         200: json(
-          'The endpoint, with a signing secret when OpenBot chose a new one',
+          'The endpoint, with a signing secret when OpenBots chose a new one',
           IssuedEndpointSchema,
         ),
         400: problemResponse('INVALID_ENDPOINT or SIGNING_SECRET_REQUIRED'),

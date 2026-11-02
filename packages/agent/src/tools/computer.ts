@@ -9,8 +9,8 @@ import {
   type ComputerAgentClient,
   type PageInfo,
   type PageSnapshot,
-} from '@openbot/computer';
-import { OWNER_HAS_SCREEN } from '@openbot/shared';
+} from '@openbots/computer';
+import { OWNER_HAS_SCREEN } from '@openbots/shared';
 import type { Tool } from 'ai';
 import { z } from 'zod';
 import {

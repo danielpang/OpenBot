@@ -1,4 +1,4 @@
-import { Button, XIcon } from '@openbot/ui';
+import { Button, XIcon } from '@openbots/ui';
 import { useCallback, useEffect, type ReactNode } from 'react';
 import { useRightPanel } from '../../app/right-panel.js';
 import { ArtifactViewer } from '../artifacts/viewer.js';
@@ -18,7 +18,7 @@ export type BotPanel =
   | { kind: 'screen' }
   | { kind: 'thread'; chatId: string; rootId: string; focusSeq?: number };
 
-const storageKey = (botId: string) => `openbot.panel.${botId}`;
+const storageKey = (botId: string) => `openbots.panel.${botId}`;
 
 export function readPanel(botId: string): BotPanel | null {
   try {

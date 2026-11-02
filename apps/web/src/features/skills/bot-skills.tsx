@@ -1,4 +1,4 @@
-import { Button } from '@openbot/ui';
+import { Button } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';

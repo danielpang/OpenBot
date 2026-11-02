@@ -1,4 +1,4 @@
-import { unwrap, type components } from '@openbot/api-client';
+import { unwrap, type components } from '@openbots/api-client';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../app/api.js';
 import { endpointsQuery } from '../webhooks/api.js';

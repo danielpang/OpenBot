@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { navigationVerdict, serverPath } from './navigation.js';
 
-const SERVER = 'https://openbot.example.com';
+const SERVER = 'https://openbots.example.com';
 
 describe('navigationVerdict', () => {
   const callback = (provider: string) =>
     encodeURIComponent(`${SERVER}/api/auth/callback/${provider}`);
 
   it('keeps the server and OAuth sign-in in the window', () => {
-    expect(navigationVerdict('https://openbot.example.com/bots/1', SERVER)).toBe('allow');
+    expect(navigationVerdict('https://openbots.example.com/bots/1', SERVER)).toBe('allow');
     expect(navigationVerdict('https://github.com/login/oauth/authorize?x=1', SERVER)).toBe('allow');
     expect(navigationVerdict('https://accounts.google.com/o/oauth2/v2/auth', SERVER)).toBe('allow');
   });
@@ -85,7 +85,7 @@ describe('navigationVerdict', () => {
   it('opens other web links in the browser', () => {
     expect(navigationVerdict('https://docs.example.com', SERVER)).toBe('external');
     expect(navigationVerdict('http://github.com/login', SERVER)).toBe('external');
-    expect(navigationVerdict('http://openbot.example.com/', SERVER)).toBe('external');
+    expect(navigationVerdict('http://openbots.example.com/', SERVER)).toBe('external');
   });
 
   it('goes nowhere for other schemes', () => {
@@ -97,7 +97,7 @@ describe('navigationVerdict', () => {
 
 describe('serverPath', () => {
   it('is the path and query on the server, null elsewhere', () => {
-    expect(serverPath('https://openbot.example.com/bots/b1?seq=3', SERVER)).toBe('/bots/b1?seq=3');
+    expect(serverPath('https://openbots.example.com/bots/b1?seq=3', SERVER)).toBe('/bots/b1?seq=3');
     expect(serverPath('file:///x/index.html', SERVER)).toBeNull();
     expect(serverPath('', SERVER)).toBeNull();
   });

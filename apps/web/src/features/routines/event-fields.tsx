@@ -1,4 +1,4 @@
-import { Button, Input } from '@openbot/ui';
+import { Button, Input } from '@openbots/ui';
 import type { ReactNode } from 'react';
 import {
   CONDITION_OPS,

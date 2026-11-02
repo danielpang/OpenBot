@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { DEFAULT_LIMITS, type Limits } from '@openbot/shared';
+import { DEFAULT_LIMITS, type Limits } from '@openbots/shared';
 import { asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Config } from './config.js';
@@ -11,9 +11,9 @@ import { notFound } from './errors.js';
 // Organizations (plan section 21). A `workspaces` row is an organization and
 // its settings (limits, custom stdio, small models; U3) live in
 // `workspaces.settings`. Anything unset there falls back to the environment
-// (`OPENBOT_LIMITS_*`).
+// (`OPENBOTS_LIMITS_*`).
 //
-// A self-hosted install (OPENBOT_DEPLOYMENT) is one implicit organization,
+// A self-hosted install (OPENBOTS_DEPLOYMENT) is one implicit organization,
 // made on first use, with one owner and no admin screens, so the settings
 // that only matter with members keep their defaults whatever is stored: the
 // audit log keeps 180 days. The limits and custom stdio connectors stay the
@@ -108,7 +108,7 @@ async function findOrMakeWorkspace(db: Db): Promise<Workspace> {
     if (again) return again;
     const [created] = await tx
       .insert(schema.workspaces)
-      .values({ name: 'OpenBot', slug: organizationSlug('OpenBot') })
+      .values({ name: 'OpenBots', slug: organizationSlug('OpenBots') })
       .returning();
     return created!;
   });
@@ -141,7 +141,7 @@ type SettingsDeps = { db: Db; config: Config; extensions?: ServerExtensions };
 /**
  * The most an organization's limits may be (plan 21.6), or null where there
  * is no ceiling. On the managed service the operator's limits
- * (OPENBOT_LIMITS_*) are the ceiling, unless the managed build sets one per
+ * (OPENBOTS_LIMITS_*) are the ceiling, unless the managed build sets one per
  * organization (`ServerExtensions.limitsCeiling`, for plans). Owners and
  * admins may only lower their organization's limits under it. A self-hosted
  * owner is the operator and has none.

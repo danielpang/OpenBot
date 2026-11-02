@@ -1,4 +1,4 @@
-import { DEFAULT_CAPABILITIES, missingCapabilities, modelSupports } from '@openbot/shared';
+import { DEFAULT_CAPABILITIES, missingCapabilities, modelSupports } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import { estimateCost } from './cost.js';
 import { parseModelList } from './discover.js';

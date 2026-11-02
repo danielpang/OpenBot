@@ -1,4 +1,4 @@
-import { createNoticeWatcher, wsEvent, type NoticeContext } from '@openbot/shared';
+import { createNoticeWatcher, wsEvent, type NoticeContext } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import type { Chat } from '../chats/api.js';
 import {

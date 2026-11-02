@@ -1,4 +1,4 @@
-import type { ProviderTestResult } from '@openbot/shared';
+import type { ProviderTestResult } from '@openbots/shared';
 import { stepCountIs, streamText, tool, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import { errorMessage } from './discover.js';

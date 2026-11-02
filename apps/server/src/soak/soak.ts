@@ -1,6 +1,6 @@
-import { conversationTools, defineTool, localEmbedder, type ToolGroup } from '@openbot/agent';
-import { scriptedModel, type ScriptedTurn } from '@openbot/agent/testing';
-import { EVENTS_CHANNEL, type WsEvent } from '@openbot/shared';
+import { conversationTools, defineTool, localEmbedder, type ToolGroup } from '@openbots/agent';
+import { scriptedModel, type ScriptedTurn } from '@openbots/agent/testing';
+import { EVENTS_CHANNEL, type WsEvent } from '@openbots/shared';
 import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -117,8 +117,8 @@ export async function runSoak(options: SoakOptions): Promise<SoakReport> {
   const pick = <T>(items: T[]) => items[Math.floor(random() * items.length)]!;
 
   const t = await createTestApp({
-    OPENBOT_DEPLOYMENT: 'managed',
-    OPENBOT_SIGNUP_MODE: 'open',
+    OPENBOTS_DEPLOYMENT: 'managed',
+    OPENBOTS_SIGNUP_MODE: 'open',
     ...(process.env.REDIS_URL ? { REDIS_URL: process.env.REDIS_URL } : {}),
   });
   // The owner's handle for the harness's own reads; the app works under RLS.

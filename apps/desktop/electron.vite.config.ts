@@ -8,10 +8,10 @@ import { defaultClientConditions, type Plugin } from 'vite';
 // pages, built into dist/ where electron-builder picks them up. The workspace
 // packages are bundled from source; electron-updater and ws stay external and
 // ship in the app's node_modules. The app's own pages are React with
-// Tailwind and the web app's theme and components (@openbot/ui).
+// Tailwind and the web app's theme and components (@openbots/ui).
 
-const sourceConditions = ['@openbot/source'];
-const bundled = ['@openbot/api-client', '@openbot/shared'];
+const sourceConditions = ['@openbots/source'];
+const bundled = ['@openbots/api-client', '@openbots/shared'];
 
 export default defineConfig({
   main: {
@@ -62,7 +62,7 @@ export default defineConfig({
  */
 function devContentSecurityPolicy(): Plugin {
   return {
-    name: 'openbot:dev-csp',
+    name: 'openbots:dev-csp',
     apply: 'serve',
     transformIndexHtml: (html) =>
       html.replace("script-src 'self'", "script-src 'self' 'unsafe-inline'"),

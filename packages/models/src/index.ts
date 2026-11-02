@@ -1,4 +1,4 @@
-import { packageName } from '@openbot/shared';
+import { packageName } from '@openbots/shared';
 
 export const PACKAGE_NAME = packageName('models');
 
@@ -10,7 +10,7 @@ export {
   type ModelNeed,
   type ModelPricing,
   type ProviderTestResult,
-} from '@openbot/shared';
+} from '@openbots/shared';
 export * from './adapters.js';
 export * from './catalog.js';
 export * from './cost.js';

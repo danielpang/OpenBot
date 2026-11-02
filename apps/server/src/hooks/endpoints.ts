@@ -10,7 +10,7 @@ import {
   type WebhookDeliveryStatus,
   type WebhookSignature,
   type WebhookSignaturePreset,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { and, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
@@ -80,7 +80,7 @@ const REDACTED_HEADERS = new Set([
   'authorization',
   'proxy-authorization',
   'cookie',
-  'x-openbot-token',
+  'x-openbots-token',
 ]);
 
 const keyring = (deps: Pick<AppDeps, 'config'>) => keyringFromConfig(deps.config);

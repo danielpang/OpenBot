@@ -1,9 +1,9 @@
-import { cn } from '@openbot/ui';
+import { cn } from '@openbots/ui';
 
 // Connector icons (T2), drawn inline and shipped with the app: nothing is
 // fetched from a vendor or a CDN at run time, so they work offline and under
 // the CSP. Catalog entries name one in `icon` (`CATALOG_ICONS` in
-// @openbot/mcp lists the names); a custom connector, or a brand whose logo we
+// @openbots/mcp lists the names); a custom connector, or a brand whose logo we
 // may not use, gets a lettermark from its name instead.
 //
 // Brand marks are the single-path SVGs from Simple Icons 16.36.0

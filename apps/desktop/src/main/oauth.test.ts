@@ -17,7 +17,7 @@ describe('the OAuth sign-in in the default browser', () => {
     for (const raw of [
       'file:///etc/passwd',
       'javascript:alert(1)',
-      'openbot://connectors',
+      'openbots://connectors',
       'https://user:pass@example.com/authorize',
       'not a url',
     ]) {

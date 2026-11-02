@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveParts } from '@openbot/avatars';
+import { resolveParts } from '@openbots/avatars';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { APP_ICON_FILE, devAppIconPath } from './app-icon.js';

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fakeFetch, openBotsServer } from './fake-fetch.js';
 import { checkServer, entryPath, ServerCheckError, waitUntilReady } from './server-check.js';
 
-const URL_ = 'https://openbot.example.com';
+const URL_ = 'https://openbots.example.com';
 
 describe('checkServer', () => {
   it('reports whether an OpenBots server needs its first-run setup', async () => {
@@ -18,7 +18,7 @@ describe('checkServer', () => {
 
   it('says when the server cannot be reached', async () => {
     await expect(checkServer(fakeFetch({}), URL_)).rejects.toThrow(
-      'Could not reach openbot.example.com. Check the address, and that the server is running.',
+      'Could not reach openbots.example.com. Check the address, and that the server is running.',
     );
   });
 

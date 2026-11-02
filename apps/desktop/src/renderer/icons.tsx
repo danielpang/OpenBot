@@ -1,7 +1,7 @@
 import type { ReactNode, SVGProps } from 'react';
 import type { ProfileKind } from '../ipc.js';
 
-// The app pages' glyphs, inline like @openbot/ui's (no icon library). The
+// The app pages' glyphs, inline like @openbots/ui's (no icon library). The
 // three connection kinds draw exactly as the web app's connection indicator
 // (apps/web/src/app/connection-indicator.tsx); the rest are lucide's shapes.
 

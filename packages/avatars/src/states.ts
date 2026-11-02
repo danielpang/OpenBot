@@ -1,4 +1,4 @@
-import { BotStateKindSchema } from '@openbot/shared';
+import { BotStateKindSchema } from '@openbots/shared';
 
 // Motion states (I2, plan 13). The avatar is the status indicator: no badge.
 // Poses (where the eyes look, a squint) use the individual `translate` and

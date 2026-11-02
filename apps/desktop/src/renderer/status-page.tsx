@@ -1,4 +1,4 @@
-import { Badge, Button, Card, cn, Spinner } from '@openbot/ui';
+import { Badge, Button, Card, cn, Spinner } from '@openbots/ui';
 import { useEffect, useRef } from 'react';
 import {
   ArrowRightIcon,

@@ -3,7 +3,7 @@ import {
   type EventTrigger,
   type GithubEvent,
   type SlackEvent,
-} from '@openbot/shared';
+} from '@openbots/shared';
 
 // The event trigger's model (R2): a draft with a field for every source and
 // event, so switching keeps what was typed, turned into the narrow matching

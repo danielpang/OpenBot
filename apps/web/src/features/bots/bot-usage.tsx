@@ -1,4 +1,4 @@
-import { unwrap, type components } from '@openbot/api-client';
+import { unwrap, type components } from '@openbots/api-client';
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../app/api.js';

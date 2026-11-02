@@ -15,11 +15,11 @@ describe('createTestApp', () => {
   let namedDir: string;
 
   beforeAll(async () => {
-    namedDir = await mkdtemp(path.join(tmpdir(), 'openbot-named-'));
+    namedDir = await mkdtemp(path.join(tmpdir(), 'openbots-named-'));
     [a, b, named] = await Promise.all([
       createTestApp(),
       createTestApp(),
-      createTestApp({ OPENBOT_FILES_DIR: namedDir }),
+      createTestApp({ OPENBOTS_FILES_DIR: namedDir }),
     ]);
   });
   afterAll(async () => {

@@ -6,7 +6,7 @@ import { createStore } from './store.js';
 // opens it, Enter sends the text to the chosen Bot's transcript, and Esc or a
 // click elsewhere closes it. ./quick-ask-view.tsx renders it.
 
-export const LAST_BOT = 'openbot:quick-ask:bot';
+export const LAST_BOT = 'openbots:quick-ask:bot';
 
 export interface QuickAskState {
   bots: QuickAskBot[];

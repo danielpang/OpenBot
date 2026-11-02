@@ -4,36 +4,36 @@
 
 export const DESKTOP_CHANNELS = {
   /** main → renderer: open a path of the web app (a deep link or a tray click). */
-  navigate: 'openbot:navigate',
+  navigate: 'openbots:navigate',
   /** main → renderer: the File menu's New (Cmd+N) opens the web app's New dialog. */
-  newItem: 'openbot:new',
-  profilesList: 'openbot:profiles:list',
-  profilesAdd: 'openbot:profiles:add',
-  profilesRemove: 'openbot:profiles:remove',
-  profilesOpen: 'openbot:profiles:open',
+  newItem: 'openbots:new',
+  profilesList: 'openbots:profiles:list',
+  profilesAdd: 'openbots:profiles:add',
+  profilesRemove: 'openbots:profiles:remove',
+  profilesOpen: 'openbots:profiles:open',
   /** The first-run choices: the three ways to connect (app pages only). */
-  connectOptions: 'openbot:connect:options',
-  connectCloud: 'openbot:connect:cloud',
-  connectCheck: 'openbot:connect:check',
-  connectServer: 'openbot:connect:server',
-  connectLocal: 'openbot:connect:local',
+  connectOptions: 'openbots:connect:options',
+  connectCloud: 'openbots:connect:cloud',
+  connectCheck: 'openbots:connect:check',
+  connectServer: 'openbots:connect:server',
+  connectLocal: 'openbots:connect:local',
   /** How the app is connected, for the web app's indicator (the active server's page too). */
-  connectionInfo: 'openbot:connection:info',
-  connectionChange: 'openbot:connection:change',
-  connectionStart: 'openbot:connection:start',
-  connectionStop: 'openbot:connection:stop',
-  connectionLogs: 'openbot:connection:logs',
+  connectionInfo: 'openbots:connection:info',
+  connectionChange: 'openbots:connection:change',
+  connectionStart: 'openbots:connection:start',
+  connectionStop: 'openbots:connection:stop',
+  connectionLogs: 'openbots:connection:logs',
   /** A connector's OAuth sign-in: open its page in the default browser, then come back (web app). */
-  oauthOpen: 'openbot:oauth:open',
-  oauthFinished: 'openbot:oauth:finished',
-  quickAskBots: 'openbot:quick-ask:bots',
-  quickAskSend: 'openbot:quick-ask:send',
-  quickAskClose: 'openbot:quick-ask:close',
+  oauthOpen: 'openbots:oauth:open',
+  oauthFinished: 'openbots:oauth:finished',
+  quickAskBots: 'openbots:quick-ask:bots',
+  quickAskSend: 'openbots:quick-ask:send',
+  quickAskClose: 'openbots:quick-ask:close',
 } as const;
 
 /**
- * What the web app reads as `window.openbot.platform` to turn on native
- * features. A browser has no `window.openbot`.
+ * What the web app reads as `window.openbots.platform` to turn on native
+ * features. A browser has no `window.openbots`.
  */
 export interface PlatformInfo {
   kind: 'desktop';
@@ -56,7 +56,7 @@ export type ProfileKind = 'local' | 'remote' | 'cloud';
 export interface ServerProfile {
   id: string;
   name: string;
-  /** The server's origin, e.g. `http://localhost:3000` or `https://openbot.example.com`. */
+  /** The server's origin, e.g. `http://localhost:3000` or `https://openbots.example.com`. */
   url: string;
   kind: ProfileKind;
 }
@@ -106,7 +106,7 @@ export interface ConnectionInfo {
   kind: ProfileKind;
   /** "This Mac", "Self-hosted" or "OpenBots account". */
   label: string;
-  /** The server's host, e.g. `openbot.example.com` or `localhost:3000`. */
+  /** The server's host, e.g. `openbots.example.com` or `localhost:3000`. */
   host: string;
   url: string;
   /** This Mac only; a thin client (cloud, remote) never asks Docker. */

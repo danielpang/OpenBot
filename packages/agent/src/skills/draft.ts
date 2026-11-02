@@ -1,4 +1,4 @@
-import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbot/shared';
+import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbots/shared';
 import { generateText, type LanguageModel } from 'ai';
 import { z } from 'zod';
 

@@ -1,7 +1,7 @@
-import { conversationTools, defineTool, localEmbedder, type ToolGroup } from '@openbot/agent';
-import { scriptedModel, type ScriptedTurn } from '@openbot/agent/testing';
-import type { ProviderModel } from '@openbot/models';
-import { DEFAULT_CAPABILITIES } from '@openbot/shared';
+import { conversationTools, defineTool, localEmbedder, type ToolGroup } from '@openbots/agent';
+import { scriptedModel, type ScriptedTurn } from '@openbots/agent/testing';
+import type { ProviderModel } from '@openbots/models';
+import { DEFAULT_CAPABILITIES } from '@openbots/shared';
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -42,7 +42,7 @@ describe('a model without vision', () => {
   };
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     cookie = (await t.signUp('dana@example.com')).cookie!;
     unhook = registerRunHooks();
     await t.deps.infra.queue<RunJob>(RUNS_QUEUE).process(

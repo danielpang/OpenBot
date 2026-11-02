@@ -1,4 +1,4 @@
-import { packageName } from '@openbot/shared';
+import { packageName } from '@openbots/shared';
 
 export const PACKAGE_NAME = packageName('api-client');
 export * from './ws.js';

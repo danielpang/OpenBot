@@ -1,6 +1,6 @@
-import { unwrap } from '@openbot/api-client';
-import { Button, Input } from '@openbot/ui';
-import { meQuery } from '@openbot/web/api';
+import { unwrap } from '@openbots/api-client';
+import { Button, Input } from '@openbots/ui';
+import { meQuery } from '@openbots/web/api';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import {

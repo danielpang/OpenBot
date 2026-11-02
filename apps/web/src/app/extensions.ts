@@ -1,4 +1,4 @@
-import type { components } from '@openbot/api-client';
+import type { components } from '@openbots/api-client';
 import type { ComponentType } from 'react';
 
 // Extension points for the managed web app (plan 21.5). The core never

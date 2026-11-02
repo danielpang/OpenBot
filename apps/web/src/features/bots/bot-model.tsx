@@ -1,4 +1,4 @@
-import { botModelNeeds, type ModelConfig } from '@openbot/shared';
+import { botModelNeeds, type ModelConfig } from '@openbots/shared';
 import { useQuery } from '@tanstack/react-query';
 import { capabilitiesQuery } from '../../app/api.js';
 import { pickerModelsQuery } from '../models/api.js';

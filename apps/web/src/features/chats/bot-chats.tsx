@@ -1,5 +1,5 @@
-import { Avatar } from '@openbot/avatars/react';
-import { cn } from '@openbot/ui';
+import { Avatar } from '@openbots/avatars/react';
+import { cn } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { meQuery } from '../../app/api.js';

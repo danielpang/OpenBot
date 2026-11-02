@@ -1,4 +1,4 @@
-import type { EmailMessage, InboxMessage } from '@openbot/agent';
+import type { EmailMessage, InboxMessage } from '@openbots/agent';
 import { ImapFlow } from 'imapflow';
 import { createTransport } from 'nodemailer';
 import { checkedAddress, type NetOptions } from './net.js';

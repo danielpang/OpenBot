@@ -12,7 +12,7 @@ export class ServerUrlError extends Error {
 }
 
 export interface ServerAddress {
-  /** The server's origin, e.g. `https://openbot.example.com`. */
+  /** The server's origin, e.g. `https://openbots.example.com`. */
   url: string;
   /** Shown before connecting over plain http; null over https. */
   warning: string | null;
@@ -69,7 +69,7 @@ export function parseServerAddress(input: string): ServerAddress {
   try {
     url = new URL(hasScheme ? text : `https://${text}`);
   } catch {
-    throw new ServerUrlError('Enter a server address, like openbot.example.com.');
+    throw new ServerUrlError('Enter a server address, like openbots.example.com.');
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new ServerUrlError('A server address starts with https:// or http://.');

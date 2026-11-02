@@ -479,8 +479,8 @@ const path = require('node:path');
 const file = process.argv[1];
 const data = fs.readFileSync(0);
 fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-fs.writeFileSync(file + '.openbot', data, { mode: 0o600 });
-fs.renameSync(file + '.openbot', file);`;
+fs.writeFileSync(file + '.openbots', data, { mode: 0o600 });
+fs.renameSync(file + '.openbots', file);`;
 
 /** Reads the persisted store as its own user. */
 export async function readCookieStore(run: Run, stateDir: string): Promise<string | undefined> {

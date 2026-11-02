@@ -1,6 +1,6 @@
-import { Avatar } from '@openbot/avatars/react';
-import type { AvatarState } from '@openbot/avatars';
-import { Badge, Button, Card, cn, Input, Spinner } from '@openbot/ui';
+import { Avatar } from '@openbots/avatars/react';
+import type { AvatarState } from '@openbots/avatars';
+import { Badge, Button, Card, cn, Input, Spinner } from '@openbots/ui';
 import { useEffect, type FormEvent, type ReactNode } from 'react';
 import {
   AlertCircleIcon,
@@ -224,7 +224,7 @@ function ServerChoice({
               id="server-url"
               value={address}
               onChange={(event) => flow.welcome.setAddress(event.target.value)}
-              placeholder="openbot.example.com"
+              placeholder="openbots.example.com"
               required
               autoComplete="off"
               spellCheck={false}

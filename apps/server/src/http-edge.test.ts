@@ -19,9 +19,9 @@ describe('http edge', () => {
   beforeAll(async () => {
     t = await createTestApp();
     cookie = (await t.signUp('ada@example.com')).cookie!;
-    webDist = mkdtempSync(join(tmpdir(), 'openbot-web-'));
+    webDist = mkdtempSync(join(tmpdir(), 'openbots-web-'));
     mkdirSync(join(webDist, 'assets'));
-    writeFileSync(join(webDist, 'index.html'), '<!doctype html><title>OpenBot</title>');
+    writeFileSync(join(webDist, 'index.html'), '<!doctype html><title>OpenBots</title>');
     writeFileSync(join(webDist, 'assets', 'app.js'), 'console.log(1)');
   });
   afterAll(async () => {
@@ -49,7 +49,7 @@ describe('http edge', () => {
     // The computer page hosts the terminal (xterm.js) and the screen (noVNC):
     // both open WebSockets and set inline styles, and PDFs preview in a blob iframe.
     const page = await app.request('/computer');
-    expect(await page.text()).toContain('<title>OpenBot</title>');
+    expect(await page.text()).toContain('<title>OpenBots</title>');
     const csp = expectSecurityHeaders(page);
     expect(csp).toContain("connect-src 'self' ws://localhost:3000");
     expect(csp).toContain("style-src 'self' 'unsafe-inline'");
@@ -182,7 +182,7 @@ describe('auth rate limit', { timeout: 20_000 }, () => {
     const forged = { 'x-forwarded-for': '203.0.113.99' };
     expect((await signIn(ip(3), forged)).status).toBe(429);
     // Nor does sending the internal header directly.
-    expect((await signIn(ip(3), { 'x-openbot-client-ip': '203.0.113.98' })).status).toBe(429);
+    expect((await signIn(ip(3), { 'x-openbots-client-ip': '203.0.113.98' })).status).toBe(429);
 
     const { config } = t.ownerDeps;
     config.trustedProxies = ['172.16.0.0/12'];

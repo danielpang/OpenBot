@@ -4,7 +4,7 @@ import {
   type EventTrigger,
   type GithubEvent,
   type SlackEvent,
-} from '@openbot/shared';
+} from '@openbots/shared';
 
 // Matching rules (plan 11, R2): each Routine trigger waits for one narrow
 // kind of event. GitHub events are read from `X-GitHub-Event` plus the

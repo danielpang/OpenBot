@@ -6,7 +6,7 @@ import { StartPage } from './start-page.js';
 // The start page's entry (index.html): the flow in ./start-flow.ts, the views
 // in ./start-page.tsx.
 
-const flow = createStartFlow(window.openbot, new URLSearchParams(location.search));
+const flow = createStartFlow(window.openbots, new URLSearchParams(location.search));
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <StartPage flow={flow} />

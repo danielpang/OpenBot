@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import type { WsClient } from '@openbot/api-client';
-import type { WsEvent } from '@openbot/shared';
+import type { WsClient } from '@openbots/api-client';
+import type { WsEvent } from '@openbots/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -171,7 +171,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   vi.restoreAllMocks();
-  delete (window as { openbot?: unknown }).openbot;
+  delete (window as { openbots?: unknown }).openbots;
 });
 
 function render(ui: ReactNode) {
@@ -215,7 +215,7 @@ describe('one-click Connect', () => {
     expect(open).toHaveBeenCalledTimes(1);
     const [url, name, features] = open.mock.calls[0]! as [string, string, string];
     expect(url).toBe('');
-    expect(name).toBe('openbot-oauth');
+    expect(name).toBe('openbots-oauth');
     expect(features).toMatch(/popup=yes,width=520,height=720/);
 
     await until(() => popup.location.replace.mock.calls.length > 0, 'the provider page');
@@ -281,7 +281,7 @@ describe('one-click Connect', () => {
 
   it('opens the default browser in the Mac app and comes back to the front', async () => {
     const bridge = { open: vi.fn(async () => undefined), finished: vi.fn(async () => undefined) };
-    (window as { openbot?: unknown }).openbot = {
+    (window as { openbots?: unknown }).openbots = {
       platform: { kind: 'desktop', os: 'darwin', version: '1', nativeNotifications: true },
       onNavigate: () => () => {},
       oauth: bridge,

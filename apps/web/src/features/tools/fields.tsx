@@ -1,4 +1,4 @@
-import { Input } from '@openbot/ui';
+import { Input } from '@openbots/ui';
 import type { ReactNode } from 'react';
 
 // Small form pieces the Connectors page shares. Secret inputs are write-only (P3):

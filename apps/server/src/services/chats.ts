@@ -1,6 +1,6 @@
-import type { TranscriptMessage } from '@openbot/agent';
-import { botPair } from '@openbot/router';
-import { handleFromName, type MessagePart } from '@openbot/shared';
+import type { TranscriptMessage } from '@openbots/agent';
+import { botPair } from '@openbots/router';
+import { handleFromName, type MessagePart } from '@openbots/shared';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';

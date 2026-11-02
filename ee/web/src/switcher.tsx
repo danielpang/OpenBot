@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@openbot/ui';
+} from '@openbots/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { activateOrganization, organizationsQuery, reloadInto } from './api.js';

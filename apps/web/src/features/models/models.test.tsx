@@ -1,4 +1,4 @@
-import type { ModelNeed } from '@openbot/shared';
+import type { ModelNeed } from '@openbots/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,

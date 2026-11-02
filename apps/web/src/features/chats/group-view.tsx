@@ -1,4 +1,4 @@
-import { cn } from '@openbot/ui';
+import { cn } from '@openbots/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo } from 'react';
 import { meQuery } from '../../app/api.js';

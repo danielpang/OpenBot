@@ -6,7 +6,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@openbot/ui';
+} from '@openbots/ui';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { useBotActions, type Bot } from './queries.js';
 

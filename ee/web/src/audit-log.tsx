@@ -1,5 +1,5 @@
-import { unwrap } from '@openbot/api-client';
-import { Button, Input } from '@openbot/ui';
+import { unwrap } from '@openbots/api-client';
+import { Button, Input } from '@openbots/ui';
 import { infiniteQueryOptions, useInfiniteQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { orgApi, type AuditEntry as Entry } from './api.js';

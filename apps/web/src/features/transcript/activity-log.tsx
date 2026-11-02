@@ -1,4 +1,4 @@
-import { cn } from '@openbot/ui';
+import { cn } from '@openbots/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { activityEntries, addStep, formatUsage, runDuration } from './activity.js';

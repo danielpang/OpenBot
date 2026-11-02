@@ -1,5 +1,5 @@
-import type { WsEventOf } from '@openbot/shared';
-import type { ArtifactCardState } from '@openbot/widgets/react';
+import type { WsEventOf } from '@openbots/shared';
+import type { ArtifactCardState } from '@openbots/widgets/react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useRealtime } from '../transcript/realtime.js';

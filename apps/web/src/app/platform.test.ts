@@ -21,15 +21,18 @@ describe('platform', () => {
     expect(hasNativeNotifications()).toBe(false);
   });
 
-  it('reads the Mac app platform context from window.openbot', () => {
-    vi.stubGlobal('window', { openbot: { platform: desktop, onNavigate: () => () => {} } });
+  it('reads the Mac app platform context from window.openbots', () => {
+    vi.stubGlobal('window', { openbots: { platform: desktop, onNavigate: () => () => {} } });
     expect(platform()).toEqual(desktop);
     expect(hasNativeNotifications()).toBe(true);
   });
 
   it('keeps browser notifications when the shell cannot show its own', () => {
     vi.stubGlobal('window', {
-      openbot: { platform: { ...desktop, nativeNotifications: false }, onNavigate: () => () => {} },
+      openbots: {
+        platform: { ...desktop, nativeNotifications: false },
+        onNavigate: () => () => {},
+      },
     });
     expect(platform().kind).toBe('desktop');
     expect(hasNativeNotifications()).toBe(false);
@@ -41,7 +44,7 @@ describe('platform', () => {
     expect(windowDragClass()).toBeUndefined();
     expect(renderToString(createElement(TitleBarInset))).toBe('');
 
-    vi.stubGlobal('window', { openbot: { platform: desktop, onNavigate: () => () => {} } });
+    vi.stubGlobal('window', { openbots: { platform: desktop, onNavigate: () => () => {} } });
     expect(hasInsetTitleBar()).toBe(true);
     expect(windowDragClass()).toBe(WINDOW_DRAG);
     const strip = renderToString(createElement(TitleBarInset));
@@ -53,14 +56,14 @@ describe('platform', () => {
 
     // The window keeps its title bar on other systems.
     vi.stubGlobal('window', {
-      openbot: { platform: { ...desktop, os: 'win32' }, onNavigate: () => () => {} },
+      openbots: { platform: { ...desktop, os: 'win32' }, onNavigate: () => () => {} },
     });
     expect(hasInsetTitleBar()).toBe(false);
     expect(renderToString(createElement(TitleBarInset))).toBe('');
   });
 
-  it('ignores something else called openbot', () => {
-    vi.stubGlobal('window', { openbot: { platform: { kind: 'other' } } });
+  it('ignores something else called openbots', () => {
+    vi.stubGlobal('window', { openbots: { platform: { kind: 'other' } } });
     expect(platform()).toEqual({ kind: 'web' });
   });
 });

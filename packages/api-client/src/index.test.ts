@@ -7,9 +7,9 @@ function respond(status: number, body: unknown, type = 'application/json') {
   );
 }
 
-describe('@openbot/api-client', () => {
+describe('@openbots/api-client', () => {
   it('exports its package name', () => {
-    expect(PACKAGE_NAME).toBe('@openbot/api-client');
+    expect(PACKAGE_NAME).toBe('@openbots/api-client');
   });
 
   it('calls typed paths with cookie credentials and returns the body', async () => {

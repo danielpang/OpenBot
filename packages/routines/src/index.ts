@@ -5,7 +5,7 @@ import {
   type RoutineTriggerInput,
   type SchedulePreset,
   type ScheduleTrigger,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { Cron } from 'croner';
 
 // Schedules for Routines (plan 10.2, R1): presets to five-field cron, and the

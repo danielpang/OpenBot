@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { newBotAvatar } from '@openbot/avatars';
+import { newBotAvatar } from '@openbots/avatars';
 import {
   EventTriggerSchema,
   handleFromName,
@@ -7,7 +7,7 @@ import {
   type Avatar,
   type ModelConfig,
   type ToolPolicy,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { and, asc, count, desc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';

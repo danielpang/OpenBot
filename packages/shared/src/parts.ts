@@ -58,7 +58,7 @@ export const ReasoningPartSchema = z.looseObject({
 });
 
 /**
- * A widget (plan 12.2). Each kind's props schema lives in `@openbot/widgets`;
+ * A widget (plan 12.2). Each kind's props schema lives in `@openbots/widgets`;
  * here `kind` is any string so an unknown kind still round-trips.
  */
 export const WidgetPartSchema = z.looseObject({

@@ -1,4 +1,4 @@
-import { computerPath } from '@openbot/computer';
+import { computerPath } from '@openbots/computer';
 import { z } from 'zod';
 import {
   ATTACHMENT_LIMITS,

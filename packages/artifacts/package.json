@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/artifacts",
+  "name": "@openbots/artifacts",
   "version": "0.0.0",
   "private": true,
   "description": "storage, versions, viewer components",
@@ -7,7 +7,7 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openbot/shared": "workspace:*",
+    "@openbots/shared": "workspace:*",
     "diff": "^8.0.4"
   },
   "devDependencies": {

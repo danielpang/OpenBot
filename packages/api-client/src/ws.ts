@@ -5,7 +5,7 @@ import {
   type WsEvent,
   type WsEventOf,
   type WsEventType,
-} from '@openbot/shared';
+} from '@openbots/shared';
 
 // The realtime client for `/ws` (plan 14.2): typed event handlers, automatic
 // reconnect with backoff, and a resync callback per chat so the app can fetch
@@ -27,7 +27,7 @@ export type WebSocketFactory = (url: string) => WebSocketLike;
 export type WsStatus = 'connecting' | 'open' | 'closed';
 
 export interface WsClientOptions {
-  /** e.g. `wss://openbot.example.com/ws`. */
+  /** e.g. `wss://openbots.example.com/ws`. */
   url: string;
   /**
    * Called after every reconnect for each subscribed chat, with the highest

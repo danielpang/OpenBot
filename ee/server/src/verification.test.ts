@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { eq, like } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { schema } from '@openbot/server/db/client';
-import { createTestApp, type TestApp } from '@openbot/server/test-app';
+import { schema } from '@openbots/server/db/client';
+import { createTestApp, type TestApp } from '@openbots/server/test-app';
 import { emailFromEnv, managedExtensions } from './index.js';
 import { readInviteCookie, signInviteCookie } from './plugin.js';
 import {
@@ -35,7 +35,7 @@ import {
 
 function managedApp(email = {}, env: Record<string, string> = {}) {
   return createTestApp(
-    { OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open', ...env },
+    { OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open', ...env },
     { extensions: managedExtensions({ email }) },
   );
 }
@@ -64,7 +64,7 @@ describe('email sign-up', () => {
     const start = await startSignUp(t, 'vera@example.com');
     expect(start.res.status).toBe(200);
     expect(start.request).toBeDefined();
-    const header = start.res.headers.getSetCookie().find((c) => c.startsWith('openbot_sign_up='))!;
+    const header = start.res.headers.getSetCookie().find((c) => c.startsWith('openbots_sign_up='))!;
     expect(header).toMatch(/HttpOnly/i);
     expect(header).toMatch(/SameSite=Lax/i);
     // No account and no password yet.
@@ -266,7 +266,7 @@ describe('email sign-up', () => {
     await startSignUp(t, 'bound@example.com');
     const res = await verifyCode(t, undefined, mail.code('bound@example.com')!);
     expect(res.status).toBe(400);
-    const forged = await verifyCode(t, 'openbot_sign_up=forged', mail.code('bound@example.com')!);
+    const forged = await verifyCode(t, 'openbots_sign_up=forged', mail.code('bound@example.com')!);
     expect(forged.status).toBe(400);
   });
 
@@ -358,7 +358,7 @@ describe('email sign-up', () => {
         const start = await fromIp(`10.1.${i}.1`, '/api/auth/sign-up/start', {
           email: `try${i}@example.com`,
         });
-        const request = cookieOf(start, 'openbot_sign_up');
+        const request = cookieOf(start, 'openbots_sign_up');
         const res = await fromIp(
           '198.51.100.1',
           '/api/auth/sign-up/verify',
@@ -402,8 +402,8 @@ describe('sign-up codes in the logs', () => {
       }
     }
     expect(() =>
-      emailFromEnv({ OPENBOT_DEV_LOG_EMAIL_LINKS: '1', NODE_ENV: 'production' }),
-    ).toThrow(/OPENBOT_DEV_LOG_EMAIL_LINKS/);
+      emailFromEnv({ OPENBOTS_DEV_LOG_EMAIL_LINKS: '1', NODE_ENV: 'production' }),
+    ).toThrow(/OPENBOTS_DEV_LOG_EMAIL_LINKS/);
   });
 
   it('logs no code or invitation id when sending fails', async () => {
@@ -460,8 +460,8 @@ describe('a GitHub sign-up from an invite link', () => {
   beforeAll(async () => {
     t = await createTestApp(
       {
-        OPENBOT_DEPLOYMENT: 'managed',
-        OPENBOT_SIGNUP_MODE: 'invite',
+        OPENBOTS_DEPLOYMENT: 'managed',
+        OPENBOTS_SIGNUP_MODE: 'invite',
         GITHUB_CLIENT_ID: 'gh-id',
         GITHUB_CLIENT_SECRET: 'gh-secret',
       },
@@ -535,7 +535,7 @@ describe('a GitHub sign-up from an invite link', () => {
   async function inviteCookieFor(id: string) {
     const res = await post(t, `/api/v1/invitations/${id}/oauth`, {});
     expect(res.status).toBe(204);
-    const header = res.headers.getSetCookie().find((c) => c.startsWith('openbot_oauth_invite='))!;
+    const header = res.headers.getSetCookie().find((c) => c.startsWith('openbots_oauth_invite='))!;
     expect(header).toMatch(/HttpOnly/i);
     expect(header).toMatch(/SameSite=Lax/i);
     expect(header).toMatch(/Max-Age=600/);
@@ -566,7 +566,7 @@ describe('a GitHub sign-up from an invite link', () => {
     expect(await me.json()).toMatchObject({ workspace: { id: workspaceId } });
     // The cookie is cleared.
     expect(
-      done.headers.getSetCookie().some((c) => /^openbot_oauth_invite=;|Max-Age=0/.test(c)),
+      done.headers.getSetCookie().some((c) => /^openbots_oauth_invite=;|Max-Age=0/.test(c)),
     ).toBe(true);
   });
 

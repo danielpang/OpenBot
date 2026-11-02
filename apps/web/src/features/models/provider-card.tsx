@@ -1,4 +1,4 @@
-import { Button, cn, Input } from '@openbot/ui';
+import { Button, cn, Input } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useSavedCheckbox } from '../../app/saved-checkbox.js';

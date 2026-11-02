@@ -447,11 +447,11 @@ describe('CookieSync (K1)', () => {
 describe('the cookie store file (K1, S-7)', () => {
   it("reads and writes the store as the store's own user, the data on stdin", async () => {
     const { run, calls } = fakeRun(() => '{"version":1}');
-    expect(await readCookieStore(run, '/var/lib/openbot')).toBe('{"version":1}');
-    await writeCookieStore(run, '/var/lib/openbot', '{"version":1,"cookies":[]}');
+    expect(await readCookieStore(run, '/var/lib/openbots')).toBe('{"version":1}');
+    await writeCookieStore(run, '/var/lib/openbots', '{"version":1,"cookies":[]}');
     expect(calls.map((c) => [c.user, c.args.at(-1)])).toEqual([
-      [STORE, '/var/lib/openbot/cookies/store.json'],
-      [STORE, '/var/lib/openbot/cookies/store.json'],
+      [STORE, '/var/lib/openbots/cookies/store.json'],
+      [STORE, '/var/lib/openbots/cookies/store.json'],
     ]);
     expect(calls[1]!.input).toBe('{"version":1,"cookies":[]}');
     // The cookies never go on a command line.
@@ -459,7 +459,7 @@ describe('the cookie store file (K1, S-7)', () => {
   });
 
   it('keeps the store in a private directory, replacing it whole, and reads nothing before the first write', async () => {
-    const stateDir = await mkdtemp(path.join(tmpdir(), 'openbot-state-'));
+    const stateDir = await mkdtemp(path.join(tmpdir(), 'openbots-state-'));
     expect(await readCookieStore(runAsAgent, stateDir)).toBeUndefined();
     await writeCookieStore(runAsAgent, stateDir, 'first');
     await writeCookieStore(runAsAgent, stateDir, 'second');

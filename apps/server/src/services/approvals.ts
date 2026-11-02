@@ -1,6 +1,6 @@
-import { summarizeArgs, type PendingWait } from '@openbot/agent';
-import { PRIORITY, wsEvent, type JobHandler, type MessagePart } from '@openbot/shared';
-import { widgetToolResult, type ApprovalState } from '@openbot/widgets';
+import { summarizeArgs, type PendingWait } from '@openbots/agent';
+import { PRIORITY, wsEvent, type JobHandler, type MessagePart } from '@openbots/shared';
+import { widgetToolResult, type ApprovalState } from '@openbots/widgets';
 import { and, asc, eq, lte } from 'drizzle-orm';
 import type { Config } from '../config.js';
 import type { AppDeps, CurrentUser } from '../context.js';
@@ -15,7 +15,7 @@ import { actOnWidget, getRunForOwner, resumeRun, type RunRow } from './runs.js';
 // `POST /approvals/:id/decide` (which calls the same widget path, so one
 // reducer serves both); either way `markApproval` updates the row inside the
 // widget's transaction and the decision is announced and audited. An
-// unanswered request expires after OPENBOT_APPROVAL_TTL_MINUTES (24 hours by
+// unanswered request expires after OPENBOTS_APPROVAL_TTL_MINUTES (24 hours by
 // default) and the run resumes denied.
 
 type Owner = Pick<CurrentUser, 'id' | 'workspaceId'>;

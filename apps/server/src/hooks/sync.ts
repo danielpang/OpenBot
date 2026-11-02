@@ -1,4 +1,4 @@
-import { EVENTS_CHANNEL, type MessagePart, type WsEvent } from '@openbot/shared';
+import { EVENTS_CHANNEL, type MessagePart, type WsEvent } from '@openbots/shared';
 import { and, asc, eq } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';

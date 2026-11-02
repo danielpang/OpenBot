@@ -29,7 +29,7 @@ describe('StdioHost', () => {
 
   it('lists tools, resources and prompts and calls a tool', async () => {
     const snapshot = await start();
-    expect(snapshot.server).toEqual({ name: 'openbot-test-stdio', version: '1.0.0' });
+    expect(snapshot.server).toEqual({ name: 'openbots-test-stdio', version: '1.0.0' });
     expect(snapshot.tools.map((t) => t.name)).toEqual(['echo', 'whoami', 'grow']);
     const echo = snapshot.tools[0]!;
     expect(echo.title).toBe('Echo');
@@ -49,7 +49,7 @@ describe('StdioHost', () => {
 
   it("gives the child only PATH, HOME and the connector's secrets, never the server's", async () => {
     process.env.DATABASE_URL = 'postgres://server-secret';
-    process.env.OPENBOT_MASTER_KEY = 'master-secret';
+    process.env.OPENBOTS_MASTER_KEY = 'master-secret';
     try {
       await start();
       const who = JSON.parse(textOf(await host!.callTool('whoami', {}))) as {
@@ -61,7 +61,7 @@ describe('StdioHost', () => {
       expect(who.secret).toBe('s3cret');
       expect(who.homeWritable).toBe(true);
       expect(who.env).not.toContain('DATABASE_URL');
-      expect(who.env).not.toContain('OPENBOT_MASTER_KEY');
+      expect(who.env).not.toContain('OPENBOTS_MASTER_KEY');
       // Node and the OS may add a few of their own (macOS gives every process
       // __CF_USER_TEXT_ENCODING, a text encoding id); nothing from the parent
       // beyond PATH, HOME and npm's cache.
@@ -79,7 +79,7 @@ describe('StdioHost', () => {
       else expect(who.uid).toBe(process.getuid?.());
     } finally {
       delete process.env.DATABASE_URL;
-      delete process.env.OPENBOT_MASTER_KEY;
+      delete process.env.OPENBOTS_MASTER_KEY;
     }
   });
 

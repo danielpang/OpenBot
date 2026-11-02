@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import type { ProviderKind, ProviderProtocol } from '@openbot/shared';
+import type { ProviderKind, ProviderProtocol } from '@openbots/shared';
 
 // Tool-name normalization (plan section 19, "provider differences in tool
-// naming"). Tools keep their OpenBot names (`github__create_issue`,
+// naming"). Tools keep their OpenBots names (`github__create_issue`,
 // `edit_file`); the map rewrites them to what a provider accepts on the way
 // out and back on the way in, so the agent never sees a provider's spelling.
 
@@ -49,11 +49,11 @@ export function toolNameRules(provider: {
 }
 
 export interface ToolNameMap {
-  /** OpenBot name to the name sent to the provider. */
+  /** OpenBots name to the name sent to the provider. */
   toProvider(name: string): string;
-  /** A provider's tool-call name back to the OpenBot name; unknown names pass through. */
+  /** A provider's tool-call name back to the OpenBots name; unknown names pass through. */
   fromProvider(name: string): string;
-  /** Every renamed tool, OpenBot name to provider name. */
+  /** Every renamed tool, OpenBots name to provider name. */
   renamed: ReadonlyMap<string, string>;
 }
 

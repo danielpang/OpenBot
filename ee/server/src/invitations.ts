@@ -1,6 +1,6 @@
 import { and, eq, gt } from 'drizzle-orm';
-import { schema, type Db } from '@openbot/server/db/client';
-import { asDirectory } from '@openbot/server/db/scope';
+import { schema, type Db } from '@openbots/server/db/client';
+import { asDirectory } from '@openbots/server/db/scope';
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

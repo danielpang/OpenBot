@@ -2,9 +2,9 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { conversationTools, defineTool, localEmbedder, type ToolGroup } from '@openbot/agent';
-import { promptText, scriptedModel, type ScriptedTurn } from '@openbot/agent/testing';
-import { DEFAULT_LIMITS, type MessagePart } from '@openbot/shared';
+import { conversationTools, defineTool, localEmbedder, type ToolGroup } from '@openbots/agent';
+import { promptText, scriptedModel, type ScriptedTurn } from '@openbots/agent/testing';
+import { DEFAULT_LIMITS, type MessagePart } from '@openbots/shared';
 import { and, asc, eq, ne } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -61,11 +61,11 @@ describe('webhook ingress', () => {
   ];
 
   beforeAll(async () => {
-    filesDir = await mkdtemp(path.join(tmpdir(), 'openbot-hooks-'));
+    filesDir = await mkdtemp(path.join(tmpdir(), 'openbots-hooks-'));
     t = await createTestApp({
-      OPENBOT_DEPLOYMENT: 'managed',
-      OPENBOT_SIGNUP_MODE: 'open',
-      OPENBOT_FILES_DIR: filesDir,
+      OPENBOTS_DEPLOYMENT: 'managed',
+      OPENBOTS_SIGNUP_MODE: 'open',
+      OPENBOTS_FILES_DIR: filesDir,
     });
     cookie = (await t.signUp('dana@example.com')).cookie!;
     const off = [registerRunHooks(), registerRoutineHooks()];
@@ -286,7 +286,7 @@ describe('webhook ingress', () => {
     expect(attachments.items.map((f) => f.id)).not.toContain(items[0]!['bodyFileId']);
   });
 
-  it('takes the token as a bearer, in X-OpenBot-Token or in the path', async () => {
+  it('takes the token as a bearer, in X-OpenBots-Token or in the path', async () => {
     const { bot } = await newBot('Tokens');
     const inbox = await newEndpoint(bot.id);
     const alerts = await newEndpoint(bot.id, { slug: 'alerts' });
@@ -295,7 +295,7 @@ describe('webhook ingress', () => {
       const res = await hook(url, { body: body.replace('1', String(n)), headers });
       expect(res.status).toBe(202);
     };
-    await ok(`/hooks/${bot.id}`, { 'x-openbot-token': inbox.token }, 1);
+    await ok(`/hooks/${bot.id}`, { 'x-openbots-token': inbox.token }, 1);
     await ok(`/hooks/${bot.id}/${inbox.token}`, {}, 2);
     await ok(`/hooks/${bot.id}/alerts/${alerts.token}`, {}, 3);
     await ok(`/hooks/${bot.id}/alerts`, bearer(alerts.token), 4);

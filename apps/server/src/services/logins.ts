@@ -1,11 +1,11 @@
-import type { LoginRequestInput, LoginRequestPlan, LoginRequests } from '@openbot/agent';
-import { PRIORITY, wsEvent, type JobHandler, type MessagePart } from '@openbot/shared';
+import type { LoginRequestInput, LoginRequestPlan, LoginRequests } from '@openbots/agent';
+import { PRIORITY, wsEvent, type JobHandler, type MessagePart } from '@openbots/shared';
 import {
   validateWidgetProps,
   widgetToolResult,
   type LoginRequestState,
   type LoginRequestWaiter,
-} from '@openbot/widgets';
+} from '@openbots/widgets';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema, type Db } from '../db/client.js';
@@ -35,7 +35,7 @@ import { resumeRun } from './runs.js';
 // Sites are merged by registrable domain (plan 9.7): `accounts.google.com` and
 // `mail.google.com` are one request for `google.com`, since a sign-in is a
 // cookie on that domain. Like an approval (services/approvals.ts), an
-// unanswered request expires after OPENBOT_APPROVAL_TTL_MINUTES: a delayed job
+// unanswered request expires after OPENBOTS_APPROVAL_TTL_MINUTES: a delayed job
 // per request, and a sweep at worker start for jobs an in-memory queue lost.
 // Every waiting run resumes told that the request expired.
 
@@ -362,7 +362,7 @@ export async function resumeIfAnswered(
 
 // Expiry (plan 9.7): on the approvals' TTL and mechanism.
 
-/** When a request made now expires (ISO 8601): OPENBOT_APPROVAL_TTL_MINUTES, like an approval. */
+/** When a request made now expires (ISO 8601): OPENBOTS_APPROVAL_TTL_MINUTES, like an approval. */
 export function loginExpiresAt(deps: Pick<AppDeps, 'config'>, now = Date.now()): string {
   return new Date(now + approvalTtlMs(deps.config)).toISOString();
 }

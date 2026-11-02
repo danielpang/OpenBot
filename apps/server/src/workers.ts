@@ -1,4 +1,4 @@
-import type { JobHandler } from '@openbot/shared';
+import type { JobHandler } from '@openbots/shared';
 import type { AppDeps } from './context.js';
 import { forEachWorkspace } from './db/scope.js';
 import {

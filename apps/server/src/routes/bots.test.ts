@@ -1,4 +1,4 @@
-import { EVENTS_CHANNEL, type WsEvent } from '@openbot/shared';
+import { EVENTS_CHANNEL, type WsEvent } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { nextSeq, schema } from '../db/client.js';
@@ -31,7 +31,7 @@ describe('/api/v1/bots', () => {
   let providerId: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     alice = (await t.signUp('alice@example.com')).cookie!;
     bob = (await t.signUp('bob@example.com')).cookie!;
     const users = await t.db.select().from(schema.users);
@@ -576,7 +576,7 @@ describe("a member's first Bot is their main Bot (K8)", () => {
   let n = 0;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
   });
   afterAll(() => t.close());
 
@@ -654,7 +654,7 @@ describe('Bot limit (B8)', () => {
   let cookie: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_LIMITS_BOTS_PER_ACCOUNT: '2' });
+    t = await createTestApp({ OPENBOTS_LIMITS_BOTS_PER_ACCOUNT: '2' });
     cookie = (await t.signUp('admin@example.com')).cookie!;
   });
   afterAll(() => t.close());

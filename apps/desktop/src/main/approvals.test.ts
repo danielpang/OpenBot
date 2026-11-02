@@ -1,4 +1,4 @@
-import { wsEvent } from '@openbot/shared';
+import { wsEvent } from '@openbots/shared';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createApprovalTracker,
@@ -256,11 +256,11 @@ describe('tray menu', () => {
     const menu = trayMenu({
       approvals: [],
       profileName: 'Work',
-      connection: 'Self-hosted (openbot.example.com)',
+      connection: 'Self-hosted (openbots.example.com)',
       connected: true,
       actions: a,
     });
-    expect(menu[0]).toEqual({ label: 'Self-hosted (openbot.example.com)', enabled: false });
+    expect(menu[0]).toEqual({ label: 'Self-hosted (openbots.example.com)', enabled: false });
     expect(menu[1]).toEqual({ type: 'separator' });
     expect(menu[2]).toEqual({ label: 'No pending approvals', enabled: false });
     menu.find((i) => i.label === 'Change connection…')!.click!();

@@ -1,15 +1,15 @@
-// Deep links (plan 14.4, N1): `openbot://bot/{id}/message/{seq}` opens one
-// message of a Bot's transcript, and `openbot://chat/{id}/message/{seq}` one of
+// Deep links (plan 14.4, N1): `openbots://bot/{id}/message/{seq}` opens one
+// message of a Bot's transcript, and `openbots://chat/{id}/message/{seq}` one of
 // a group chat. A reply in a thread adds `?thread={root id}`, which opens the
 // thread at the reply. A message in one of the Bot's chats with another Bot
 // (C6), which the web app shows under the Bot's transcript, adds
 // `?chat={that chat's id}` to the Bot's link; its seq is that chat's. The app registers the scheme with setAsDefaultProtocolClient;
 // notifications carry these links, and macOS hands them back through
-// `open-url` when one is clicked or opened from elsewhere. `openbot://connectors`
+// `open-url` when one is clicked or opened from elsewhere. `openbots://connectors`
 // opens the Connectors page: a connector's OAuth sign-in, finished in the
 // default browser, links back with it.
 
-export const PROTOCOL = 'openbot';
+export const PROTOCOL = 'openbots';
 
 /**
  * `thread` is the root message of the thread the message is in. `chat` on a
@@ -37,7 +37,7 @@ export function formatDeepLink(link: DeepLink): string {
 }
 
 /**
- * Parses an `openbot://` URL. Anything else, or a malformed id or seq,
+ * Parses an `openbots://` URL. Anything else, or a malformed id or seq,
  * is null: a link from outside the app must never open an arbitrary path.
  */
 export function parseDeepLink(raw: string): DeepLink | null {
@@ -48,7 +48,7 @@ export function parseDeepLink(raw: string): DeepLink | null {
     return null;
   }
   if (url.protocol !== `${PROTOCOL}:`) return null;
-  // `openbot://bot/<id>/...` parses with the kind as the host.
+  // `openbots://bot/<id>/...` parses with the kind as the host.
   const segments = [url.hostname, ...url.pathname.split('/')].filter((s) => s !== '');
   if (segments.length === 1 && segments[0] === 'connectors' && !url.search) {
     return { kind: 'connectors' };

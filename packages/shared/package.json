@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/shared",
+  "name": "@openbots/shared",
   "version": "0.0.0",
   "private": true,
   "description": "zod schemas, event protocol, pricing, limits, constants",
@@ -7,7 +7,7 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }

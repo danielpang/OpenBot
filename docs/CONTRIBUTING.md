@@ -1,8 +1,8 @@
-# Contributing to OpenBot
+# Contributing to OpenBots
 
 Thank you for helping. This page is the short version of how the repository works; the
 [README](../README.md#development) covers setting up a development machine, and
-[PRD.md](PRD.md) and [TECHNICAL_PLAN.md](TECHNICAL_PLAN.md) say what OpenBot is and how it is
+[PRD.md](PRD.md) and [TECHNICAL_PLAN.md](TECHNICAL_PLAN.md) say what OpenBots is and how it is
 built. Self-hosting is documented in the README too.
 
 ## Before you open a pull request
@@ -20,9 +20,9 @@ pnpm build
 If you change an API route, regenerate the OpenAPI document and the client and commit the result:
 
 ```sh
-pnpm --filter @openbot/server openapi
+pnpm --filter @openbots/server openapi
 pnpm exec prettier --write packages/api-client/openapi.json
-pnpm --filter @openbot/api-client generate
+pnpm --filter @openbots/api-client generate
 ```
 
 ## What a change includes

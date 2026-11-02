@@ -28,9 +28,9 @@ jobs:
       # match the routes: regenerate both and fail on any difference.
       - name: Check the OpenAPI document and client are current
         run: |
-          pnpm --filter @openbot/server openapi
+          pnpm --filter @openbots/server openapi
           pnpm exec prettier --write packages/api-client/openapi.json
-          pnpm --filter @openbot/api-client generate
+          pnpm --filter @openbots/api-client generate
           if ! git diff --exit-code -- packages/api-client; then
             echo "::error::packages/api-client is stale; run the three commands above and commit the result"
             exit 1
@@ -38,9 +38,9 @@ jobs:
       # The same for the managed routes (ee/server) and ee/web's types.
       - name: Check the managed OpenAPI document and types are current
         run: |
-          pnpm --filter @openbot/ee-server openapi
+          pnpm --filter @openbots/ee-server openapi
           pnpm exec prettier --write ee/server/openapi.json
-          pnpm --filter @openbot/ee-web generate
+          pnpm --filter @openbots/ee-web generate
           if ! git diff --exit-code -- ee/server/openapi.json ee/web/src/schema.ts; then
             echo "::error::ee/server/openapi.json or ee/web/src/schema.ts is stale; run the three commands above and commit the result"
             exit 1
@@ -72,7 +72,7 @@ jobs:
           file: docker/server.Dockerfile
           push: false
           load: true
-          tags: openbot-ci/server:ci
+          tags: openbots-ci/server:ci
           cache-from: type=gha,scope=server
           cache-to: type=gha,scope=server,mode=max
       # The managed image (ee/server): built, not published here.
@@ -81,18 +81,18 @@ jobs:
           context: .
           file: ee/server/Dockerfile
           push: false
-          tags: openbot-ci/managed-server:ci
+          tags: openbots-ci/managed-server:ci
           cache-from: type=gha,scope=managed-server
           cache-to: type=gha,scope=managed-server,mode=max
       - name: Smoke-test the stack
         run: |
-          key="$(docker run --rm openbot-ci/server:ci keygen)"
+          key="$(docker run --rm openbots-ci/server:ci keygen)"
           # As install.sh does: one database password in both places.
           db="$(openssl rand -hex 24)"
-          sed -i "s|^OPENBOT_MASTER_KEY=.*|OPENBOT_MASTER_KEY=$key|; s|^OPENBOT_IMAGE_PREFIX=.*|OPENBOT_IMAGE_PREFIX=openbot-ci|; s|^OPENBOT_VERSION=.*|OPENBOT_VERSION=ci|; s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$db|; s|:change-me@|:$db@|" .env
+          sed -i "s|^OPENBOTS_MASTER_KEY=.*|OPENBOTS_MASTER_KEY=$key|; s|^OPENBOTS_IMAGE_PREFIX=.*|OPENBOTS_IMAGE_PREFIX=openbots-ci|; s|^OPENBOTS_VERSION=.*|OPENBOTS_VERSION=ci|; s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$db|; s|:change-me@|:$db@|" .env
           docker compose up -d --wait
           curl -fsS http://localhost:3000/readyz
-          curl -fsS http://localhost:3000/ | grep -q "<title>OpenBot</title>"
+          curl -fsS http://localhost:3000/ | grep -q "<title>OpenBots</title>"
       - if: failure()
         run: docker compose logs
 
@@ -102,9 +102,9 @@ jobs:
   # skips: there is no Docker provider. The server is the managed one
   # (ee/server, serving ee/web), since specs sign up several users and a
   # self-hosted install closes sign-up after its owner: each user verifies
-  # their email with the code the server logs (OPENBOT_DEV_LOG_EMAIL_LINKS,
+  # their email with the code the server logs (OPENBOTS_DEV_LOG_EMAIL_LINKS,
   # read from E2E_SERVER_LOG) and creates an organization. The fake model and
-  # sign-in servers listen on 127.0.0.1, so OPENBOT_LOCAL_ENDPOINTS is on.
+  # sign-in servers listen on 127.0.0.1, so OPENBOTS_LOCAL_ENDPOINTS is on.
   # The self-hosted job runs the core server on its default deployment.
   e2e:
     name: e2e (${{ matrix.name }})
@@ -135,12 +135,12 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg16
         env:
-          POSTGRES_USER: openbot
-          POSTGRES_PASSWORD: openbot
-          POSTGRES_DB: openbot
+          POSTGRES_USER: openbots
+          POSTGRES_PASSWORD: openbots
+          POSTGRES_DB: openbots
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U openbot -d openbot"
+          --health-cmd "pg_isready -U openbots -d openbots"
           --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
         image: redis:7-alpine
@@ -149,16 +149,16 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DATABASE_URL: postgres://openbot:openbot@localhost:5432/openbot
-      # Migrations as openbot (the owner), then the server as openbot_app,
+      DATABASE_URL: postgres://openbots:openbots@localhost:5432/openbots
+      # Migrations as openbots (the owner), then the server as openbots_app,
       # under row-level security between organizations.
-      OPENBOT_DB_APP_PASSWORD: ci-openbot-app-password
+      OPENBOTS_DB_APP_PASSWORD: ci-openbots-app-password
       REDIS_URL: redis://localhost:6379
-      OPENBOT_PUBLIC_URL: http://localhost:3000
-      OPENBOT_DEPLOYMENT: ${{ matrix.deployment || 'managed' }}
-      OPENBOT_SIGNUP_MODE: open
-      OPENBOT_LOCAL_ENDPOINTS: 'true'
-      OPENBOT_DEV_LOG_EMAIL_LINKS: '1'
+      OPENBOTS_PUBLIC_URL: http://localhost:3000
+      OPENBOTS_DEPLOYMENT: ${{ matrix.deployment || 'managed' }}
+      OPENBOTS_SIGNUP_MODE: open
+      OPENBOTS_LOCAL_ENDPOINTS: 'true'
+      OPENBOTS_DEV_LOG_EMAIL_LINKS: '1'
       E2E: '1'
       # The server serves the built web app, so Playwright reuses it instead
       # of starting the Vite dev server.
@@ -172,15 +172,15 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm --filter @openbot/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @openbots/web exec playwright install --with-deps chromium
       - name: Start the server
         run: |
           mkdir -p "$RUNNER_TEMP/files"
           # The managed server from ee/server; the self-hosted job, the core's.
           main=ee/server/dist/main.js
-          [ "$OPENBOT_DEPLOYMENT" = self_hosted ] && main=apps/server/dist/main.js
-          OPENBOT_MASTER_KEY="$(node apps/server/dist/keygen.js)" \
-            OPENBOT_FILES_DIR="$RUNNER_TEMP/files" \
+          [ "$OPENBOTS_DEPLOYMENT" = self_hosted ] && main=apps/server/dist/main.js
+          OPENBOTS_MASTER_KEY="$(node apps/server/dist/keygen.js)" \
+            OPENBOTS_FILES_DIR="$RUNNER_TEMP/files" \
             nohup node "$main" >"$RUNNER_TEMP/server.log" 2>&1 &
           for _ in $(seq 1 60); do
             curl -fsS http://localhost:3000/readyz && exit 0

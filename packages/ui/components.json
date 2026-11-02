@@ -10,11 +10,11 @@
     "cssVariables": true
   },
   "aliases": {
-    "components": "@openbot/ui/components",
-    "ui": "@openbot/ui/components",
-    "utils": "@openbot/ui/lib/utils",
-    "lib": "@openbot/ui/lib",
-    "hooks": "@openbot/ui/hooks"
+    "components": "@openbots/ui/components",
+    "ui": "@openbots/ui/components",
+    "utils": "@openbots/ui/lib/utils",
+    "lib": "@openbots/ui/lib",
+    "hooks": "@openbots/ui/hooks"
   },
   "iconLibrary": "none"
 }

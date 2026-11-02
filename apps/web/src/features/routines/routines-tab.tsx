@@ -1,6 +1,6 @@
-import type { RoutineTriggerInput } from '@openbot/shared';
-import { Button, cn, Input } from '@openbot/ui';
-import { browserTimezone } from '@openbot/widgets/react';
+import type { RoutineTriggerInput } from '@openbots/shared';
+import { Button, cn, Input } from '@openbots/ui';
+import { browserTimezone } from '@openbots/widgets/react';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { skillsQuery, usableSkills } from '../skills/api.js';

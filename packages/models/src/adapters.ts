@@ -3,7 +3,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { createXai } from '@ai-sdk/xai';
-import type { ProviderKind, ProviderProtocol } from '@openbot/shared';
+import type { ProviderKind, ProviderProtocol } from '@openbots/shared';
 import type { LanguageModel } from 'ai';
 import { presetById } from './catalog.js';
 

@@ -29,7 +29,7 @@ for (const name of SECRET_ENV_VARS) delete process.env[name];
 
 // In the image the agent starts as root: it takes the token file, lays out
 // the screens' directories and drops to the bot user (privileges.ts), and
-// from then on starts every program through openbot-runas. Started as anyone
+// from then on starts every program through openbots-runas. Started as anyone
 // else (a dev machine, a remote agent) everything runs as that user.
 const privileged = process.getuid?.() === 0;
 // Root without the helper would leave every child root's to take back.

@@ -6,12 +6,12 @@
 #   bash scripts/dev.sh --docker  # the compose stack's postgres and redis, published on localhost
 #   bash scripts/dev.sh --local   # the apt services from `scripts/dev-setup.sh --services`
 #
-# Both give postgres://openbot:openbot@127.0.0.1:5432/openbot and
+# Both give postgres://openbots:openbots@127.0.0.1:5432/openbots and
 # redis://127.0.0.1:6379.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATABASE_URL=postgres://openbot:openbot@127.0.0.1:5432/openbot
+DATABASE_URL=postgres://openbots:openbots@127.0.0.1:5432/openbots
 REDIS_URL=redis://127.0.0.1:6379
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -42,7 +42,7 @@ fi
 
 if [ "$MODE" = docker ]; then
   cd "$REPO_DIR"
-  # The compose file reads .env for the openbot service; a copy of the example
+  # The compose file reads .env for the openbots service; a copy of the example
   # is enough for postgres and redis.
   if [ ! -f .env ]; then
     log "Creating .env from .env.example"
@@ -66,7 +66,7 @@ else
   fi
 fi
 
-log "Ready. Export these, plus OPENBOT_MASTER_KEY (pnpm -s --filter @openbot/server keygen), then run pnpm dev:"
+log "Ready. Export these, plus OPENBOTS_MASTER_KEY (pnpm -s --filter @openbots/server keygen), then run pnpm dev:"
 echo
 echo "export DATABASE_URL=$DATABASE_URL"
 echo "export REDIS_URL=$REDIS_URL"
@@ -76,6 +76,6 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   echo
   log "For Bot computers, run the docker guard in another terminal and export DOCKER_HOST too:"
   echo
-  echo "pnpm --filter @openbot/computer docker-guard"
+  echo "pnpm --filter @openbots/computer docker-guard"
   echo "export DOCKER_HOST=tcp://127.0.0.1:2375"
 fi

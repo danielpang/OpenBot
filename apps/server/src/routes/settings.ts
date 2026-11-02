@@ -5,7 +5,7 @@ import { LimitsSchema } from '../schemas.js';
 import { DomainError } from '../errors.js';
 import { recordAudit, userActor } from '../services/audit.js';
 import { stopCustomStdio } from '../services/connectors.js';
-import type { Limits } from '@openbot/shared';
+import type { Limits } from '@openbots/shared';
 import type { AppDeps } from '../context.js';
 import {
   effectiveSettings,
@@ -21,7 +21,7 @@ import {
 // one owner, who changes the limits and custom stdio here; audit retention is
 // managed only and keeps its default there (see workspace.ts). On the
 // managed service an organization's limits stay under a ceiling, the
-// operator's (OPENBOT_LIMITS_*) or its plan's: owners and admins may lower
+// operator's (OPENBOTS_LIMITS_*) or its plan's: owners and admins may lower
 // them, never raise them above it (400 ABOVE_PLAN_LIMIT), and a higher
 // number in the row counts as the ceiling.
 

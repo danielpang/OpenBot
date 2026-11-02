@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createOpenAI } from '@ai-sdk/openai';
-import type { ProviderConfig } from '@openbot/models';
+import type { ProviderConfig } from '@openbots/models';
 import { embedMany, type EmbeddingModel } from 'ai';
 
 // Memory embeddings (M1). `bot_memories.embedding` is vector(1536). When the

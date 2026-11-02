@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import type { WsClient } from '@openbot/api-client';
-import { DEFAULT_LIMITS, type WsEvent } from '@openbot/shared';
+import type { WsClient } from '@openbots/api-client';
+import { DEFAULT_LIMITS, type WsEvent } from '@openbots/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -355,7 +355,7 @@ describe('the thread panel kind', () => {
   it('is remembered with its chat and root', () => {
     writePanel('b1', { kind: 'thread', chatId: CHAT, rootId: ROOT });
     expect(readPanel('b1')).toEqual({ kind: 'thread', chatId: CHAT, rootId: ROOT });
-    localStorage.setItem('openbot.panel.b1', JSON.stringify({ kind: 'thread', chatId: CHAT }));
+    localStorage.setItem('openbots.panel.b1', JSON.stringify({ kind: 'thread', chatId: CHAT }));
     expect(readPanel('b1')).toBeNull();
   });
 });

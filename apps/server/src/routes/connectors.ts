@@ -6,8 +6,8 @@ import {
   HttpAuthSchema,
   ImportError,
   OAuthModeSchema,
-} from '@openbot/mcp';
-import { PolicyDecisionSchema, ToolGroupNameSchema } from '@openbot/shared';
+} from '@openbots/mcp';
+import { PolicyDecisionSchema, ToolGroupNameSchema } from '@openbots/shared';
 import { authenticateHeaders, requireAdmin, requireUser } from '../middleware/auth.js';
 import { renderOAuthPage } from '../oauth-page.js';
 import { DomainError } from '../errors.js';
@@ -381,7 +381,7 @@ export const connectorRoutes = createRouter()
             items: z.array(CatalogEntrySchema),
             oauthCallbackUrl: z.url().openapi({
               description:
-                'The redirect URL an OAuth app made by hand must allow (from `OPENBOT_PUBLIC_URL`)',
+                'The redirect URL an OAuth app made by hand must allow (from `OPENBOTS_PUBLIC_URL`)',
             }),
           }),
           'Catalog entries',
@@ -741,7 +741,7 @@ export const connectorRoutes = createRouter()
       tags: ['connectors'],
       summary: 'Begin an OAuth 2.1 sign-in (PKCE, dynamic registration when offered)',
       description:
-        'Answers with the authorization URL to open. After consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOT_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).',
+        'Answers with the authorization URL to open. After consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOTS_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).',
       middleware: [requireUser] as const,
       security: authenticated,
       request: { params, query: z.object({ mode: OAuthModeSchema.optional() }) },

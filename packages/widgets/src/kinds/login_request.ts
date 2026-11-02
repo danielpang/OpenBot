@@ -10,7 +10,7 @@ import { defineWidget } from './types.js';
 // screen of `screen_bot_id`, on `url` when given, so the owner signs in
 // there; the login reaches every Bot through the computer's shared cookies.
 // Done and Can't sign in resume every waiting run. Unanswered, the request
-// expires at `expires_at` (OPENBOT_APPROVAL_TTL_MINUTES, like an approval) and
+// expires at `expires_at` (OPENBOTS_APPROVAL_TTL_MINUTES, like an approval) and
 // every waiting run resumes told so.
 
 const BotRefSchema = z.strictObject({

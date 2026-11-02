@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { AgentError, computerPath } from '@openbot/computer';
-import { ComputerStatusSchema, ScreenStatusSchema } from '@openbot/shared';
+import { AgentError, computerPath } from '@openbots/computer';
+import { ComputerStatusSchema, ScreenStatusSchema } from '@openbots/shared';
 import type { Context, MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AppEnv } from '../context.js';

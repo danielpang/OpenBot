@@ -1,6 +1,6 @@
-import { unwrap, type components } from '@openbot/api-client';
-import type { AvatarParams } from '@openbot/avatars';
-import type { WsEventOf } from '@openbot/shared';
+import { unwrap, type components } from '@openbots/api-client';
+import type { AvatarParams } from '@openbots/avatars';
+import type { WsEventOf } from '@openbots/shared';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../app/api.js';
 

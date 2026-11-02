@@ -1,5 +1,5 @@
-import type { Avatar as AvatarValue } from '@openbot/shared';
-import { Button, cn } from '@openbot/ui';
+import type { Avatar as AvatarValue } from '@openbots/shared';
+import { Button, cn } from '@openbots/ui';
 import { useRef, useState, type ChangeEvent } from 'react';
 import { Avatar, defaultFileUrl } from './avatar.js';
 import { resolveParts, shuffle, type AvatarParams, type GeneratedAvatar } from './generate.js';

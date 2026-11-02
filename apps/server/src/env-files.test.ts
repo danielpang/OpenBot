@@ -25,7 +25,7 @@ describe('secret files (S-1)', () => {
     expect(
       secretFromEnv('DATABASE_URL', {
         DATABASE_URL_FILE: new URL(import.meta.url).pathname,
-        OPENBOT_MASTER_KEY_FILE: '/nonexistent',
+        OPENBOTS_MASTER_KEY_FILE: '/nonexistent',
       }),
     ).toContain("describe('secret files (S-1)'");
     expect(secretFromEnv('DATABASE_URL', {})).toBeUndefined();
@@ -44,7 +44,7 @@ describe.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
     });
 
     function start(env: Record<string, string>, { secretsDir = true } = {}) {
-      dir = mkdtempSync(path.join(tmpdir(), 'openbot-entrypoint-'));
+      dir = mkdtempSync(path.join(tmpdir(), 'openbots-entrypoint-'));
       const bin = path.join(dir, 'bin');
       const secrets = path.join(dir, 'secrets');
       mkdirSync(bin);
@@ -52,16 +52,16 @@ describe.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
       if (secretsDir) mkdirSync(secrets, { mode: 0o755 });
       writeFileSync(
         path.join(bin, 'node'),
-        '#!/bin/sh\nenv > "$OPENBOT_TEST_OUT/$(basename "$1").env"\n',
+        '#!/bin/sh\nenv > "$OPENBOTS_TEST_OUT/$(basename "$1").env"\n',
         { mode: 0o755 },
       );
       const res = spawnSync('/bin/sh', [fileURLToPath(ENTRYPOINT), 'start'], {
         encoding: 'utf8',
         env: {
           PATH: `${bin}:/usr/bin:/bin`,
-          OPENBOT_SERVER_DIR: path.join(dir, 'server'),
-          OPENBOT_SECRETS_DIR: secrets,
-          OPENBOT_TEST_OUT: dir,
+          OPENBOTS_SERVER_DIR: path.join(dir, 'server'),
+          OPENBOTS_SECRETS_DIR: secrets,
+          OPENBOTS_TEST_OUT: dir,
           ...env,
         },
       });
@@ -78,32 +78,34 @@ describe.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
 
     it('moves each secret into a private file and hands node only its path', () => {
       const { secrets, migrate, main } = start({
-        OPENBOT_MASTER_KEY: 'the-master-key',
-        DATABASE_URL: 'postgres://openbot:pw@postgres/openbot',
+        OPENBOTS_MASTER_KEY: 'the-master-key',
+        DATABASE_URL: 'postgres://openbots:pw@postgres/openbots',
         ANTHROPIC_API_KEY: '',
         OPENAI_API_KEY_FILE: '/run/secrets/openai',
-        OPENBOT_PUBLIC_URL: 'https://bots.example.com',
+        OPENBOTS_PUBLIC_URL: 'https://bots.example.com',
       });
       for (const env of [migrate, main]) {
-        expect(env.OPENBOT_MASTER_KEY).toBeUndefined();
+        expect(env.OPENBOTS_MASTER_KEY).toBeUndefined();
         expect(env.DATABASE_URL).toBeUndefined();
-        expect(env.OPENBOT_MASTER_KEY_FILE).toBe(path.join(secrets, 'OPENBOT_MASTER_KEY'));
+        expect(env.OPENBOTS_MASTER_KEY_FILE).toBe(path.join(secrets, 'OPENBOTS_MASTER_KEY'));
         expect(env.DATABASE_URL_FILE).toBe(path.join(secrets, 'DATABASE_URL'));
         // A file given already, an empty value and other settings stay as they are.
         expect(env.OPENAI_API_KEY_FILE).toBe('/run/secrets/openai');
         expect(env.ANTHROPIC_API_KEY_FILE).toBeUndefined();
-        expect(env.OPENBOT_PUBLIC_URL).toBe('https://bots.example.com');
+        expect(env.OPENBOTS_PUBLIC_URL).toBe('https://bots.example.com');
       }
-      expect(readFileSync(path.join(secrets, 'OPENBOT_MASTER_KEY'), 'utf8')).toBe('the-master-key');
+      expect(readFileSync(path.join(secrets, 'OPENBOTS_MASTER_KEY'), 'utf8')).toBe(
+        'the-master-key',
+      );
       expect(statSync(path.join(secrets, 'DATABASE_URL')).mode & 0o777).toBe(0o600);
       expect(statSync(secrets).mode & 0o777).toBe(0o700);
-      expect(secretFromEnv('OPENBOT_MASTER_KEY', main)).toBe('the-master-key');
+      expect(secretFromEnv('OPENBOTS_MASTER_KEY', main)).toBe('the-master-key');
     });
 
     it('leaves the environment alone without a secrets directory', () => {
-      const { main } = start({ OPENBOT_MASTER_KEY: 'the-master-key' }, { secretsDir: false });
-      expect(main.OPENBOT_MASTER_KEY).toBe('the-master-key');
-      expect(main.OPENBOT_MASTER_KEY_FILE).toBeUndefined();
+      const { main } = start({ OPENBOTS_MASTER_KEY: 'the-master-key' }, { secretsDir: false });
+      expect(main.OPENBOTS_MASTER_KEY).toBe('the-master-key');
+      expect(main.OPENBOTS_MASTER_KEY_FILE).toBeUndefined();
     });
 
     it('leaves a secret set both ways for the server to refuse', () => {

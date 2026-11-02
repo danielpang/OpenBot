@@ -6,7 +6,7 @@ import {
   type ControlFrame,
   type Unsubscribe,
   type WsEvent,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { DomainError } from '../errors.js';

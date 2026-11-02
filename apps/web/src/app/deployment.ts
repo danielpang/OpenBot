@@ -1,8 +1,8 @@
-import type { components } from '@openbot/api-client';
+import type { components } from '@openbots/api-client';
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { capabilitiesQuery } from './api.js';
 
-// What kind of install the server is (OPENBOT_DEPLOYMENT, in
+// What kind of install the server is (OPENBOTS_DEPLOYMENT, in
 // /api/v1/capabilities). Self-hosted, the default, is one person's: one
 // account, its owner, so there is no Admin or Audit log tab, no invites or
 // members, and no "admin" wording. The managed OpenBots service keeps all of

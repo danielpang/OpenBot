@@ -1,5 +1,5 @@
-import type { WsClient, WsStatus } from '@openbot/api-client';
-import type { WsEventOf } from '@openbot/shared';
+import type { WsClient, WsStatus } from '@openbots/api-client';
+import type { WsEventOf } from '@openbots/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createContext,

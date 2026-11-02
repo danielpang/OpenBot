@@ -161,7 +161,7 @@ const PROBE = {
   params: {
     protocolVersion: '2025-06-18',
     capabilities: {},
-    clientInfo: { name: 'OpenBot', version: '0' },
+    clientInfo: { name: 'OpenBots', version: '0' },
   },
 };
 

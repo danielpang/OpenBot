@@ -1,4 +1,4 @@
-import { SKILL_NAME_MAX } from '@openbot/shared';
+import { SKILL_NAME_MAX } from '@openbots/shared';
 import { parse as parseYaml } from 'yaml';
 
 // Reading a Skill file from elsewhere (S3): a SKILL.md in the Agent Skills

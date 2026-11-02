@@ -1,6 +1,6 @@
-import type { RunCheckpoint, SerializedRunState } from '@openbot/agent';
-import { isForBot } from '@openbot/router';
-import { PRIORITY, wsEvent, type MessagePart } from '@openbot/shared';
+import type { RunCheckpoint, SerializedRunState } from '@openbots/agent';
+import { isForBot } from '@openbots/router';
+import { PRIORITY, wsEvent, type MessagePart } from '@openbots/shared';
 import {
   reduceWidget,
   validateWidgetAction,
@@ -8,7 +8,7 @@ import {
   widgetToolResult,
   type ApprovalState,
   type FormState,
-} from '@openbot/widgets';
+} from '@openbots/widgets';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
@@ -45,7 +45,7 @@ type RunsDeps = Pick<AppDeps, 'config' | 'db' | 'infra' | 'logger'>;
 
 export const RUNS_QUEUE = 'runs';
 /** Bus channel for run control (cancel) from the API to whichever worker runs it. */
-export const RUN_CONTROL_CHANNEL = 'openbot:run-control';
+export const RUN_CONTROL_CHANNEL = 'openbots:run-control';
 
 export type RunRow = typeof schema.runs.$inferSelect;
 export type RunStepRow = typeof schema.runSteps.$inferSelect;

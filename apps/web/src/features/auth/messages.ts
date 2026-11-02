@@ -1,4 +1,4 @@
-import { ApiError } from '@openbot/api-client';
+import { ApiError } from '@openbots/api-client';
 
 // Signup policy rejections (U1) and disabled accounts (U3) carry stable codes; everything else shows the
 // server's own message. Invites and disabled accounts are the managed service's; a self-hosted
@@ -8,8 +8,8 @@ const MESSAGES: Record<string, string> = {
   INVITE_REQUIRED: 'Signing up here needs an invite. Open the link from your invite.',
   INVITE_INVALID: 'This invite link is invalid, already used, or expired.',
   ACCOUNT_DISABLED: 'This account is disabled. Ask an admin to enable it.',
-  SIGNUP_CLOSED: 'This OpenBot already has its owner. Sign in instead.',
-  NOT_OWNER: 'This OpenBot has one account, its owner.',
+  SIGNUP_CLOSED: 'This OpenBots server already has its owner. Sign in instead.',
+  NOT_OWNER: 'This OpenBots server has one account, its owner.',
   EMAIL_NOT_VERIFIED: 'This email is not confirmed. Sign up again to confirm it.',
   INVALID_OTP: 'That code is wrong. Try again.',
   OTP_EXPIRED: 'That code expired. Send a new one.',

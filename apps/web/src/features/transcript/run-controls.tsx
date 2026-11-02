@@ -1,4 +1,4 @@
-import { Button } from '@openbot/ui';
+import { Button } from '@openbots/ui';
 import { useState } from 'react';
 import { cancelRun, type BotState } from './api.js';
 

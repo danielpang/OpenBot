@@ -1,4 +1,4 @@
-import { DEFAULT_LIMITS } from '@openbot/shared';
+import { DEFAULT_LIMITS } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import { LIMIT_LABELS, limitLabel, limitsPatch } from './admin-settings.js';
 

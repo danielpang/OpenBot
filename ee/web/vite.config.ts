@@ -8,7 +8,7 @@ import shared, { sourceConditions } from '../../vitest.shared.ts';
 // files, started with the managed extensions. Its route tree is the one
 // apps/web generates; nothing here adds routes.
 
-const server = process.env.OPENBOT_DEV_SERVER ?? 'http://localhost:3000';
+const server = process.env.OPENBOTS_DEV_SERVER ?? 'http://localhost:3000';
 
 export default mergeConfig(
   shared,

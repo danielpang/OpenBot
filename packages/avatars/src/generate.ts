@@ -1,4 +1,4 @@
-import type { Avatar } from '@openbot/shared';
+import type { Avatar } from '@openbots/shared';
 import {
   AVATAR_ACCESSORIES,
   AVATAR_EYES,

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { signUp } from './auth.js';
 
-// A self-hosted install (OPENBOT_DEPLOYMENT=self_hosted, the default): the
+// A self-hosted install (OPENBOTS_DEPLOYMENT=self_hosted, the default): the
 // setup wizard makes the one account, its owner. Settings has no Admin or
 // Audit log tab and their links go to Account; sign-up is closed, so
 // /sign-up offers sign-in only. CI runs it in its own job on a fresh database.

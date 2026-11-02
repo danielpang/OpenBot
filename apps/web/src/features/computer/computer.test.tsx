@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import type { WsClient } from '@openbot/api-client';
-import { COMPUTER_OFF_CLOSE_CODE, type WsEvent, type WsEventOf } from '@openbot/shared';
+import type { WsClient } from '@openbots/api-client';
+import { COMPUTER_OFF_CLOSE_CODE, type WsEvent, type WsEventOf } from '@openbots/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -404,7 +404,7 @@ describe('Preview and Takeover (K3)', () => {
     expect(vnc.screens[0]!.scaleViewport).toBe(true);
     expect(vnc.screens[0]!.resizeSession).toBe(false);
     expect(button('Preview')!.getAttribute('aria-pressed')).toBe('true');
-    expect(JSON.parse(localStorage.getItem(`openbot.panel.${BOT}`)!)).toEqual({ kind: 'screen' });
+    expect(JSON.parse(localStorage.getItem(`openbots.panel.${BOT}`)!)).toEqual({ kind: 'screen' });
 
     act(() => vnc.screens[0]!.dispatchEvent(new Event('connect')));
     expect(panel.querySelector('[data-screen]')?.getAttribute('data-screen')).toBe('connected');

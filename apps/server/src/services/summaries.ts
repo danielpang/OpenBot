@@ -1,4 +1,4 @@
-import { summarizeChat, toModelMessages } from '@openbot/agent';
+import { summarizeChat, toModelMessages } from '@openbots/agent';
 import type { LanguageModel } from 'ai';
 import { and, asc, desc, eq, gt, isNull, lt, ne, sql } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';

@@ -60,7 +60,7 @@ jobs:
       VERSION: ${{ inputs.version }}
       # The hosted OpenBots server behind "Sign in to an OpenBots account"
       # (apps/desktop/RELEASING.md). Unset, the app shows that choice disabled.
-      OPENBOT_CLOUD_URL: ${{ vars.OPENBOT_CLOUD_URL }}
+      OPENBOTS_CLOUD_URL: ${{ vars.OPENBOTS_CLOUD_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -76,7 +76,7 @@ jobs:
 
       # The shell loads the web UI from the server, so the app bundles no web build.
       - name: Build the desktop shell
-        run: pnpm exec turbo run build --filter=@openbot/desktop
+        run: pnpm exec turbo run build --filter=@openbots/desktop
 
       - name: Decide whether to sign
         id: signing
@@ -126,7 +126,7 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          OPENBOT_REQUIRE_NOTARIZATION: '1'
+          OPENBOTS_REQUIRE_NOTARIZATION: '1'
         run: pnpm exec electron-builder --mac --universal --publish never
 
       # Ad-hoc signed (no Developer ID), so it launches on Apple Silicon; the
@@ -175,8 +175,8 @@ jobs:
           # The repository the release goes to: GITHUB_REPOSITORY, or the default.
           repo="$(node -p "require('./electron-builder.publish.cjs').releaseRepository().slug")"
           sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{SHA256}}/$sha/g" -e "s#{{REPOSITORY}}#$repo#g" \
-            packaging/homebrew/openbot.rb.template >release/openbot.rb
-          ruby -c release/openbot.rb
+            packaging/homebrew/openbots.rb.template >release/openbots.rb
+          ruby -c release/openbots.rb
 
       - name: Summarize
         env:
@@ -194,7 +194,7 @@ jobs:
             echo
             echo "| File | Size |"
             echo "| --- | --- |"
-            for file in *.dmg *.zip *.blockmap latest-mac.yml openbot.rb; do
+            for file in *.dmg *.zip *.blockmap latest-mac.yml openbots.rb; do
               [ -f "$file" ] || continue
               echo "| \`$file\` | $(du -h "$file" | cut -f 1) |"
             done
@@ -208,7 +208,7 @@ jobs:
             apps/desktop/release/*.zip
             apps/desktop/release/*.blockmap
             apps/desktop/release/latest-mac.yml
-            apps/desktop/release/openbot.rb
+            apps/desktop/release/openbots.rb
           if-no-files-found: error
           # The DMG and zip are compressed already.
           compression-level: 0

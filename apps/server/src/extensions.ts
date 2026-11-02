@@ -5,7 +5,7 @@ import type { AppEnv } from './context.js';
 import type { Db } from './db/client.js';
 import type { Infra } from './infra/index.js';
 import type { Logger } from './logger.js';
-import type { Limits } from '@openbot/shared';
+import type { Limits } from '@openbots/shared';
 import type { Workspace } from './workspace.js';
 
 // Extension points for the managed build (plan 21.5). The core never imports
@@ -22,7 +22,7 @@ export interface ExtensionContext {
 export interface ServerExtensions {
   /**
    * The extension manages organizations: creating them, invitations and
-   * roles. `OPENBOT_DEPLOYMENT=managed` needs it (`runServer` refuses
+   * roles. `OPENBOTS_DEPLOYMENT=managed` needs it (`runServer` refuses
    * otherwise), since the core alone has no way to make an organization.
    */
   organizations?: boolean;
@@ -42,7 +42,7 @@ export interface ServerExtensions {
   webDist?: string;
   /**
    * The most an organization's limits may be (plan 21.6): its plan's, when
-   * billing comes. Without it the operator's limits (OPENBOT_LIMITS_*) are
+   * billing comes. Without it the operator's limits (OPENBOTS_LIMITS_*) are
    * every organization's ceiling. Owners and admins may lower limits under
    * it, never raise them above it.
    */

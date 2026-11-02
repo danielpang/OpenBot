@@ -13,7 +13,7 @@ describe('GET /api/v1/chats/:id/resync', () => {
   let botId: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     alice = (await t.signUp('alice@example.com')).cookie!;
     bob = (await t.signUp('bob@example.com')).cookie!;
     const { db } = t;
@@ -164,7 +164,7 @@ describe('GET /api/v1/chats/:id/resync', () => {
           {
             type: 'widget',
             kind: 'question',
-            props: { question: 'Which repo?', options: [{ id: 'a', label: 'openbot' }] },
+            props: { question: 'Which repo?', options: [{ id: 'a', label: 'openbots' }] },
             state: { status: 'pending' },
           },
         ],

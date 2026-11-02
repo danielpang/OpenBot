@@ -1,4 +1,4 @@
-import { localEmbedder, localEmbedding, type Embedder } from '@openbot/agent';
+import { localEmbedder, localEmbedding, type Embedder } from '@openbots/agent';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { schema } from '../db/client.js';
@@ -32,7 +32,7 @@ describe('memory embedding sources', () => {
   let workspaceId: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     const cookie = (await t.signUp('dana@example.com')).cookie!;
     const res = await t.app.request('/api/v1/bots', {
       method: 'POST',

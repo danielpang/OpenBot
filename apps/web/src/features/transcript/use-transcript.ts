@@ -1,4 +1,4 @@
-import type { MessageDelta } from '@openbot/shared';
+import type { MessageDelta } from '@openbots/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   addReaction,

@@ -1,5 +1,5 @@
-import { OutboundEventSchema, type OutboundEvent } from '@openbot/shared';
-import { Button, cn, Input } from '@openbot/ui';
+import { OutboundEventSchema, type OutboundEvent } from '@openbots/shared';
+import { Button, cn, Input } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { adminLabel, useManaged } from '../../app/deployment.js';
@@ -297,7 +297,7 @@ function SubscriptionForm({
         type="url"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
-        placeholder="https://example.com/openbot-events"
+        placeholder="https://example.com/openbots-events"
         aria-label="URL"
         required
       />

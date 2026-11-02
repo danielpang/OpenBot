@@ -1,7 +1,7 @@
-# Optional tunnels that give OpenBot a public URL (plan 16.4, README "Exposing
-# your OpenBot to the internet"). Included by the root compose.yaml; each runs
-# only with its profile. Set OPENBOT_PUBLIC_URL in .env to the public URL too.
-name: openbot
+# Optional tunnels that give OpenBots a public URL (plan 16.4, README "Exposing
+# your OpenBots server to the internet"). Included by the root compose.yaml; each runs
+# only with its profile. Set OPENBOTS_PUBLIC_URL in .env to the public URL too.
+name: openbots
 
 services:
   # `docker compose --profile ngrok up -d` with NGROK_AUTHTOKEN and NGROK_URL
@@ -10,15 +10,15 @@ services:
     image: ngrok/ngrok:latest
     profiles: [ngrok]
     restart: unless-stopped
-    command: ['http', '--url=${NGROK_URL:-}', 'openbot:3000']
+    command: ['http', '--url=${NGROK_URL:-}', 'openbots:3000']
     environment:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
     depends_on:
-      - openbot
+      - openbots
 
   # `docker compose --profile cloudflare up -d` with CLOUDFLARE_TUNNEL_TOKEN in
   # .env. Create the tunnel in the Cloudflare Zero Trust dashboard and point its
-  # public hostname at the service http://openbot:3000.
+  # public hostname at the service http://openbots:3000.
   cloudflared:
     image: cloudflare/cloudflared:latest
     profiles: [cloudflare]
@@ -27,4 +27,4 @@ services:
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
-      - openbot
+      - openbots

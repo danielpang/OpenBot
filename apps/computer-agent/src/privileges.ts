@@ -11,7 +11,7 @@ import { BOT_ID, screenIdentity, STORE, type Identity } from './users.js';
 // It takes the token from the file the provider wrote and deletes it, lays
 // out the directories each screen's user owns, then drops its effective uid
 // to the bot user for good. Root stays its real and saved uid, which is what
-// lets openbot-runas (native/runas.c) switch users for it, and keeps the
+// lets openbots-runas (native/runas.c) switch users for it, and keeps the
 // Bots' commands, which run as the bot user, from signalling, tracing or
 // reading it. Changing the effective uid also makes it non-dumpable, so its
 // /proc files are root's.

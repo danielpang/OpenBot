@@ -2,7 +2,7 @@ import { chmodSync, readdirSync, type Dirent } from 'node:fs';
 import path from 'node:path';
 
 // The files directory, out of reach of stdio MCP servers (S-1). They run as
-// another user (`nobody`), which may pass through OPENBOT_FILES_DIR on its way
+// another user (`nobody`), which may pass through OPENBOTS_FILES_DIR on its way
 // to a filesystem connector's folder under `connectors/` and nothing more:
 // uploads sit in two-character shard directories, and under `orgs/` (plan
 // 21.3), only the server may enter.

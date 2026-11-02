@@ -1,4 +1,4 @@
-import type { MessagePart } from '@openbot/shared';
+import type { MessagePart } from '@openbots/shared';
 import type {
   AssistantContent,
   FilePart,
@@ -148,7 +148,7 @@ export function instructionsText(context: AssembledContext): string {
 
 function stableBlock({ bot, roster, skills }: ContextInput): string {
   const identity = [
-    `You are ${bot.name} (@${bot.handle}), a Bot in OpenBot.`,
+    `You are ${bot.name} (@${bot.handle}), a Bot in OpenBots.`,
     bot.label ? `Your role: ${bot.label}` : null,
   ]
     .filter(Boolean)

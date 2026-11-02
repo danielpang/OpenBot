@@ -166,14 +166,14 @@ export interface ModelTarget {
   modelId: string;
 }
 
-/** A provider-defined tool standing in for an OpenBot tool. */
+/** A provider-defined tool standing in for an OpenBots tool. */
 export interface NativeTool {
   /** Builds the provider's tool around the loop's `execute` and `toModelOutput`. */
   create(options: {
     execute(input: never, options: { toolCallId: string }): Promise<unknown>;
     toModelOutput?(options: { output: unknown }): ToolResultOutput;
   }): Tool;
-  /** The OpenBot arguments for a native call; the policy, labels and `execute` see these. */
+  /** The OpenBots arguments for a native call; the policy, labels and `execute` see these. */
   toArgs(input: unknown): unknown;
 }
 

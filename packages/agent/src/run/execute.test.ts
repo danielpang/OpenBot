@@ -1,4 +1,4 @@
-import type { MessagePart } from '@openbot/shared';
+import type { MessagePart } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import { defaultPolicy, type Policy } from '../policy/index.js';
 import { promptText, scriptedModel, type ScriptedTurn } from '../testing.js';
@@ -181,7 +181,7 @@ describe('executeRun', () => {
   });
 
   it('pauses on ask_user with the messages needed to resume', async () => {
-    const question = { question: 'Which repo?', options: [{ id: 'a', label: 'openbot' }] };
+    const question = { question: 'Which repo?', options: [{ id: 'a', label: 'openbots' }] };
     const h = harness([[{ text: 'One moment.' }, { tool: 'ask_user', args: question, id: 'q1' }]]);
     const outcome = await executeRun(h.input);
     if (outcome.status !== 'waiting') throw new Error(`expected waiting, got ${outcome.status}`);
@@ -204,11 +204,11 @@ describe('executeRun', () => {
     expect(JSON.stringify(outcome.messages.at(-1))).toContain(WAITING_RESULT.status);
 
     // Resume: the answer replaces the placeholder and the loop continues.
-    const resumed = harness([[{ text: 'Working in openbot.' }]], {
+    const resumed = harness([[{ text: 'Working in openbots.' }]], {
       messages: injectToolResult(outcome.messages, 'q1', { answered: true, option_id: 'a' }),
     });
     const done = await executeRun(resumed.input);
-    expect(done).toMatchObject({ status: 'completed', text: 'Working in openbot.' });
+    expect(done).toMatchObject({ status: 'completed', text: 'Working in openbots.' });
     const prompt = promptText(resumed.model.calls[0]!);
     expect(prompt).toContain('<tool_result tool="ask_user">\n{"answered":true,"option_id":"a"}');
     expect(prompt).not.toContain(WAITING_RESULT.status);

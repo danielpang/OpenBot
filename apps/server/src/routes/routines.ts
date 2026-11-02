@@ -1,10 +1,10 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { describeTrigger } from '@openbot/routines';
+import { describeTrigger } from '@openbots/routines';
 import {
   RoutineRunStatusSchema,
   RoutineTriggerInputSchema,
   RoutineTriggerSchema,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { requireUser } from '../middleware/auth.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import {

@@ -1,7 +1,7 @@
 import type { LookupAddress } from 'node:dns';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
-import { hostAllowed } from '@openbot/agent';
+import { hostAllowed } from '@openbots/agent';
 import {
   Agent,
   buildConnector,
@@ -86,13 +86,13 @@ const exempt = (host: string, options: NetOptions) =>
   options.allowPrivateNetwork === true || options.privateHosts?.includes(host) === true;
 
 const privateHost = (host: string) =>
-  new BlockedAddressError(`${host} is on a private or local network, which OpenBot cannot reach`);
+  new BlockedAddressError(`${host} is on a private or local network, which OpenBots cannot reach`);
 
 const resolveAll = (host: string) => lookup(host, { all: true });
 
 /**
  * How long a guarded request may take, redirects included, when the caller
- * sets no `timeoutMs`. web_fetch passes its own (OPENBOT_WEB_FETCH_TIMEOUT_SECONDS,
+ * sets no `timeoutMs`. web_fetch passes its own (OPENBOTS_WEB_FETCH_TIMEOUT_SECONDS,
  * also 30 seconds by default); MCP, OAuth, provider and http_request calls use this.
  */
 export const DEFAULT_TIMEOUT_MS = 30_000;

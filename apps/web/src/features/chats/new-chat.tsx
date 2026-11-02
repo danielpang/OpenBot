@@ -1,4 +1,4 @@
-import { Button, DialogDescription, DialogHeader, DialogTitle, Input } from '@openbot/ui';
+import { Button, DialogDescription, DialogHeader, DialogTitle, Input } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';

@@ -1,4 +1,4 @@
-import { Avatar } from '@openbot/avatars/react';
+import { Avatar } from '@openbots/avatars/react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +9,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@openbot/ui';
+} from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useState, type MouseEvent } from 'react';

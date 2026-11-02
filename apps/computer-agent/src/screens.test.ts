@@ -289,19 +289,19 @@ describe('ScreenManager secrets (S-7)', () => {
   });
 
   it('starts every screen process without the agent token', async () => {
-    const before = process.env.OPENBOT_AGENT_TOKEN;
-    process.env.OPENBOT_AGENT_TOKEN = TEST_TOKEN;
+    const before = process.env.OPENBOTS_AGENT_TOKEN;
+    process.env.OPENBOTS_AGENT_TOKEN = TEST_TOKEN;
     try {
       const { screens, spawned } = await manager();
       await screens.start({ n: 0 });
       expect(spawned).toHaveLength(4);
       for (const s of spawned) {
-        expect(s.env.OPENBOT_AGENT_TOKEN).toBeUndefined();
+        expect(s.env.OPENBOTS_AGENT_TOKEN).toBeUndefined();
         expect(Object.values(s.env)).not.toContain(TEST_TOKEN);
       }
     } finally {
-      if (before === undefined) delete process.env.OPENBOT_AGENT_TOKEN;
-      else process.env.OPENBOT_AGENT_TOKEN = before;
+      if (before === undefined) delete process.env.OPENBOTS_AGENT_TOKEN;
+      else process.env.OPENBOTS_AGENT_TOKEN = before;
     }
   });
 
@@ -376,14 +376,14 @@ describe('ScreenManager users (S-7)', () => {
   it('starts every screen process as the screen user, through the helper', async () => {
     const { run, calls, spawn, spawned } = privileged();
     const { screens, runtimeDir, stateDir } = await manager({
-      users: new Users('/usr/local/libexec/openbot/runas'),
+      users: new Users('/usr/local/libexec/openbots/runas'),
       run,
       spawn,
     });
     await screens.start({ n: 3 });
     expect(spawned).toHaveLength(4);
     for (const s of spawned) {
-      expect(s.command).toBe('/usr/local/libexec/openbot/runas');
+      expect(s.command).toBe('/usr/local/libexec/openbots/runas');
       expect(s.args.slice(0, 3)).toEqual(['2003', '2003', '--']);
       // The agent changes to a directory it may enter before the helper drops.
       expect(s.cwd).toBe('/');
@@ -534,10 +534,10 @@ describe('ScreenManager downloads (K1, S-7)', () => {
     const old = path.join(legacyProfilesDir(home), 'screen-0', 'Default');
     await mkdir(old, { recursive: true });
     await writeFile(path.join(old, 'Cookies'), 'session');
-    await writeFile(path.join(home, '.config', 'openbot', 'kept'), 'other');
+    await writeFile(path.join(home, '.config', 'openbots', 'kept'), 'other');
     expect(await removeLegacyProfiles(home)).toBe(true);
     await expect(lstat(legacyProfilesDir(home))).rejects.toThrow();
-    expect(await readFile(path.join(home, '.config', 'openbot', 'kept'), 'utf8')).toBe('other');
+    expect(await readFile(path.join(home, '.config', 'openbots', 'kept'), 'utf8')).toBe('other');
     expect(await removeLegacyProfiles(home)).toBe(false);
   });
 });

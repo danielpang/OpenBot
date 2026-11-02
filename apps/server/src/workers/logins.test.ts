@@ -1,6 +1,6 @@
-import { localEmbedder } from '@openbot/agent';
-import { promptText, scriptedModel, type ScriptedTurn } from '@openbot/agent/testing';
-import { EVENTS_CHANNEL, type MessagePart, type WsEvent } from '@openbot/shared';
+import { localEmbedder } from '@openbots/agent';
+import { promptText, scriptedModel, type ScriptedTurn } from '@openbots/agent/testing';
+import { EVENTS_CHANNEL, type MessagePart, type WsEvent } from '@openbots/shared';
 import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
@@ -49,7 +49,7 @@ describe('request_login', () => {
   };
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     computer = await useTestComputer(t.ownerDeps);
     cookie = (await t.signUp('dana@example.com')).cookie!;
     unhook.push(registerRunHooks(), registerLoginHooks());

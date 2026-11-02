@@ -6,7 +6,7 @@ import {
   type PolicyDecision,
   type RunSource,
   type TriggerOverride,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import type { Policy, PolicyEvaluation, PolicyTraceStep } from './policy.js';
 import { hostAllowed } from '../tools/builtin.js';
 import { defaultRule, type ToolFacts } from './rules.js';

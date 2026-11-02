@@ -1,5 +1,5 @@
-import { unwrap, type components } from '@openbot/api-client';
-import { Button } from '@openbot/ui';
+import { unwrap, type components } from '@openbots/api-client';
+import { Button } from '@openbots/ui';
 import { infiniteQueryOptions, useInfiniteQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { api } from '../../app/api.js';

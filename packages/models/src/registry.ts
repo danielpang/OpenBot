@@ -1,4 +1,4 @@
-import type { ModelCapabilities, ModelConfig, ModelPricing } from '@openbot/shared';
+import type { ModelCapabilities, ModelConfig, ModelPricing } from '@openbots/shared';
 import type { LanguageModel } from 'ai';
 import {
   createModelFactory,

@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import type { ServerExtensions } from '@openbot/server';
+import type { ServerExtensions } from '@openbots/server';
 import type { EmailOptions } from './email.js';
 import { managedPolicyPlugin, organizationPlugin } from './plugin.js';
 import { signUpPlugin } from './sign-up.js';
@@ -19,23 +19,23 @@ export type { EmailOptions } from './email.js';
 export const MANAGED_WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
 export interface ManagedOptions {
-  /** Invite email (RESEND_API_KEY, OPENBOT_EMAIL_FROM); invites are links without it. */
+  /** Invite email (RESEND_API_KEY, OPENBOTS_EMAIL_FROM); invites are links without it. */
   email?: EmailOptions;
   /** The web build to serve; the managed one by default. */
   webDist?: string;
 }
 
-/** Reads RESEND_API_KEY, OPENBOT_EMAIL_FROM and OPENBOT_DEV_LOG_EMAIL_LINKS. */
+/** Reads RESEND_API_KEY, OPENBOTS_EMAIL_FROM and OPENBOTS_DEV_LOG_EMAIL_LINKS. */
 export function emailFromEnv(env: NodeJS.ProcessEnv = process.env): EmailOptions {
-  const logLinks = ['1', 'true'].includes(env.OPENBOT_DEV_LOG_EMAIL_LINKS ?? '');
+  const logLinks = ['1', 'true'].includes(env.OPENBOTS_DEV_LOG_EMAIL_LINKS ?? '');
   if (logLinks && env.NODE_ENV === 'production') {
     throw new Error(
-      'invalid configuration:\n  OPENBOT_DEV_LOG_EMAIL_LINKS: logs sign-in links; not allowed with NODE_ENV=production',
+      'invalid configuration:\n  OPENBOTS_DEV_LOG_EMAIL_LINKS: logs sign-in links; not allowed with NODE_ENV=production',
     );
   }
   return {
     ...(env.RESEND_API_KEY ? { apiKey: env.RESEND_API_KEY } : {}),
-    ...(env.OPENBOT_EMAIL_FROM ? { from: env.OPENBOT_EMAIL_FROM } : {}),
+    ...(env.OPENBOTS_EMAIL_FROM ? { from: env.OPENBOTS_EMAIL_FROM } : {}),
     ...(logLinks ? { logLinks } : {}),
   };
 }

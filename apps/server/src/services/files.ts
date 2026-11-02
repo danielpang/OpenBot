@@ -11,7 +11,7 @@ import {
   type AttachmentRequest,
   type AttachmentServices,
   type LoadedAttachment,
-} from '@openbot/agent';
+} from '@openbots/agent';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema } from '../db/client.js';
@@ -21,7 +21,7 @@ import { organizationSettings } from '../workspace.js';
 // Stored files (plan 4.8): chat attachments, Artifact version blobs, webhook
 // delivery bodies and avatar uploads, told apart by `purpose`. Only
 // attachments are listed to the owner or attachable to a message (plan 12.1).
-// Blobs live on local disk under OPENBOT_FILES_DIR, named by a random storage
+// Blobs live on local disk under OPENBOTS_FILES_DIR, named by a random storage
 // key under the organization's directory (`orgs/<organization>/`, plan 21.3;
 // files from before have keys without one); the row records the name the
 // user gave, the sniffed mime type and a sha256. Every read is by a row the

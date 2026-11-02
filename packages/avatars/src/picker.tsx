@@ -1,4 +1,4 @@
-import { Button, cn } from '@openbot/ui';
+import { Button, cn } from '@openbots/ui';
 import { Avatar } from './avatar.js';
 import { resolveParts, shuffle, type AvatarParams, type GeneratedAvatar } from './generate.js';
 import { BOT_SHAPES, SHAPES } from './parts.js';

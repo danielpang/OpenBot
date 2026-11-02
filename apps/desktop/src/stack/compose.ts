@@ -6,17 +6,17 @@ import { join } from 'node:path';
 // relative paths in docker/docker-compose.yml (`.env`) resolve there.
 
 /**
- * The app's Compose project. Not `openbot`, the project a `docker compose up`
+ * The app's Compose project. Not `openbots`, the project a `docker compose up`
  * in a source checkout gets: the two stacks' containers, networks and volumes
  * stay apart.
  */
-export const PROJECT_NAME = 'openbot-app';
+export const PROJECT_NAME = 'openbots-app';
 /**
  * The project the app used before it had its own name. An install whose
  * containers still carry it, with the app's stack directory as their working
  * directory, keeps it (and its volumes).
  */
-export const LEGACY_PROJECT_NAME = 'openbot';
+export const LEGACY_PROJECT_NAME = 'openbots';
 
 /** How long `up --wait` waits for every service to be healthy. */
 export const UP_WAIT_TIMEOUT_SECONDS = 300;

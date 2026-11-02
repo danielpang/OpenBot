@@ -1,5 +1,5 @@
-import { SKILL_NAME_MAX, type MessagePart } from '@openbot/shared';
-import { botWidgetKinds, validateBotWidget, validateWidgetProps } from '@openbot/widgets';
+import { SKILL_NAME_MAX, type MessagePart } from '@openbots/shared';
+import { botWidgetKinds, validateBotWidget, validateWidgetProps } from '@openbots/widgets';
 import { z } from 'zod';
 import { WaitFor } from '../gated.js';
 import { defineTool, type DraftedSkill, type ToolGroup } from './types.js';

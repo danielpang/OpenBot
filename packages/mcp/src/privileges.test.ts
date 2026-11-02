@@ -147,7 +147,7 @@ describe.skipIf(process.platform === 'win32')('KILL_SCRIPT (S-1)', () => {
   });
 
   async function run(recorded: string, onDisk: string | null) {
-    dir = mkdtempSync(path.join(tmpdir(), 'openbot-kill-'));
+    dir = mkdtempSync(path.join(tmpdir(), 'openbots-kill-'));
     target = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
     await new Promise((resolve) => target!.once('spawn', resolve));
     const pid = target.pid!;

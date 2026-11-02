@@ -1,4 +1,4 @@
-import { SchedulePresetSchema } from '@openbot/shared';
+import { SchedulePresetSchema } from '@openbots/shared';
 import { z } from 'zod';
 import { defineWidget } from './types.js';
 

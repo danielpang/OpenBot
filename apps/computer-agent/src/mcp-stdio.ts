@@ -25,7 +25,7 @@ export interface McpStdioDeps {
   users?: Users;
   /** Structured log lines; given the command's name and pid only. */
   log?: (msg: string, extra?: Record<string, unknown>) => void;
-  /** Rewrites a start before it runs (the fake agent in `@openbot/computer/testing`). */
+  /** Rewrites a start before it runs (the fake agent in `@openbots/computer/testing`). */
   prepare?: (start: McpStdioStart) => McpStdioStart;
   /** How long the socket may stay open without a `start`. */
   startTimeoutMs?: number;

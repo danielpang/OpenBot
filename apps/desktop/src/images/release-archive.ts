@@ -12,7 +12,7 @@ import { nodeExec, type Exec } from '../stack/process.js';
 // The local stack's fallback when a registry pull fails (GHCR packages start
 // private, or the network blocks ghcr.io): every GitHub Release carries each
 // OpenBots image as a gzipped `docker load` archive per architecture,
-// openbot-<image>-<version>-linux-<arch>.tar.gz, and a SHA256SUMS file
+// openbots-<image>-<version>-linux-<arch>.tar.gz, and a SHA256SUMS file
 // (.github/workflows/release.yml). This downloads the archives for the app's
 // own version and this Mac's architecture, checks each against SHA256SUMS and
 // loads it into Docker. One archive is on disk at a time; the computer image's
@@ -48,7 +48,7 @@ export function imageArch(nodeArch: string = process.arch): ImageArch {
 }
 
 export function imageArchiveName(image: ReleaseImage, version: string, arch: ImageArch): string {
-  return `openbot-${image}-${version}-linux-${arch}.tar.gz`;
+  return `openbots-${image}-${version}-linux-${arch}.tar.gz`;
 }
 
 /** Where a file of the v<version> GitHub Release downloads from. */
@@ -79,7 +79,7 @@ export function repositoryFromAppUpdateYml(text: string): string | null {
   return owner && repo ? `${owner}/${repo}` : null;
 }
 
-/** Image references from `docker load` output ("Loaded image: ghcr.io/x/openbot/server:1.2.0"). */
+/** Image references from `docker load` output ("Loaded image: ghcr.io/x/openbots/server:1.2.0"). */
 export function loadedReferences(stdout: string): string[] {
   return [...stdout.matchAll(/^Loaded image: (\S+)\s*$/gm)].map((match) => match[1]!);
 }
@@ -102,7 +102,7 @@ export interface LoadReleaseImagesOptions {
   /** Defaults to this Mac's architecture. */
   arch?: ImageArch;
   /**
-   * The stack's OPENBOT_IMAGE_PREFIX. The archives are tagged with the
+   * The stack's OPENBOTS_IMAGE_PREFIX. The archives are tagged with the
    * releasing repository's prefix; when this differs, each loaded image is
    * also tagged `<prefix>/<image>:<version>` so compose finds it.
    */
@@ -147,7 +147,7 @@ export async function loadReleaseImages(
   const url = (file: string) => releaseAssetUrl(repository, version, file);
 
   const sums = parseSha256Sums(await fetchText(fetchImpl, url('SHA256SUMS'), version, signal));
-  const dir = await mkdtemp(join(deps.tmpDir ?? tmpdir(), 'openbot-images-'));
+  const dir = await mkdtemp(join(deps.tmpDir ?? tmpdir(), 'openbots-images-'));
   try {
     const results: LoadedReleaseImage[] = [];
     for (const image of images) {

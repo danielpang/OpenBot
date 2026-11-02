@@ -1,5 +1,5 @@
-import type { SocialProvider } from '@openbot/api-client';
-import { Button } from '@openbot/ui';
+import type { SocialProvider } from '@openbots/api-client';
+import { Button } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { auth, capabilitiesQuery } from '../../app/api.js';
 import { webExtensions } from '../../app/extensions.js';

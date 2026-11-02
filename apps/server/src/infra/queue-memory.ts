@@ -6,7 +6,7 @@ import {
   type JobHandler,
   type JobQueue,
   type ProcessOptions,
-} from '@openbot/shared';
+} from '@openbots/shared';
 
 // The in-process JobQueue, used by tests and by `pnpm dev` without Redis. It
 // mirrors queue-bullmq.ts step for step: a grouped job waits in its group

@@ -50,7 +50,7 @@ describe('capabilities route', () => {
   });
 
   it('keeps custom stdio and local endpoints off on the managed service by default', async () => {
-    const managed = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed' });
+    const managed = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed' });
     try {
       const res = await managed.app.request('/api/v1/capabilities');
       expect(await res.json()).toMatchObject({

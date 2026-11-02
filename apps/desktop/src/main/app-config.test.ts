@@ -12,15 +12,15 @@ describe('the cloud URL from the build', () => {
   });
 
   it('reads the packaged package.json, and ignores the environment there', () => {
-    const packageJson = { openbot: { cloudUrl: 'https://app.openbots.example' } };
-    const env = { OPENBOT_CLOUD_URL: 'https://elsewhere.example' };
+    const packageJson = { openbots: { cloudUrl: 'https://app.openbots.example' } };
+    const env = { OPENBOTS_CLOUD_URL: 'https://elsewhere.example' };
     expect(cloudUrl({ packaged: true, packageJson, env })).toBe('https://app.openbots.example');
     expect(cloudUrl({ packaged: true, packageJson: { name: 'x' }, env })).toBeNull();
     expect(cloudUrl({ packaged: true, packageJson: null, env })).toBeNull();
   });
 
-  it('reads OPENBOT_CLOUD_URL in development', () => {
-    expect(cloudUrl({ packaged: false, env: { OPENBOT_CLOUD_URL: 'https://dev.example' } })).toBe(
+  it('reads OPENBOTS_CLOUD_URL in development', () => {
+    expect(cloudUrl({ packaged: false, env: { OPENBOTS_CLOUD_URL: 'https://dev.example' } })).toBe(
       'https://dev.example',
     );
     expect(cloudUrl({ packaged: false, env: {} })).toBeNull();

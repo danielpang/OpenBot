@@ -1,4 +1,4 @@
-import { DEFAULT_PROCESS_LIMITS, type MessagePart, type PolicyDecision } from '@openbot/shared';
+import { DEFAULT_PROCESS_LIMITS, type MessagePart, type PolicyDecision } from '@openbots/shared';
 import { z } from 'zod';
 import { defuse, frameAttr as attr } from '../context/framing.js';
 import { withLoginCheck } from './connector.js';
@@ -125,7 +125,7 @@ export interface BuiltinServices {
    * run refuses the call. Throws when the built-in is blocked.
    */
   assertNotBlocked?(builtin: string): Promise<void>;
-  /** Characters of a page web_fetch hands the model at most (OPENBOT_WEB_FETCH_MAX_CHARS). */
+  /** Characters of a page web_fetch hands the model at most (OPENBOTS_WEB_FETCH_MAX_CHARS). */
   maxPageChars?: number;
 }
 

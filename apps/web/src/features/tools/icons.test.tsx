@@ -1,4 +1,4 @@
-import { CATALOG_ICONS, loadCatalog } from '@openbot/mcp';
+import { CATALOG_ICONS, loadCatalog } from '@openbots/mcp';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { CONNECTOR_ICONS, ConnectorIcon, lettermark, resolveIcon } from './icons.js';

@@ -3,15 +3,15 @@ import type { BetterAuthPlugin } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { organization } from 'better-auth/plugins/organization';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import type { ExtensionContext } from '@openbot/server';
-import type { Config } from '@openbot/server/config';
-import { schema } from '@openbot/server/db/client';
-import { parseMasterKey } from '@openbot/server/secrets';
-import { recordAudit } from '@openbot/server/services/audit';
+import type { ExtensionContext } from '@openbots/server';
+import type { Config } from '@openbots/server/config';
+import { schema } from '@openbots/server/db/client';
+import { parseMasterKey } from '@openbots/server/secrets';
+import { recordAudit } from '@openbots/server/services/audit';
 import { ac, roles } from './access.js';
 import { invitationProof, UUID } from './invitations.js';
 import { signUpAllowed, inviteRequired } from './sign-up.js';
-import { asDirectory, inWorkspace } from '@openbot/server/db/scope';
+import { asDirectory, inWorkspace } from '@openbots/server/db/scope';
 
 // better-auth on the managed service (plan 21.5): the organization plugin,
 // mapped onto the core's tables, and the policy the core leaves to this
@@ -25,7 +25,7 @@ import { asDirectory, inWorkspace } from '@openbot/server/db/scope';
 // served: routes.ts calls the ones it needs through `auth.api`, with the
 // checks they need and an audit row, and does the rest itself.
 //
-// Sign-up (OPENBOT_SIGNUP_MODE): `open` lets anyone sign up; `invite`
+// Sign-up (OPENBOTS_SIGNUP_MODE): `open` lets anyone sign up; `invite`
 // (and `first_user_admin`, its old name) lets only the first user and
 // someone who brings the invitation from their link for the address they
 // sign up with: `invite` in the sign-up body (as /sign-up?invite=<id>
@@ -51,7 +51,7 @@ export const PENDING_INVITATIONS = 100;
 export const MEMBERS_PER_ORGANIZATION = 500;
 /** How long the invite cookie of a GitHub or Google sign-up lasts. */
 export const INVITE_COOKIE_SECONDS = 600;
-export const INVITE_COOKIE = 'openbot_oauth_invite';
+export const INVITE_COOKIE = 'openbots_oauth_invite';
 
 export const pluginSchema = {
   organization: { modelName: 'workspace' },
@@ -91,7 +91,7 @@ export function organizationPlugin() {
 
 function cookieKey(config: Pick<Config, 'masterKey'>) {
   return Buffer.from(
-    hkdfSync('sha256', parseMasterKey(config.masterKey), '', 'openbot:oauth-invite', 32),
+    hkdfSync('sha256', parseMasterKey(config.masterKey), '', 'openbots:oauth-invite', 32),
   );
 }
 
@@ -158,7 +158,7 @@ export function managedPolicyPlugin({ config, db }: ExtensionContext): BetterAut
   const acceptOnCreate = new WeakMap<object, { id: string; workspaceId: string; role: string }>();
 
   return {
-    id: 'openbot-managed',
+    id: 'openbots-managed',
     init: () => ({
       options: {
         emailAndPassword: { enabled: true, requireEmailVerification: true },

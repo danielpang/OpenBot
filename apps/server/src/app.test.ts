@@ -11,9 +11,9 @@ describe('app', () => {
 
   beforeAll(async () => {
     t = await createTestApp();
-    webDist = mkdtempSync(join(tmpdir(), 'openbot-web-'));
+    webDist = mkdtempSync(join(tmpdir(), 'openbots-web-'));
     mkdirSync(join(webDist, 'assets'));
-    writeFileSync(join(webDist, 'index.html'), '<!doctype html><title>OpenBot</title>');
+    writeFileSync(join(webDist, 'index.html'), '<!doctype html><title>OpenBots</title>');
     writeFileSync(join(webDist, 'assets', 'app.js'), 'console.log(1)');
   });
   afterAll(async () => {
@@ -136,7 +136,7 @@ describe('app', () => {
     for (const path of ['/', '/bots/123']) {
       const res = await app.request(path);
       expect(res.status).toBe(200);
-      expect(await res.text()).toContain('<title>OpenBot</title>');
+      expect(await res.text()).toContain('<title>OpenBots</title>');
     }
     expect((await app.request('/api/v1/nope')).status).toBe(404);
     expect((await app.request('/healthz')).status).toBe(200);
@@ -147,7 +147,7 @@ describe('app', () => {
   });
 
   it('marks session cookies secure when the public URL is https', async () => {
-    const https = await createTestApp({ OPENBOT_PUBLIC_URL: 'https://bots.example.com' });
+    const https = await createTestApp({ OPENBOTS_PUBLIC_URL: 'https://bots.example.com' });
     try {
       const res = await https.app.request('https://bots.example.com/api/auth/sign-up/email', {
         method: 'POST',

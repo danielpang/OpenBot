@@ -1,4 +1,4 @@
-import type { ArtifactKind } from '@openbot/shared';
+import type { ArtifactKind } from '@openbots/shared';
 
 // The mime type an Artifact version is stored and downloaded with: from the
 // title's extension when it has a known one, else the kind's default. Text

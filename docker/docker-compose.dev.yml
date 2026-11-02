@@ -6,16 +6,16 @@
 #     -f docker/docker-compose.dev.yml up -d
 #
 # `scripts/dev.sh` uses this file to start just Postgres and Redis. Run the web
-# app on the host with `pnpm --filter @openbot/web dev`.
-name: openbot
+# app on the host with `pnpm --filter @openbots/web dev`.
+name: openbots
 
 services:
-  openbot:
+  openbots:
     build:
       # The build stage has every dependency, dev tools included.
       target: build
-    image: openbot-server-dev
-    command: ['pnpm', '--filter', '@openbot/server', 'dev']
+    image: openbots-server-dev
+    command: ['pnpm', '--filter', '@openbots/server', 'dev']
     # The build stage runs as root and has no entrypoint, so nothing would hand
     # the capabilities on to uid 1000: keep Docker's defaults, as before S-1.
     cap_drop: !reset []
@@ -45,7 +45,7 @@ services:
   postgres:
     environment:
       # The fixed development password scripts/dev.sh prints in DATABASE_URL.
-      POSTGRES_PASSWORD: openbot
+      POSTGRES_PASSWORD: openbots
     ports:
       - '127.0.0.1:5432:5432'
 

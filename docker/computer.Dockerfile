@@ -3,7 +3,7 @@
 # a terminal, driven by the control agent in apps/computer-agent (plan 9.1,
 # 9.3). Build from the repository root:
 #
-#   docker build -f docker/computer.Dockerfile -t ghcr.io/openbot/computer .
+#   docker build -f docker/computer.Dockerfile -t ghcr.io/openbots/computer .
 #
 # Every stage runs on the target platform, Node comes from the official image
 # for that platform and Chromium from Playwright's per-arch download, so
@@ -11,11 +11,11 @@
 #
 # The container expects the hardening of plan 9.5 from the provider: its own
 # network, cap-drop ALL plus CHOWN, SETUID and SETGID, no-new-privileges,
-# read-only root with volumes on /home/bot and /var/lib/openbot and a tmpfs
-# on /tmp, and the agent token in /var/lib/openbot/token, never in the
+# read-only root with volumes on /home/bot and /var/lib/openbots and a tmpfs
+# on /tmp, and the agent token in /var/lib/openbots/token, never in the
 # environment. It starts as root: the agent reads and deletes the token, lays
 # out a private directory per screen, drops to the bot user, and starts every
-# program through openbot-runas, so each screen runs as its own user (S-7,
+# program through openbots-runas, so each screen runs as its own user (S-7,
 # apps/computer-agent/src/privileges.ts).
 
 # The full image carries python3, make and g++ for node-pty's native build.
@@ -42,7 +42,7 @@ RUN pnpm fetch --store-dir /pnpm-store
 FROM fetch AS build
 COPY . .
 RUN pnpm install --frozen-lockfile --offline --store-dir /pnpm-store \
-    && pnpm exec turbo run build --filter=@openbot/computer-agent
+    && pnpm exec turbo run build --filter=@openbots/computer-agent
 # Gather each package's dist/ under /out, keeping the workspace layout.
 RUN mkdir /out && for dist in apps/*/dist packages/*/dist; do \
       mkdir -p "/out/$(dirname "$dist")" && cp -r "$dist" "/out/$dist"; \
@@ -57,7 +57,7 @@ RUN mkdir /native \
 FROM fetch AS prod-deps
 COPY . .
 RUN pnpm install --prod --frozen-lockfile --offline \
-      --filter "@openbot/computer-agent..." --store-dir /pnpm-store \
+      --filter "@openbots/computer-agent..." --store-dir /pnpm-store \
     && node -e "require(require.resolve('node-pty', { paths: ['apps/computer-agent'] }))"
 
 # --- node: the Node binary for the target platform ----------------------------
@@ -65,12 +65,12 @@ FROM ${NODE_RUNTIME_IMAGE} AS node
 
 # --- mcp-catalog: the catalog's stdio MCP servers, from their lockfile -------
 # On the managed service a connector's stdio server runs in its owner's
-# computer (OPENBOT_STDIO_RUNNER=computer), which starts these binaries, the
+# computer (OPENBOTS_STDIO_RUNNER=computer), which starts these binaries, the
 # same pinned install as the server image's: nothing is downloaded at run
 # time (S-20). Pure JavaScript, no install scripts: the same lockfile serves
 # every platform, and the runtime's node runs them.
 FROM ${NODE_RUNTIME_IMAGE} AS mcp-catalog
-WORKDIR /opt/openbot/mcp
+WORKDIR /opt/openbots/mcp
 COPY docker/mcp-catalog/package.json docker/mcp-catalog/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund --cache /tmp/npm-cache \
     && rm -rf /tmp/npm-cache
@@ -82,14 +82,14 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV LANG=C.UTF-8 \
     NODE_ENV=production \
     PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
-    OPENBOT_HOME=/home/bot \
-    OPENBOT_STATE_DIR=/var/lib/openbot \
-    OPENBOT_AGENT_PORT=7070
+    OPENBOTS_HOME=/home/bot \
+    OPENBOTS_STATE_DIR=/var/lib/openbots \
+    OPENBOTS_AGENT_PORT=7070
 
 # The desktop (Xvfb, openbox, feh for the wallpaper), the VNC server the
 # preview reads through the agent's websockify bridge, xdotool for pixel
 # input, ImageMagick's `import` for screenshots, tini to reap what Bots start,
-# tzdata so the shells follow TZ (OPENBOT_TIMEZONE), and a small set of
+# tzdata so the shells follow TZ (OPENBOTS_TIMEZONE), and a small set of
 # everyday tools for the terminal.
 # hadolint ignore=DL3008
 RUN apt-get update \
@@ -101,7 +101,7 @@ RUN apt-get update \
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # Owned by root: the bot user can run the catalog servers but not change them.
-COPY --from=mcp-catalog /opt/openbot/mcp /opt/openbot/mcp
+COPY --from=mcp-catalog /opt/openbots/mcp /opt/openbots/mcp
 WORKDIR /app
 COPY --from=prod-deps /app /app
 COPY --from=build /out /app
@@ -121,15 +121,15 @@ RUN node apps/computer-agent/node_modules/playwright-core/cli.js install --with-
 RUN userdel --remove ubuntu \
     && useradd --uid 1000 --user-group --create-home --home-dir /home/bot --shell /bin/bash bot \
     && groupadd --gid 1900 cookies \
-    && useradd --uid 1900 --gid 1900 --no-create-home --home-dir /var/lib/openbot/cookies \
+    && useradd --uid 1900 --gid 1900 --no-create-home --home-dir /var/lib/openbots/cookies \
          --shell /usr/sbin/nologin cookies \
     && for n in $(seq 0 89); do \
          groupadd --gid $((2000 + n)) "screen-$n" \
          && useradd --uid $((2000 + n)) --gid $((2000 + n)) --no-create-home \
-              --home-dir "/var/lib/openbot/screens/screen-$n" --shell /usr/sbin/nologin "screen-$n"; \
+              --home-dir "/var/lib/openbots/screens/screen-$n" --shell /usr/sbin/nologin "screen-$n"; \
        done \
-    && install -d -m 0711 -o root -g root /var/lib/openbot
-COPY --from=build --chmod=0755 /native/runas /usr/local/libexec/openbot/runas
+    && install -d -m 0711 -o root -g root /var/lib/openbots
+COPY --from=build --chmod=0755 /native/runas /usr/local/libexec/openbots/runas
 
 # Root, but only until the agent has read its token and laid the screens out;
 # then its effective uid is the bot user's (privileges.ts).
@@ -140,6 +140,6 @@ EXPOSE 7070
 # The token is gone by the time the agent listens, so any answer, a 401
 # included, means it is up.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD ["/bin/bash", "-c", "curl -sS -o /dev/null \"http://127.0.0.1:$OPENBOT_AGENT_PORT/healthz\""]
+  CMD ["/bin/bash", "-c", "curl -sS -o /dev/null \"http://127.0.0.1:$OPENBOTS_AGENT_PORT/healthz\""]
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "/app/apps/computer-agent/dist/main.js"]

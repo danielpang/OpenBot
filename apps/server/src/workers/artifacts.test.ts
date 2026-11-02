@@ -1,6 +1,6 @@
-import { localEmbedder } from '@openbot/agent';
-import { scriptedModel } from '@openbot/agent/testing';
-import { EVENTS_CHANNEL, type MessagePart, type WsEvent } from '@openbot/shared';
+import { localEmbedder } from '@openbots/agent';
+import { scriptedModel } from '@openbots/agent/testing';
+import { EVENTS_CHANNEL, type MessagePart, type WsEvent } from '@openbots/shared';
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
@@ -25,7 +25,7 @@ describe('artifact tools in a run', () => {
   const models = new Map<string, RunModel>();
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     cookie = (await t.signUp('dana@example.com')).cookie!;
     unhook = registerRunHooks();
     await t.deps.infra.bus.subscribe<WsEvent>(EVENTS_CHANNEL, (e) => events.push(e));

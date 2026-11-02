@@ -1,5 +1,5 @@
-import { AvatarPicker } from '@openbot/avatars/react';
-import { Button, Input } from '@openbot/ui';
+import { AvatarPicker } from '@openbots/avatars/react';
+import { Button, Input } from '@openbots/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { startingAvatar, useCreateBot } from './create.js';

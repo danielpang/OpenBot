@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { screenNumber } from '@openbot/computer';
-import { COMPUTER_OFF, COMPUTER_OFF_CLOSE_CODE, type Unsubscribe } from '@openbot/shared';
+import { screenNumber } from '@openbots/computer';
+import { COMPUTER_OFF, COMPUTER_OFF_CLOSE_CODE, type Unsubscribe } from '@openbots/shared';
 import { and, eq, inArray, lte } from 'drizzle-orm';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { AppDeps, CurrentUser } from '../context.js';

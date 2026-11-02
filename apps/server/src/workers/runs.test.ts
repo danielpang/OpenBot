@@ -1,17 +1,17 @@
-import { INTERRUPTED_RESULT, localEmbedder } from '@openbot/agent';
+import { INTERRUPTED_RESULT, localEmbedder } from '@openbots/agent';
 import {
   promptText,
   scriptedModel,
   type ScriptedModel,
   type ScriptedTurn,
-} from '@openbot/agent/testing';
-import type { ProviderModel } from '@openbot/models';
+} from '@openbots/agent/testing';
+import type { ProviderModel } from '@openbots/models';
 import {
   DEFAULT_CAPABILITIES,
   EVENTS_CHANNEL,
   type MessagePart,
   type WsEvent,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import type { LanguageModel } from 'ai';
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -80,7 +80,7 @@ describe('run worker', () => {
   });
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     cookie = (await t.signUp('dana@example.com')).cookie!;
     const [user] = await t.db.select().from(schema.users);
     const [member] = await t.db.select().from(schema.workspaceMembers);
@@ -293,7 +293,7 @@ describe('run worker', () => {
     const question = {
       question: 'Which repo?',
       options: [
-        { id: 'a', label: 'openbot' },
+        { id: 'a', label: 'openbots' },
         { id: 'b', label: 'website' },
       ],
     };
@@ -310,7 +310,7 @@ describe('run worker', () => {
 
   it('pauses on ask_user and resumes with the answer', async () => {
     const { bot, model, run, asked } = await askAndPause('Asker', [
-      [{ text: 'On it, in openbot.' }],
+      [{ text: 'On it, in openbots.' }],
     ]);
     expect(asked.status).toBe('complete');
     const parts = asked.parts as MessagePart[];
@@ -349,13 +349,13 @@ describe('run worker', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       resumedRunId: run.id,
-      widget: { state: { status: 'answered', answer: { option_id: 'a', label: 'openbot' } } },
+      widget: { state: { status: 'answered', answer: { option_id: 'a', label: 'openbots' } } },
     });
     await settled(bot.id, 'completed');
     expect(await runsOf(bot.id)).toHaveLength(1);
-    expect(promptText(model.calls[1]!)).toContain('"label":"openbot"');
+    expect(promptText(model.calls[1]!)).toContain('"label":"openbots"');
     const replies = await botMessages(bot.chatId);
-    expect(replies.at(-1)!.parts).toEqual([{ type: 'text', text: 'On it, in openbot.' }]);
+    expect(replies.at(-1)!.parts).toEqual([{ type: 'text', text: 'On it, in openbots.' }]);
     expect(statesOf(bot.id).slice(-2)).toEqual(['thinking', 'done']);
     // A second answer is refused.
     const again = await call('POST', `/messages/${asked.id}/widgets/2/action`, {

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { schema } from '@openbot/server/db/client';
-import { ORIGIN, createTestApp, type TestApp } from '@openbot/server/test-app';
+import { schema } from '@openbots/server/db/client';
+import { ORIGIN, createTestApp, type TestApp } from '@openbots/server/test-app';
 import { managedExtensions } from './index.js';
 import { createAccount, emailTo, mailbox, signUpByEmail, startSignUp } from './testing.js';
 
@@ -99,7 +99,7 @@ describe('organizations on the managed service', () => {
 
   beforeAll(async () => {
     t = await createTestApp(
-      { OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' },
+      { OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' },
       {
         extensions: managedExtensions({
           email: { apiKey: 're_test', from: 'OpenBots <hi@example.com>', fetch: resend },
@@ -213,7 +213,7 @@ describe('organizations on the managed service', () => {
 
   it('works as copyable links when the server cannot send email', async () => {
     const plain = await createTestApp(
-      { OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' },
+      { OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' },
       { extensions: managedExtensions() },
     );
     try {
@@ -428,7 +428,7 @@ describe('sign-up by invitation only', () => {
   const mail = mailbox();
   beforeAll(async () => {
     t = await createTestApp(
-      { OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'invite' },
+      { OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'invite' },
       { extensions: managedExtensions({ email: emailTo(mail) }) },
     );
   });

@@ -18,9 +18,9 @@ import {
 
 const seeds = (count: number) => Array.from({ length: count }, (_, i) => `seed-${i}`);
 
-describe('@openbot/avatars', () => {
+describe('@openbots/avatars', () => {
   it('exports its package name', () => {
-    expect(PACKAGE_NAME).toBe('@openbot/avatars');
+    expect(PACKAGE_NAME).toBe('@openbots/avatars');
   });
 
   it('has the catalogue the plan asks for', () => {

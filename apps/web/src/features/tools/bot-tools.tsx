@@ -1,6 +1,6 @@
-import { unwrap } from '@openbot/api-client';
-import type { PolicyDecision, ToolGroupName, ToolPolicy } from '@openbot/shared';
-import { Button } from '@openbot/ui';
+import { unwrap } from '@openbots/api-client';
+import type { PolicyDecision, ToolGroupName, ToolPolicy } from '@openbots/shared';
+import { Button } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';

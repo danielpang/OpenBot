@@ -40,7 +40,7 @@ describe('audit log', () => {
   let workspaceId: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     admin = (await t.signUp('admin@example.com')).cookie!;
     member = (await t.signUp('member@example.com')).cookie!;
     const users = await t.db.select().from(schema.users);

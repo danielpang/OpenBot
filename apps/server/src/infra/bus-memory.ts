@@ -1,4 +1,4 @@
-import type { EventBus, Unsubscribe } from '@openbot/shared';
+import type { EventBus, Unsubscribe } from '@openbots/shared';
 
 // The in-process EventBus. Events are delivered asynchronously and as JSON
 // copies, the way they arrive through Redis, so code that works here works

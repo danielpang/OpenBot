@@ -4,7 +4,7 @@ import {
   type MessagePart,
   type WsEvent,
   type WsEventOf,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { schema } from '../db/client.js';
@@ -27,7 +27,7 @@ describe('streaming Bot messages', () => {
   const events: WsEvent[] = [];
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     await t.signUp('alice@example.com');
     const [user] = await t.db.select().from(schema.users);
     const [member] = await t.db.select().from(schema.workspaceMembers);
@@ -212,7 +212,7 @@ describe('widget state on read', () => {
   let chatId: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     await t.signUp('alice@example.com');
     const [user] = await t.db.select().from(schema.users);
     const [member] = await t.db.select().from(schema.workspaceMembers);

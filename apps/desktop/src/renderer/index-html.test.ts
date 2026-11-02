@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { AVATAR_CSS } from '@openbot/avatars';
+import { AVATAR_CSS } from '@openbots/avatars';
 import { describe, expect, it } from 'vitest';
 
 // The start page's Content-Security-Policy allows no inline style but the

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { EditorView } from '@codemirror/view';
-import type { WsClient } from '@openbot/api-client';
-import type { WsEvent } from '@openbot/shared';
+import type { WsClient } from '@openbots/api-client';
+import type { WsEvent } from '@openbots/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';

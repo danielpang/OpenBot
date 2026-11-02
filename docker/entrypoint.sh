@@ -1,10 +1,10 @@
 #!/bin/sh
 # Entrypoint of the server image.
 #
-#   start (default)  apply migrations, then run the server as OPENBOT_ROLE (api | worker | all)
+#   start (default)  apply migrations, then run the server as OPENBOTS_ROLE (api | worker | all)
 #   migrate          apply migrations and exit
-#   keygen           print a fresh OPENBOT_MASTER_KEY
-#   rotate-key       re-encrypt every stored secret under OPENBOT_MASTER_KEY (plan 4.9)
+#   keygen           print a fresh OPENBOTS_MASTER_KEY
+#   rotate-key       re-encrypt every stored secret under OPENBOTS_MASTER_KEY (plan 4.9)
 #   docker-guard     run the docker guard in front of the socket proxy (compose service docker-guard)
 #   anything else    run it as a command, e.g. `sh`
 #
@@ -16,7 +16,7 @@
 # runs as that user with whatever capabilities it has, usually none.
 #
 # Before the server starts, the secrets below move from the environment into
-# private files under OPENBOT_SECRETS_DIR (a tmpfs in compose) and reach node as
+# private files under OPENBOTS_SECRETS_DIR (a tmpfs in compose) and reach node as
 # NAME_FILE, so node's /proc/<pid>/environ, and anything it starts with an
 # inherited environment, holds none of them. Without a writable directory
 # they stay in the environment and the server logs a warning.
@@ -24,10 +24,10 @@ set -eu
 
 SERVER_UID=1000
 SERVER_GID=1000
-SECRETS_DIR="${OPENBOT_SECRETS_DIR:-/run/openbot}"
+SECRETS_DIR="${OPENBOTS_SECRETS_DIR:-/run/openbots}"
 # The variables apps/server/src/env-files.ts reads from NAME_FILE
 # (env-files.test.ts checks that the two lists match).
-SECRET_VARS="OPENBOT_MASTER_KEY OPENBOT_MASTER_KEY_PREVIOUS DATABASE_URL OPENBOT_DB_APP_PASSWORD REDIS_URL OPENBOT_COMPUTER_AGENT_TOKEN OPENBOT_METRICS_TOKEN OPENBOT_LOCAL_TOKEN ANTHROPIC_API_KEY OPENAI_API_KEY XAI_API_KEY GOOGLE_GENERATIVE_AI_API_KEY GITHUB_CLIENT_SECRET GOOGLE_CLIENT_SECRET"
+SECRET_VARS="OPENBOTS_MASTER_KEY OPENBOTS_MASTER_KEY_PREVIOUS DATABASE_URL OPENBOTS_DB_APP_PASSWORD REDIS_URL OPENBOTS_COMPUTER_AGENT_TOKEN OPENBOTS_METRICS_TOKEN OPENBOTS_LOCAL_TOKEN ANTHROPIC_API_KEY OPENAI_API_KEY XAI_API_KEY GOOGLE_GENERATIVE_AI_API_KEY GITHUB_CLIENT_SECRET GOOGLE_CLIENT_SECRET"
 
 if [ "$(id -u)" = 0 ]; then
   # Ambient capabilities survive the uid change and the exec of node, and
@@ -59,11 +59,11 @@ secrets_to_files() {
   value=''
 }
 
-# OPENBOT_SERVER_DIR is for tests that run this script outside the image.
-# OPENBOT_MAIN is the server to start: the self-hosted one by default, the
+# OPENBOTS_SERVER_DIR is for tests that run this script outside the image.
+# OPENBOTS_MAIN is the server to start: the self-hosted one by default, the
 # managed one (ee/server) in the managed image.
-cd "${OPENBOT_SERVER_DIR:-/app/apps/server}"
-MAIN="${OPENBOT_MAIN:-dist/main.js}"
+cd "${OPENBOTS_SERVER_DIR:-/app/apps/server}"
+MAIN="${OPENBOTS_MAIN:-dist/main.js}"
 
 command="${1:-start}"
 [ "$#" -gt 0 ] && shift

@@ -3,7 +3,7 @@ import {
   startTestHttpServer,
   type MockAuthServer,
   type TestHttpServer,
-} from '@openbot/mcp/testing';
+} from '@openbots/mcp/testing';
 import { expect, test } from '@playwright/test';
 import { startFakeModel, useFakeModel, type FakeModel } from './fake-model.js';
 import { signUp } from './auth.js';
@@ -15,7 +15,7 @@ import { signUp } from './auth.js';
 // and closes itself; the card turns Connected without a reload), a Bot calls
 // its destructive tool, the approval appears in the transcript, Approve, and
 // the run continues with the tool's result. The MCP server is the HTTP test
-// server from `@openbot/mcp/testing` (build that package first) and the model
+// server from `@openbots/mcp/testing` (build that package first) and the model
 // is the scripted fake. Needs a fresh database: the first user is the admin
 // who can add the fake provider.
 

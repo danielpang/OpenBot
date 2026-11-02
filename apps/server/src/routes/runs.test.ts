@@ -12,7 +12,7 @@ describe('runs API', () => {
   let bot: { id: string; chatId: string };
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     alice = (await t.signUp('alice@example.com')).cookie!;
     bob = (await t.signUp('bob@example.com')).cookie!;
     bot = (await (await call(alice, 'POST', '/bots', { name: 'Runner' })).json()) as typeof bot;

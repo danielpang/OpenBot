@@ -1,4 +1,4 @@
-import { startFakeOpenAI, type FakeOpenAI } from '@openbot/models/testing';
+import { startFakeOpenAI, type FakeOpenAI } from '@openbots/models/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
 import { setComputerProvider } from '../services/computer.js';
@@ -35,7 +35,7 @@ describe('/api/v1/setup with sign-in rate limits on (the default)', () => {
 describe('/api/v1/setup on the managed service', () => {
   let t: TestApp;
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
   });
   afterAll(() => t.close());
 

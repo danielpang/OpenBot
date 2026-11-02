@@ -1,4 +1,4 @@
-import { cn } from '@openbot/ui';
+import { cn } from '@openbots/ui';
 import { useMemo, useState } from 'react';
 import type { TableCell, TableProps } from '../kinds/table.js';
 import type { WidgetRendererProps } from './types.js';

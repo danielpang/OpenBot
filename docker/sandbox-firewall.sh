@@ -1,10 +1,10 @@
 #!/bin/sh
 # Isolation and egress rules for the sandbox network (threat model S-17):
-# openbot-sandbox, or the one OPENBOT_SANDBOX_NETWORK names. The `sandbox-firewall` compose service runs this in the host's network
+# openbots-sbx, or the one OPENBOTS_SANDBOX_NETWORK names. The `sandbox-firewall` compose service runs this in the host's network
 # namespace (on Docker Desktop, the Docker VM's) and keeps the rules in place;
 # a person without that service can run it once as root on the Docker host:
 #
-#   sudo OPENBOT_SANDBOX_SERVER_IP=172.30.255.2 sh docker/sandbox-firewall.sh --once
+#   sudo OPENBOTS_SANDBOX_SERVER_IP=172.30.255.2 sh docker/sandbox-firewall.sh --once
 #
 # The sandbox network has icc off, so containers on it cannot reach each other.
 # These rules, in Docker's DOCKER-USER chain and in INPUT:
@@ -19,10 +19,10 @@
 # DNS (port 53) stays open so a resolver on the LAN keeps working. The rest of
 # the internet stays reachable: the browser needs it.
 #
-# With OPENBOT_SANDBOX_EGRESS_PROXY set (the computers' HTTP_PROXY, e.g.
+# With OPENBOTS_SANDBOX_EGRESS_PROXY set (the computers' HTTP_PROXY, e.g.
 # http://172.30.255.3:8888), computers may also open connections to that one
 # address and port, even on a private address, on the sandbox network or on
-# the host. With OPENBOT_SANDBOX_EGRESS_PROXY_ONLY=true they reach nothing else
+# the host. With OPENBOTS_SANDBOX_EGRESS_PROXY_ONLY=true they reach nothing else
 # but DNS, so the proxy's allowlist cannot be bypassed. The proxy needs an IPv4
 # address here, not a name: the rules match addresses.
 #
@@ -32,17 +32,17 @@
 # touches the other's rules.
 set -eu
 
-SUBNET="${OPENBOT_SANDBOX_SUBNET:-172.30.255.0/24}"
-SERVER="${OPENBOT_SANDBOX_SERVER_IP:-172.30.255.2}"
+SUBNET="${OPENBOTS_SANDBOX_SUBNET:-172.30.255.0/24}"
+SERVER="${OPENBOTS_SANDBOX_SERVER_IP:-172.30.255.2}"
 # The bridge's name, as docker/docker-compose.yml (com.docker.network.bridge.name)
 # and the docker provider (resolveSandboxNetwork, AGENT_PORT in
-# packages/computer/src/docker.ts) set it: OPENBOT_SANDBOX_BRIDGE, else the
+# packages/computer/src/docker.ts) set it: OPENBOTS_SANDBOX_BRIDGE, else the
 # network's name.
-BRIDGE="${OPENBOT_SANDBOX_BRIDGE:-${OPENBOT_SANDBOX_NETWORK:-openbot-sandbox}}"
+BRIDGE="${OPENBOTS_SANDBOX_BRIDGE:-${OPENBOTS_SANDBOX_NETWORK:-openbots-sbx}}"
 AGENT_PORT=7070
 BLOCKED="169.254.0.0/16 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 127.0.0.0/8 0.0.0.0/8 224.0.0.0/4"
-PROXY="${OPENBOT_SANDBOX_EGRESS_PROXY:-}"
-PROXY_ONLY="${OPENBOT_SANDBOX_EGRESS_PROXY_ONLY:-false}"
+PROXY="${OPENBOTS_SANDBOX_EGRESS_PROXY:-}"
+PROXY_ONLY="${OPENBOTS_SANDBOX_EGRESS_PROXY_ONLY:-false}"
 PROXY_IP=
 PROXY_PORT=
 
@@ -71,12 +71,12 @@ parse_proxy() {
 # Lower case, at most 15 characters, no `+` (an iptables wildcard): the rule
 # isBridgeName has in packages/computer/src/docker.ts.
 echo "$BRIDGE" | grep -Eq '^[a-z0-9][a-z0-9_.-]{0,14}$' ||
-  fail "OPENBOT_SANDBOX_BRIDGE must be a bridge name: lower case letters, digits, _ . -, up to 15 characters (set it when OPENBOT_SANDBOX_NETWORK is longer)"
+  fail "OPENBOTS_SANDBOX_BRIDGE must be a bridge name: lower case letters, digits, _ . -, up to 15 characters (set it when OPENBOTS_SANDBOX_NETWORK is longer)"
 # The chains, one pair per bridge. The default bridge keeps the names the
 # rules always had; any other gets its own, prefixed so that no bridge name
 # can turn into one of Docker's chains.
-if [ "$BRIDGE" = openbot-sandbox ]; then
-  FORWARD_CHAIN=OPENBOT-SANDBOX
+if [ "$BRIDGE" = openbots-sbx ]; then
+  FORWARD_CHAIN=OPENBOTS-SANDBOX
 else
   FORWARD_CHAIN="OB-$(echo "$BRIDGE" | tr '[:lower:]' '[:upper:]')"
 fi
@@ -84,16 +84,16 @@ INPUT_CHAIN="$FORWARD_CHAIN-IN"
 
 case $PROXY_ONLY in
   true | false) ;;
-  *) fail "OPENBOT_SANDBOX_EGRESS_PROXY_ONLY must be true or false" ;;
+  *) fail "OPENBOTS_SANDBOX_EGRESS_PROXY_ONLY must be true or false" ;;
 esac
 if [ -n "$PROXY" ]; then
-  parse_proxy || fail "OPENBOT_SANDBOX_EGRESS_PROXY must look like http://172.30.255.3:8888, with the port"
+  parse_proxy || fail "OPENBOTS_SANDBOX_EGRESS_PROXY must look like http://172.30.255.3:8888, with the port"
   if [ -z "$PROXY_IP" ]; then
-    [ "$PROXY_ONLY" = false ] || fail "OPENBOT_SANDBOX_EGRESS_PROXY_ONLY needs the proxy's IPv4 address in OPENBOT_SANDBOX_EGRESS_PROXY, not a name"
-    echo "sandbox-firewall: the egress proxy is a name, so no exception is added for it; a proxy on a private address needs its IPv4 address in OPENBOT_SANDBOX_EGRESS_PROXY" >&2
+    [ "$PROXY_ONLY" = false ] || fail "OPENBOTS_SANDBOX_EGRESS_PROXY_ONLY needs the proxy's IPv4 address in OPENBOTS_SANDBOX_EGRESS_PROXY, not a name"
+    echo "sandbox-firewall: the egress proxy is a name, so no exception is added for it; a proxy on a private address needs its IPv4 address in OPENBOTS_SANDBOX_EGRESS_PROXY" >&2
   fi
 elif [ "$PROXY_ONLY" = true ]; then
-  fail "OPENBOT_SANDBOX_EGRESS_PROXY_ONLY needs OPENBOT_SANDBOX_EGRESS_PROXY"
+  fail "OPENBOTS_SANDBOX_EGRESS_PROXY_ONLY needs OPENBOTS_SANDBOX_EGRESS_PROXY"
 fi
 
 # Docker's rules live in either the nft or the legacy iptables backend; use the

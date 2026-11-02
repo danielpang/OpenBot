@@ -1,4 +1,4 @@
-import type { MessagePart } from '@openbot/shared';
+import type { MessagePart } from '@openbots/shared';
 
 // Attachments in the context (plan 5.3; C1, C9). The owner's images and files
 // arrive as `image` and `file` parts by file id, in their messages and in

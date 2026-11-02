@@ -1,4 +1,4 @@
-import { Button, cn, Spinner } from '@openbot/ui';
+import { Button, cn, Spinner } from '@openbots/ui';
 import { CheckIcon, ExternalLinkIcon, InfoIcon, RefreshIcon } from './icons.js';
 import { Notice } from './parts.js';
 import type { LocalSetupState, SetupPhase, StartFlow } from './start-flow.js';

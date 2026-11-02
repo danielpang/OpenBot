@@ -1,4 +1,4 @@
-import { Button, cn } from '@openbot/ui';
+import { Button, cn } from '@openbots/ui';
 import { useState } from 'react';
 import type { RoutineRunProps, RoutineRunState } from '../kinds/routine_run.js';
 import type { WidgetRendererProps } from './types.js';

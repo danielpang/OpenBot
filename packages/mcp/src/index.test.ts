@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PACKAGE_NAME } from './index.js';
 
-describe('@openbot/mcp', () => {
+describe('@openbots/mcp', () => {
   it('exports its package name', () => {
-    expect(PACKAGE_NAME).toBe('@openbot/mcp');
+    expect(PACKAGE_NAME).toBe('@openbots/mcp');
   });
 });

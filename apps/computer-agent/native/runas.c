@@ -1,7 +1,7 @@
-// openbot-runas: the computer's one privileged piece (S-7).
+// openbots-runas: the computer's one privileged piece (S-7).
 //
-//   openbot-runas UID GID -- PROGRAM [ARG...]
-//   openbot-runas --clear-display N
+//   openbots-runas UID GID -- PROGRAM [ARG...]
+//   openbots-runas --clear-display N
 //
 // Runs PROGRAM as UID with GID as its only group. The control agent starts
 // as root, lays out the screens' private directories, then sets its
@@ -51,7 +51,7 @@
 #define X11_DIR "/tmp/.X11-unix"
 
 static int fail(const char *what) {
-  fprintf(stderr, "openbot-runas: %s%s%s\n", what, errno ? ": " : "", errno ? strerror(errno) : "");
+  fprintf(stderr, "openbots-runas: %s%s%s\n", what, errno ? ": " : "", errno ? strerror(errno) : "");
   return 126;
 }
 
@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
     if (getuid() != 0) return fail("only the control agent may clear a display");
     return clear_display(argv[2]);
   }
-  if (argc < 5 || strcmp(argv[3], "--") != 0) return fail("usage: openbot-runas UID GID -- PROGRAM [ARG...]");
+  if (argc < 5 || strcmp(argv[3], "--") != 0) return fail("usage: openbots-runas UID GID -- PROGRAM [ARG...]");
   if (parse_id(argv[1], &uid) || parse_id(argv[2], &gid) || !allowed(uid, gid))
     return fail("that uid and gid are not a computer identity");
   if (getuid() != 0) return fail("only the control agent may switch users");

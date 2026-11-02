@@ -1,4 +1,4 @@
-import { toModelMessages, type BotMessenger } from '@openbot/agent';
+import { toModelMessages, type BotMessenger } from '@openbots/agent';
 import {
   chainLimitsFor,
   loopStoppedDetail,
@@ -7,8 +7,8 @@ import {
   shouldReply,
   withinChainLimits,
   type RouteTrigger,
-} from '@openbot/router';
-import { ModelConfigSchema, parseMentions, PRIORITY, type MessagePart } from '@openbot/shared';
+} from '@openbots/router';
+import { ModelConfigSchema, parseMentions, PRIORITY, type MessagePart } from '@openbots/shared';
 import type { LanguageModel } from 'ai';
 import { and, count, desc, eq, gt, isNotNull, isNull, or } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
@@ -28,7 +28,7 @@ import { providerRegistry, smallModelFor } from './providers.js';
 import { botsAtWork, startRoutedRun, type RoutedRunOutcome } from './runs.js';
 
 // The router (plan 7; C4 to C6). `routeMessage` decides who answers a message
-// in a group or Bot-to-Bot chat with `routeTargets` from @openbot/router, asks
+// in a group or Bot-to-Bot chat with `routeTargets` from @openbots/router, asks
 // each undecided Bot's small model (`shouldReply`), applies the loop guards and
 // starts the runs. When no Bot could decide (the small model fails or cannot
 // be resolved), an event row says so, at most once an hour per chat. Owner messages arrive through the `onUserMessage` hook

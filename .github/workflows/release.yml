@@ -6,7 +6,7 @@
 #
 #   version    checks the tag against the package.json versions
 #   images     server, computer and sandbox-firewall for linux/amd64 and
-#              linux/arm64, pushed to ghcr.io/<owner>/openbot, plus a
+#              linux/arm64, pushed to ghcr.io/<owner>/openbots, plus a
 #              `docker load` archive of each per architecture
 #              (release-images.yml)
 #   mac        the universal DMG, the zip and latest-mac.yml, signed and
@@ -80,7 +80,7 @@ jobs:
             node scripts/release-version.mjs current >>"$GITHUB_OUTPUT"
             echo "publish=false" >>"$GITHUB_OUTPUT"
           fi
-          echo "image-prefix=ghcr.io/${OWNER,,}/openbot" >>"$GITHUB_OUTPUT"
+          echo "image-prefix=ghcr.io/${OWNER,,}/openbots" >>"$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
   images:
@@ -161,7 +161,7 @@ jobs:
           # The bundle's compose files must resolve on their own.
           mkdir "$RUNNER_TEMP/check"
           tar -xzf "$archive" -C "$RUNNER_TEMP/check"
-          cd "$RUNNER_TEMP/check/openbot-$VERSION"
+          cd "$RUNNER_TEMP/check/openbots-$VERSION"
           cp .env.example .env
           docker compose config --quiet
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -214,12 +214,12 @@ jobs:
           expected=(
             "OpenBots-$VERSION-universal.dmg"
             "OpenBots-$VERSION-universal-mac.zip"
-            "openbot.rb"
-            "openbot-compose-$VERSION.tar.gz"
+            "openbots.rb"
+            "openbots-compose-$VERSION.tar.gz"
           )
           for image in server computer sandbox-firewall; do
             for arch in amd64 arm64; do
-              expected+=("openbot-$image-$VERSION-linux-$arch.tar.gz")
+              expected+=("openbots-$image-$VERSION-linux-$arch.tar.gz")
             done
           done
           if [ "$SIGNED" = true ]; then expected+=(latest-mac.yml); fi

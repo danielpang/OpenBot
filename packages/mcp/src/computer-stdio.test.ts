@@ -56,7 +56,7 @@ describe('ComputerStdioHost', () => {
     const host = new ComputerStdioHost({ launch: channel.launch });
     hosts.push(host);
     const snapshot = await host.start();
-    expect(snapshot.server).toEqual({ name: 'openbot-test-stdio', version: '1.0.0' });
+    expect(snapshot.server).toEqual({ name: 'openbots-test-stdio', version: '1.0.0' });
     expect(snapshot.tools.map((t) => t.name)).toEqual(['echo', 'whoami', 'grow']);
     expect(snapshot.resources.map((r) => r.uri)).toEqual(['test://readme']);
     expect(textOf(await host.callTool('echo', { text: 'über ✓ multi-byte' }))).toBe(

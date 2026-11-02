@@ -223,7 +223,9 @@ describe('routes', () => {
     const signUp = await renderPath('/sign-up');
     expect(signUp.pathname).toBe('/sign-in');
     expect(signUp.search).toBe('?signup=closed');
-    expect(signUp.html).toContain('This OpenBot has one account, its owner. Sign up is closed.');
+    expect(signUp.html).toContain(
+      'This OpenBots server has one account, its owner. Sign up is closed.',
+    );
     expect(signUp.html).not.toContain('href="/sign-up"');
 
     const signIn = await renderPath('/sign-in');

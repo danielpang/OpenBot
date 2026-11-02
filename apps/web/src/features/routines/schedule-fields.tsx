@@ -1,5 +1,5 @@
-import { WEEKDAY_NAMES } from '@openbot/routines';
-import { Input } from '@openbot/ui';
+import { WEEKDAY_NAMES } from '@openbots/routines';
+import { Input } from '@openbots/ui';
 import type { ReactNode } from 'react';
 import {
   INTERVAL_MINUTES_MAX,

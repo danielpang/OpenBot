@@ -1,4 +1,4 @@
-import { isComputerTool } from '@openbot/shared';
+import { isComputerTool } from '@openbots/shared';
 import type { SVGProps } from 'react';
 import type { Bot } from '../bots/queries.js';
 

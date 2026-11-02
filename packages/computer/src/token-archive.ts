@@ -1,7 +1,7 @@
 // The agent token travels into the container as a file, never in its
 // environment (S-7): before each start the docker provider puts this tar,
 // one file `token` owned by root with mode 0400, into the state volume at
-// /var/lib/openbot through the Docker API's archive endpoint. The agent reads
+// /var/lib/openbots through the Docker API's archive endpoint. The agent reads
 // it and deletes it before it listens. The docker guard lets through exactly
 // this archive and nothing else, so it parses it back here.
 

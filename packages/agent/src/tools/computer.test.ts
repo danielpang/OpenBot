@@ -1,6 +1,6 @@
-import { createAgentClient, ScreenLocks, type ComputerAgentClient } from '@openbot/computer';
-import { startFakeAgent, TINY_PNG, type FakeAgent } from '@openbot/computer/testing';
-import { OWNER_HAS_SCREEN, type ArtifactKind, type MessagePart } from '@openbot/shared';
+import { createAgentClient, ScreenLocks, type ComputerAgentClient } from '@openbots/computer';
+import { startFakeAgent, TINY_PNG, type FakeAgent } from '@openbots/computer/testing';
+import { OWNER_HAS_SCREEN, type ArtifactKind, type MessagePart } from '@openbots/shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { labelFor } from '../activity/labels.js';
 import { createPolicy, defaultPolicy } from '../policy/index.js';

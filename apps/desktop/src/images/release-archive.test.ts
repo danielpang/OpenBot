@@ -60,11 +60,11 @@ function fakeDocker(result: (args: string[]) => Partial<ExecResult> = () => ({})
     expect(file).toBe('/usr/local/bin/docker');
     const contents = args[0] === 'load' ? readFileSync(args[2]!, 'utf8') : undefined;
     calls.push({ args, contents, env: options?.env });
-    const image = args[0] === 'load' ? /openbot-([a-z-]+)-\d/.exec(basename(args[2]!))?.[1] : '';
+    const image = args[0] === 'load' ? /openbots-([a-z-]+)-\d/.exec(basename(args[2]!))?.[1] : '';
     return {
       code: 0,
       stdout:
-        args[0] === 'load' ? `Loaded image: ghcr.io/danielpang/openbot/${image}:${VERSION}\n` : '',
+        args[0] === 'load' ? `Loaded image: ghcr.io/danielpang/openbots/${image}:${VERSION}\n` : '',
       stderr: '',
       ...result(args),
     };
@@ -93,9 +93,9 @@ describe('loadReleaseImages', () => {
 
     expect(requested).toEqual([
       `${RELEASE}/SHA256SUMS`,
-      `${RELEASE}/openbot-server-1.2.0-linux-arm64.tar.gz`,
-      `${RELEASE}/openbot-sandbox-firewall-1.2.0-linux-arm64.tar.gz`,
-      `${RELEASE}/openbot-computer-1.2.0-linux-arm64.tar.gz`,
+      `${RELEASE}/openbots-server-1.2.0-linux-arm64.tar.gz`,
+      `${RELEASE}/openbots-sandbox-firewall-1.2.0-linux-arm64.tar.gz`,
+      `${RELEASE}/openbots-computer-1.2.0-linux-arm64.tar.gz`,
     ]);
     expect(
       docker.calls.map((c) => [c.args[0], c.args[1], basename(c.args[2]!), c.contents]),
@@ -103,7 +103,7 @@ describe('loadReleaseImages', () => {
       RELEASE_IMAGES.map((image) => [
         'load',
         '--input',
-        `openbot-${image}-1.2.0-linux-arm64.tar.gz`,
+        `openbots-${image}-1.2.0-linux-arm64.tar.gz`,
         `${image} image for arm64`,
       ]),
     );
@@ -111,7 +111,7 @@ describe('loadReleaseImages', () => {
     expect(loaded).toEqual(
       RELEASE_IMAGES.map((image) => ({
         image,
-        loaded: [`ghcr.io/danielpang/openbot/${image}:1.2.0`],
+        loaded: [`ghcr.io/danielpang/openbots/${image}:1.2.0`],
       })),
     );
     const server = progress.filter((p) => p.image === 'server');
@@ -203,7 +203,7 @@ describe('loadReleaseImages', () => {
     ).rejects.toMatchObject({
       reason: 'load',
       message:
-        'docker load failed for openbot-computer-1.2.0-linux-amd64.tar.gz: no space left on device',
+        'docker load failed for openbots-computer-1.2.0-linux-amd64.tar.gz: no space left on device',
     });
     expect(readdirSync(tmp)).toEqual([]);
   });
@@ -215,15 +215,15 @@ describe('loadReleaseImages', () => {
 
     const fork = fakeDocker();
     const loaded = await loadReleaseImages(
-      { version: VERSION, arch: 'arm64', images: ['server'], imagePrefix: 'ghcr.io/ada/openbot' },
+      { version: VERSION, arch: 'arm64', images: ['server'], imagePrefix: 'ghcr.io/ada/openbots' },
       { ...deps, exec: fork.exec },
     );
     expect(fork.calls.map((c) => c.args)).toContainEqual([
       'tag',
-      'ghcr.io/danielpang/openbot/server:1.2.0',
-      'ghcr.io/ada/openbot/server:1.2.0',
+      'ghcr.io/danielpang/openbots/server:1.2.0',
+      'ghcr.io/ada/openbots/server:1.2.0',
     ]);
-    expect(loaded[0]!.tagged).toBe('ghcr.io/ada/openbot/server:1.2.0');
+    expect(loaded[0]!.tagged).toBe('ghcr.io/ada/openbots/server:1.2.0');
 
     const same = fakeDocker();
     await loadReleaseImages(
@@ -231,7 +231,7 @@ describe('loadReleaseImages', () => {
         version: VERSION,
         arch: 'arm64',
         images: ['server'],
-        imagePrefix: 'ghcr.io/danielpang/openbot',
+        imagePrefix: 'ghcr.io/danielpang/openbots',
       },
       { ...deps, exec: same.exec },
     );
@@ -270,7 +270,7 @@ describe('releaseImageLoader', () => {
       tmpDir: tmp,
     })({
       version: VERSION,
-      imagePrefix: 'ghcr.io/ada/openbot',
+      imagePrefix: 'ghcr.io/ada/openbots',
       images: ['computer'],
       docker: '/usr/local/bin/docker',
       env,
@@ -293,7 +293,7 @@ describe('release archive helpers', () => {
 
   it('names archives and their URLs the way the release workflow uploads them', () => {
     expect(imageArchiveName('sandbox-firewall', '1.3.0-rc.1', 'amd64')).toBe(
-      'openbot-sandbox-firewall-1.3.0-rc.1-linux-amd64.tar.gz',
+      'openbots-sandbox-firewall-1.3.0-rc.1-linux-amd64.tar.gz',
     );
     expect(releaseAssetUrl('ada/OpenBots-fork', '1.2.0', 'SHA256SUMS')).toBe(
       'https://github.com/ada/OpenBots-fork/releases/download/v1.2.0/SHA256SUMS',
@@ -306,7 +306,7 @@ describe('release archive helpers', () => {
       'utf8',
     );
     expect(workflow).toContain(
-      'ARCHIVE_BASE: openbot-${{ matrix.image }}-${{ inputs.version }}-linux',
+      'ARCHIVE_BASE: openbots-${{ matrix.image }}-${{ inputs.version }}-linux',
     );
     expect(workflow).toContain('${{ env.ARCHIVE_BASE }}-arm64.tar');
   });
@@ -334,9 +334,9 @@ describe('release archive helpers', () => {
   it('reads the image references docker load prints', () => {
     expect(
       loadedReferences(
-        'Loaded image: ghcr.io/a/openbot/server:1.2.0\nLoaded image ID: sha256:abc\n',
+        'Loaded image: ghcr.io/a/openbots/server:1.2.0\nLoaded image ID: sha256:abc\n',
       ),
-    ).toEqual(['ghcr.io/a/openbot/server:1.2.0']);
+    ).toEqual(['ghcr.io/a/openbots/server:1.2.0']);
   });
 
   it('defaults to the repository electron-builder publishes to', () => {

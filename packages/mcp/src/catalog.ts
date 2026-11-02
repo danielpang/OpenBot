@@ -203,7 +203,7 @@ export function substitute(text: string, values: Record<string, string>): string
 // --- Launching stdio entries (S-20) ---------------------------------------------
 
 /** Where the server image installs the catalog's stdio servers. */
-export const DEFAULT_CATALOG_INSTALL_DIR = '/opt/openbot/mcp';
+export const DEFAULT_CATALOG_INSTALL_DIR = '/opt/openbots/mcp';
 
 export interface CatalogInstall {
   /** The directory holding the catalog install's `node_modules`. */
@@ -231,7 +231,7 @@ export function catalogLaunch(
   if (install.allowNpx) return { command: stdio.command, args: stdio.args };
   throw new Error(
     `${entry.name} is not installed: ${bin} is missing. The server image installs it; ` +
-      `from source, run \`npm ci\` in docker/mcp-catalog and point OPENBOT_MCP_DIR there, ` +
-      `or set OPENBOT_MCP_NPX_FALLBACK=true to download ${catalogPackage(entry)} with npx.`,
+      `from source, run \`npm ci\` in docker/mcp-catalog and point OPENBOTS_MCP_DIR there, ` +
+      `or set OPENBOTS_MCP_NPX_FALLBACK=true to download ${catalogPackage(entry)} with npx.`,
   );
 }

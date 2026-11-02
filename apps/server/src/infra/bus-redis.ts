@@ -1,4 +1,4 @@
-import type { EventBus, Unsubscribe } from '@openbot/shared';
+import type { EventBus, Unsubscribe } from '@openbots/shared';
 import { Redis } from 'ioredis';
 
 // The EventBus on Redis pub/sub: workers publish, every API instance receives

@@ -1,4 +1,4 @@
-import { cn, Kbd, Textarea } from '@openbot/ui';
+import { cn, Kbd, Textarea } from '@openbots/ui';
 import { useEffect, useRef } from 'react';
 import { AlertCircleIcon, ChevronDownIcon, ReturnIcon } from './icons.js';
 import type { QuickAskFlow } from './quick-ask-flow.js';

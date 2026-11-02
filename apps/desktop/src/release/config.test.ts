@@ -154,26 +154,28 @@ describe('electron-builder.yml', () => {
     }
   }, 30_000);
 
-  it('writes OPENBOT_CLOUD_URL into the packaged package.json, and nothing without it', () => {
+  it('writes OPENBOTS_CLOUD_URL into the packaged package.json, and nothing without it', () => {
     const dependencies = { 'electron-updater': updaterVersion };
     expect(publishModule.appConfig({})).toEqual({ extraMetadata: { dependencies } });
-    expect(publishModule.appConfig({ OPENBOT_CLOUD_URL: ' ' })).toEqual({
+    expect(publishModule.appConfig({ OPENBOTS_CLOUD_URL: ' ' })).toEqual({
       extraMetadata: { dependencies },
     });
     expect(
-      publishModule.appConfig({ OPENBOT_CLOUD_URL: 'https://app.openbots.example/x' }),
+      publishModule.appConfig({ OPENBOTS_CLOUD_URL: 'https://app.openbots.example/x' }),
     ).toEqual({
-      extraMetadata: { dependencies, openbot: { cloudUrl: 'https://app.openbots.example' } },
+      extraMetadata: { dependencies, openbots: { cloudUrl: 'https://app.openbots.example' } },
     });
     // A bad value fails the build rather than ship a broken sign-in.
     for (const bad of ['nope', 'http://app.openbots.example', 'https://u:p@app.openbots.example']) {
-      expect(() => publishModule.cloudUrl({ OPENBOT_CLOUD_URL: bad })).toThrow(/OPENBOT_CLOUD_URL/);
+      expect(() => publishModule.cloudUrl({ OPENBOTS_CLOUD_URL: bad })).toThrow(
+        /OPENBOTS_CLOUD_URL/,
+      );
     }
     expect(
-      publishModule.builderConfig({ OPENBOT_CLOUD_URL: 'https://app.openbots.example' }),
+      publishModule.builderConfig({ OPENBOTS_CLOUD_URL: 'https://app.openbots.example' }),
     ).toMatchObject({
       publish: [{ provider: 'github' }],
-      extraMetadata: { openbot: { cloudUrl: 'https://app.openbots.example' } },
+      extraMetadata: { openbots: { cloudUrl: 'https://app.openbots.example' } },
     });
   });
 
@@ -181,19 +183,19 @@ describe('electron-builder.yml', () => {
     const { getConfig } = appBuilderLib<{
       getConfig(dir: string, path: null, options: null): Promise<{ extraMetadata?: unknown }>;
     }>('./util/config/config.js');
-    const saved = process.env.OPENBOT_CLOUD_URL;
+    const saved = process.env.OPENBOTS_CLOUD_URL;
     try {
-      delete process.env.OPENBOT_CLOUD_URL;
+      delete process.env.OPENBOTS_CLOUD_URL;
       expect((await getConfig(desktopDir, null, null)).extraMetadata).toEqual({
         dependencies: { 'electron-updater': updaterVersion },
       });
-      process.env.OPENBOT_CLOUD_URL = 'https://app.openbots.example';
+      process.env.OPENBOTS_CLOUD_URL = 'https://app.openbots.example';
       expect(await getConfig(desktopDir, null, null)).toMatchObject({
-        extraMetadata: { openbot: { cloudUrl: 'https://app.openbots.example' } },
+        extraMetadata: { openbots: { cloudUrl: 'https://app.openbots.example' } },
       });
     } finally {
-      if (saved === undefined) delete process.env.OPENBOT_CLOUD_URL;
-      else process.env.OPENBOT_CLOUD_URL = saved;
+      if (saved === undefined) delete process.env.OPENBOTS_CLOUD_URL;
+      else process.env.OPENBOTS_CLOUD_URL = saved;
     }
   }, 30_000);
 
@@ -284,7 +286,7 @@ describe('the bundled compose stack', () => {
 
   it('pulls each OpenBots image from the release workflow, built from the same Dockerfile', () => {
     for (const [name, service] of Object.entries(bundled)) {
-      const own = /^\$\{OPENBOT_IMAGE_PREFIX[^}]*\}\/([a-z-]+):\$\{OPENBOT_VERSION/.exec(
+      const own = /^\$\{OPENBOTS_IMAGE_PREFIX[^}]*\}\/([a-z-]+):\$\{OPENBOTS_VERSION/.exec(
         service.image ?? '',
       );
       if (!own) continue;
@@ -368,7 +370,7 @@ describe('release workflow', () => {
 
   it('builds the Mac app on macOS with the cloud URL from a repository variable', () => {
     expect(macJob['runs-on']).toMatch(/^macos-/);
-    expect(macJob.env!.OPENBOT_CLOUD_URL).toBe('${{ vars.OPENBOT_CLOUD_URL }}');
+    expect(macJob.env!.OPENBOTS_CLOUD_URL).toBe('${{ vars.OPENBOTS_CLOUD_URL }}');
   });
 
   it('signs and notarizes from CI secrets when all are set, and requires notarization', () => {
@@ -380,7 +382,7 @@ describe('release workflow', () => {
       CSC_KEY_PASSWORD: '${{ secrets.MAC_CERTS_PASSWORD }}',
       APPLE_API_KEY_ID: '${{ secrets.APPLE_API_KEY_ID }}',
       APPLE_API_ISSUER: '${{ secrets.APPLE_API_ISSUER }}',
-      OPENBOT_REQUIRE_NOTARIZATION: '1',
+      OPENBOTS_REQUIRE_NOTARIZATION: '1',
     });
     expect(step('Write the App Store Connect API key').run).toContain('APPLE_API_KEY=');
     expect(step('Verify the signature, Gatekeeper and the stapled ticket').run).toContain(
@@ -409,7 +411,7 @@ describe('release workflow', () => {
   it('renders the cask from the template and the DMG name electron-builder produces', () => {
     const run = step('Render the Homebrew cask').run!;
     expect(run).toContain('release/OpenBots-$VERSION-universal.dmg');
-    expect(run).toContain('packaging/homebrew/openbot.rb.template');
+    expect(run).toContain('packaging/homebrew/openbots.rb.template');
     // The cask points at the repository the release goes to.
     expect(run).toContain("require('./electron-builder.publish.cjs').releaseRepository().slug");
     expect(run).toContain('s#{{REPOSITORY}}#$repo#g');
@@ -417,7 +419,7 @@ describe('release workflow', () => {
 });
 
 describe('Homebrew cask template', () => {
-  const template = read(join(desktopDir, 'packaging/homebrew/openbot.rb.template'));
+  const template = read(join(desktopDir, 'packaging/homebrew/openbots.rb.template'));
 
   it('has exactly the placeholders the workflow fills', () => {
     expect([...new Set(template.match(/\{\{[A-Z0-9_]+\}\}/g))].sort()).toEqual([

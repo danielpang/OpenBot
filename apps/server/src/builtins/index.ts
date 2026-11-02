@@ -3,10 +3,10 @@ import {
   type BuiltinConnector,
   type BuiltinServices,
   type ConnectorTools,
-} from '@openbot/agent';
-import { blockedBy, loadCatalog, toolPermitted, type BlockRule } from '@openbot/mcp';
-import { PolicyDecisionSchema, resolveToolPolicy, wsEvent } from '@openbot/shared';
-import type { EmailDraftState } from '@openbot/widgets';
+} from '@openbots/agent';
+import { blockedBy, loadCatalog, toolPermitted, type BlockRule } from '@openbots/mcp';
+import { PolicyDecisionSchema, resolveToolPolicy, wsEvent } from '@openbots/shared';
+import type { EmailDraftState } from '@openbots/widgets';
 import { and, eq } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
@@ -136,7 +136,7 @@ export async function loadBuiltins(
 
   return {
     webSearch: searchBackend(searchKeys, options.search),
-    // web_fetch waits OPENBOT_WEB_FETCH_TIMEOUT_SECONDS and reads OPENBOT_WEB_FETCH_MAX_CHARS.
+    // web_fetch waits OPENBOTS_WEB_FETCH_TIMEOUT_SECONDS and reads OPENBOTS_WEB_FETCH_MAX_CHARS.
     fetchPage: (url) =>
       fetchPage(url, { timeoutMs: processLimits.webFetchTimeoutSeconds * 1000, ...httpNet }),
     maxPageChars: processLimits.webFetchMaxChars,

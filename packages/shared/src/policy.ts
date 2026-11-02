@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // Tool policy (plan 8, T5, P1): what a Bot may do without asking. Stored in
 // `bots.tool_policy` and edited in Bot Settings (`PATCH /bots/:id`
-// `toolPolicy`). The rules that read it live in `@openbot/agent`'s policy
+// `toolPolicy`). The rules that read it live in `@openbots/agent`'s policy
 // engine; this file is the stored shape and its defaults.
 //
 // Each tool call gets one decision: `auto` runs it, `ask` pauses the run for

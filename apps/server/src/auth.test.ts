@@ -15,7 +15,7 @@ describe('sessions and API keys on the managed service', () => {
   let adaId: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
   });
   afterAll(() => t.close());
 
@@ -39,7 +39,7 @@ describe('sessions and API keys on the managed service', () => {
     expect(body).toMatchObject({
       user: { email: 'ada@example.com', name: 'ada' },
       role: 'owner',
-      workspace: { name: 'OpenBot', suspended: false },
+      workspace: { name: 'OpenBots', suspended: false },
       limits: { botsPerAccount: 50, botsPerGroup: 6 },
     });
   });
@@ -203,8 +203,8 @@ describe('sign-in provider tokens (S-9)', () => {
   let t: TestApp;
   beforeAll(async () => {
     t = await createTestApp({
-      OPENBOT_DEPLOYMENT: 'managed',
-      OPENBOT_SIGNUP_MODE: 'open',
+      OPENBOTS_DEPLOYMENT: 'managed',
+      OPENBOTS_SIGNUP_MODE: 'open',
       GITHUB_CLIENT_ID: 'gh-client',
       GITHUB_CLIENT_SECRET: 'gh-secret',
     });
@@ -256,8 +256,8 @@ describe('settings', () => {
 
   beforeAll(async () => {
     t = await createTestApp({
-      OPENBOT_DEPLOYMENT: 'managed',
-      OPENBOT_LIMITS_BOTS_PER_ACCOUNT: '20',
+      OPENBOTS_DEPLOYMENT: 'managed',
+      OPENBOTS_LIMITS_BOTS_PER_ACCOUNT: '20',
     });
     cookie = (await t.signUp('ada@example.com')).cookie!;
   });
@@ -311,7 +311,7 @@ describe('settings', () => {
   });
 
   it("lets an admin lower a limit but never raise it above the operator's (plan 21.6)", async () => {
-    // OPENBOT_LIMITS_BOTS_PER_ACCOUNT is 20 here, and Bots per group defaults to 6.
+    // OPENBOTS_LIMITS_BOTS_PER_ACCOUNT is 20 here, and Bots per group defaults to 6.
     const raised = await patch({ limits: { botsPerAccount: 21 } });
     expect(raised.status).toBe(400);
     expect(await raised.json()).toMatchObject({ code: 'ABOVE_PLAN_LIMIT' });

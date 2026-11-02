@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 
 // A fake OpenAI-compatible endpoint for tests: `GET /models` and streamed
 // `POST /chat/completions`, with a tool call whenever tools are offered and
-// no tool result has come back yet. Exported as `@openbot/models/testing`.
+// no tool result has come back yet. Exported as `@openbots/models/testing`.
 
 export interface FakeOpenAIOptions {
   /** Entries for `GET /models`. */

@@ -1,4 +1,4 @@
-import type { MessagePart } from '@openbot/shared';
+import type { MessagePart } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import { labelFor } from '../activity/labels.js';
 import { createPolicy, defaultPolicy } from '../policy/index.js';
@@ -122,7 +122,7 @@ describe('artifact tools', () => {
     );
   });
 
-  it('run without asking: they only write OpenBot storage', () => {
+  it('run without asking: they only write OpenBots storage', () => {
     const facts = toolFacts(ctx(fakeArtifacts().services));
     const policy = createPolicy({ facts: (n) => facts.get(n) });
     for (const tool of [

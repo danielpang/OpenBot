@@ -1,4 +1,4 @@
-import type { Avatar as AvatarValue } from '@openbot/shared';
+import type { Avatar as AvatarValue } from '@openbots/shared';
 import type { CSSProperties } from 'react';
 import { generate, type AvatarParams } from './generate.js';
 import { AVATAR_CSS, type AvatarState } from './states.js';
@@ -48,7 +48,7 @@ export function Avatar({
   return (
     <>
       {/* React hoists and de-duplicates this, so a roster of avatars ships one copy. */}
-      <style href="openbot-avatar" precedence="default">
+      <style href="openbots-avatar" precedence="default">
         {AVATAR_CSS}
       </style>
       {upload ? (

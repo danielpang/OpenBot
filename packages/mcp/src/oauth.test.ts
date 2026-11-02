@@ -45,7 +45,7 @@ describe('OAuth 2.1 for HTTP connectors', () => {
       serverUrl: mcp.url,
       redirectUrl: REDIRECT,
       stateId: 'conn-1',
-      clientName: 'OpenBot',
+      clientName: 'OpenBots',
       scopes: ['read'],
     });
     expect(as.registrations).toBe(1);
@@ -85,7 +85,7 @@ describe('OAuth 2.1 for HTTP connectors', () => {
       serverUrl: mcp.url,
       redirectUrl: REDIRECT,
       stateId: 'c',
-      clientName: 'OpenBot',
+      clientName: 'OpenBots',
     });
     const redirect = await as.consent(started.authorizationUrl);
     await expect(
@@ -103,7 +103,7 @@ describe('OAuth 2.1 for HTTP connectors', () => {
       serverUrl: mcp.url,
       redirectUrl: REDIRECT,
       stateId: 'c',
-      clientName: 'OpenBot',
+      clientName: 'OpenBots',
     });
     const code = (fn: () => void) => {
       try {
@@ -130,14 +130,14 @@ describe('OAuth 2.1 for HTTP connectors', () => {
         serverUrl: mcp.url,
         redirectUrl: REDIRECT,
         stateId: 'c',
-        clientName: 'OpenBot',
+        clientName: 'OpenBots',
       }),
     ).rejects.toMatchObject({ code: 'CLIENT_REQUIRED' });
     const started = await startOAuth({
       serverUrl: mcp.url,
       redirectUrl: REDIRECT,
       stateId: 'c',
-      clientName: 'OpenBot',
+      clientName: 'OpenBots',
       client: { client_id: 'my-app' },
     });
     expect(as.registrations).toBe(0);
@@ -150,7 +150,7 @@ describe('OAuth 2.1 for HTTP connectors', () => {
       serverUrl: mcp.url,
       redirectUrl: REDIRECT,
       stateId: 'c',
-      clientName: 'OpenBot',
+      clientName: 'OpenBots',
       authorizationParams: { access_type: 'offline', prompt: 'consent', state: 'forged' },
     });
     const params = new URL(started.authorizationUrl).searchParams;
@@ -165,7 +165,7 @@ describe('OAuth 2.1 for HTTP connectors', () => {
       serverUrl: mcp.url,
       redirectUrl: REDIRECT,
       stateId: 'c',
-      clientName: 'OpenBot',
+      clientName: 'OpenBots',
     });
     const redirect = await as.consent(started.authorizationUrl);
     const tokens = await finishOAuth({

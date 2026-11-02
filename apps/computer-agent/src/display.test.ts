@@ -23,11 +23,11 @@ import { attachWebSockets } from './ws.js';
 // Runs only where an X stack is installed and DISPLAY is set (the computer
 // image, or a dev machine with those packages); a screen far from the usual
 // displays keeps clear of anything already running. Run as root where
-// openbot-runas is installed (the computer image), it lays the screens out
+// openbots-runas is installed (the computer image), it lays the screens out
 // and drops to the bot user as the agent does, so each screen runs as its
 // own user and the cases marked "as root" run too.
 
-const chromiumPath = process.env.OPENBOT_CHROMIUM ?? chromium.executablePath();
+const chromiumPath = process.env.OPENBOTS_CHROMIUM ?? chromium.executablePath();
 const N = 50;
 const OTHER = 51;
 /** Screens whose display or VNC port a command takes first. */

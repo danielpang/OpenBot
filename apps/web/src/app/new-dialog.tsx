@@ -5,7 +5,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@openbot/ui';
+} from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';

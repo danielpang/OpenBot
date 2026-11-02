@@ -123,9 +123,9 @@ describe('tokens and addresses', () => {
     expect(safeEqual('abc', 'abcd')).toBe(false);
   });
 
-  it('reads the token from bearer, X-OpenBot-Token, or the path, in that order', () => {
+  it('reads the token from bearer, X-OpenBots-Token, or the path, in that order', () => {
     expect(presentedToken({ authorization: 'Bearer a' }, 'c')).toBe('a');
-    expect(presentedToken({ 'x-openbot-token': 'b' }, 'c')).toBe('b');
+    expect(presentedToken({ 'x-openbots-token': 'b' }, 'c')).toBe('b');
     expect(presentedToken({}, 'c')).toBe('c');
     expect(presentedToken({ authorization: 'Basic xyz' }, undefined)).toBeUndefined();
   });

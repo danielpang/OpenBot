@@ -12,7 +12,7 @@ import { createProfileStore, type ProfileFiles } from './profiles.js';
 const PATH = '/user-data/profiles.json';
 const LOCAL = 'http://localhost:3000';
 const CLOUD = 'https://app.openbots.example';
-const SELF = 'https://openbot.example.com';
+const SELF = 'https://openbots.example.com';
 
 const ready = {
   state: 'ready' as const,
@@ -23,7 +23,7 @@ const ready = {
 };
 const running: StackStatus = {
   docker: ready,
-  services: [{ service: 'openbot', state: 'running', health: 'healthy' }],
+  services: [{ service: 'openbots', state: 'running', health: 'healthy' }],
   upgrade: null,
   port: null,
 };
@@ -147,8 +147,8 @@ describe('Connect to a self-hosted server', () => {
     const { launcher, window, stored, stackCalls } = setup({
       routes: openBotsServer(SELF, true),
     });
-    await launcher.connectServer('openbot.example.com');
-    const profile = { id: 'p1', name: 'openbot.example.com', url: SELF, kind: 'remote' };
+    await launcher.connectServer('openbots.example.com');
+    const profile = { id: 'p1', name: 'openbots.example.com', url: SELF, kind: 'remote' };
     expect(window.openServer).toHaveBeenCalledWith(profile, '/setup');
     expect(stored()).toEqual({ activeId: 'p1', chosen: true, profiles: [profile] });
     expect(stackCalls()).toBe(0);
@@ -178,9 +178,11 @@ describe('Connect to a self-hosted server', () => {
       routes: { [`${SELF}/healthz`]: { status: 200 } },
     });
     await expect(launcher.connectServer(SELF)).rejects.toThrow(
-      'openbot.example.com answered, but it is not an OpenBots server. Check the address.',
+      'openbots.example.com answered, but it is not an OpenBots server. Check the address.',
     );
-    await expect(launcher.connectServer('http://openbot.example.com')).rejects.toThrow(/Use https/);
+    await expect(launcher.connectServer('http://openbots.example.com')).rejects.toThrow(
+      /Use https/,
+    );
     await expect(launcher.connectServer('https://down.example.com')).rejects.toThrow(
       /Could not reach down.example.com/,
     );
@@ -328,7 +330,7 @@ describe('connection info', () => {
       status: {
         docker: ready,
         services: [
-          { service: 'openbot', state: 'running', health: 'unhealthy' },
+          { service: 'openbots', state: 'running', health: 'unhealthy' },
           { service: 'redis', state: 'exited', health: '' },
         ],
         upgrade: null,

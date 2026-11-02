@@ -41,7 +41,7 @@ const input = (m: MockLanguageModelV4): ShouldReplyInput => ({
 });
 
 describe('shouldReply', () => {
-  it('is the package', () => expect(PACKAGE_NAME).toBe('@openbot/router'));
+  it('is the package', () => expect(PACKAGE_NAME).toBe('@openbots/router'));
 
   it('returns the structured decision', async () => {
     const { m, prompts, calls } = model('{"reply": true, "reason": "Research is my role"}');

@@ -14,11 +14,11 @@ import {
   presetToCron,
   triggerNextRunAt,
 } from './index.js';
-import { SchedulePresetSchema } from '@openbot/shared';
+import { SchedulePresetSchema } from '@openbots/shared';
 
-describe('@openbot/routines', () => {
+describe('@openbots/routines', () => {
   it('exports its package name', () => {
-    expect(PACKAGE_NAME).toBe('@openbot/routines');
+    expect(PACKAGE_NAME).toBe('@openbots/routines');
   });
 });
 

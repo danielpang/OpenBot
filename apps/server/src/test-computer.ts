@@ -1,10 +1,10 @@
-import { createDockerProvider, type ComputerProvider } from '@openbot/computer';
+import { createDockerProvider, type ComputerProvider } from '@openbots/computer';
 import {
   mockDocker,
   startFakeAgent,
   type FakeAgent,
   type MockDocker,
-} from '@openbot/computer/testing';
+} from '@openbots/computer/testing';
 import type { AppDeps } from './context.js';
 import { setComputerProvider } from './services/computer.js';
 

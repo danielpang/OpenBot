@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbot/shared';
+import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbots/shared';
 import { requireUser } from '../middleware/auth.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import {

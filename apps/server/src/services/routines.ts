@@ -1,11 +1,11 @@
-import { skillBlock } from '@openbot/agent';
+import { skillBlock } from '@openbots/agent';
 import {
   describeTrigger,
   InvalidScheduleError,
   isValidTimezone,
   normalizeTrigger,
   triggerNextRunAt,
-} from '@openbot/routines';
+} from '@openbots/routines';
 import {
   handleFromName,
   RoutineTriggerSchema,
@@ -15,14 +15,14 @@ import {
   type RoutineRunStatus,
   type RoutineTrigger,
   type RoutineTriggerInput,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import {
   type RoutineCreatedProps,
   type RoutineProposalProps,
   type RoutineProposalState,
   type RoutineRunProps,
   type RoutineRunState,
-} from '@openbot/widgets';
+} from '@openbots/widgets';
 import {
   and,
   asc,

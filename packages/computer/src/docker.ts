@@ -13,7 +13,7 @@ import {
 } from './types.js';
 
 // The docker provider (plan 9.2, 9.5): one container per account on the
-// sandbox bridge network (`openbot-sandbox` unless OPENBOT_SANDBOX_NETWORK
+// sandbox bridge network (`openbots-sbx` unless OPENBOTS_SANDBOX_NETWORK
 // names another), reached by the server through the Docker
 // API behind the docker guard and the socket proxy
 // (`DOCKER_HOST=tcp://docker-guard:2375`). The provider refuses a Docker API
@@ -28,16 +28,17 @@ import {
 
 /**
  * The network compose creates for computers by default; it holds no Postgres,
- * Redis or socket proxy. OPENBOT_SANDBOX_NETWORK names another, so two stacks
- * on one Docker host each keep their own.
+ * Redis or socket proxy. OPENBOTS_SANDBOX_NETWORK names another, so two stacks
+ * on one Docker host each keep their own. Short ("sbx" for sandbox) because the
+ * bridge takes the same name, and a bridge name has at most 15 characters.
  */
-export const SANDBOX_NETWORK = 'openbot-sandbox';
+export const SANDBOX_NETWORK = 'openbots-sbx';
 /**
  * Its bridge interface on the host by default, named so
- * docker/sandbox-firewall.sh can match it. OPENBOT_SANDBOX_BRIDGE names
+ * docker/sandbox-firewall.sh can match it. OPENBOTS_SANDBOX_BRIDGE names
  * another; without it the bridge is named like the network.
  */
-export const SANDBOX_BRIDGE = 'openbot-sandbox';
+export const SANDBOX_BRIDGE = 'openbots-sbx';
 /** Linux limits an interface name to 15 characters (IFNAMSIZ less the NUL). */
 export const MAX_BRIDGE_NAME = 15;
 
@@ -67,16 +68,16 @@ export function isBridgeName(name: string): boolean {
 }
 
 /**
- * The sandbox network from OPENBOT_SANDBOX_NETWORK and OPENBOT_SANDBOX_BRIDGE
+ * The sandbox network from OPENBOTS_SANDBOX_NETWORK and OPENBOTS_SANDBOX_BRIDGE
  * (empty counts as unset). The bridge defaults to the network's name, as in
  * docker/docker-compose.yml, so a name longer than a bridge allows needs
- * OPENBOT_SANDBOX_BRIDGE too. Throws with the variable to fix.
+ * OPENBOTS_SANDBOX_BRIDGE too. Throws with the variable to fix.
  */
 export function resolveSandboxNetwork(name?: string, bridge?: string): SandboxNetwork {
   const network = name?.trim() || SANDBOX_NETWORK;
   if (!isNetworkName(network)) {
     throw new Error(
-      'OPENBOT_SANDBOX_NETWORK: must be a Docker network name (letters, digits, _ . -, up to 64)',
+      'OPENBOTS_SANDBOX_NETWORK: must be a Docker network name (letters, digits, _ . -, up to 64)',
     );
   }
   const explicit = bridge?.trim();
@@ -84,8 +85,8 @@ export function resolveSandboxNetwork(name?: string, bridge?: string): SandboxNe
   if (!isBridgeName(resolved)) {
     throw new Error(
       explicit
-        ? `OPENBOT_SANDBOX_BRIDGE: must be lower case letters, digits, _ . -, up to ${MAX_BRIDGE_NAME} characters`
-        : `OPENBOT_SANDBOX_BRIDGE: needed because OPENBOT_SANDBOX_NETWORK is not a bridge name (lower case, up to ${MAX_BRIDGE_NAME} characters)`,
+        ? `OPENBOTS_SANDBOX_BRIDGE: must be lower case letters, digits, _ . -, up to ${MAX_BRIDGE_NAME} characters`
+        : `OPENBOTS_SANDBOX_BRIDGE: needed because OPENBOTS_SANDBOX_NETWORK is not a bridge name (lower case, up to ${MAX_BRIDGE_NAME} characters)`,
     );
   }
   return { name: network, bridge: resolved };
@@ -94,23 +95,23 @@ export function resolveSandboxNetwork(name?: string, bridge?: string): SandboxNe
 export const ICC_OPTION = 'com.docker.network.bridge.enable_icc';
 export const BRIDGE_NAME_OPTION = 'com.docker.network.bridge.name';
 /** Answered by the docker guard itself; the provider refuses a Docker API without it. */
-export const GUARD_PATH = '/_openbot/guard';
-export const GUARD_NAME = 'openbot-docker-guard';
+export const GUARD_PATH = '/_openbots/guard';
+export const GUARD_NAME = 'openbots-docker-guard';
 /** The control agent's port inside the container; never published on the host. */
 export const AGENT_PORT = 7070;
 
 /**
  * The computer image the release workflow publishes
  * (.github/workflows/release.yml); compose derives its own from
- * OPENBOT_IMAGE_PREFIX and OPENBOT_VERSION instead.
+ * OPENBOTS_IMAGE_PREFIX and OPENBOTS_VERSION instead.
  */
-export const DEFAULT_SANDBOX_IMAGE = 'ghcr.io/danielpang/openbot/computer:latest';
+export const DEFAULT_SANDBOX_IMAGE = 'ghcr.io/danielpang/openbots/computer:latest';
 /**
  * The only environment the sandbox gets: no provider keys, no database or
  * master key (plan 9.5), and not the agent token, which goes in a file (S-7).
  */
 export const SANDBOX_ENV_NAMES = [
-  'OPENBOT_AGENT_PORT',
+  'OPENBOTS_AGENT_PORT',
   'HOME',
   'TZ',
   // The egress proxy in both spellings: curl and wget read only the lower
@@ -124,7 +125,7 @@ export const SANDBOX_ENV_NAMES = [
 ] as const;
 /**
  * Root, so the agent can lay out a user per screen; it drops to the image's
- * bot user before it listens and keeps only what openbot-runas needs
+ * bot user before it listens and keeps only what openbots-runas needs
  * (apps/computer-agent/src/privileges.ts).
  */
 export const SANDBOX_USER = '0:0';
@@ -132,7 +133,7 @@ export const SANDBOX_USER = '0:0';
 export const SANDBOX_CAPS = ['CHOWN', 'SETUID', 'SETGID'] as const;
 
 /** Marks the containers, volumes and network the provider made; the guard acts on no others. */
-export const MANAGED_LABEL = 'openbot.computer';
+export const MANAGED_LABEL = 'openbots.computer';
 
 /** The part of dockerode the provider uses, so tests can stand in for the daemon. */
 export interface DockerApi {
@@ -174,15 +175,15 @@ export interface DockerProviderOptions {
 }
 
 export function containerName(computerId: string) {
-  return `openbot-computer-${computerId}`;
+  return `openbots-computer-${computerId}`;
 }
 
 export function volumeName(computerId: string) {
-  return `openbot-home-${computerId}`;
+  return `openbots-home-${computerId}`;
 }
 
 export function stateVolumeName(computerId: string) {
-  return `openbot-state-${computerId}`;
+  return `openbots-state-${computerId}`;
 }
 
 /**
@@ -196,7 +197,7 @@ export function containerSpec(
   const limits = { ...DEFAULT_LIMITS, ...spec.limits };
   const name = containerName(spec.computerId);
   const env: Record<(typeof SANDBOX_ENV_NAMES)[number], string | undefined> = {
-    OPENBOT_AGENT_PORT: String(AGENT_PORT),
+    OPENBOTS_AGENT_PORT: String(AGENT_PORT),
     HOME: COMPUTER_HOME,
     TZ: spec.timezone ?? 'UTC',
     ...proxyEnv(spec),
@@ -211,7 +212,7 @@ export function containerSpec(
     Env: Object.entries(env)
       .filter(([, value]) => value !== undefined)
       .map(([key, value]) => `${key}=${value}`),
-    Labels: { [MANAGED_LABEL]: spec.computerId, 'openbot.owner': spec.ownerId },
+    Labels: { [MANAGED_LABEL]: spec.computerId, 'openbots.owner': spec.ownerId },
     ExposedPorts: { [`${AGENT_PORT}/tcp`]: {} },
     HostConfig: {
       // Its own bridge network, which compose keeps free of Postgres, Redis
@@ -459,7 +460,7 @@ export async function verifyGuard(docker: Pick<DockerApi, 'modem'>) {
   ).catch(() => undefined);
   if ((data as { guard?: unknown } | undefined)?.guard !== GUARD_NAME) {
     throw new Error(
-      'DOCKER_HOST is not the OpenBot docker guard, so the computer will not use it: ' +
+      'DOCKER_HOST is not the OpenBots docker guard, so the computer will not use it: ' +
         'point DOCKER_HOST at the docker-guard service (tcp://docker-guard:2375), ' +
         'never at the Docker socket or the socket proxy directly',
     );

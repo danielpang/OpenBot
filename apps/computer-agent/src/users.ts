@@ -3,7 +3,7 @@ import { MAX_SCREEN } from './protocol.js';
 // Who each program the agent starts runs as (S-7). In the computer image the
 // agent starts as root and drops its effective uid to the bot user
 // (privileges.ts); from then on every child goes through the setuid-free
-// helper `openbot-runas` (native/runas.c), which is the only way to another
+// helper `openbots-runas` (native/runas.c), which is the only way to another
 // uid. Keep the identities here in step with the helper's checks.
 //
 //   bot 1000:1000            the terminal, and commands that name no screen
@@ -28,7 +28,7 @@ export const BOT_ID = 1000;
 export const SCREEN_ID_BASE = 2000;
 export const STORE_ID = 1900;
 /** Where the image installs the helper. */
-export const RUNAS_PATH = '/usr/local/libexec/openbot/runas';
+export const RUNAS_PATH = '/usr/local/libexec/openbots/runas';
 
 export const BOT: Identity = { uid: BOT_ID, gid: BOT_ID };
 /** The cookie store's own user: its directory is closed to the bot user and the screens. */
@@ -46,7 +46,7 @@ export function commandIdentity(screen?: number): Identity {
 }
 
 export class Users {
-  /** `helper` is the path of openbot-runas; without it every child runs as the agent. */
+  /** `helper` is the path of openbots-runas; without it every child runs as the agent. */
   constructor(readonly helper?: string) {}
 
   get privileged(): boolean {

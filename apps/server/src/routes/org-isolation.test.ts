@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
-import { wsEvent, type ServerFrame } from '@openbot/shared';
+import { wsEvent, type ServerFrame } from '@openbots/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
@@ -319,7 +319,7 @@ describe('organizations are isolated (plan 21.3)', () => {
   }
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     orgA = await t.defaultOrganization();
     alice = (await t.signUp('alice@example.com')).cookie!; // the owner of A
     carolInA = (await t.signUp('carol@example.com')).cookie!; // a member of A

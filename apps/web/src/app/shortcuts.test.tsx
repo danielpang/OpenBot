@@ -62,7 +62,7 @@ describe('New shortcut', () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     let menu: (() => void) | undefined;
     const off = vi.fn();
-    (window as { openbot?: unknown }).openbot = {
+    (window as { openbots?: unknown }).openbots = {
       platform: { kind: 'desktop', os: 'darwin', version: '1.0.0', nativeNotifications: true },
       onNavigate: () => () => {},
       onNew: (listener: () => void) => {
@@ -86,7 +86,7 @@ describe('New shortcut', () => {
       act(() => root.unmount());
       expect(off).toHaveBeenCalled();
     } finally {
-      delete (window as { openbot?: unknown }).openbot;
+      delete (window as { openbots?: unknown }).openbots;
     }
   });
 });

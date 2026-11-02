@@ -14,9 +14,9 @@ import {
   rebaseEdit,
 } from './index.js';
 
-describe('@openbot/artifacts', () => {
+describe('@openbots/artifacts', () => {
   it('exports its package name', () => {
-    expect(PACKAGE_NAME).toBe('@openbot/artifacts');
+    expect(PACKAGE_NAME).toBe('@openbots/artifacts');
   });
 });
 

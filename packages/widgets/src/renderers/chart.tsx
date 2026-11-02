@@ -1,4 +1,4 @@
-import { cn } from '@openbot/ui';
+import { cn } from '@openbots/ui';
 import { useState } from 'react';
 import type { ChartProps } from '../kinds/chart.js';
 import type { TableProps } from '../kinds/table.js';

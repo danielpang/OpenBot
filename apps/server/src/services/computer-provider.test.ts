@@ -1,5 +1,5 @@
-import type * as Computer from '@openbot/computer';
-import type { DockerProviderOptions } from '@openbot/computer';
+import type * as Computer from '@openbots/computer';
+import type { DockerProviderOptions } from '@openbots/computer';
 import { describe, expect, it, vi } from 'vitest';
 import type { AppDeps } from '../context.js';
 import { loadConfig } from '../config.js';
@@ -10,7 +10,7 @@ import { computerProvider } from './computer.js';
 // gets the sandbox network compose made for this stack (K6).
 
 const made = vi.hoisted(() => [] as DockerProviderOptions[]);
-vi.mock('@openbot/computer', async (original) => {
+vi.mock('@openbots/computer', async (original) => {
   const actual = await original<typeof Computer>();
   return {
     ...actual,
@@ -24,8 +24,8 @@ vi.mock('@openbot/computer', async (original) => {
 const depsWith = (env: Record<string, string>) =>
   ({
     config: loadConfig({
-      OPENBOT_MASTER_KEY: generateMasterKey(),
-      DATABASE_URL: 'postgres://openbot:openbot@localhost:5432/openbot',
+      OPENBOTS_MASTER_KEY: generateMasterKey(),
+      DATABASE_URL: 'postgres://openbots:openbots@localhost:5432/openbots',
       DOCKER_HOST: 'tcp://docker-guard:2375',
       ...env,
     }),
@@ -37,21 +37,21 @@ describe('computerProvider', () => {
     made.length = 0;
     computerProvider(
       depsWith({
-        OPENBOT_SANDBOX_NETWORK: 'openbot-app-sandbox-254',
-        OPENBOT_SANDBOX_BRIDGE: 'openbot-app-254',
+        OPENBOTS_SANDBOX_NETWORK: 'openbots-app-sandbox-254',
+        OPENBOTS_SANDBOX_BRIDGE: 'openbots-a-254',
       }),
     );
     expect(made).toEqual([
       {
         dockerHost: 'tcp://docker-guard:2375',
-        network: { name: 'openbot-app-sandbox-254', bridge: 'openbot-app-254' },
+        network: { name: 'openbots-app-sandbox-254', bridge: 'openbots-a-254' },
       },
     ]);
   });
 
-  it('gives it openbot-sandbox when nothing is configured', () => {
+  it('gives it openbots-sbx when nothing is configured', () => {
     made.length = 0;
     computerProvider(depsWith({}));
-    expect(made[0]!.network).toEqual({ name: 'openbot-sandbox', bridge: 'openbot-sandbox' });
+    expect(made[0]!.network).toEqual({ name: 'openbots-sbx', bridge: 'openbots-sbx' });
   });
 });

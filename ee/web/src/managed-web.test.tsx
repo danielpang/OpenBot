@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { meQuery } from '@openbot/web/api';
-import type { ActiveMe } from '@openbot/web/extensions';
+import { meQuery } from '@openbots/web/api';
+import type { ActiveMe } from '@openbots/web/extensions';
 import type { ReactNode } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';

@@ -207,7 +207,7 @@ describe('isAppPage', () => {
   it('is never a server page', () => {
     expect(isAppPage('http://localhost:3000/bots', undefined)).toBe(false);
     expect(isAppPage('http://localhost:3000/bots', 'http://localhost:5174')).toBe(false);
-    expect(isAppPage('https://openbot.example.com/', '')).toBe(false);
+    expect(isAppPage('https://openbots.example.com/', '')).toBe(false);
     expect(isAppPage('not a url', 'http://localhost:5174')).toBe(false);
   });
 });

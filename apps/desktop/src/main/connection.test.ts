@@ -1,5 +1,5 @@
-import type { WebSocketLike } from '@openbot/api-client';
-import { wsEvent } from '@openbot/shared';
+import type { WebSocketLike } from '@openbots/api-client';
+import { wsEvent } from '@openbots/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PendingApproval } from './approvals.js';
 import { createConnection, wsUrlFor } from './connection.js';
@@ -88,7 +88,7 @@ function setup(
     return json({ title: 'Not found' }, 404);
   });
   const connection = createConnection({
-    baseUrl: 'https://openbot.example.com',
+    baseUrl: 'https://openbots.example.com',
     token,
     fetch: fetch as unknown as typeof globalThis.fetch,
     createSocket: (url, headers) => {
@@ -139,7 +139,7 @@ describe('server connection', () => {
 
   it('connects the socket to /ws with the session cookie', () => {
     const { sockets, connection } = setup();
-    expect(sockets[0]?.url).toBe('wss://openbot.example.com/ws');
+    expect(sockets[0]?.url).toBe('wss://openbots.example.com/ws');
     expect(sockets[0]?.headers).toEqual({ cookie: 'better-auth.session_token=tok.sig' });
     connection.close();
   });
@@ -297,6 +297,6 @@ describe('server connection', () => {
 
   it('builds ws and wss URLs', () => {
     expect(wsUrlFor('http://localhost:3000')).toBe('ws://localhost:3000/ws');
-    expect(wsUrlFor('https://openbot.example.com')).toBe('wss://openbot.example.com/ws');
+    expect(wsUrlFor('https://openbots.example.com')).toBe('wss://openbots.example.com/ws');
   });
 });

@@ -1,4 +1,9 @@
-import { defaultReasoning, modelSupports, type ModelConfig, type ModelNeed } from '@openbot/shared';
+import {
+  defaultReasoning,
+  modelSupports,
+  type ModelConfig,
+  type ModelNeed,
+} from '@openbots/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { pickerModelsQuery, type PickerGroup, type ProviderModel } from './api.js';

@@ -5,7 +5,7 @@ import {
   MessagePartSchema,
   MessageStatusSchema,
   type MessagePart,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import type { schema } from './db/client.js';
 
 // zod schemas shared by more than one route file.

@@ -31,7 +31,7 @@ export async function createTestDb(): Promise<TestDb> {
   }
 
   const template = await migratedTemplate(url);
-  const name = `openbot_test_${randomUUID().replaceAll('-', '')}`;
+  const name = `openbots_test_${randomUUID().replaceAll('-', '')}`;
   const admin = postgres(url, { max: 1, onnotice: () => {} });
   await admin.unsafe(`CREATE DATABASE ${name} TEMPLATE ${template}`);
   const db = createDb(databaseUrl(url, name));
@@ -111,7 +111,7 @@ function migratedTemplate(url: string): Promise<string> {
 async function buildTemplate(url: string): Promise<string> {
   const hashes = readMigrationFiles({ migrationsFolder: MIGRATIONS_FOLDER }).map((m) => m.hash);
   const digest = createHash('sha256').update(hashes.join(',')).digest('hex').slice(0, 16);
-  const name = `openbot_test_template_${digest}`;
+  const name = `openbots_test_template_${digest}`;
   const admin = postgres(url, { max: 1, onnotice: () => {} });
   try {
     // One process builds it while the others wait on the lock.

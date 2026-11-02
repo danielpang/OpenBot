@@ -3,7 +3,7 @@ import { lookup } from 'node:dns/promises';
 import { chmodSync, mkdirSync, realpathSync } from 'node:fs';
 import { isIP } from 'node:net';
 import path from 'node:path';
-import { COMPUTER_HOME, type McpStdioLaunch } from '@openbot/computer';
+import { COMPUTER_HOME, type McpStdioLaunch } from '@openbots/computer';
 import {
   ComputerStdioHost,
   DEFAULT_CATALOG_INSTALL_DIR,
@@ -47,8 +47,8 @@ import {
   type StdioSpawn,
   type ToolCallResult,
   type TransportConfig,
-} from '@openbot/mcp';
-import { wsEvent, type Unsubscribe } from '@openbot/shared';
+} from '@openbots/mcp';
+import { wsEvent, type Unsubscribe } from '@openbots/shared';
 import { and, asc, count, eq, inArray, notInArray } from 'drizzle-orm';
 import { isPublicAddress, netFetch, type NetOptions } from '../builtins/net.js';
 import { publishEvent } from '../infra/index.js';
@@ -86,7 +86,7 @@ import { connectorWorkspace, currentWorkspace, inWorkspace, outsideScope } from 
 //
 // Sessions run in whichever process calls a tool (the worker for runs, the API
 // for Test). Each process keeps one `McpManager` per `AppDeps`. A stdio
-// server is a child of that process (OPENBOT_STDIO_RUNNER=host, the
+// server is a child of that process (OPENBOTS_STDIO_RUNNER=host, the
 // self-hosted default) or runs in its owner's computer (`computer`, the
 // managed default; computer-stdio.ts), where it is restarted after a crash.
 // Streamable HTTP sessions and every OAuth request (discovery, registration,
@@ -505,7 +505,7 @@ export function isCustomStdio(row: Pick<ConnectorRow, 'kind' | 'catalogId'>): bo
 /**
  * Why the user may not run custom stdio servers, or null: they must be an
  * admin, with the setting on. Never where the install keeps them off
- * (OPENBOT_CUSTOM_STDIO, off by default on the managed service, where the
+ * (OPENBOTS_CUSTOM_STDIO, off by default on the managed service, where the
  * command would run on a server every organization shares; plan 21.6).
  */
 export async function customStdioRefusal(
@@ -1375,7 +1375,7 @@ async function sessionFor(
   }
   throw invalid(
     'NOT_AN_MCP_SERVER',
-    'Built-in connectors are provided by OpenBot and have no MCP session.',
+    'Built-in connectors are provided by OpenBots and have no MCP session.',
   );
 }
 
@@ -1629,7 +1629,7 @@ export async function testConnector(
   if (row.kind === 'builtin') {
     throw invalid(
       'NOT_AN_MCP_SERVER',
-      'Built-in connectors are provided by OpenBot and have no MCP session.',
+      'Built-in connectors are provided by OpenBots and have no MCP session.',
     );
   }
   const rules = await blockRules(deps.db, viewer.workspaceId);

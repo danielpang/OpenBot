@@ -11,7 +11,7 @@ import {
 } from '../ipc.js';
 import { createStackBridge, type IpcRendererLike, type StackBridge } from '../stack/bridge.js';
 
-// What the preload exposes as `window.openbot` with contextBridge (plan 14.4).
+// What the preload exposes as `window.openbots` with contextBridge (plan 14.4).
 // Every page gets `platform`, `onNavigate`, `onNew`, `connection` (the web
 // app's connection indicator) and `oauth` (a connector's sign-in in the
 // default browser); the server's pages (the web app, possibly a

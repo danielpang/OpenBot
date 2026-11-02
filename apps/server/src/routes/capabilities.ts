@@ -23,15 +23,15 @@ const CapabilitiesSchema = z
     // Optional, like `computer`: older servers do not send it. Always sent.
     customStdio: z.boolean().optional().openapi({
       description:
-        'Admins may turn on custom command (stdio) connectors (OPENBOT_CUSTOM_STDIO; off by default on the managed service)',
+        'Admins may turn on custom command (stdio) connectors (OPENBOTS_CUSTOM_STDIO; off by default on the managed service)',
     }),
     localEndpoints: z.boolean().optional().openapi({
       description:
-        'Admins may mark endpoints as on their own network (OPENBOT_LOCAL_ENDPOINTS; off by default on the managed service)',
+        'Admins may mark endpoints as on their own network (OPENBOTS_LOCAL_ENDPOINTS; off by default on the managed service)',
     }),
     auth: z.enum(['password', 'local']).optional().openapi({
       description:
-        '`local`: the Mac app on This Mac signs its owner in itself (OPENBOT_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in.',
+        '`local`: the Mac app on This Mac signs its owner in itself (OPENBOTS_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in.',
     }),
   })
   .openapi('Capabilities');

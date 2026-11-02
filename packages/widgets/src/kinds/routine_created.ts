@@ -1,4 +1,4 @@
-import { RoutineTriggerSchema } from '@openbot/shared';
+import { RoutineTriggerSchema } from '@openbots/shared';
 import { z } from 'zod';
 import { defineWidget } from './types.js';
 

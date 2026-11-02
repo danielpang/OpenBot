@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/router",
+  "name": "@openbots/router",
   "version": "0.0.0",
   "private": true,
   "description": "who-replies logic, loop guards, Bot to Bot",
@@ -7,7 +7,7 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openbot/shared": "workspace:*",
+    "@openbots/shared": "workspace:*",
     "ai": "catalog:",
     "zod": "catalog:"
   },

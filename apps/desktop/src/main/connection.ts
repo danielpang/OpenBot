@@ -5,8 +5,8 @@ import {
   type WebSocketFactory,
   type WsClient,
   type WsStatus,
-} from '@openbot/api-client';
-import type { WsEvent } from '@openbot/shared';
+} from '@openbots/api-client';
+import type { WsEvent } from '@openbots/shared';
 import type { QuickAskBot, QuickAskResult } from '../ipc.js';
 import { createApprovalTracker, type PendingApproval } from './approvals.js';
 import { createNoticeWatcher, ownerHandles, type ChatKind, type Notice } from './notices.js';

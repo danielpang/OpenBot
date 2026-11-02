@@ -1,6 +1,6 @@
-import { checkPreset } from '@openbot/routines';
-import { SchedulePresetSchema } from '@openbot/shared';
-import { validateWidgetProps } from '@openbot/widgets';
+import { checkPreset } from '@openbots/routines';
+import { SchedulePresetSchema } from '@openbots/shared';
+import { validateWidgetProps } from '@openbots/widgets';
 import { z } from 'zod';
 import { WaitFor } from '../gated.js';
 import { defineTool, type ToolGroup } from './types.js';

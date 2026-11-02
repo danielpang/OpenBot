@@ -33,14 +33,14 @@ import {
   type ToolContext,
   type ToolGroup,
   type UsageTotals,
-} from '@openbot/agent';
+} from '@openbots/agent';
 import {
   estimateCost,
   ModelDisabledError,
   ProviderNotFoundError,
   type ResolvedModel,
-} from '@openbot/models';
-import { isForBot } from '@openbot/router';
+} from '@openbots/models';
+import { isForBot } from '@openbots/router';
 import {
   missingCapabilities,
   ModelConfigSchema,
@@ -49,8 +49,8 @@ import {
   type JobHandler,
   type MessagePart,
   type ModelConfig,
-} from '@openbot/shared';
-import { isApproved, widgetKind, type ApprovalOutcome } from '@openbot/widgets';
+} from '@openbots/shared';
+import { isApproved, widgetKind, type ApprovalOutcome } from '@openbots/widgets';
 import type { LanguageModel, ModelMessage } from 'ai';
 import { and, asc, desc, eq, gt, inArray, isNull, max, or, sql } from 'drizzle-orm';
 import {

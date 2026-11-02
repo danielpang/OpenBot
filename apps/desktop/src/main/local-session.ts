@@ -3,7 +3,7 @@ import { serverPath } from './navigation.js';
 import { isSessionCookie, type SessionToken } from './tokens.js';
 
 // This Mac has no sign-in (plan 14.4). The stack's `.env` holds
-// OPENBOT_LOCAL_TOKEN (stack/manager.ts); the main process, and only it,
+// OPENBOTS_LOCAL_TOKEN (stack/manager.ts); the main process, and only it,
 // trades the token for an ordinary session cookie at the server's
 // `POST /api/v1/local/session`, before the window loads the web app and again
 // whenever the window lands on /sign-in or /sign-up (an expired session).
@@ -12,7 +12,7 @@ import { isSessionCookie, type SessionToken } from './tokens.js';
 // ./index.ts wires it to the window's session.
 
 export const LOCAL_SESSION_PATH = '/api/v1/local/session';
-export const LOCAL_TOKEN_HEADER = 'x-openbot-local-token';
+export const LOCAL_TOKEN_HEADER = 'x-openbots-local-token';
 
 /** The owner's name when macOS gives none. */
 export const DEFAULT_OWNER_NAME = 'Me';
@@ -68,7 +68,7 @@ export async function ownerName(run: () => Promise<string>): Promise<string> {
 
 export interface LocalSignInOptions {
   fetch: LocalFetch;
-  /** OPENBOT_LOCAL_TOKEN from the stack's `.env`; null before the stack wrote one. */
+  /** OPENBOTS_LOCAL_TOKEN from the stack's `.env`; null before the stack wrote one. */
   token: () => Promise<string | null>;
   /** The owner's name, sent for the first session (it names the owner it creates). */
   name: () => Promise<string>;

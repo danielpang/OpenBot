@@ -6,7 +6,7 @@ import {
   type JobHandler,
   type JobQueue,
   type ProcessOptions,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { Queue, Worker, type Job as BullJob } from 'bullmq';
 import { Redis } from 'ioredis';
 
@@ -22,8 +22,8 @@ import { Redis } from 'ioredis';
 // BullMQ and holds the lock until its handler returns. queue-memory.ts mirrors
 // this exactly; change both together.
 
-const PREFIX = 'openbot';
-const DELAYED = '__openbot_delayed';
+const PREFIX = 'openbots';
+const DELAYED = '__openbots_delayed';
 /** A lock older than this whose job is missing from BullMQ is taken back. */
 const STALE_LOCK_MS = 30_000;
 /** Score = priority * ORDER_SPAN + enqueue order. */

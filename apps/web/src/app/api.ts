@@ -5,7 +5,7 @@ import {
   unwrap,
   type WsClient,
   type WsClientOptions,
-} from '@openbot/api-client';
+} from '@openbots/api-client';
 import { queryOptions } from '@tanstack/react-query';
 
 // The one REST client and auth client the app uses. Same origin: the server

@@ -49,11 +49,11 @@ const READY: DockerStatus = {
 };
 // The lines of .env.example the manager fills in.
 const TEMPLATE = [
-  'OPENBOT_PUBLIC_URL=http://localhost:3000',
-  'OPENBOT_MASTER_KEY=',
+  'OPENBOTS_PUBLIC_URL=http://localhost:3000',
+  'OPENBOTS_MASTER_KEY=',
   'POSTGRES_PASSWORD=',
-  'DATABASE_URL=postgres://openbot:change-me@postgres:5432/openbot',
-  'OPENBOT_VERSION=latest',
+  'DATABASE_URL=postgres://openbots:change-me@postgres:5432/openbots',
+  'OPENBOTS_VERSION=latest',
   '',
 ].join('\n');
 
@@ -110,9 +110,9 @@ const allFree = async () => true;
 
 /** The project, the sandbox network, the local token, the app's database password and the loopback port this version of the app records in `.env`. */
 const RECORDED =
-  'COMPOSE_PROJECT_NAME=openbot-app\nOPENBOT_SANDBOX_NETWORK=openbot-app-sandbox-254\nOPENBOT_LOCAL_TOKEN=held\nOPENBOT_DB_APP_PASSWORD=held\nOPENBOT_HTTP_BIND=127.0.0.1:\n';
+  'COMPOSE_PROJECT_NAME=openbots-app\nOPENBOTS_SANDBOX_NETWORK=openbots-app-sandbox-254\nOPENBOTS_LOCAL_TOKEN=held\nOPENBOTS_DB_APP_PASSWORD=held\nOPENBOTS_HTTP_BIND=127.0.0.1:\n';
 /** The project alone, as an install from before the app named its network has it. */
-const PROJECT_ONLY = 'COMPOSE_PROJECT_NAME=openbot-app\n';
+const PROJECT_ONLY = 'COMPOSE_PROJECT_NAME=openbots-app\n';
 /** `compose config --images` and `image inspect` replies for images this Mac has. */
 const IMAGES_HERE = {
   config: { code: 0, stdout: 'ghcr.io/x/server:1\npostgres:16\n', stderr: '' },
@@ -147,7 +147,7 @@ function fakeChild() {
   return child as typeof child & ChildLike;
 }
 
-describe('the local owner token (OPENBOT_LOCAL_TOKEN)', () => {
+describe('the local owner token (OPENBOTS_LOCAL_TOKEN)', () => {
   it('is 32 random bytes in base64url, a new one each time', () => {
     const token = generateLocalToken();
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -156,46 +156,46 @@ describe('the local owner token (OPENBOT_LOCAL_TOKEN)', () => {
   });
 
   it('fills in a missing or empty token and keeps one that is there', () => {
-    expect(withLocalToken('A=1\n', () => 'new')).toBe('A=1\nOPENBOT_LOCAL_TOKEN=new\n');
-    expect(withLocalToken('OPENBOT_LOCAL_TOKEN=\nA=1\n', () => 'new')).toBe(
-      'OPENBOT_LOCAL_TOKEN=new\nA=1\n',
+    expect(withLocalToken('A=1\n', () => 'new')).toBe('A=1\nOPENBOTS_LOCAL_TOKEN=new\n');
+    expect(withLocalToken('OPENBOTS_LOCAL_TOKEN=\nA=1\n', () => 'new')).toBe(
+      'OPENBOTS_LOCAL_TOKEN=new\nA=1\n',
     );
-    const kept = 'OPENBOT_LOCAL_TOKEN=old\nA=1\n';
+    const kept = 'OPENBOTS_LOCAL_TOKEN=old\nA=1\n';
     expect(withLocalToken(kept, () => 'new')).toBe(kept);
   });
 
-  it("fills in openbot_app's database password and keeps one that is there", () => {
-    expect(withAppDbPassword('A=1\n', () => 'new')).toBe('A=1\nOPENBOT_DB_APP_PASSWORD=new\n');
-    const kept = 'OPENBOT_DB_APP_PASSWORD=old\nA=1\n';
+  it("fills in openbots_app's database password and keeps one that is there", () => {
+    expect(withAppDbPassword('A=1\n', () => 'new')).toBe('A=1\nOPENBOTS_DB_APP_PASSWORD=new\n');
+    const kept = 'OPENBOTS_DB_APP_PASSWORD=old\nA=1\n';
     expect(withAppDbPassword(kept, () => 'new')).toBe(kept);
     const env = renderEnv(TEMPLATE, {
       masterKey: 'KEY',
       databasePassword: 'p',
       appDbPassword: 'q',
     });
-    expect(envValue(env, 'OPENBOT_DB_APP_PASSWORD')).toBe('q');
+    expect(envValue(env, 'OPENBOTS_DB_APP_PASSWORD')).toBe('q');
   });
 
   it('goes into a new .env, with the web port on loopback only', () => {
     const env = renderEnv(TEMPLATE, { masterKey: 'KEY', databasePassword: 'p', localToken: 'tok' });
-    expect(envValue(env, 'OPENBOT_LOCAL_TOKEN')).toBe('tok');
-    expect(envValue(env, 'OPENBOT_HTTP_BIND')).toBe('127.0.0.1:');
+    expect(envValue(env, 'OPENBOTS_LOCAL_TOKEN')).toBe('tok');
+    expect(envValue(env, 'OPENBOTS_HTTP_BIND')).toBe('127.0.0.1:');
   });
 
   it('publishes the web port on loopback unless the owner chose an address', () => {
-    expect(withLoopbackPort('A=1\n')).toBe('A=1\nOPENBOT_HTTP_BIND=127.0.0.1:\n');
-    const chosen = 'OPENBOT_HTTP_BIND=192.168.1.5:\n';
+    expect(withLoopbackPort('A=1\n')).toBe('A=1\nOPENBOTS_HTTP_BIND=127.0.0.1:\n');
+    const chosen = 'OPENBOTS_HTTP_BIND=192.168.1.5:\n';
     expect(withLoopbackPort(chosen)).toBe(chosen);
   });
 
-  it('is published by compose on the address OPENBOT_HTTP_BIND names, every interface without it', () => {
+  it('is published by compose on the address OPENBOTS_HTTP_BIND names, every interface without it', () => {
     const compose = readFileSync(
       new URL('../../../../docker/docker-compose.yml', import.meta.url),
       'utf8',
     );
-    const server = (parse(compose) as { services: { openbot: { ports: string[] } } }).services
-      .openbot;
-    expect(server.ports).toEqual(['${OPENBOT_HTTP_BIND:-}${OPENBOT_HTTP_PORT:-3000}:3000']);
+    const server = (parse(compose) as { services: { openbots: { ports: string[] } } }).services
+      .openbots;
+    expect(server.ports).toEqual(['${OPENBOTS_HTTP_BIND:-}${OPENBOTS_HTTP_PORT:-3000}:3000']);
     // Compose's `${NAME:-default}`, as `docker compose` resolves it.
     const resolve = (text: string, env: Record<string, string>) =>
       text.replace(/\$\{(\w+):-([^}]*)\}/g, (_, name: string, fallback: string) =>
@@ -203,7 +203,7 @@ describe('the local owner token (OPENBOT_LOCAL_TOKEN)', () => {
       );
     const port = server.ports[0]!;
     expect(resolve(port, {})).toBe('3000:3000');
-    expect(resolve(port, { OPENBOT_HTTP_PORT: '3001' })).toBe('3001:3000');
+    expect(resolve(port, { OPENBOTS_HTTP_PORT: '3001' })).toBe('3001:3000');
     const local = renderEnv(TEMPLATE, {
       masterKey: 'KEY',
       databasePassword: 'p',
@@ -211,8 +211,8 @@ describe('the local owner token (OPENBOT_LOCAL_TOKEN)', () => {
       port: 3002,
     });
     const env = {
-      OPENBOT_HTTP_BIND: envValue(local, 'OPENBOT_HTTP_BIND')!,
-      OPENBOT_HTTP_PORT: envValue(local, 'OPENBOT_HTTP_PORT')!,
+      OPENBOTS_HTTP_BIND: envValue(local, 'OPENBOTS_HTTP_BIND')!,
+      OPENBOTS_HTTP_PORT: envValue(local, 'OPENBOTS_HTTP_PORT')!,
     };
     expect(resolve(port, env)).toBe('127.0.0.1:3002:3000');
   });
@@ -221,30 +221,30 @@ describe('the local owner token (OPENBOT_LOCAL_TOKEN)', () => {
     const { manager, files } = makeManager();
     expect(await manager.localToken()).toBeNull();
     await manager.start();
-    const first = envValue(files.data.get(paths.envFile)!, 'OPENBOT_LOCAL_TOKEN')!;
+    const first = envValue(files.data.get(paths.envFile)!, 'OPENBOTS_LOCAL_TOKEN')!;
     expect(first).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(await manager.localToken()).toBe(first);
     await manager.start();
     await manager.upgrade();
-    expect(envValue(files.data.get(paths.envFile)!, 'OPENBOT_LOCAL_TOKEN')).toBe(first);
+    expect(envValue(files.data.get(paths.envFile)!, 'OPENBOTS_LOCAL_TOKEN')).toBe(first);
     // Status crosses the preload bridge to the start page: never the token.
     expect(JSON.stringify(await manager.status())).not.toContain(first);
   });
 
   it('gives an install from before it a token on its next start, keeping everything else', async () => {
-    const existing = `OPENBOT_MASTER_KEY=keep\nPOSTGRES_PASSWORD=pw\n# mine\nX=1\nCOMPOSE_PROJECT_NAME=openbot-app\nOPENBOT_SANDBOX_NETWORK=openbot-app-sandbox-254\n`;
+    const existing = `OPENBOTS_MASTER_KEY=keep\nPOSTGRES_PASSWORD=pw\n# mine\nX=1\nCOMPOSE_PROJECT_NAME=openbots-app\nOPENBOTS_SANDBOX_NETWORK=openbots-app-sandbox-254\n`;
     const { manager, files } = makeManager({
       files: memoryFiles({ [paths.envTemplate]: TEMPLATE, [paths.envFile]: existing }),
     });
     expect(await manager.localToken()).toBeNull();
     await manager.start();
     const env = files.data.get(paths.envFile)!;
-    const token = envValue(env, 'OPENBOT_LOCAL_TOKEN')!;
+    const token = envValue(env, 'OPENBOTS_LOCAL_TOKEN')!;
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    const appPassword = envValue(env, 'OPENBOT_DB_APP_PASSWORD')!;
+    const appPassword = envValue(env, 'OPENBOTS_DB_APP_PASSWORD')!;
     expect(appPassword).toMatch(/^[0-9a-f]{48}$/);
     expect(env).toBe(
-      `${existing}OPENBOT_LOCAL_TOKEN=${token}\nOPENBOT_DB_APP_PASSWORD=${appPassword}\nOPENBOT_HTTP_BIND=127.0.0.1:\n`,
+      `${existing}OPENBOTS_LOCAL_TOKEN=${token}\nOPENBOTS_DB_APP_PASSWORD=${appPassword}\nOPENBOTS_HTTP_BIND=127.0.0.1:\n`,
     );
     expect(await manager.localToken()).toBe(token);
   });
@@ -256,31 +256,31 @@ describe('renderEnv', () => {
       renderEnv(TEMPLATE, { masterKey: 'KEY=', databasePassword: 'f00d', serverVersion: '1.2.3' }),
     ).toBe(
       [
-        'OPENBOT_PUBLIC_URL=http://localhost:3000',
-        'OPENBOT_MASTER_KEY=KEY=',
+        'OPENBOTS_PUBLIC_URL=http://localhost:3000',
+        'OPENBOTS_MASTER_KEY=KEY=',
         'POSTGRES_PASSWORD=f00d',
-        'DATABASE_URL=postgres://openbot:f00d@postgres:5432/openbot',
-        'OPENBOT_VERSION=1.2.3',
+        'DATABASE_URL=postgres://openbots:f00d@postgres:5432/openbots',
+        'OPENBOTS_VERSION=1.2.3',
         '',
       ].join('\n'),
     );
     expect(renderEnv(TEMPLATE, { masterKey: 'KEY', databasePassword: 'p' })).toContain(
-      'OPENBOT_VERSION=latest',
+      'OPENBOTS_VERSION=latest',
     );
   });
 
   it('appends missing keys', () => {
     expect(
       renderEnv('A=1\n', { masterKey: 'KEY', databasePassword: 'p', serverVersion: '2.0.0' }),
-    ).toBe('A=1\nOPENBOT_MASTER_KEY=KEY\nPOSTGRES_PASSWORD=p\nOPENBOT_VERSION=2.0.0\n');
+    ).toBe('A=1\nOPENBOTS_MASTER_KEY=KEY\nPOSTGRES_PASSWORD=p\nOPENBOTS_VERSION=2.0.0\n');
   });
 
   it('fills every line of .env.example that would otherwise stop Postgres from starting', () => {
     const example = readFileSync(new URL('../../../../.env.example', import.meta.url), 'utf8');
     const env = renderEnv(example, { masterKey: 'KEY', databasePassword: 'abc123' });
-    expect(envValue(env, 'OPENBOT_MASTER_KEY')).toBe('KEY');
+    expect(envValue(env, 'OPENBOTS_MASTER_KEY')).toBe('KEY');
     expect(envValue(env, 'POSTGRES_PASSWORD')).toBe('abc123');
-    expect(envValue(env, 'DATABASE_URL')).toBe('postgres://openbot:abc123@postgres:5432/openbot');
+    expect(envValue(env, 'DATABASE_URL')).toBe('postgres://openbots:abc123@postgres:5432/openbots');
     expect(env).not.toMatch(/^DATABASE_URL=.*change-me/m);
   });
 });
@@ -290,22 +290,22 @@ describe('withDatabasePassword', () => {
 
   it('keeps a password that is already set', () => {
     const env =
-      'POSTGRES_PASSWORD=mine\nDATABASE_URL=postgres://openbot:mine@postgres:5432/openbot\n';
+      'POSTGRES_PASSWORD=mine\nDATABASE_URL=postgres://openbots:mine@postgres:5432/openbots\n';
     expect(withDatabasePassword(env, generate)).toBe(env);
   });
 
   it('takes the password an older DATABASE_URL already has, as install.sh does', () => {
-    const env = 'POSTGRES_PASSWORD=\nDATABASE_URL=postgres://openbot:old@postgres:5432/openbot\n';
+    const env = 'POSTGRES_PASSWORD=\nDATABASE_URL=postgres://openbots:old@postgres:5432/openbots\n';
     expect(withDatabasePassword(env, generate)).toBe(
-      'POSTGRES_PASSWORD=old\nDATABASE_URL=postgres://openbot:old@postgres:5432/openbot\n',
+      'POSTGRES_PASSWORD=old\nDATABASE_URL=postgres://openbots:old@postgres:5432/openbots\n',
     );
   });
 
   it('generates one in place of change-me, and leaves another database alone', () => {
     expect(withDatabasePassword(TEMPLATE, generate)).toContain(
-      'POSTGRES_PASSWORD=generated\nDATABASE_URL=postgres://openbot:generated@postgres:5432/openbot',
+      'POSTGRES_PASSWORD=generated\nDATABASE_URL=postgres://openbots:generated@postgres:5432/openbots',
     );
-    const external = 'DATABASE_URL=postgres://me:secret@db.example.com:5432/openbot\n';
+    const external = 'DATABASE_URL=postgres://me:secret@db.example.com:5432/openbots\n';
     expect(withDatabasePassword(external, generate)).toBe(
       `${external}POSTGRES_PASSWORD=generated\n`,
     );
@@ -314,9 +314,9 @@ describe('withDatabasePassword', () => {
 
 describe('setEnvValue', () => {
   it('replaces the line and keeps every other one, comments included', () => {
-    const env = '# keep\nA=1\nOPENBOT_VERSION=0.1.0\nB=2';
-    expect(setEnvValue(env, 'OPENBOT_VERSION', '0.2.0')).toBe(
-      '# keep\nA=1\nOPENBOT_VERSION=0.2.0\nB=2',
+    const env = '# keep\nA=1\nOPENBOTS_VERSION=0.1.0\nB=2';
+    expect(setEnvValue(env, 'OPENBOTS_VERSION', '0.2.0')).toBe(
+      '# keep\nA=1\nOPENBOTS_VERSION=0.2.0\nB=2',
     );
     expect(setEnvValue('A=1', 'C', '3')).toBe('A=1\nC=3\n');
   });
@@ -324,7 +324,7 @@ describe('setEnvValue', () => {
 
 describe('pendingUpgrade', () => {
   it('moves an older pinned release to the app version, and nothing else', () => {
-    const env = (v: string) => `A=1\nOPENBOT_VERSION=${v}\n`;
+    const env = (v: string) => `A=1\nOPENBOTS_VERSION=${v}\n`;
     expect(pendingUpgrade(env('0.3.0'), '0.4.0')).toEqual({ from: '0.3.0', to: '0.4.0' });
     expect(pendingUpgrade(env('0.4.0-rc.1'), '0.4.0')).toEqual({ from: '0.4.0-rc.1', to: '0.4.0' });
     expect(pendingUpgrade(env('0.4.0'), '0.4.0')).toBeNull();
@@ -352,7 +352,7 @@ describe('createStackManager', () => {
     const exec = composeExec({
       ps: {
         code: 0,
-        stdout: '{"Service":"openbot","State":"running","Health":"healthy"}',
+        stdout: '{"Service":"openbots","State":"running","Health":"healthy"}',
         stderr: '',
       },
     });
@@ -368,29 +368,29 @@ describe('createStackManager', () => {
     const status = await manager.start();
 
     const env = files.data.get(paths.envFile)!;
-    const key = /^OPENBOT_MASTER_KEY=(.+)$/m.exec(env)?.[1];
+    const key = /^OPENBOTS_MASTER_KEY=(.+)$/m.exec(env)?.[1];
     expect(Buffer.from(key!, 'base64')).toHaveLength(32);
     // The database password, in both places, as install.sh writes it.
     const password = envValue(env, 'POSTGRES_PASSWORD');
     expect(password).toMatch(/^[0-9a-f]{48}$/);
     expect(envValue(env, 'DATABASE_URL')).toBe(
-      `postgres://openbot:${password}@postgres:5432/openbot`,
+      `postgres://openbots:${password}@postgres:5432/openbots`,
     );
-    expect(env).toContain('OPENBOT_VERSION=0.4.0');
+    expect(env).toContain('OPENBOTS_VERSION=0.4.0');
     // Its own project, recorded, and the first free port with the URL to match.
-    expect(envValue(env, 'COMPOSE_PROJECT_NAME')).toBe('openbot-app');
-    expect(envValue(env, 'OPENBOT_HTTP_PORT')).toBe('3000');
-    expect(envValue(env, 'OPENBOT_PUBLIC_URL')).toBe('http://localhost:3000');
-    expect(projects(exec).every((name) => name === 'openbot-app')).toBe(true);
+    expect(envValue(env, 'COMPOSE_PROJECT_NAME')).toBe('openbots-app');
+    expect(envValue(env, 'OPENBOTS_HTTP_PORT')).toBe('3000');
+    expect(envValue(env, 'OPENBOTS_PUBLIC_URL')).toBe('http://localhost:3000');
+    expect(projects(exec).every((name) => name === 'openbots-app')).toBe(true);
     const [file, args, opts] = exec.mock.calls.find(([, a]) => (a as string[]).includes('up'))!;
     expect(file).toBe(CLI);
     expect(args).toContain('--no-build');
     expect(opts).toMatchObject({ cwd: paths.projectDir });
-    expect(status.services).toEqual([{ service: 'openbot', state: 'running', health: 'healthy' }]);
+    expect(status.services).toEqual([{ service: 'openbots', state: 'running', health: 'healthy' }]);
   });
 
   it('never rewrites an existing .env', async () => {
-    const existing = `OPENBOT_MASTER_KEY=keep\nPOSTGRES_PASSWORD=pw\n${RECORDED}`;
+    const existing = `OPENBOTS_MASTER_KEY=keep\nPOSTGRES_PASSWORD=pw\n${RECORDED}`;
     const files = memoryFiles({ [paths.envTemplate]: TEMPLATE, [paths.envFile]: existing });
     const manager = createStackManager({
       portFree: allFree,
@@ -404,7 +404,7 @@ describe('createStackManager', () => {
   });
 
   it('gives an .env from an older app the database password it lacks', async () => {
-    const older = TEMPLATE.replace('OPENBOT_MASTER_KEY=', 'OPENBOT_MASTER_KEY=keep');
+    const older = TEMPLATE.replace('OPENBOTS_MASTER_KEY=', 'OPENBOTS_MASTER_KEY=keep');
     const files = memoryFiles({ [paths.envTemplate]: TEMPLATE, [paths.envFile]: older });
     const manager = createStackManager({
       portFree: allFree,
@@ -415,14 +415,14 @@ describe('createStackManager', () => {
     });
     await manager.start();
     const env = files.data.get(paths.envFile)!;
-    expect(envValue(env, 'OPENBOT_MASTER_KEY')).toBe('keep');
+    expect(envValue(env, 'OPENBOTS_MASTER_KEY')).toBe('keep');
     const password = envValue(env, 'POSTGRES_PASSWORD');
     expect(password).toMatch(/^[0-9a-f]{48}$/);
-    expect(env).toContain(`postgres://openbot:${password}@postgres`);
+    expect(env).toContain(`postgres://openbots:${password}@postgres`);
   });
 
   it('moves an older stack to the app release on start, pulling it first and keeping other edits', async () => {
-    const older = `OPENBOT_MASTER_KEY=keep\nPOSTGRES_PASSWORD=pw\n# mine\nOPENBOT_VERSION=0.3.0\nX=1\n${RECORDED}`;
+    const older = `OPENBOTS_MASTER_KEY=keep\nPOSTGRES_PASSWORD=pw\n# mine\nOPENBOTS_VERSION=0.3.0\nX=1\n${RECORDED}`;
     const files = memoryFiles({ [paths.envFile]: older });
     const exec = composeExec();
     const manager = createStackManager({
@@ -445,7 +445,7 @@ describe('createStackManager', () => {
   });
 
   it('keeps the old release when the new one cannot be pulled', async () => {
-    const older = `POSTGRES_PASSWORD=pw\nOPENBOT_VERSION=0.3.0\n${RECORDED}`;
+    const older = `POSTGRES_PASSWORD=pw\nOPENBOTS_VERSION=0.3.0\n${RECORDED}`;
     const files = memoryFiles({ [paths.envFile]: older });
     const exec = composeExec({ pull: { code: 1, stdout: '', stderr: 'connection reset by peer' } });
     const manager = createStackManager({
@@ -466,7 +466,7 @@ describe('createStackManager', () => {
 
   it('starts without pulling when the release is current, and Update always pulls', async () => {
     const files = memoryFiles({
-      [paths.envFile]: `POSTGRES_PASSWORD=pw\nOPENBOT_VERSION=0.4.0\n${RECORDED}`,
+      [paths.envFile]: `POSTGRES_PASSWORD=pw\nOPENBOTS_VERSION=0.4.0\n${RECORDED}`,
     });
     const exec = composeExec(IMAGES_HERE);
     const manager = createStackManager({
@@ -541,7 +541,7 @@ describe('createStackManager', () => {
     await fresh.stop();
     expect(exec).not.toHaveBeenCalled();
 
-    const files = memoryFiles({ [paths.envFile]: `OPENBOT_MASTER_KEY=k\n${RECORDED}` });
+    const files = memoryFiles({ [paths.envFile]: `OPENBOTS_MASTER_KEY=k\n${RECORDED}` });
     const manager = createStackManager({ paths, files, exec, detect: async () => READY });
     await manager.stop();
     expect(exec.mock.calls[0]![1]).toContain('down');
@@ -612,13 +612,13 @@ describe('createStackManager', () => {
     expect(file).toBe(CLI);
     expect(args.slice(-5)).toEqual(['logs', '--no-color', '--tail', '100', '--follow']);
 
-    child.stdout.write('openbot-1  | listening on 3000\nopenbot-1  | ready');
+    child.stdout.write('openbots-1  | listening on 3000\nopenbots-1  | ready');
     child.stdout.write('\npostgres-1 | accepting connections\n');
     child.stderr.write('redis-1    | warning\n');
     await new Promise((r) => setImmediate(r));
     expect(lines).toEqual([
-      'openbot-1  | listening on 3000',
-      'openbot-1  | ready',
+      'openbots-1  | listening on 3000',
+      'openbots-1  | ready',
       'postgres-1 | accepting connections',
       'redis-1    | warning',
     ]);
@@ -652,27 +652,27 @@ describe('createStackManager', () => {
 describe('the Compose project', () => {
   const legacy = (stdout: string) => ({ 'container ls': { code: 0, stdout, stderr: '' } });
   const older =
-    'OPENBOT_MASTER_KEY=keep\nPOSTGRES_PASSWORD=pw\nOPENBOT_LOCAL_TOKEN=held\nOPENBOT_DB_APP_PASSWORD=held\nOPENBOT_HTTP_BIND=127.0.0.1:\n';
+    'OPENBOTS_MASTER_KEY=keep\nPOSTGRES_PASSWORD=pw\nOPENBOTS_LOCAL_TOKEN=held\nOPENBOTS_DB_APP_PASSWORD=held\nOPENBOTS_HTTP_BIND=127.0.0.1:\n';
 
-  it('runs a new install as openbot-app, never the openbot of a source checkout', async () => {
-    // The owner's checkout runs project openbot from another directory.
+  it('runs a new install as openbots-app, never the openbots of a source checkout', async () => {
+    // The owner's checkout runs project openbots from another directory.
     const exec = composeExec(legacy('/Users/ada/src/OpenBots\n'));
     const { manager, files } = makeManager({ exec });
     await manager.start();
     expect(projects(exec).length).toBeGreaterThan(0);
-    expect(new Set(projects(exec))).toEqual(new Set(['openbot-app']));
+    expect(new Set(projects(exec))).toEqual(new Set(['openbots-app']));
     // With no .env there is no older install to look for.
     expect(verbs(exec)).not.toContain('container ls');
-    expect(envValue(files.data.get(paths.envFile)!, 'COMPOSE_PROJECT_NAME')).toBe('openbot-app');
+    expect(envValue(files.data.get(paths.envFile)!, 'COMPOSE_PROJECT_NAME')).toBe('openbots-app');
   });
 
-  it('keeps openbot for an older install whose containers run from the app stack directory', async () => {
+  it('keeps openbots for an older install whose containers run from the app stack directory', async () => {
     const exec = composeExec({
       ...legacy(`/Users/ada/src/OpenBots\n${paths.projectDir}/\n`),
       // Its containers, on the default sandbox network.
       'container networks': {
         code: 0,
-        stdout: `${paths.projectDir}/\topenbot_default,openbot-sandbox\n`,
+        stdout: `${paths.projectDir}/\topenbots_default,openbots-sbx\n`,
         stderr: '',
       },
     });
@@ -687,32 +687,32 @@ describe('the Compose project', () => {
       'ls',
       '--all',
       '--filter',
-      'label=com.docker.compose.project=openbot',
+      'label=com.docker.compose.project=openbots',
       '--format',
       '{{.Label "com.docker.compose.project.working_dir"}}',
     ]);
-    expect(new Set(projects(exec))).toEqual(new Set(['openbot']));
+    expect(new Set(projects(exec))).toEqual(new Set(['openbots']));
     // Recorded, so a Stop (which removes the containers) does not lose it,
     // and the sandbox network its containers are on with it.
     expect(files.data.get(paths.envFile)).toBe(
-      `${older}COMPOSE_PROJECT_NAME=openbot\nOPENBOT_SANDBOX_NETWORK=openbot-sandbox\n`,
+      `${older}COMPOSE_PROJECT_NAME=openbots\nOPENBOTS_SANDBOX_NETWORK=openbots-sbx\n`,
     );
     exec.mockClear();
     await manager.stop();
     await manager.start();
     expect(verbs(exec)).not.toContain('container ls');
     expect(verbs(exec)).not.toContain('container networks');
-    expect(new Set(projects(exec))).toEqual(new Set(['openbot']));
+    expect(new Set(projects(exec))).toEqual(new Set(['openbots']));
   });
 
-  it("never adopts an openbot project from another directory, even with the app's .env", async () => {
+  it("never adopts an openbots project from another directory, even with the app's .env", async () => {
     const exec = composeExec(legacy('/Users/ada/src/OpenBots\n/Users/ada/Library/stack-old\n'));
     const { manager, files } = makeManager({
       exec,
       files: memoryFiles({ [paths.envFile]: older }),
     });
     await manager.start();
-    expect(new Set(projects(exec))).toEqual(new Set(['openbot-app']));
+    expect(new Set(projects(exec))).toEqual(new Set(['openbots-app']));
     // No containers of its own anywhere: a network of its own too.
     expect(files.data.get(paths.envFile)).toBe(
       withSandbox(`${older}${PROJECT_ONLY}`, appSandbox(254)),
@@ -740,8 +740,8 @@ describe('the stack port', () => {
     const { manager, files } = makeManager({ portFree: freeFrom([3000, 3001]) });
     await manager.start();
     const env = files.data.get(paths.envFile)!;
-    expect(envValue(env, 'OPENBOT_HTTP_PORT')).toBe('3002');
-    expect(envValue(env, 'OPENBOT_PUBLIC_URL')).toBe('http://localhost:3002');
+    expect(envValue(env, 'OPENBOTS_HTTP_PORT')).toBe('3002');
+    expect(envValue(env, 'OPENBOTS_PUBLIC_URL')).toBe('http://localhost:3002');
     // The local profile reads the port back from .env.
     expect(localServerUrl(env)).toBe('http://localhost:3002');
   });
@@ -756,7 +756,7 @@ describe('the stack port', () => {
   });
 
   it('refuses to start, naming the port, when another app took it, and never moves it itself', async () => {
-    const env = `POSTGRES_PASSWORD=pw\nOPENBOT_HTTP_PORT=3000\nOPENBOT_PUBLIC_URL=http://localhost:3000\n${RECORDED}`;
+    const env = `POSTGRES_PASSWORD=pw\nOPENBOTS_HTTP_PORT=3000\nOPENBOTS_PUBLIC_URL=http://localhost:3000\n${RECORDED}`;
     const { manager, files, exec } = makeManager({
       files: memoryFiles({ [paths.envFile]: env }),
       portFree: freeFrom([3000]),
@@ -774,7 +774,7 @@ describe('the stack port', () => {
   it('is not taken while it is this stack that holds it', async () => {
     const running = {
       code: 0,
-      stdout: '{"Service":"openbot","State":"running","Health":"healthy"}',
+      stdout: '{"Service":"openbots","State":"running","Health":"healthy"}',
       stderr: '',
     };
     const { manager, exec } = makeManager({
@@ -790,19 +790,19 @@ describe('the stack port', () => {
   it('applies new settings to a stack an older app left running, and leaves a current one alone', async () => {
     const running = {
       code: 0,
-      stdout: '{"Service":"openbot","State":"running","Health":"healthy"}',
+      stdout: '{"Service":"openbots","State":"running","Health":"healthy"}',
       stderr: '',
     };
     // Recorded by an app from before the local token and the loopback port.
-    const old = `POSTGRES_PASSWORD=pw\n${PROJECT_ONLY}OPENBOT_SANDBOX_NETWORK=openbot-app-sandbox-254\n`;
+    const old = `POSTGRES_PASSWORD=pw\n${PROJECT_ONLY}OPENBOTS_SANDBOX_NETWORK=openbots-app-sandbox-254\n`;
     const { manager, files, exec } = makeManager({
       files: memoryFiles({ [paths.envFile]: old }),
       exec: composeExec({ ...IMAGES_HERE, ps: running }),
     });
     expect(await manager.refresh()).toBe(true);
     const env = files.data.get(paths.envFile)!;
-    expect(envValue(env, 'OPENBOT_LOCAL_TOKEN')).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(envValue(env, 'OPENBOT_HTTP_BIND')).toBe('127.0.0.1:');
+    expect(envValue(env, 'OPENBOTS_LOCAL_TOKEN')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(envValue(env, 'OPENBOTS_HTTP_BIND')).toBe('127.0.0.1:');
     expect(verbs(exec).filter((v) => v === 'up')).toHaveLength(1);
     // Now current: nothing to do.
     expect(await manager.refresh()).toBe(false);
@@ -818,24 +818,24 @@ describe('the stack port', () => {
   });
 
   it('moves a stopped stack to a free port on request, with its localhost URL', async () => {
-    const env = `OPENBOT_HTTP_PORT=3000\nOPENBOT_PUBLIC_URL=http://localhost:3000\n${RECORDED}`;
+    const env = `OPENBOTS_HTTP_PORT=3000\nOPENBOTS_PUBLIC_URL=http://localhost:3000\n${RECORDED}`;
     const { manager, files } = makeManager({
       files: memoryFiles({ [paths.envFile]: env }),
       portFree: freeFrom([3000, 3001]),
     });
     const status = await manager.changePort();
     const moved = files.data.get(paths.envFile)!;
-    expect(envValue(moved, 'OPENBOT_HTTP_PORT')).toBe('3002');
-    expect(envValue(moved, 'OPENBOT_PUBLIC_URL')).toBe('http://localhost:3002');
+    expect(envValue(moved, 'OPENBOTS_HTTP_PORT')).toBe('3002');
+    expect(envValue(moved, 'OPENBOTS_PUBLIC_URL')).toBe('http://localhost:3002');
     expect(status.port).toEqual({ port: 3002, taken: false, free: null });
   });
 
   it('refuses to move a running stack', async () => {
-    const env = `OPENBOT_HTTP_PORT=3000\n${RECORDED}`;
+    const env = `OPENBOTS_HTTP_PORT=3000\n${RECORDED}`;
     const { manager, files } = makeManager({
       files: memoryFiles({ [paths.envFile]: env }),
       exec: composeExec({
-        ps: { code: 0, stdout: '{"Service":"openbot","State":"running"}', stderr: '' },
+        ps: { code: 0, stdout: '{"Service":"openbots","State":"running"}', stderr: '' },
       }),
     });
     await expect(manager.changePort()).rejects.toMatchObject({
@@ -845,20 +845,20 @@ describe('the stack port', () => {
   });
 
   it('reads the port as Compose does, and keeps a public URL the owner pointed elsewhere', () => {
-    expect(envPort('OPENBOT_HTTP_PORT=3000\nOPENBOT_HTTP_PORT="3100"\n')).toBe(3100);
+    expect(envPort('OPENBOTS_HTTP_PORT=3000\nOPENBOTS_HTTP_PORT="3100"\n')).toBe(3100);
     expect(envPort('A=1\n')).toBe(3000);
-    expect(envPort('OPENBOT_HTTP_PORT=0\n')).toBe(3000);
+    expect(envPort('OPENBOTS_HTTP_PORT=0\n')).toBe(3000);
     expect(
-      withPort('OPENBOT_HTTP_PORT=3000\nOPENBOT_PUBLIC_URL=https://bots.example.com\n', 3001),
-    ).toBe('OPENBOT_HTTP_PORT=3001\nOPENBOT_PUBLIC_URL=https://bots.example.com\n');
-    expect(withPort('OPENBOT_PUBLIC_URL=http://127.0.0.1:3000/\n', 3005)).toBe(
-      'OPENBOT_PUBLIC_URL=http://localhost:3005\nOPENBOT_HTTP_PORT=3005\n',
+      withPort('OPENBOTS_HTTP_PORT=3000\nOPENBOTS_PUBLIC_URL=https://bots.example.com\n', 3001),
+    ).toBe('OPENBOTS_HTTP_PORT=3001\nOPENBOTS_PUBLIC_URL=https://bots.example.com\n');
+    expect(withPort('OPENBOTS_PUBLIC_URL=http://127.0.0.1:3000/\n', 3005)).toBe(
+      'OPENBOTS_PUBLIC_URL=http://localhost:3005\nOPENBOTS_HTTP_PORT=3005\n',
     );
   });
 });
 
 describe('pulling the images', () => {
-  const env = `POSTGRES_PASSWORD=pw\nOPENBOT_VERSION=latest\n${RECORDED}`;
+  const env = `POSTGRES_PASSWORD=pw\nOPENBOTS_VERSION=latest\n${RECORDED}`;
 
   it.each([
     'Error response from daemon: error from registry: denied',
@@ -868,11 +868,11 @@ describe('pulling the images', () => {
   ])('says plainly that the images are not published for %j, keeping the output', async (out) => {
     const { manager, exec } = makeManager({
       files: memoryFiles({ [paths.envFile]: env }),
-      exec: composeExec({ pull: { code: 1, stdout: 'Pulling openbot', stderr: out } }),
+      exec: composeExec({ pull: { code: 1, stdout: 'Pulling openbots', stderr: out } }),
     });
     await expect(manager.start()).rejects.toMatchObject({
       message: IMAGES_UNAVAILABLE,
-      detail: `Pulling openbot\n${out}`,
+      detail: `Pulling openbots\n${out}`,
     });
     expect(verbs(exec)).not.toContain('up');
   });
@@ -927,44 +927,44 @@ describe('pulling the images', () => {
 
 describe('development images', () => {
   it('reads the prefix and tag from the environment of an unpackaged app only', () => {
-    const env = { OPENBOT_IMAGE_PREFIX: 'openbot-local', OPENBOT_VERSION: 'dev' };
-    expect(devImageOverrides(env, false)).toEqual({ prefix: 'openbot-local', version: 'dev' });
+    const env = { OPENBOTS_IMAGE_PREFIX: 'openbots-local', OPENBOTS_VERSION: 'dev' };
+    expect(devImageOverrides(env, false)).toEqual({ prefix: 'openbots-local', version: 'dev' });
     expect(devImageOverrides(env, true)).toEqual({});
     expect(devImageOverrides({}, false)).toEqual({});
     // Nothing that could break a line of .env.
     expect(
-      devImageOverrides({ OPENBOT_IMAGE_PREFIX: 'a\nB=1', OPENBOT_VERSION: 'x y' }, false),
+      devImageOverrides({ OPENBOTS_IMAGE_PREFIX: 'a\nB=1', OPENBOTS_VERSION: 'x y' }, false),
     ).toEqual({});
-    expect(devImageOverrides({ OPENBOT_IMAGE_PREFIX: 'localhost:5000/me/openbot' }, false)).toEqual(
-      { prefix: 'localhost:5000/me/openbot' },
-    );
+    expect(
+      devImageOverrides({ OPENBOTS_IMAGE_PREFIX: 'localhost:5000/me/openbots' }, false),
+    ).toEqual({ prefix: 'localhost:5000/me/openbots' });
   });
 
   it('writes them into a new and an existing .env, and compose reads .env alone', async () => {
-    const images = { prefix: 'openbot-local', version: 'dev' };
+    const images = { prefix: 'openbots-local', version: 'dev' };
     const exec = composeExec();
     const { manager, files } = makeManager({
       exec,
       images,
-      env: { PATH: '/usr/bin', OPENBOT_VERSION: 'latest', COMPOSE_PROFILES: 's3', HOME: '/h' },
+      env: { PATH: '/usr/bin', OPENBOTS_VERSION: 'latest', COMPOSE_PROFILES: 's3', HOME: '/h' },
     });
     await manager.start();
     let env = files.data.get(paths.envFile)!;
-    expect(envValue(env, 'OPENBOT_IMAGE_PREFIX')).toBe('openbot-local');
-    expect(envValue(env, 'OPENBOT_VERSION')).toBe('dev');
+    expect(envValue(env, 'OPENBOTS_IMAGE_PREFIX')).toBe('openbots-local');
+    expect(envValue(env, 'OPENBOTS_VERSION')).toBe('dev');
     const runEnv = (exec.mock.calls[0]![2] as { env: NodeJS.ProcessEnv }).env;
-    expect(runEnv.OPENBOT_VERSION).toBeUndefined();
+    expect(runEnv.OPENBOTS_VERSION).toBeUndefined();
     expect(runEnv.COMPOSE_PROFILES).toBeUndefined();
     expect(runEnv.HOME).toBe('/h');
 
     files.data.set(
       paths.envFile,
-      setEnvValue(setEnvValue(env, 'OPENBOT_VERSION', '0.1.0'), 'OPENBOT_IMAGE_PREFIX', 'x'),
+      setEnvValue(setEnvValue(env, 'OPENBOTS_VERSION', '0.1.0'), 'OPENBOTS_IMAGE_PREFIX', 'x'),
     );
     await manager.start();
     env = files.data.get(paths.envFile)!;
-    expect(envValue(env, 'OPENBOT_IMAGE_PREFIX')).toBe('openbot-local');
-    expect(envValue(env, 'OPENBOT_VERSION')).toBe('dev');
+    expect(envValue(env, 'OPENBOTS_IMAGE_PREFIX')).toBe('openbots-local');
+    expect(envValue(env, 'OPENBOTS_VERSION')).toBe('dev');
   });
 
   it('leaves the environment alone apart from the stack settings', () => {
@@ -972,7 +972,7 @@ describe('development images', () => {
       composeEnv({
         PATH: '/bin',
         DOCKER_HOST: 'unix:///x',
-        OPENBOT_HTTP_PORT: '1',
+        OPENBOTS_HTTP_PORT: '1',
         COMPOSE_FILE: 'a',
       }),
     ).toEqual({ PATH: '/bin', DOCKER_HOST: 'unix:///x' });
@@ -980,17 +980,17 @@ describe('development images', () => {
 });
 
 describe('the GitHub Release fallback', () => {
-  const PREFIX = 'ghcr.io/danielpang/openbot';
+  const PREFIX = 'ghcr.io/danielpang/openbots';
   const DENIED =
-    'Error response from daemon: Head "https://ghcr.io/v2/danielpang/openbot/server/manifests/0.4.0": denied';
-  const pinned = `POSTGRES_PASSWORD=pw\nOPENBOT_VERSION=0.4.0\n${RECORDED}`;
+    'Error response from daemon: Head "https://ghcr.io/v2/danielpang/openbots/server/manifests/0.4.0": denied';
+  const pinned = `POSTGRES_PASSWORD=pw\nOPENBOTS_VERSION=0.4.0\n${RECORDED}`;
 
   /** Docker with nothing of the release here: the registry denies the pull. */
   function deniedDocker(present: string[] = []) {
     const loaded = new Set(present);
     const exec = vi.fn(async (_file: string, args: string[]): Promise<ExecResult> => {
       const verb = verbOf(args);
-      if (verb === 'pull') return { code: 1, stdout: 'Pulling openbot', stderr: DENIED };
+      if (verb === 'pull') return { code: 1, stdout: 'Pulling openbots', stderr: DENIED };
       if (verb === 'config') {
         return {
           code: 0,
@@ -1074,11 +1074,11 @@ describe('the GitHub Release fallback', () => {
     for (const options of [
       // Unpackaged: no release of its own.
       { files: memoryFiles({ [paths.envFile]: pinned }) },
-      // OPENBOT_IMAGE_PREFIX and OPENBOT_VERSION overrides from `pnpm dev`.
+      // OPENBOTS_IMAGE_PREFIX and OPENBOTS_VERSION overrides from `pnpm dev`.
       {
         files: memoryFiles({ [paths.envFile]: pinned }),
         serverVersion: '0.4.0',
-        images: { prefix: 'openbot-local', version: 'dev' },
+        images: { prefix: 'openbots-local', version: 'dev' },
       },
       // The owner pinned `latest`: the release's archives are not that.
       {
@@ -1109,7 +1109,7 @@ describe('the GitHub Release fallback', () => {
   });
 
   it("shows the registry's error with the release download's reason, keeping the old release", async () => {
-    const older = `POSTGRES_PASSWORD=pw\nOPENBOT_VERSION=0.3.0\n${RECORDED}`;
+    const older = `POSTGRES_PASSWORD=pw\nOPENBOTS_VERSION=0.3.0\n${RECORDED}`;
     const files = memoryFiles({ [paths.envFile]: older });
     const { exec } = deniedDocker();
     const { manager } = makeManager({
@@ -1127,7 +1127,7 @@ describe('the GitHub Release fallback', () => {
         'OpenBots 0.4.0 is not published yet, or its images are not public. This Mac keeps running 0.3.0.',
     });
     expect((error as StackError).detail).toBe(
-      `Pulling openbot\n${DENIED}\n\nThe images could not be downloaded from the GitHub Release either: There is no OpenBots 0.4.0 release with image archives.`,
+      `Pulling openbots\n${DENIED}\n\nThe images could not be downloaded from the GitHub Release either: There is no OpenBots 0.4.0 release with image archives.`,
     );
     expect(files.data.get(paths.envFile)).toBe(older);
     expect(verbs(exec)).not.toContain('up');
@@ -1153,19 +1153,19 @@ describe('the sandbox network', () => {
   const CHECKOUT: [string, ...string[]][] = [
     ['bridge', '192.168.215.0/24'],
     ['host'],
-    ['openbot_default', '192.168.156.0/24'],
-    ['openbot-sandbox', '172.30.255.0/24'],
+    ['openbots_default', '192.168.156.0/24'],
+    ['openbots-sbx', '172.30.255.0/24'],
   ];
   const older =
-    'OPENBOT_MASTER_KEY=keep\nPOSTGRES_PASSWORD=pw\nOPENBOT_LOCAL_TOKEN=held\nOPENBOT_DB_APP_PASSWORD=held\nOPENBOT_HTTP_BIND=127.0.0.1:\n';
+    'OPENBOTS_MASTER_KEY=keep\nPOSTGRES_PASSWORD=pw\nOPENBOTS_LOCAL_TOKEN=held\nOPENBOTS_DB_APP_PASSWORD=held\nOPENBOTS_HTTP_BIND=127.0.0.1:\n';
   const sandboxOf = (env: string) =>
     Object.fromEntries(
       [
-        'OPENBOT_SANDBOX_NETWORK',
-        'OPENBOT_SANDBOX_BRIDGE',
-        'OPENBOT_SANDBOX_SUBNET',
-        'OPENBOT_SANDBOX_SERVER_IP',
-        'OPENBOT_SANDBOX_EGRESS_PROXY_IP',
+        'OPENBOTS_SANDBOX_NETWORK',
+        'OPENBOTS_SANDBOX_BRIDGE',
+        'OPENBOTS_SANDBOX_SUBNET',
+        'OPENBOTS_SANDBOX_SERVER_IP',
+        'OPENBOTS_SANDBOX_EGRESS_PROXY_IP',
       ].map((key) => [key, envValue(env, key)]),
     );
 
@@ -1174,11 +1174,11 @@ describe('the sandbox network', () => {
     const { manager, files } = makeManager({ exec });
     await manager.start();
     expect(sandboxOf(files.data.get(paths.envFile)!)).toEqual({
-      OPENBOT_SANDBOX_NETWORK: 'openbot-app-sandbox-253',
-      OPENBOT_SANDBOX_BRIDGE: 'openbot-app-253',
-      OPENBOT_SANDBOX_SUBNET: '172.30.253.0/24',
-      OPENBOT_SANDBOX_SERVER_IP: '172.30.253.2',
-      OPENBOT_SANDBOX_EGRESS_PROXY_IP: '172.30.253.3',
+      OPENBOTS_SANDBOX_NETWORK: 'openbots-app-sandbox-253',
+      OPENBOTS_SANDBOX_BRIDGE: 'openbots-a-253',
+      OPENBOTS_SANDBOX_SUBNET: '172.30.253.0/24',
+      OPENBOTS_SANDBOX_SERVER_IP: '172.30.253.2',
+      OPENBOTS_SANDBOX_EGRESS_PROXY_IP: '172.30.253.3',
     });
     const calls = exec.mock.calls.map(([, args]) => args as string[]);
     expect(calls.find((a) => a[0] === 'network' && a[1] === 'ls')).toEqual([
@@ -1204,7 +1204,7 @@ describe('the sandbox network', () => {
   it('takes 172.30.254.0/24 on a Mac with no other networks', async () => {
     const { manager, files } = makeManager();
     await manager.start();
-    expect(envValue(files.data.get(paths.envFile)!, 'OPENBOT_SANDBOX_SUBNET')).toBe(
+    expect(envValue(files.data.get(paths.envFile)!, 'OPENBOTS_SANDBOX_SUBNET')).toBe(
       '172.30.254.0/24',
     );
   });
@@ -1219,7 +1219,7 @@ describe('the sandbox network', () => {
   });
 
   it('keeps the network an existing .env names, without asking Docker', async () => {
-    const existing = `${older}${RECORDED}OPENBOT_SANDBOX_SUBNET=172.30.254.0/24\n`;
+    const existing = `${older}${RECORDED}OPENBOTS_SANDBOX_SUBNET=172.30.254.0/24\n`;
     const exec = composeExec(networks(CHECKOUT));
     const { manager, files } = makeManager({
       exec,
@@ -1233,12 +1233,12 @@ describe('the sandbox network', () => {
 
   it("keeps today's default for an older .env whose containers already use it", async () => {
     // An install from before the app named its network: the template's subnet, no name.
-    const existing = `${older}${PROJECT_ONLY}OPENBOT_SANDBOX_SUBNET=172.30.255.0/24\nOPENBOT_SANDBOX_SERVER_IP=172.30.255.2\n`;
+    const existing = `${older}${PROJECT_ONLY}OPENBOTS_SANDBOX_SUBNET=172.30.255.0/24\nOPENBOTS_SANDBOX_SERVER_IP=172.30.255.2\n`;
     const exec = composeExec({
       ...networks(CHECKOUT),
       'container networks': {
         code: 0,
-        stdout: `/Users/ada/src/OpenBots\topenbot-sandbox\n${paths.projectDir}\topenbot-app_default,openbot-sandbox\n`,
+        stdout: `/Users/ada/src/OpenBots\topenbots-sbx\n${paths.projectDir}\topenbots-app_default,openbots-sbx\n`,
         stderr: '',
       },
     });
@@ -1248,7 +1248,7 @@ describe('the sandbox network', () => {
     });
     await manager.start();
     expect(files.data.get(paths.envFile)).toBe(
-      `${existing}OPENBOT_SANDBOX_NETWORK=openbot-sandbox\n`,
+      `${existing}OPENBOTS_SANDBOX_NETWORK=openbots-sbx\n`,
     );
     const ls = exec.mock.calls.find(([, a]) => verbOf(a as string[]) === 'container networks')!;
     expect(ls[1]).toEqual([
@@ -1256,7 +1256,7 @@ describe('the sandbox network', () => {
       'ls',
       '--all',
       '--filter',
-      'label=com.docker.compose.project=openbot-app',
+      'label=com.docker.compose.project=openbots-app',
       '--format',
       '{{.Label "com.docker.compose.project.working_dir"}}\t{{.Networks}}',
     ]);
@@ -1264,13 +1264,13 @@ describe('the sandbox network', () => {
   });
 
   it('moves an older .env with no containers on the default network to a network of its own', async () => {
-    const existing = `${older}${PROJECT_ONLY}OPENBOT_SANDBOX_SUBNET=172.30.255.0/24\nOPENBOT_SANDBOX_SERVER_IP=172.30.255.2\n`;
+    const existing = `${older}${PROJECT_ONLY}OPENBOTS_SANDBOX_SUBNET=172.30.255.0/24\nOPENBOTS_SANDBOX_SERVER_IP=172.30.255.2\n`;
     const exec = composeExec({
       ...networks(CHECKOUT),
       // Only the checkout's containers are on it.
       'container networks': {
         code: 0,
-        stdout: `/Users/ada/src/OpenBots\topenbot-sandbox\n`,
+        stdout: `/Users/ada/src/OpenBots\topenbots-sbx\n`,
         stderr: '',
       },
     });
@@ -1280,14 +1280,14 @@ describe('the sandbox network', () => {
     });
     await manager.start();
     expect(sandboxOf(files.data.get(paths.envFile)!)).toMatchObject({
-      OPENBOT_SANDBOX_NETWORK: 'openbot-app-sandbox-254',
-      OPENBOT_SANDBOX_SUBNET: '172.30.254.0/24',
-      OPENBOT_SANDBOX_SERVER_IP: '172.30.254.2',
+      OPENBOTS_SANDBOX_NETWORK: 'openbots-app-sandbox-254',
+      OPENBOTS_SANDBOX_SUBNET: '172.30.254.0/24',
+      OPENBOTS_SANDBOX_SERVER_IP: '172.30.254.2',
     });
   });
 
   it('keeps a subnet the owner set, giving only the names', async () => {
-    const existing = `${older}${PROJECT_ONLY}OPENBOT_SANDBOX_SUBNET=10.99.0.0/24\nOPENBOT_SANDBOX_SERVER_IP=10.99.0.2\n`;
+    const existing = `${older}${PROJECT_ONLY}OPENBOTS_SANDBOX_SUBNET=10.99.0.0/24\nOPENBOTS_SANDBOX_SERVER_IP=10.99.0.2\n`;
     const exec = composeExec(networks(CHECKOUT));
     const { manager, files } = makeManager({
       exec,
@@ -1295,19 +1295,19 @@ describe('the sandbox network', () => {
     });
     await manager.start();
     expect(sandboxOf(files.data.get(paths.envFile)!)).toEqual({
-      OPENBOT_SANDBOX_NETWORK: 'openbot-app-sandbox',
-      OPENBOT_SANDBOX_BRIDGE: 'openbot-app-sbx',
-      OPENBOT_SANDBOX_SUBNET: '10.99.0.0/24',
-      OPENBOT_SANDBOX_SERVER_IP: '10.99.0.2',
-      OPENBOT_SANDBOX_EGRESS_PROXY_IP: undefined,
+      OPENBOTS_SANDBOX_NETWORK: 'openbots-app-sandbox',
+      OPENBOTS_SANDBOX_BRIDGE: 'openbots-a-sbx',
+      OPENBOTS_SANDBOX_SUBNET: '10.99.0.0/24',
+      OPENBOTS_SANDBOX_SERVER_IP: '10.99.0.2',
+      OPENBOTS_SANDBOX_EGRESS_PROXY_IP: undefined,
     });
   });
 
   it("says another stack holds the network when the server's address is taken", async () => {
     // What the owner's Mac printed.
     const output = [
-      'level=warning msg="a network with name openbot-sandbox exists but was not created for project \\"openbot-app\\". Set `external: true` to use an existing network"',
-      'Container openbot-app-openbot-1  Error response from daemon: failed to set up container networking: Address already in use',
+      'level=warning msg="a network with name openbots-sbx exists but was not created for project \\"openbots-app\\". Set `external: true` to use an existing network"',
+      'Container openbots-app-openbots-1  Error response from daemon: failed to set up container networking: Address already in use',
     ].join('\n');
     const exec = composeExec({ up: { code: 1, stdout: '', stderr: output } });
     const { manager } = makeManager({
@@ -1319,7 +1319,7 @@ describe('the sandbox network', () => {
 
   it('tells a clash from the web port, and from images it cannot pull', () => {
     const warning =
-      'a network with name openbot-sandbox exists but was not created for project "openbot-app"';
+      'a network with name openbots-sbx exists but was not created for project "openbots-app"';
     const bind =
       'failed to set up container networking: driver failed programming external connectivity on endpoint x: listen tcp4 0.0.0.0:3000: bind: address already in use';
     expect(upFailureMessage(`${warning}\n${bind}`, 3000)).toBe(portTakenMessage(3000));
@@ -1335,7 +1335,7 @@ describe('the sandbox network', () => {
   });
 
   describe('moving to a network of its own', () => {
-    const current = `${older}${PROJECT_ONLY}OPENBOT_SANDBOX_SUBNET=172.30.255.0/24\nOPENBOT_SANDBOX_SERVER_IP=172.30.255.2\nOPENBOT_SANDBOX_EGRESS_PROXY_IP=172.30.255.3\nOPENBOT_SANDBOX_EGRESS_PROXY=http://172.30.255.3:8888\n`;
+    const current = `${older}${PROJECT_ONLY}OPENBOTS_SANDBOX_SUBNET=172.30.255.0/24\nOPENBOTS_SANDBOX_SERVER_IP=172.30.255.2\nOPENBOTS_SANDBOX_EGRESS_PROXY_IP=172.30.255.3\nOPENBOTS_SANDBOX_EGRESS_PROXY=http://172.30.255.3:8888\n`;
 
     it('refuses while any of its containers runs', async () => {
       const exec = composeExec({
@@ -1367,14 +1367,14 @@ describe('the sandbox network', () => {
       await manager.useOwnNetwork();
       const env = files.data.get(paths.envFile)!;
       expect(sandboxOf(env)).toEqual({
-        OPENBOT_SANDBOX_NETWORK: 'openbot-app-sandbox-254',
-        OPENBOT_SANDBOX_BRIDGE: 'openbot-app-254',
-        OPENBOT_SANDBOX_SUBNET: '172.30.254.0/24',
-        OPENBOT_SANDBOX_SERVER_IP: '172.30.254.2',
-        OPENBOT_SANDBOX_EGRESS_PROXY_IP: '172.30.254.3',
+        OPENBOTS_SANDBOX_NETWORK: 'openbots-app-sandbox-254',
+        OPENBOTS_SANDBOX_BRIDGE: 'openbots-a-254',
+        OPENBOTS_SANDBOX_SUBNET: '172.30.254.0/24',
+        OPENBOTS_SANDBOX_SERVER_IP: '172.30.254.2',
+        OPENBOTS_SANDBOX_EGRESS_PROXY_IP: '172.30.254.3',
       });
-      expect(envValue(env, 'OPENBOT_SANDBOX_EGRESS_PROXY')).toBe('http://172.30.254.3:8888');
-      expect(envValue(env, 'OPENBOT_MASTER_KEY')).toBe('keep');
+      expect(envValue(env, 'OPENBOTS_SANDBOX_EGRESS_PROXY')).toBe('http://172.30.254.3:8888');
+      expect(envValue(env, 'OPENBOTS_MASTER_KEY')).toBe('keep');
       // Writing .env is all it does: nothing is started, stopped or removed.
       expect(
         verbs(exec).filter((v) => !['ps', 'network ls', 'network inspect'].includes(v)),
@@ -1389,8 +1389,8 @@ describe('the sandbox network', () => {
         files: memoryFiles({ [paths.envFile]: leaving }),
       });
       await manager.useOwnNetwork();
-      expect(envValue(files.data.get(paths.envFile)!, 'OPENBOT_SANDBOX_NETWORK')).toBe(
-        'openbot-app-sandbox-253',
+      expect(envValue(files.data.get(paths.envFile)!, 'OPENBOTS_SANDBOX_NETWORK')).toBe(
+        'openbots-app-sandbox-253',
       );
     });
   });

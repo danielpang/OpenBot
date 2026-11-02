@@ -1,5 +1,5 @@
 /*
- * Theme tokens for every OpenBot UI (shadcn/ui, neutral). The app imports
+ * Theme tokens for every OpenBots UI (shadcn/ui, neutral). The app imports
  * Tailwind first, then this file. Dark follows the system setting.
  */
 @source './';

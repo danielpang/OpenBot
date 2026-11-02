@@ -1,4 +1,4 @@
-import { isAdmin, type WebExtensions } from '@openbot/web/extensions';
+import { isAdmin, type WebExtensions } from '@openbots/web/extensions';
 import { carryInvite } from './api.js';
 import { AuditLog } from './audit-log.js';
 import { MembersSettings } from './members.js';

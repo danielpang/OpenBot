@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/widgets",
+  "name": "@openbots/widgets",
   "version": "0.0.0",
   "private": true,
   "description": "widget schemas and React renderers",
@@ -7,12 +7,12 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./react": {
-      "@openbot/source": "./src/react.ts",
+      "@openbots/source": "./src/react.ts",
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
     },
@@ -25,9 +25,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openbot/routines": "workspace:*",
-    "@openbot/shared": "workspace:*",
-    "@openbot/ui": "workspace:*",
+    "@openbots/routines": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "@openbots/ui": "workspace:*",
     "zod": "catalog:"
   },
   "peerDependencies": {

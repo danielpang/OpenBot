@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { ToolPolicySchema } from '@openbot/shared';
+import { ToolPolicySchema } from '@openbots/shared';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';

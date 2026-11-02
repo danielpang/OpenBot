@@ -1,5 +1,5 @@
 // Product limits (PRD section 6), and the webhook rate limits beside them.
-// The server overrides any of them from `OPENBOT_LIMITS_*` environment
+// The server overrides any of them from `OPENBOTS_LIMITS_*` environment
 // variables, and the admin from Settings. Two limits in PRD section 6 are not
 // here because 1.0 fixes them: one computer per account (`computers.owner_id`
 // is unique) and one computer-use task per Bot at a time (`ScreenLocks`).
@@ -26,17 +26,17 @@ export const DEFAULT_LIMITS = {
 export type Limits = { -readonly [K in keyof typeof DEFAULT_LIMITS]: number };
 
 export const LIMIT_ENV_VARS: { [K in keyof Limits]: string } = {
-  botsPerAccount: 'OPENBOT_LIMITS_BOTS_PER_ACCOUNT',
-  botsPerGroup: 'OPENBOT_LIMITS_BOTS_PER_GROUP',
-  routinesPerBot: 'OPENBOT_LIMITS_ROUTINES_PER_BOT',
-  skillsPerAccount: 'OPENBOT_LIMITS_SKILLS_PER_ACCOUNT',
-  runRecordsPerRoutine: 'OPENBOT_LIMITS_RUN_RECORDS_PER_ROUTINE',
-  webhookPayloadBytes: 'OPENBOT_LIMITS_WEBHOOK_PAYLOAD_BYTES',
-  syncWebhookWaitSeconds: 'OPENBOT_LIMITS_SYNC_WEBHOOK_WAIT_SECONDS',
-  webhookIpRatePerMin: 'OPENBOT_LIMITS_WEBHOOK_IP_RATE_PER_MIN',
-  webhookFailedAuthPerMin: 'OPENBOT_LIMITS_WEBHOOK_FAILED_AUTH_PER_MIN',
-  webhookEndpointRatePerMin: 'OPENBOT_LIMITS_WEBHOOK_ENDPOINT_RATE_PER_MIN',
-  uploadBytes: 'OPENBOT_LIMITS_UPLOAD_BYTES',
+  botsPerAccount: 'OPENBOTS_LIMITS_BOTS_PER_ACCOUNT',
+  botsPerGroup: 'OPENBOTS_LIMITS_BOTS_PER_GROUP',
+  routinesPerBot: 'OPENBOTS_LIMITS_ROUTINES_PER_BOT',
+  skillsPerAccount: 'OPENBOTS_LIMITS_SKILLS_PER_ACCOUNT',
+  runRecordsPerRoutine: 'OPENBOTS_LIMITS_RUN_RECORDS_PER_ROUTINE',
+  webhookPayloadBytes: 'OPENBOTS_LIMITS_WEBHOOK_PAYLOAD_BYTES',
+  syncWebhookWaitSeconds: 'OPENBOTS_LIMITS_SYNC_WEBHOOK_WAIT_SECONDS',
+  webhookIpRatePerMin: 'OPENBOTS_LIMITS_WEBHOOK_IP_RATE_PER_MIN',
+  webhookFailedAuthPerMin: 'OPENBOTS_LIMITS_WEBHOOK_FAILED_AUTH_PER_MIN',
+  webhookEndpointRatePerMin: 'OPENBOTS_LIMITS_WEBHOOK_ENDPOINT_RATE_PER_MIN',
+  uploadBytes: 'OPENBOTS_LIMITS_UPLOAD_BYTES',
 };
 
 export function resolveLimits(overrides: Partial<Limits> = {}): Limits {
@@ -70,10 +70,10 @@ export const DEFAULT_PROCESS_LIMITS = {
 export type ProcessLimits = { -readonly [K in keyof typeof DEFAULT_PROCESS_LIMITS]: number };
 
 export const PROCESS_LIMIT_ENV_VARS: { [K in keyof ProcessLimits]: string } = {
-  approvalTtlMinutes: 'OPENBOT_APPROVAL_TTL_MINUTES',
-  mcpIdleStopMinutes: 'OPENBOT_MCP_IDLE_STOP_MINUTES',
-  webFetchMaxChars: 'OPENBOT_WEB_FETCH_MAX_CHARS',
-  webFetchTimeoutSeconds: 'OPENBOT_WEB_FETCH_TIMEOUT_SECONDS',
+  approvalTtlMinutes: 'OPENBOTS_APPROVAL_TTL_MINUTES',
+  mcpIdleStopMinutes: 'OPENBOTS_MCP_IDLE_STOP_MINUTES',
+  webFetchMaxChars: 'OPENBOTS_WEB_FETCH_MAX_CHARS',
+  webFetchTimeoutSeconds: 'OPENBOTS_WEB_FETCH_TIMEOUT_SECONDS',
 };
 
 export function resolveProcessLimits(overrides: Partial<ProcessLimits> = {}): ProcessLimits {

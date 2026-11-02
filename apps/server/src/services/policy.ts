@@ -8,7 +8,7 @@ import {
   type Policy,
   type ToolAnnotations,
   type ToolFacts,
-} from '@openbot/agent';
+} from '@openbots/agent';
 import {
   PolicyDecisionSchema,
   sourceOfTrigger,
@@ -16,7 +16,7 @@ import {
   TriggerOverrideSchema,
   type RunSource,
   type TriggerOverride,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
@@ -32,7 +32,7 @@ import {
 } from './connectors.js';
 import type { RunRow, RunState } from './runs.js';
 
-// The policy for one run (plan 8, T5): the engine in `@openbot/agent` fed
+// The policy for one run (plan 8, T5): the engine in `@openbots/agent` fed
 // with the Bot's `tool_policy`, its connectors' approval overrides and the
 // MCP annotations cached in `connector_tools`, plus the webhook endpoint's
 // `tool_policy_override` for a run a delivery started (plan 11, stricter

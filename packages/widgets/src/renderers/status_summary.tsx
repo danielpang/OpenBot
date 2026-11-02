@@ -1,4 +1,4 @@
-import { cn } from '@openbot/ui';
+import { cn } from '@openbots/ui';
 import type { StatusSummaryProps } from '../kinds/status_summary.js';
 import type { WidgetRendererProps } from './types.js';
 

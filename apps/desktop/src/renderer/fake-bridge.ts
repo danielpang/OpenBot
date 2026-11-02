@@ -3,7 +3,7 @@ import type { ProfilesView } from '../ipc.js';
 import type { AppBridge } from '../preload/bridge.js';
 import type { StackPhase, StackProgress, StackStatus } from '../stack/manager.js';
 
-// A window.openbot for the app pages' tests: every call a mock, the stack
+// A window.openbots for the app pages' tests: every call a mock, the stack
 // reporting the phases a start goes through.
 
 /** The bridge with each call a vitest mock of itself. */
@@ -24,7 +24,7 @@ export const port = { port: 3000, taken: false, free: null };
 
 export const running: StackStatus = {
   docker: ready,
-  services: [{ service: 'openbot', state: 'running', health: 'healthy' }],
+  services: [{ service: 'openbots', state: 'running', health: 'healthy' }],
   upgrade: null,
   port,
 };
@@ -107,7 +107,7 @@ export function fakeBridge(
           onLine: (line: string) => void,
           _onExit?: (code: number | null) => void,
         ) => {
-          onLine('openbot-1 | listening');
+          onLine('openbots-1 | listening');
           onLine('postgres-1 | ready');
           return () => undefined;
         },

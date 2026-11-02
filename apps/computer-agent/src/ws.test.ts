@@ -217,17 +217,17 @@ describe('ptySession', () => {
       },
     };
     const ws = { on: () => {}, readyState: 1, OPEN: 1 } as unknown as WebSocket;
-    const users = new Users('/usr/local/libexec/openbot/runas');
+    const users = new Users('/usr/local/libexec/openbots/runas');
     ptySession(ws, new URL('http://agent/pty'), { home: '/home/bot', users }, nodePty);
     expect(started).toEqual({
-      file: '/usr/local/libexec/openbot/runas',
+      file: '/usr/local/libexec/openbots/runas',
       args: ['1000', '1000', '--', '/bin/bash', '-l'],
     });
   });
 
   it('starts the shell without the agent token (S-7)', async () => {
-    const before = process.env.OPENBOT_AGENT_TOKEN;
-    process.env.OPENBOT_AGENT_TOKEN = TEST_TOKEN;
+    const before = process.env.OPENBOTS_AGENT_TOKEN;
+    process.env.OPENBOTS_AGENT_TOKEN = TEST_TOKEN;
     try {
       let env: Record<string, string> | undefined;
       const nodePty: NodePty = {
@@ -245,11 +245,11 @@ describe('ptySession', () => {
       const ws = { on: () => {}, readyState: 1, OPEN: 1 } as unknown as WebSocket;
       ptySession(ws, new URL('http://agent/pty'), { home: '/home/bot' }, nodePty);
       expect(env).toMatchObject({ HOME: '/home/bot', TERM: 'xterm-256color' });
-      expect(env!.OPENBOT_AGENT_TOKEN).toBeUndefined();
+      expect(env!.OPENBOTS_AGENT_TOKEN).toBeUndefined();
       expect(Object.values(env!)).not.toContain(TEST_TOKEN);
     } finally {
-      if (before === undefined) delete process.env.OPENBOT_AGENT_TOKEN;
-      else process.env.OPENBOT_AGENT_TOKEN = before;
+      if (before === undefined) delete process.env.OPENBOTS_AGENT_TOKEN;
+      else process.env.OPENBOTS_AGENT_TOKEN = before;
     }
   });
 });

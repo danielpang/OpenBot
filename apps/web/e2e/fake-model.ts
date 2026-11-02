@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 // double on the wire): it streams its reply word by word so the transcript
 // visibly fills in. "ask me" in the latest owner message makes it call
 // `ask_user` with two options; "delete everything" makes it call a connector's
-// `delete_everything` (the destructive tool of `@openbot/mcp/testing`'s HTTP
+// `delete_everything` (the destructive tool of `@openbots/mcp/testing`'s HTTP
 // server); "write a document" makes it call `create_artifact` with a short
 // Markdown document; "slow" makes it stream for several seconds so Stop can
 // be tried; after a tool result it acknowledges the answer.
@@ -27,7 +27,7 @@ type ChatMessage = { role: string; content?: unknown };
 
 /** The Bot a request is for and the other Bots in its chat, from the instructions. */
 function whoIsAsking(system: string): { self?: string; others: string[] } {
-  const self = /^You are .+? \(@([\w-]+)\), a Bot in OpenBot\./m.exec(system)?.[1];
+  const self = /^You are .+? \(@([\w-]+)\), a Bot in OpenBots\./m.exec(system)?.[1];
   const others = [...system.matchAll(/^- @([\w-]+) \([^;\n]*; bot\)/gm)].map((m) => m[1]!);
   return { self, others: others.filter((h) => h !== self) };
 }

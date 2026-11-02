@@ -5,7 +5,7 @@ import {
   ProviderDiscoverySchema,
   ProviderKindSchema,
   ProviderProtocolSchema,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { z } from 'zod';
 
 // Presets for built-in providers and custom endpoints (plan 5.9, L2). The data

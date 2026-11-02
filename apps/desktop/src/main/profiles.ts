@@ -28,7 +28,7 @@ export class ProfileError extends Error {
 }
 
 /**
- * The URL of the local stack, from OPENBOT_HTTP_PORT in its `.env` when set:
+ * The URL of the local stack, from OPENBOTS_HTTP_PORT in its `.env` when set:
  * the free port the stack manager chose for it, read as Compose reads it.
  */
 export function localServerUrl(envText?: string): string {
@@ -54,7 +54,7 @@ export function normalizeServerUrl(input: string): string {
   try {
     url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
   } catch {
-    throw new ProfileError('Enter a server URL, like https://openbot.example.com.');
+    throw new ProfileError('Enter a server URL, like https://openbots.example.com.');
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new ProfileError('A server URL starts with http:// or https://.');

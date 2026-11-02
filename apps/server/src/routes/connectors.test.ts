@@ -4,7 +4,7 @@ import {
   startTestHttpServer,
   type MockAuthServer,
   type TestHttpServer,
-} from '@openbot/mcp/testing';
+} from '@openbots/mcp/testing';
 import {
   existsSync,
   mkdirSync,
@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { EVENTS_CHANNEL } from '@openbot/shared';
+import { EVENTS_CHANNEL } from '@openbots/shared';
 import { schema } from '../db/client.js';
 import { encryptSecret, keyringFromConfig } from '../secrets.js';
 import {
@@ -97,23 +97,23 @@ describe('/api/v1/connectors', () => {
     (await t.db.select().from(schema.users).where(eq(schema.users.email, email)))[0]!.id;
 
   beforeAll(async () => {
-    filesDir = mkdtempSync(join(tmpdir(), 'openbot-connectors-'));
-    mcpDir = mkdtempSync(join(tmpdir(), 'openbot-mcp-install-'));
+    filesDir = mkdtempSync(join(tmpdir(), 'openbots-connectors-'));
+    mcpDir = mkdtempSync(join(tmpdir(), 'openbots-mcp-install-'));
     mkdirSync(join(mcpDir, 'node_modules', '.bin'), { recursive: true });
     for (const bin of ['mcp-server-filesystem', 'mcp-server-postgres']) {
       writeFileSync(join(mcpDir, 'node_modules', '.bin', bin), '');
     }
     t = await createTestApp({
-      OPENBOT_DEPLOYMENT: 'managed',
-      OPENBOT_SIGNUP_MODE: 'open',
-      OPENBOT_FILES_DIR: filesDir,
-      OPENBOT_MCP_DIR: mcpDir,
+      OPENBOTS_DEPLOYMENT: 'managed',
+      OPENBOTS_SIGNUP_MODE: 'open',
+      OPENBOTS_FILES_DIR: filesDir,
+      OPENBOTS_MCP_DIR: mcpDir,
       // Both stay off on the hosted service (plan 21.6); this suite covers them.
-      OPENBOT_CUSTOM_STDIO: 'true',
-      OPENBOT_LOCAL_ENDPOINTS: 'true',
+      OPENBOTS_CUSTOM_STDIO: 'true',
+      OPENBOTS_LOCAL_ENDPOINTS: 'true',
       // As is host stdio, which this suite covers; computer-stdio.test.ts runs them in computers.
-      OPENBOT_STDIO_RUNNER: 'host',
-      OPENBOT_ALLOW_HOST_STDIO: '1',
+      OPENBOTS_STDIO_RUNNER: 'host',
+      OPENBOTS_ALLOW_HOST_STDIO: '1',
     });
     admin = (await t.signUp('admin@example.com')).cookie!;
     member = (await t.signUp('member@example.com')).cookie!;
@@ -316,7 +316,7 @@ describe('/api/v1/connectors', () => {
     const [row] = await t.db.select().from(schema.connectors).where(eq(schema.connectors.id, c.id));
     expect(row!.config).toMatchObject({
       discovered: {
-        server: { name: 'openbot-test-stdio' },
+        server: { name: 'openbots-test-stdio' },
         resources: [{ uri: 'test://readme' }],
         prompts: [{ name: 'greet' }],
       },
@@ -834,7 +834,7 @@ describe('/api/v1/connectors', () => {
       expect(page).toContain('You can close this window.');
       // Only the status and the connector go to the opener, at our own origin.
       expect(page).toContain(
-        `postMessage({"type":"openbot:oauth","status":"connected","connectorId":"${c.id}"}, "${ORIGIN}")`,
+        `postMessage({"type":"openbots:oauth","status":"connected","connectorId":"${c.id}"}, "${ORIGIN}")`,
       );
       expect(page).toContain('window.close()');
       expect(page).not.toMatch(/at_|rt_|code_verifier/);
@@ -872,7 +872,7 @@ describe('/api/v1/connectors', () => {
       const page = await res.text();
       expect(res.status).toBe(200);
       expect(page).toContain('Browser sign-in is connected');
-      expect(page).toContain('href="openbot://connectors"');
+      expect(page).toContain('href="openbots://connectors"');
       expect(page).toContain('Return to OpenBots');
       // Nothing to tell and nothing to close.
       expect(page).not.toContain('<script');
@@ -1689,7 +1689,7 @@ describe('/api/v1/connectors', () => {
     expect(res.status).toBe(404);
   });
 
-  it('stops idle MCP sessions after OPENBOT_MCP_IDLE_STOP_MINUTES (10 by default)', async () => {
+  it('stops idle MCP sessions after OPENBOTS_MCP_IDLE_STOP_MINUTES (10 by default)', async () => {
     expect(mcpManager(t.ownerDeps).idleMs).toBe(10 * 60_000);
     const { config } = t.ownerDeps;
     const deps = {
@@ -1759,7 +1759,7 @@ describe('the OAuth callback on a self-hosted install', () => {
   let as: MockAuthServer;
   let server: TestHttpServer;
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'self_hosted' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'self_hosted' });
     t.deps.net = { allowPrivateNetwork: true };
     owner = (await t.signUp('owner@example.com')).cookie!;
     as = await startMockAuthServer();
@@ -1797,7 +1797,7 @@ describe('the OAuth callback on a self-hosted install', () => {
     expect(res.status).toBe(200);
     const page = await res.text();
     expect(page).toContain('Desk is connected');
-    expect(page).toContain('href="openbot://connectors"');
+    expect(page).toContain('href="openbots://connectors"');
   });
 
   it('still needs the session for a popup or same-tab sign-in', async () => {

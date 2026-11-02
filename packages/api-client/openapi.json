@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "OpenBot API",
+    "title": "OpenBots API",
     "version": "0.0.0",
     "description": "Accounts and sessions live under `/api/auth/*` (better-auth)."
   },
@@ -839,16 +839,16 @@
           },
           "customStdio": {
             "type": "boolean",
-            "description": "Admins may turn on custom command (stdio) connectors (OPENBOT_CUSTOM_STDIO; off by default on the managed service)"
+            "description": "Admins may turn on custom command (stdio) connectors (OPENBOTS_CUSTOM_STDIO; off by default on the managed service)"
           },
           "localEndpoints": {
             "type": "boolean",
-            "description": "Admins may mark endpoints as on their own network (OPENBOT_LOCAL_ENDPOINTS; off by default on the managed service)"
+            "description": "Admins may mark endpoints as on their own network (OPENBOTS_LOCAL_ENDPOINTS; off by default on the managed service)"
           },
           "auth": {
             "type": "string",
             "enum": ["password", "local"],
-            "description": "`local`: the Mac app on This Mac signs its owner in itself (OPENBOT_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in."
+            "description": "`local`: the Mac app on This Mac signs its owner in itself (OPENBOTS_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in."
           }
         },
         "required": ["oauth", "deployment"]
@@ -5810,7 +5810,7 @@
           },
           "signingSecret": {
             "type": "string",
-            "description": "Shown once, when OpenBot chose it (GitHub, generic)"
+            "description": "Shown once, when OpenBots chose it (GitHub, generic)"
           }
         },
         "required": ["endpoint"]
@@ -5885,7 +5885,7 @@
             "type": "string",
             "minLength": 8,
             "maxLength": 500,
-            "description": "Required for Slack and Stripe; OpenBot chooses one for GitHub and generic"
+            "description": "Required for Slack and Stripe; OpenBots chooses one for GitHub and generic"
           }
         },
         "required": ["preset"],
@@ -6092,7 +6092,7 @@
           },
           "secret": {
             "type": "string",
-            "description": "Shown once. Deliveries carry `X-OpenBot-Signature: t=<unix>,v1=<hex HMAC-SHA256 of \"<t>.<body>\">`"
+            "description": "Shown once. Deliveries carry `X-OpenBots-Signature: t=<unix>,v1=<hex HMAC-SHA256 of \"<t>.<body>\">`"
           }
         },
         "required": ["subscription"]
@@ -6402,7 +6402,7 @@
             }
           },
           "404": {
-            "description": "Metrics are off (no OPENBOT_METRICS_TOKEN)",
+            "description": "Metrics are off (no OPENBOTS_METRICS_TOKEN)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -10089,7 +10089,7 @@
                     "oauthCallbackUrl": {
                       "type": "string",
                       "format": "uri",
-                      "description": "The redirect URL an OAuth app made by hand must allow (from `OPENBOT_PUBLIC_URL`)"
+                      "description": "The redirect URL an OAuth app made by hand must allow (from `OPENBOTS_PUBLIC_URL`)"
                     }
                   },
                   "required": ["items", "oauthCallbackUrl"]
@@ -10828,7 +10828,7 @@
       "get": {
         "tags": ["connectors"],
         "summary": "Begin an OAuth 2.1 sign-in (PKCE, dynamic registration when offered)",
-        "description": "Answers with the authorization URL to open. After consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOT_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).",
+        "description": "Answers with the authorization URL to open. After consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOTS_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).",
         "security": [
           {
             "session": []
@@ -13636,7 +13636,7 @@
         },
         "responses": {
           "200": {
-            "description": "The endpoint, with a signing secret when OpenBot chose a new one",
+            "description": "The endpoint, with a signing secret when OpenBots chose a new one",
             "content": {
               "application/json": {
                 "schema": {
@@ -14542,14 +14542,14 @@
       "post": {
         "tags": ["auth"],
         "summary": "Sign in the owner of the Mac app’s local stack (its main process only)",
-        "description": "Needs OPENBOT_LOCAL_TOKEN in the `x-openbot-local-token` header. Creates the owner when there is none, then sets an ordinary session cookie. Browsers are refused.",
+        "description": "Needs OPENBOTS_LOCAL_TOKEN in the `x-openbots-local-token` header. Creates the owner when there is none, then sets an ordinary session cookie. Browsers are refused.",
         "parameters": [
           {
             "schema": {
               "type": "string"
             },
             "required": false,
-            "name": "x-openbot-local-token",
+            "name": "x-openbots-local-token",
             "in": "header"
           }
         ],

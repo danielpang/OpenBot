@@ -12,11 +12,11 @@ function argument(name: string): string | undefined {
   return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
 }
 
-const platform = JSON.parse(argument('openbot-platform') ?? '{}') as PlatformInfo;
-const appBase = argument('openbot-app-base');
+const platform = JSON.parse(argument('openbots-platform') ?? '{}') as PlatformInfo;
+const appBase = argument('openbots-app-base');
 
 contextBridge.exposeInMainWorld(
-  'openbot',
+  'openbots',
   isAppPage(location.href, appBase)
     ? createAppBridge(ipcRenderer, platform)
     : createWebBridge(ipcRenderer, platform),

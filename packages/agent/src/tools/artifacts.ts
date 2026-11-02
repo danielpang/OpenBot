@@ -1,11 +1,11 @@
-import { computerPath } from '@openbot/computer';
+import { computerPath } from '@openbots/computer';
 import {
   ArtifactKindSchema,
   DEFAULT_LIMITS,
   isTextArtifactKind,
   type ArtifactKind,
   type MessagePart,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { z } from 'zod';
 import { attachmentTools } from './attachments.js';
 import { defineTool, type AnyAgentTool, type ToolContext, type ToolGroup } from './types.js';
@@ -15,7 +15,7 @@ import { defineTool, type AnyAgentTool, type ToolContext, type ToolGroup } from 
 // backend (`ArtifactServices`, apps/server/src/services/artifacts.ts), which
 // stores the version, applies patches and publishes `artifact.created` or
 // `artifact.updated`; the run loop adds the card part after the result. The
-// policy runs the group without asking: it only writes OpenBot storage.
+// policy runs the group without asking: it only writes OpenBots storage.
 //
 // `publish_artifact` and `artifact_to_computer` move files between the
 // Artifacts and the Bot's computer (A3); without a computer they answer a

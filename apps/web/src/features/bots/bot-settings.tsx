@@ -1,5 +1,5 @@
-import { AvatarEditor } from '@openbot/avatars/react';
-import { Button, Input } from '@openbot/ui';
+import { AvatarEditor } from '@openbots/avatars/react';
+import { Button, Input } from '@openbots/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';

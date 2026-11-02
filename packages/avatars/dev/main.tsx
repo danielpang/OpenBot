@@ -1,4 +1,4 @@
-import type { Avatar as AvatarValue } from '@openbot/shared';
+import type { Avatar as AvatarValue } from '@openbots/shared';
 import { StrictMode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AVATAR_STATES, generate } from '../src/index.js';

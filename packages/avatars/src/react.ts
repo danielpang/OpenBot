@@ -1,4 +1,4 @@
-// React entry: `@openbot/avatars/react`. Kept apart from the main entry so
+// React entry: `@openbots/avatars/react`. Kept apart from the main entry so
 // the server can import the generator and PNG renderer without React.
 
 export { Avatar, defaultFileUrl, type AvatarProps } from './avatar.js';

@@ -19,7 +19,7 @@ const paths: StackPaths = bundledStackPaths(
 const BASE = [
   'compose',
   '--project-name',
-  'openbot-app',
+  'openbots-app',
   '--project-directory',
   '/Users/ada/Library/Application Support/OpenBots/stack',
   '--env-file',
@@ -78,8 +78,8 @@ describe('composeArgs', () => {
 
   it('follows logs with a tail and optional services', () => {
     expect(
-      composeArgs(paths, { kind: 'logs', tail: 50, follow: true, services: ['openbot'] }),
-    ).toEqual([...BASE, 'logs', '--no-color', '--tail', '50', '--follow', 'openbot']);
+      composeArgs(paths, { kind: 'logs', tail: 50, follow: true, services: ['openbots'] }),
+    ).toEqual([...BASE, 'logs', '--no-color', '--tail', '50', '--follow', 'openbots']);
     expect(composeArgs(paths, { kind: 'logs', tail: -3, follow: false })).toEqual([
       ...BASE,
       'logs',
@@ -96,15 +96,15 @@ describe('composeArgs', () => {
 });
 
 describe('the project name', () => {
-  it("is the app's own, apart from a source checkout's openbot, unless an older install keeps it", () => {
-    expect(PROJECT_NAME).toBe('openbot-app');
-    expect(LEGACY_PROJECT_NAME).toBe('openbot');
-    expect(composeArgs(paths, { kind: 'ps' }, 'openbot').slice(0, 3)).toEqual([
+  it("is the app's own, apart from a source checkout's openbots, unless an older install keeps it", () => {
+    expect(PROJECT_NAME).toBe('openbots-app');
+    expect(LEGACY_PROJECT_NAME).toBe('openbots');
+    expect(composeArgs(paths, { kind: 'ps' }, 'openbots').slice(0, 3)).toEqual([
       'compose',
       '--project-name',
-      'openbot',
+      'openbots',
     ]);
-    expect(isProjectName('openbot-app')).toBe(true);
+    expect(isProjectName('openbots-app')).toBe(true);
     expect(isProjectName('Bad Name')).toBe(false);
     expect(isProjectName('')).toBe(false);
   });
@@ -119,11 +119,11 @@ describe('the project name', () => {
 describe('parseComposePs', () => {
   it('reads one JSON object per line (Compose 2.21+)', () => {
     const stdout = [
-      JSON.stringify({ Service: 'openbot', State: 'running', Health: 'healthy' }),
+      JSON.stringify({ Service: 'openbots', State: 'running', Health: 'healthy' }),
       JSON.stringify({ Service: 'postgres', State: 'running', Health: '' }),
     ].join('\n');
     expect(parseComposePs(stdout)).toEqual([
-      { service: 'openbot', state: 'running', health: 'healthy' },
+      { service: 'openbots', state: 'running', health: 'healthy' },
       { service: 'postgres', state: 'running', health: '' },
     ]);
   });

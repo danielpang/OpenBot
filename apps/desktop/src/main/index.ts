@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { access, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { WebSocketLike } from '@openbot/api-client';
+import type { WebSocketLike } from '@openbots/api-client';
 import {
   app,
   BrowserWindow,
@@ -72,7 +72,9 @@ const RENDERER_URL = process.env.ELECTRON_RENDERER_URL;
 const DEV_ICON = devAppIconPath({ packaged: app.isPackaged, mainDir: here });
 
 // A development build takes its name from package.json. Name it OpenBots in
-// menus and dialogs, as the packaged app is, and keep its data where it was.
+// menus and dialogs, as the packaged app is, but keep its data in the folder
+// named after the package (Application Support/@openbots/desktop), apart from
+// the packaged app's (Application Support/OpenBots).
 if (!app.isPackaged) {
   const userData = app.getPath('userData');
   app.setName('OpenBots');
@@ -118,7 +120,7 @@ const paths = stackPaths();
 const stack = createStackManager({
   paths,
   serverVersion: app.isPackaged ? app.getVersion() : undefined,
-  // `OPENBOT_IMAGE_PREFIX=openbot-local OPENBOT_VERSION=dev pnpm dev` runs images built from source.
+  // `OPENBOTS_IMAGE_PREFIX=openbots-local OPENBOTS_VERSION=dev pnpm dev` runs images built from source.
   images: devImageOverrides(process.env, app.isPackaged),
   // When the registry refuses the release's images (GHCR packages start
   // private), a packaged app loads them from its GitHub Release instead.
@@ -126,7 +128,7 @@ const stack = createStackManager({
     ? releaseImageLoader({ repository: releaseRepository() })
     : undefined,
 });
-/** The packaged package.json, where the build writes `openbot.cloudUrl`. */
+/** The packaged package.json, where the build writes `openbots.cloudUrl`. */
 function packageJson(): unknown {
   try {
     return JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8'));
@@ -150,9 +152,9 @@ const profiles = createProfileStore({
       () => true,
       () => false,
     ),
-  // OPENBOT_DESKTOP_LOCAL_URL points the local profile at a dev server instead.
+  // OPENBOTS_DESKTOP_LOCAL_URL points the local profile at a dev server instead.
   localUrl: async () =>
-    process.env.OPENBOT_DESKTOP_LOCAL_URL ??
+    process.env.OPENBOTS_DESKTOP_LOCAL_URL ??
     localServerUrl(await readFile(paths.envFile, 'utf8').catch(() => undefined)),
 });
 const tokens = createTokenStore({
@@ -164,8 +166,8 @@ const gate = createServerGate({
   verify: (profile) =>
     verifyServer(profile, {
       fetch: (url, init) => fetch(url, init),
-      // A development server named by OPENBOT_DESKTOP_LOCAL_URL is not the stack's.
-      stack: process.env.OPENBOT_DESKTOP_LOCAL_URL ? null : stack,
+      // A development server named by OPENBOTS_DESKTOP_LOCAL_URL is not the stack's.
+      stack: process.env.OPENBOTS_DESKTOP_LOCAL_URL ? null : stack,
     }),
 });
 
@@ -173,10 +175,10 @@ const gate = createServerGate({
 // stack's local token (./local-session.ts), which stays in this process.
 const localSignIn = createLocalSignIn({
   fetch: (url, init) => fetch(url, init),
-  // A development server named by OPENBOT_DESKTOP_LOCAL_URL takes its token from the environment.
+  // A development server named by OPENBOTS_DESKTOP_LOCAL_URL takes its token from the environment.
   token: async () =>
-    process.env.OPENBOT_DESKTOP_LOCAL_URL
-      ? (process.env.OPENBOT_LOCAL_TOKEN ?? null)
+    process.env.OPENBOTS_DESKTOP_LOCAL_URL
+      ? (process.env.OPENBOTS_LOCAL_TOKEN ?? null)
       : stack.localToken(),
   name: () =>
     ownerName(
@@ -226,8 +228,8 @@ function webPreferences(partition?: Session): Electron.WebPreferences {
     webSecurity: true,
     ...(partition ? { session: partition } : {}),
     additionalArguments: [
-      `--openbot-platform=${JSON.stringify(platformInfo())}`,
-      `--openbot-app-base=${RENDERER_URL ?? ''}`,
+      `--openbots-platform=${JSON.stringify(platformInfo())}`,
+      `--openbots-app-base=${RENDERER_URL ?? ''}`,
     ],
   };
 }

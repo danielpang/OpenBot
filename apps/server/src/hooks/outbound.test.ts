@@ -1,7 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { wsEvent } from '@openbot/shared';
+import { wsEvent } from '@openbots/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
@@ -42,7 +42,7 @@ describe('outbound event subscriptions', () => {
   const net = { allowPrivateNetwork: true };
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     cookie = (await t.signUp('dana@example.com')).cookie!;
     server = createServer((req, res) => {
       let body = '';
@@ -143,9 +143,9 @@ describe('outbound event subscriptions', () => {
     const [request] = about(message.id);
     const body = JSON.parse(request!.body) as Record<string, unknown>;
     expect(body).toMatchObject({ type: 'message.created', data: { message: { id: message.id } } });
-    expect(request!.headers['x-openbot-event']).toBe('message.created');
-    expect(request!.headers['x-openbot-delivery']).toBe(body['id']);
-    const header = request!.headers['x-openbot-signature'] as string;
+    expect(request!.headers['x-openbots-event']).toBe('message.created');
+    expect(request!.headers['x-openbots-delivery']).toBe(body['id']);
+    const header = request!.headers['x-openbots-signature'] as string;
     const ts = Number(/t=(\d+)/.exec(header)![1]);
     expect(header).toBe(signPayload(secret, request!.body, ts));
     expect(header).toBe(

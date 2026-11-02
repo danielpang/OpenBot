@@ -1,5 +1,5 @@
-import type { components } from '@openbot/api-client';
-import type { WsEvent } from '@openbot/shared';
+import type { components } from '@openbots/api-client';
+import type { WsEvent } from '@openbots/shared';
 import type { DeepLink } from './deep-links.js';
 import { linkFor, type ChatKind } from './notices.js';
 

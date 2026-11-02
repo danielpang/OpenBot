@@ -1,9 +1,9 @@
-// The server process (plan 21.5). OPENBOT_ROLE picks what runs: `api`
+// The server process (plan 21.5). OPENBOTS_ROLE picks what runs: `api`
 // serves HTTP, `worker` runs background work, `all` (the default) does both.
 // The self-hosted entry (main.ts) runs it with no extensions; the managed
 // service's entry (ee/server) passes its own.
 import { serve } from '@hono/node-server';
-import { makeNonDumpable } from '@openbot/mcp';
+import { makeNonDumpable } from '@openbots/mcp';
 import { createApp } from './app.js';
 import { createAuth, encryptStoredOAuthTokens } from './auth.js';
 import { loadConfig } from './config.js';
@@ -42,7 +42,7 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
   // The core alone cannot make an organization: the managed service runs from ee/server.
   if (config.deployment === 'managed' && !extensions.organizations) {
     throw new Error(
-      'OPENBOT_DEPLOYMENT=managed runs from the managed server build (ee/server); this is the self-hosted server',
+      'OPENBOTS_DEPLOYMENT=managed runs from the managed server build (ee/server); this is the self-hosted server',
     );
   }
   if (config.secretsFromEnvironment.length) {
@@ -53,14 +53,14 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
   }
   if (config.deployment === 'managed' && config.stdioRunner === 'host') {
     logger.warn(
-      "OPENBOT_STDIO_RUNNER=host on the managed service (OPENBOT_ALLOW_HOST_STDIO): every organization's stdio connectors run on this server as one user, with no isolation between them",
+      "OPENBOTS_STDIO_RUNNER=host on the managed service (OPENBOTS_ALLOW_HOST_STDIO): every organization's stdio connectors run on this server as one user, with no isolation between them",
     );
   }
   // Files this process makes are its own; stdio servers run as another user (S-1).
   process.umask(0o077);
   protectFilesDir(config.filesDir);
   // Migrations as the tables' owner; then the app works under row-level
-  // security, as openbot_app (db/app-role.ts, db/scope.ts).
+  // security, as openbots_app (db/app-role.ts, db/scope.ts).
   const owner = createDb(config.databaseUrl);
   await migrate(owner);
   const db = await openAppDb(owner, config, logger);
@@ -119,7 +119,7 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
   async function rotateInBackground() {
     logger.info(
       { previousKeys: config.previousMasterKeys.length },
-      'master key rotation: re-sealing secrets under OPENBOT_MASTER_KEY',
+      'master key rotation: re-sealing secrets under OPENBOTS_MASTER_KEY',
     );
     try {
       const report = await rotateMasterKey({
@@ -131,12 +131,12 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
       if (report.failed.length) {
         logger.warn(
           { ...summary, failed: report.failed },
-          'master key rotation: some secrets open with no configured key; keep OPENBOT_MASTER_KEY_PREVIOUS until they are re-entered',
+          'master key rotation: some secrets open with no configured key; keep OPENBOTS_MASTER_KEY_PREVIOUS until they are re-entered',
         );
       } else {
         logger.info(
           summary,
-          'master key rotation done; OPENBOT_MASTER_KEY_PREVIOUS can be removed',
+          'master key rotation done; OPENBOTS_MASTER_KEY_PREVIOUS can be removed',
         );
       }
     } catch (err) {

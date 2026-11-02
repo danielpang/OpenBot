@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { EventBus } from '@openbot/shared';
+import type { EventBus } from '@openbots/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MemoryEventBus } from './bus-memory.js';
 import { RedisEventBus } from './bus-redis.js';

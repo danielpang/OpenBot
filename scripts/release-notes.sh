@@ -4,7 +4,7 @@
 # each download, whether the Mac app is signed, and the commits since the
 # previous release tag.
 #
-#   TAG=v1.2.0 REPOSITORY=owner/repo IMAGE_PREFIX=ghcr.io/owner/openbot \
+#   TAG=v1.2.0 REPOSITORY=owner/repo IMAGE_PREFIX=ghcr.io/owner/openbots \
 #     SIGNED=true PRERELEASE=false PRIVATE_IMAGES="" bash scripts/release-notes.sh
 #
 # PRIVATE_IMAGES lists the images an anonymous pull cannot reach yet
@@ -14,7 +14,7 @@ set -euo pipefail
 
 : "${TAG:?TAG is required, such as v1.2.0}"
 : "${REPOSITORY:?REPOSITORY is required, such as danielpang/OpenBots}"
-: "${IMAGE_PREFIX:?IMAGE_PREFIX is required, such as ghcr.io/danielpang/openbot}"
+: "${IMAGE_PREFIX:?IMAGE_PREFIX is required, such as ghcr.io/danielpang/openbots}"
 SIGNED="${SIGNED:-false}"
 PRERELEASE="${PRERELEASE:-false}"
 PRIVATE_IMAGES="${PRIVATE_IMAGES:-}"
@@ -62,15 +62,15 @@ cat <<EOF
 For a server or any machine with Docker Compose 2.24 or later:
 
 ${fence}sh
-curl -fsSLO $download/openbot-compose-$version.tar.gz
-tar -xzf openbot-compose-$version.tar.gz
-cd openbot-$version
+curl -fsSLO $download/openbots-compose-$version.tar.gz
+tar -xzf openbots-compose-$version.tar.gz
+cd openbots-$version
 bash install.sh
 ${fence}
 
 The bundle holds the compose files, \`.env.example\`, \`install.sh\`, the egress proxy settings and
 the backup and restore scripts. Its \`.env.example\` runs this release's images
-(\`OPENBOT_VERSION=$version\`).
+(\`OPENBOTS_VERSION=$version\`).
 
 ## Container images
 
@@ -107,11 +107,11 @@ fi
 cat <<EOF
 ## Image archives
 
-\`openbot-<image>-$version-linux-<arch>.tar.gz\` holds one image for one architecture (\`amd64\`, or
+\`openbots-<image>-$version-linux-<arch>.tar.gz\` holds one image for one architecture (\`amd64\`, or
 \`arm64\` for Apple Silicon and ARM servers), for machines that cannot pull from GHCR:
 
 ${fence}sh
-docker load -i openbot-server-$version-linux-arm64.tar.gz
+docker load -i openbots-server-$version-linux-arm64.tar.gz
 ${fence}
 
 ## Verify the downloads

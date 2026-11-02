@@ -10,7 +10,7 @@ import {
   type ProviderConfig,
   type ProviderModel,
   type ProviderSource,
-} from '@openbot/models';
+} from '@openbots/models';
 import {
   DEFAULT_CAPABILITIES,
   ModelCapabilitiesSchema,
@@ -27,7 +27,7 @@ import {
   type ProviderProtocol,
   type ProviderStatus,
   type ProviderTestResult,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { and, asc, count, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { BlockedAddressError, checkedAddresses, netFetch } from '../builtins/net.js';
 import type { AppDeps, CurrentUser } from '../context.js';
@@ -363,7 +363,7 @@ function seedSpecs(config: AppDeps['config']): SeedSpec[] {
       slug: 'ollama',
       apiKey: null,
       baseUrl: ollamaBaseUrl(keys.ollamaBaseUrl),
-      // OLLAMA_BASE_URL names a server next to OpenBot, usually a compose service.
+      // OLLAMA_BASE_URL names a server next to OpenBots, usually a compose service.
       local: true,
     });
   }

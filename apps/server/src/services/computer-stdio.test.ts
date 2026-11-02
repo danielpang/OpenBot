@@ -1,9 +1,9 @@
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { containerName, createDockerProvider, type ComputerProvider } from '@openbot/computer';
-import { mockDocker, startFakeAgent, type FakeAgent } from '@openbot/computer/testing';
-import { TEST_STDIO_SERVER } from '@openbot/mcp/testing';
+import { containerName, createDockerProvider, type ComputerProvider } from '@openbots/computer';
+import { mockDocker, startFakeAgent, type FakeAgent } from '@openbots/computer/testing';
+import { TEST_STDIO_SERVER } from '@openbots/mcp/testing';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AppDeps } from '../context.js';
@@ -14,7 +14,7 @@ import { NO_COMPUTER, STDIO_TOUCH_MS } from './computer-stdio.js';
 import { closeMcpManager, mcpManager } from './connectors.js';
 import { inEveryOrganization } from '../workers.js';
 
-// Stdio connectors in their owner's computer (OPENBOT_STDIO_RUNNER=computer,
+// Stdio connectors in their owner's computer (OPENBOTS_STDIO_RUNNER=computer,
 // the managed default). Every computer here is the docker provider over a
 // mocked dockerode with its own in-process fake agent, which runs the agent's
 // real `/mcp/stdio` and starts the in-repo test server in place of the
@@ -75,7 +75,7 @@ describe('stdio connectors in the computer (managed)', () => {
   let orgB: string;
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     computers = useComputers(t.ownerDeps);
     alice = (await t.signUp('alice@example.com')).cookie!;
     bob = (await t.signUp('bob@example.com')).cookie!;
@@ -150,7 +150,7 @@ describe('stdio connectors in the computer (managed)', () => {
     expect(agent.mcpStdio).toEqual([
       {
         type: 'start',
-        command: '/opt/openbot/mcp/node_modules/.bin/mcp-server-filesystem',
+        command: '/opt/openbots/mcp/node_modules/.bin/mcp-server-filesystem',
         args: ['/home/bot/notes'],
         env: {},
         dirs: ['notes'],
@@ -178,7 +178,7 @@ describe('stdio connectors in the computer (managed)', () => {
     expect(bobAgent).not.toBe(aliceAgent);
     expect(bobAgent.mcpStdio).toHaveLength(1);
     expect(bobAgent.mcpStdio[0]).toMatchObject({
-      command: '/opt/openbot/mcp/node_modules/.bin/mcp-server-postgres',
+      command: '/opt/openbots/mcp/node_modules/.bin/mcp-server-postgres',
       args: ['postgresql://ro@203.0.113.7:5432/app'],
       env: { PGPASSWORD: 'sekrit-pg-pass' },
     });
@@ -294,12 +294,12 @@ describe('stdio connectors on a self-hosted install', () => {
 
   beforeAll(async () => {
     // A catalog install whose filesystem binary is the test server.
-    mcpDir = mkdtempSync(join(tmpdir(), 'openbot-mcp-install-'));
+    mcpDir = mkdtempSync(join(tmpdir(), 'openbots-mcp-install-'));
     mkdirSync(join(mcpDir, 'node_modules', '.bin'), { recursive: true });
     const bin = join(mcpDir, 'node_modules', '.bin', 'mcp-server-filesystem');
     writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${TEST_STDIO_SERVER}"\n`);
     chmodSync(bin, 0o755);
-    t = await createTestApp({ OPENBOT_MCP_DIR: mcpDir });
+    t = await createTestApp({ OPENBOTS_MCP_DIR: mcpDir });
     computers = useComputers(t.ownerDeps);
   });
   afterAll(async () => {

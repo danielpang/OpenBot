@@ -1,5 +1,5 @@
-import { DEFAULT_CAPABILITIES, type ModelCapabilities, type ModelPricing } from '@openbot/shared';
-import { Button, Input } from '@openbot/ui';
+import { DEFAULT_CAPABILITIES, type ModelCapabilities, type ModelPricing } from '@openbots/shared';
+import { Button, Input } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import {

@@ -21,9 +21,9 @@ import {
   Textarea,
 } from './index.js';
 
-describe('@openbot/ui', () => {
+describe('@openbots/ui', () => {
   it('exports its package name', () => {
-    expect(PACKAGE_NAME).toBe('@openbot/ui');
+    expect(PACKAGE_NAME).toBe('@openbots/ui');
   });
 
   it('merges conflicting Tailwind classes, last one winning', () => {

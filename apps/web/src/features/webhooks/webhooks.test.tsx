@@ -89,7 +89,7 @@ function endpoint(patch: Partial<Endpoint> = {}): Endpoint {
     botId: BOT,
     routineId: null,
     slug: 'inbox',
-    url: 'https://openbot.example/hooks/grace',
+    url: 'https://openbots.example/hooks/grace',
     hasToken: true,
     signature: null,
     match: null,
@@ -374,7 +374,7 @@ describe('the Bot’s webhook endpoints', () => {
     server.endpoints = [endpoint({ hasToken: false })];
     render(<BotInbox botId={BOT} />);
     await until(() => !!button('Generate token'), 'the inbox without a token');
-    expect(host.textContent).toContain('POST https://openbot.example/hooks/grace');
+    expect(host.textContent).toContain('POST https://openbots.example/hooks/grace');
     expect(host.textContent).toContain('Generate a token to accept deliveries.');
     // The inbox can be turned off in its settings, not deleted.
     expect(button('Delete')).toBeUndefined();
@@ -390,7 +390,7 @@ describe('the Bot’s webhook endpoints', () => {
     expect(sent('POST', `/bots/${BOT}/endpoints`)).toBeUndefined();
     expect(input('Token').value).toBe('obt_first');
     await until(() => !!button('Rotate token'), 'the inbox with a token');
-    expect(host.textContent).toContain('POST https://openbot.example/hooks/grace');
+    expect(host.textContent).toContain('POST https://openbots.example/hooks/grace');
     click(button('Done'));
     expect(host.querySelector('[data-shown-once]')).toBeNull();
     expect(host.innerHTML).not.toContain('obt_first');
@@ -417,13 +417,13 @@ describe('the Bot’s webhook endpoints', () => {
         id: '00000000-0000-4000-8000-0000000000a2',
         routineId: ROUTINE,
         slug: 'triage-issues',
-        url: 'https://openbot.example/hooks/grace/triage-issues',
+        url: 'https://openbots.example/hooks/grace/triage-issues',
         hasToken: false,
       }),
     ];
     render(<RoutineEndpoint botId={BOT} routine={eventRoutine} />);
     await until(() => !!button('Generate token'), 'the Routine endpoint');
-    expect(host.textContent).toContain('POST https://openbot.example/hooks/grace/triage-issues');
+    expect(host.textContent).toContain('POST https://openbots.example/hooks/grace/triage-issues');
     // Only the Routine's own endpoint, not the inbox.
     expect(host.querySelectorAll('[data-endpoint]')).toHaveLength(1);
     expect(button('Add endpoint')).toBeUndefined();
@@ -579,16 +579,16 @@ describe('Settings > Events', () => {
     render(<EventSubscriptions admin />);
     await until(() => !!button('Add subscription'), 'the empty list');
     click(button('Add subscription'));
-    type(input('URL'), 'http://n8n:5678/webhook/openbot');
+    type(input('URL'), 'http://n8n:5678/webhook/openbots');
     click(input('run.failed'));
     click(host.querySelector('input[name="local"]'));
     server.subscriptions = [
-      { ...subscription, url: 'http://n8n:5678/webhook/openbot', local: true },
+      { ...subscription, url: 'http://n8n:5678/webhook/openbots', local: true },
     ];
     act(() => host.querySelector('form')!.requestSubmit());
     await until(() => !!sent('POST', '/event-subscriptions'), 'create');
     expect(sent('POST', '/event-subscriptions')!.body).toEqual({
-      url: 'http://n8n:5678/webhook/openbot',
+      url: 'http://n8n:5678/webhook/openbots',
       events: ['run.failed'],
       local: true,
     });

@@ -1,12 +1,12 @@
-import { ApiError } from '@openbot/api-client';
-import { isTextMime, lineDiff, rebaseEdit } from '@openbot/artifacts';
-import { Button, cn } from '@openbot/ui';
+import { ApiError } from '@openbots/api-client';
+import { isTextMime, lineDiff, rebaseEdit } from '@openbots/artifacts';
+import { Button, cn } from '@openbots/ui';
 import {
   ARTIFACT_KIND_LABELS,
   ArtifactKindIcon,
   defaultArtifactDownloadUrl,
   formatBytes,
-} from '@openbot/widgets/react';
+} from '@openbots/widgets/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { botsQuery } from '../bots/queries.js';

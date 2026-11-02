@@ -15,7 +15,7 @@ import {
 } from './server-gate.js';
 
 const LOCAL = 'http://localhost:3000';
-const SELF = 'https://openbot.example.com';
+const SELF = 'https://openbots.example.com';
 const local: ServerProfile = { id: 'local', name: 'This Mac', url: LOCAL, kind: 'local' };
 const remote: ServerProfile = { id: 'a', name: 'Work', url: SELF, kind: 'remote' };
 
@@ -38,7 +38,7 @@ const ready = {
 const running: StackStatus = {
   docker: ready,
   services: [
-    { service: 'openbot', state: 'running', health: 'healthy' },
+    { service: 'openbots', state: 'running', health: 'healthy' },
     { service: 'postgres', state: 'running', health: 'healthy' },
   ],
   upgrade: null,
@@ -82,7 +82,7 @@ describe('verifyServer for a self-hosted server or an account', () => {
       ok: false,
       reason: 'unreachable',
       message:
-        'Could not reach openbot.example.com. Check the address, and that the server is running.',
+        'Could not reach openbots.example.com. Check the address, and that the server is running.',
     });
   });
 });
@@ -116,7 +116,7 @@ describe('verifyServer for This Mac', () => {
     });
     const starting: StackStatus = {
       ...running,
-      services: [{ service: 'openbot', state: 'running', health: 'starting' }],
+      services: [{ service: 'openbots', state: 'running', health: 'starting' }],
     };
     await expect(verify(local, openBotsServer(LOCAL), starting)).resolves.toEqual({
       ok: false,

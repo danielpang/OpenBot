@@ -232,8 +232,8 @@ describe('registerStackIpc', () => {
       expect.any(Function),
       expect.any(Function),
     );
-    emit('openbot-1 | ready');
-    expect(sender.sent).toEqual([[STACK_CHANNELS.logsLine, id, 'openbot-1 | ready']]);
+    emit('openbots-1 | ready');
+    expect(sender.sent).toEqual([[STACK_CHANNELS.logsLine, id, 'openbots-1 | ready']]);
 
     sender.destroy();
     expect(stop).toHaveBeenCalledTimes(1);
@@ -327,7 +327,7 @@ describe('errorParts', () => {
     expect(
       errorParts(
         new Error(
-          "Error invoking remote method 'openbot:stack:upgrade': Error: Pulling the OpenBots images failed.\nline 1\nline 2",
+          "Error invoking remote method 'openbots:stack:upgrade': Error: Pulling the OpenBots images failed.\nline 1\nline 2",
         ),
       ),
     ).toEqual({
@@ -347,7 +347,7 @@ describe('errorParts', () => {
     expect(
       errorParts(
         new Error(
-          `Error invoking remote method 'openbot:stack:start': Error: ${NETWORK_CLASH}\nAddress already in use`,
+          `Error invoking remote method 'openbots:stack:start': Error: ${NETWORK_CLASH}\nAddress already in use`,
         ),
       ),
     ).toEqual({ message: NETWORK_CLASH, detail: 'Address already in use', kind: 'network-clash' });
@@ -366,14 +366,14 @@ describe('isNetworkClash', () => {
   const ADDRESS =
     'Error response from daemon: failed to set up container networking: Address already in use';
   const WARNING =
-    'level=warning msg="a network with name openbot-sandbox exists but was not created for project \\"openbot-app\\". Set `external: true` to use an existing network"';
+    'level=warning msg="a network with name openbots-sbx exists but was not created for project \\"openbots-app\\". Set `external: true` to use an existing network"';
 
   it("tells the sandbox network's clashes", () => {
     expect(isNetworkClash(ADDRESS)).toBe(true);
     expect(isNetworkClash(WARNING)).toBe(true);
     expect(
       isNetworkClash(
-        'failed to create network openbot-app-sandbox-254: Error response from daemon: invalid pool request: Pool overlaps with other one on this address space',
+        'failed to create network openbots-app-sandbox-254: Error response from daemon: invalid pool request: Pool overlaps with other one on this address space',
       ),
     ).toBe(true);
   });
@@ -385,8 +385,8 @@ describe('isNetworkClash', () => {
 
   it("does not take the web port's bind failure for one", () => {
     for (const output of [
-      'Error response from daemon: failed to set up container networking: driver failed programming external connectivity on endpoint openbot-app-openbot-1 (abc): Bind for 0.0.0.0:3000 failed: port is already allocated',
-      'Error response from daemon: failed to set up container networking: driver failed programming external connectivity on endpoint openbot-app-openbot-1 (abc): listen tcp4 0.0.0.0:3000: bind: address already in use',
+      'Error response from daemon: failed to set up container networking: driver failed programming external connectivity on endpoint openbots-app-openbots-1 (abc): Bind for 0.0.0.0:3000 failed: port is already allocated',
+      'Error response from daemon: failed to set up container networking: driver failed programming external connectivity on endpoint openbots-app-openbots-1 (abc): listen tcp4 0.0.0.0:3000: bind: address already in use',
     ]) {
       expect(isNetworkClash(output)).toBe(false);
     }

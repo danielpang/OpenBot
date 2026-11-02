@@ -75,7 +75,7 @@ function logLines(): string[] {
 /**
  * The newest email verification code for `email` in the server's log after
  * line `after`. CI runs the managed server without email and with
- * OPENBOT_DEV_LOG_EMAIL_LINKS=1, which logs the code instead of sending it.
+ * OPENBOTS_DEV_LOG_EMAIL_LINKS=1, which logs the code instead of sending it.
  */
 export async function verificationCode(email: string, after: number): Promise<string> {
   for (let attempt = 0; attempt < 50; attempt++) {

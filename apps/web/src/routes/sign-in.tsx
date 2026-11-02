@@ -63,7 +63,7 @@ function SignIn() {
     <AuthCard title="Sign in">
       {search.signup === 'closed' && deployment !== 'managed' && (
         <p role="status" className="text-center text-sm text-muted-foreground">
-          This OpenBot has one account, its owner. Sign up is closed.
+          This OpenBots server has one account, its owner. Sign up is closed.
         </p>
       )}
       <AuthForm

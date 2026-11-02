@@ -2,7 +2,7 @@ import {
   applyMessageDelta,
   type MessageDelta,
   type MessagePart as SharedPart,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import type { Message } from './api.js';
 
 // The transcript's state (C2): messages by id in seq order, fed by REST pages,

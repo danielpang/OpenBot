@@ -12,7 +12,7 @@
 //   ../web/public/favicon.svg, favicon-32.png, apple-touch-icon.png
 //                      the web UI's tab and home screen icons
 //
-// Run `pnpm --filter @openbot/desktop app-icon` after changing the avatar or
+// Run `pnpm --filter @openbots/desktop app-icon` after changing the avatar or
 // the plate. src/main/app-icon.test.ts checks that the committed files match.
 
 import { execFileSync } from 'node:child_process';
@@ -153,7 +153,7 @@ export async function renderIcons() {
 
 /** Builds build/icon.icns from an iconset rendered straight from the SVG at each size. */
 async function writeIcns(svg) {
-  const work = mkdtempSync(join(tmpdir(), 'openbot-icon-'));
+  const work = mkdtempSync(join(tmpdir(), 'openbots-icon-'));
   try {
     const iconset = join(work, 'icon.iconset');
     mkdirSync(iconset);

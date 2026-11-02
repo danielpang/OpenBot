@@ -1,5 +1,5 @@
-import { COMPUTER_OFF_CLOSE_CODE } from '@openbot/shared';
-import { Button } from '@openbot/ui';
+import { COMPUTER_OFF_CLOSE_CODE } from '@openbots/shared';
+import { Button } from '@openbots/ui';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';

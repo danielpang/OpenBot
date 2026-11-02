@@ -1,6 +1,6 @@
-import { asEvaluation, localEmbedder } from '@openbot/agent';
-import { promptText, scriptedModel, type ScriptedTurn } from '@openbot/agent/testing';
-import type { MessagePart } from '@openbot/shared';
+import { asEvaluation, localEmbedder } from '@openbots/agent';
+import { promptText, scriptedModel, type ScriptedTurn } from '@openbots/agent/testing';
+import type { MessagePart } from '@openbots/shared';
 import type { LanguageModel } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import { randomUUID } from 'node:crypto';
@@ -70,8 +70,8 @@ describe('router', () => {
   beforeAll(async () => {
     // One account makes every Bot in this file, more than the default 50.
     t = await createTestApp({
-      OPENBOT_SIGNUP_MODE: 'open',
-      OPENBOT_LIMITS_BOTS_PER_ACCOUNT: '200',
+      OPENBOTS_SIGNUP_MODE: 'open',
+      OPENBOTS_LIMITS_BOTS_PER_ACCOUNT: '200',
     });
     cookie = (await t.signUp('dana@example.com')).cookie!;
     unhook = registerRunHooks(router);
@@ -501,7 +501,7 @@ describe('router', () => {
       const question = {
         question: 'Which repo?',
         options: [
-          { id: 'a', label: 'openbot' },
+          { id: 'a', label: 'openbots' },
           { id: 'b', label: 'website' },
         ],
       };

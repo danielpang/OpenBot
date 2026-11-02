@@ -1,4 +1,4 @@
-import type { MessagePart } from '@openbot/shared';
+import type { MessagePart } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { injectToolResult, toolCallMessages } from '../index.js';

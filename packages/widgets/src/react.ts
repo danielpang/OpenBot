@@ -1,4 +1,4 @@
-// React entry: `@openbot/widgets/react`. Kept apart from the main entry so
+// React entry: `@openbots/widgets/react`. Kept apart from the main entry so
 // the server can import the kind schemas without React.
 
 export {

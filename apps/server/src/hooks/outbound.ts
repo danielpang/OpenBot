@@ -5,7 +5,7 @@ import {
   type JobHandler,
   type OutboundEvent,
   type WsEvent,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { and, arrayContains, desc, eq } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import {
@@ -28,7 +28,7 @@ import { inWorkspace } from '../db/scope.js';
 // bus and turns the events an owner subscribed to into `event_deliveries`
 // rows, one per (subscription, event, the event's own id), so several
 // workers listening at once still send each event once. Each row is POSTed
-// as JSON with `X-OpenBot-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of
+// as JSON with `X-OpenBots-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of
 // "<t>.<body>">` under the subscription's secret, and retried with backoff
 // until it gets a 2xx or runs out of attempts.
 //
@@ -54,7 +54,7 @@ export type SubscriptionRow = typeof schema.eventSubscriptions.$inferSelect;
 export type EventDeliveryRow = typeof schema.eventDeliveries.$inferSelect;
 
 export const EVENT_DELIVERIES_QUEUE = 'event-deliveries';
-export const SIGNATURE_HEADER = 'X-OpenBot-Signature';
+export const SIGNATURE_HEADER = 'X-OpenBots-Signature';
 /**
  * Attempts before a delivery is marked failed. Internal: with `retryDelayMs`
  * it spans about 20 minutes, which the delivery log and docs describe.
@@ -488,9 +488,9 @@ export async function deliverEvent(
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            'user-agent': 'OpenBot-Webhooks',
-            'x-openbot-event': delivery.event,
-            'x-openbot-delivery': delivery.id,
+            'user-agent': 'OpenBots-Webhooks',
+            'x-openbots-event': delivery.event,
+            'x-openbots-delivery': delivery.id,
             [SIGNATURE_HEADER]: signPayload(secret, body, Math.floor(Date.now() / 1000)),
           },
           body,

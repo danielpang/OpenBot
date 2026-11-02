@@ -1,7 +1,7 @@
-import { ApiError } from '@openbot/api-client';
-import { Button } from '@openbot/ui';
-import { AuthCard } from '@openbot/web/auth-form';
-import type { Me } from '@openbot/web/extensions';
+import { ApiError } from '@openbots/api-client';
+import { Button } from '@openbots/ui';
+import { AuthCard } from '@openbots/web/auth-form';
+import type { Me } from '@openbots/web/extensions';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   acceptInvitation,

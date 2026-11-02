@@ -19,7 +19,7 @@ import { readTokenArchive, tokenArchive } from './token-archive.js';
 import { mockDocker, startFakeAgent, type FakeAgent } from './testing.js';
 import type { ComputerSpec } from './types.js';
 
-const IMAGE = 'ghcr.io/openbot/computer:latest';
+const IMAGE = 'ghcr.io/openbots/computer:latest';
 const policy = { image: IMAGE };
 
 const spec: ComputerSpec = {
@@ -27,7 +27,7 @@ const spec: ComputerSpec = {
   ownerId: '22222222-2222-4222-8222-222222222222',
   image: IMAGE,
   agentToken: 'secret-agent-token',
-  volumeName: 'openbot-home-11111111-1111-4111-8111-111111111111',
+  volumeName: 'openbots-home-11111111-1111-4111-8111-111111111111',
 };
 const NAME = containerName(spec.computerId);
 
@@ -99,9 +99,9 @@ describe('docker guard: containers/create (S-2)', () => {
     ['host networking', (b: Body) => (b.HostConfig.NetworkMode = 'host')],
     [
       "another container's network",
-      (b: Body) => (b.HostConfig.NetworkMode = 'container:openbot-openbot-1'),
+      (b: Body) => (b.HostConfig.NetworkMode = 'container:openbots-openbots-1'),
     ],
-    ['the default network', (b: Body) => (b.HostConfig.NetworkMode = 'openbot_default')],
+    ['the default network', (b: Body) => (b.HostConfig.NetworkMode = 'openbots_default')],
     ['host PID', (b: Body) => (b.HostConfig.PidMode = 'host')],
     ['host IPC', (b: Body) => (b.HostConfig.IpcMode = 'host')],
     ['host user namespace', (b: Body) => (b.HostConfig.UsernsMode = 'host')],
@@ -110,7 +110,7 @@ describe('docker guard: containers/create (S-2)', () => {
       'DAC_OVERRIDE besides the user-switching caps',
       (b: Body) => (b.HostConfig.CapAdd = ['CHOWN', 'SETUID', 'SETGID', 'DAC_OVERRIDE']),
     ],
-    ['the agent token in the environment', (b: Body) => b.Env.push('OPENBOT_AGENT_TOKEN=x')],
+    ['the agent token in the environment', (b: Body) => b.Env.push('OPENBOTS_AGENT_TOKEN=x')],
     [
       "another computer's state volume",
       (b: Body) => (b.HostConfig.Mounts[1]!.Source = stateVolumeName('someone-else')),
@@ -141,11 +141,11 @@ describe('docker guard: containers/create (S-2)', () => {
     // Not one of the egress proxy variables the provider sets (plan 9.5).
     ['ALL_PROXY', (b: Body) => b.Env.push('ALL_PROXY=socks5://10.0.0.1:1080')],
     ['no computer label', (b: Body) => delete b.Labels[MANAGED_LABEL]],
-    ['a second network', (b: Body) => (b.NetworkingConfig.EndpointsConfig.openbot_default = {})],
+    ['a second network', (b: Body) => (b.NetworkingConfig.EndpointsConfig.openbots_default = {})],
     [
       'a fixed address',
       (b: Body) =>
-        (b.NetworkingConfig.EndpointsConfig['openbot-sandbox']!.IPAMConfig = {
+        (b.NetworkingConfig.EndpointsConfig['openbots-sbx']!.IPAMConfig = {
           IPv4Address: '172.30.255.2',
         }),
     ],
@@ -187,9 +187,9 @@ describe('docker guard: other operations', () => {
     );
 
   it('allows pulling and inspecting the sandbox image only', () => {
-    expect(check('POST', '/images/create?fromImage=ghcr.io/openbot/computer&tag=latest')).toEqual({
+    expect(check('POST', '/images/create?fromImage=ghcr.io/openbots/computer&tag=latest')).toEqual({
       allow: true,
-      url: '/images/create?fromImage=ghcr.io%2Fopenbot%2Fcomputer&tag=latest',
+      url: '/images/create?fromImage=ghcr.io%2Fopenbots%2Fcomputer&tag=latest',
     });
     expect(check('GET', `/images/${IMAGE}/json`).allow).toBe(true);
     expect(check('POST', '/images/create?fromImage=alpine&tag=latest').allow).toBe(false);
@@ -199,12 +199,15 @@ describe('docker guard: other operations', () => {
   });
 
   it('compares image references by name and tag', () => {
-    expect(imageRef('ghcr.io/openbot/computer')).toBe(IMAGE);
+    expect(imageRef('ghcr.io/openbots/computer')).toBe(IMAGE);
     expect(imageRef('localhost:5000/computer')).toBe('localhost:5000/computer:latest');
-    const pinned = 'ghcr.io/openbot/computer@sha256:abc';
+    const pinned = 'ghcr.io/openbots/computer@sha256:abc';
     expect(
       checkDockerRequest(
-        { method: 'POST', url: '/images/create?fromImage=ghcr.io/openbot/computer&tag=sha256:abc' },
+        {
+          method: 'POST',
+          url: '/images/create?fromImage=ghcr.io/openbots/computer&tag=sha256:abc',
+        },
         { image: pinned },
       ).allow,
     ).toBe(true);
@@ -220,9 +223,9 @@ describe('docker guard: other operations', () => {
     expect(check('POST', '/networks/create', { ...networkSpec(), Driver: 'host' }).allow).toBe(
       false,
     );
-    expect(check('GET', '/networks/openbot-sandbox').allow).toBe(true);
-    expect(check('GET', '/networks/openbot_default').allow).toBe(false);
-    expect(check('POST', '/networks/openbot_default/connect', { Container: NAME }).allow).toBe(
+    expect(check('GET', '/networks/openbots-sbx').allow).toBe(true);
+    expect(check('GET', '/networks/openbots_default').allow).toBe(false);
+    expect(check('POST', '/networks/openbots_default/connect', { Container: NAME }).allow).toBe(
       false,
     );
   });
@@ -231,7 +234,7 @@ describe('docker guard: other operations', () => {
     const volume = { Name: stateVolumeName(spec.computerId), Labels: {} };
     expect(check('POST', '/volumes/create', volume)).toMatchObject({ allow: true });
     expect(check('GET', `/volumes/${volume.Name}`).allow).toBe(true);
-    expect(check('POST', '/volumes/create', { ...volume, Name: 'openbot-statefoo' }).allow).toBe(
+    expect(check('POST', '/volumes/create', { ...volume, Name: 'openbots-statefoo' }).allow).toBe(
       false,
     );
   });
@@ -246,14 +249,14 @@ describe('docker guard: other operations', () => {
     );
     expect(decision).toMatchObject({
       allow: true,
-      url: `/v1.47/containers/${NAME}/archive?path=%2Fvar%2Flib%2Fopenbot`,
+      url: `/v1.47/containers/${NAME}/archive?path=%2Fvar%2Flib%2Fopenbots`,
       contentType: 'application/x-tar',
       container: NAME,
     });
     expect(readTokenArchive((decision as { body: Buffer }).body)).toBe('a'.repeat(43));
 
     expect(put(`/containers/${NAME}/archive?path=/home/bot`, archive).allow).toBe(false);
-    expect(put(`/containers/${NAME}/archive?path=/var/lib/openbot/screens`, archive).allow).toBe(
+    expect(put(`/containers/${NAME}/archive?path=/var/lib/openbots/screens`, archive).allow).toBe(
       false,
     );
     expect(put(`/containers/${NAME}/archive`, archive).allow).toBe(false);
@@ -287,7 +290,7 @@ describe('docker guard: other operations', () => {
     expect(check('POST', '/volumes/create', { ...volume, Name: 'pgdata' }).allow).toBe(false);
     expect(check('POST', '/volumes/create', { ...volume, Driver: 'nfs' }).allow).toBe(false);
     expect(check('GET', `/volumes/${spec.volumeName}`).allow).toBe(true);
-    expect(check('GET', '/volumes/openbot_pgdata').allow).toBe(false);
+    expect(check('GET', '/volumes/openbots_pgdata').allow).toBe(false);
   });
 
   it('acts on containers only after checking they are computers', () => {
@@ -342,9 +345,9 @@ describe('docker guard: other operations', () => {
 async function fakeUpstream() {
   const seen: { method: string; url: string; body: string }[] = [];
   const containers = new Map<string, Record<string, string>>([
-    ['openbot-postgres-1', { 'com.docker.compose.service': 'postgres' }],
+    ['openbots-postgres-1', { 'com.docker.compose.service': 'postgres' }],
   ]);
-  const running = new Set<string>(['openbot-postgres-1']);
+  const running = new Set<string>(['openbots-postgres-1']);
   const archives: { type: string | undefined; body: Buffer }[] = [];
   let created = 0;
   const server = createServer((req, res) => {
@@ -397,8 +400,8 @@ async function listen(server: Server) {
   return `tcp://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
-describe('docker guard: a configured sandbox network (OPENBOT_SANDBOX_NETWORK)', () => {
-  const network = { name: 'openbot-app-sandbox-254', bridge: 'openbot-app-254' };
+describe('docker guard: a configured sandbox network (OPENBOTS_SANDBOX_NETWORK)', () => {
+  const network = { name: 'openbots-app-sandbox-254', bridge: 'openbots-a-254' };
   const own = { image: IMAGE, network };
   const check = (method: string, url: string, body?: unknown) =>
     checkDockerRequest(
@@ -417,7 +420,7 @@ describe('docker guard: a configured sandbox network (OPENBOT_SANDBOX_NETWORK)',
 
   it('refuses the default network, and any other, once another is configured', () => {
     const url = `/containers/create?name=${NAME}`;
-    for (const other of ['openbot-sandbox', 'openbot_default', 'openbot-app_default']) {
+    for (const other of ['openbots-sbx', 'openbots_default', 'openbots-app_default']) {
       expect(checkDockerRequest({ method: 'POST', url, body: onNetwork(other) }, own)).toEqual({
         allow: false,
         reason: `the container must be on ${network.name}`,
@@ -425,11 +428,11 @@ describe('docker guard: a configured sandbox network (OPENBOT_SANDBOX_NETWORK)',
     }
     // The right network mode, but a second endpoint on the default network.
     const body = JSON.parse(onNetwork(network.name)) as Body;
-    body.NetworkingConfig.EndpointsConfig['openbot-sandbox'] = {};
+    body.NetworkingConfig.EndpointsConfig['openbots-sbx'] = {};
     expect(checkDockerRequest({ method: 'POST', url, body: JSON.stringify(body) }, own).allow).toBe(
       false,
     );
-    expect(check('GET', '/networks/openbot-sandbox').allow).toBe(false);
+    expect(check('GET', '/networks/openbots-sbx').allow).toBe(false);
     expect(check('GET', `/networks/${network.name}`).allow).toBe(true);
   });
 
@@ -440,7 +443,7 @@ describe('docker guard: a configured sandbox network (OPENBOT_SANDBOX_NETWORK)',
     // The default network, or the configured one on another stack's bridge.
     expect(check('POST', '/networks/create', networkSpec()).allow).toBe(false);
     const made = networkSpec(network);
-    for (const bridge of ['openbot-sandbox', 'docker0', 'eth0']) {
+    for (const bridge of ['openbots-sbx', 'docker0', 'eth0']) {
       expect(
         check('POST', '/networks/create', {
           ...made,
@@ -509,7 +512,9 @@ describe('docker guard over HTTP', () => {
     expect(upstream.archives[0]!.type).toBe('application/x-tar');
     expect(readTokenArchive(upstream.archives[0]!.body)).toBe(spec.agentToken);
     const put = upstream.seen.findIndex((r) => r.method === 'PUT');
-    expect(upstream.seen[put]!.url).toBe(`/containers/${NAME}/archive?path=%2Fvar%2Flib%2Fopenbot`);
+    expect(upstream.seen[put]!.url).toBe(
+      `/containers/${NAME}/archive?path=%2Fvar%2Flib%2Fopenbots`,
+    );
     expect(put).toBeLessThan(upstream.seen.findIndex((r) => r.url.endsWith('/start')));
   });
 
@@ -528,10 +533,10 @@ describe('docker guard over HTTP', () => {
 
   it('refuses to act on a container the provider did not create', async () => {
     const { upstream, http } = await setup();
-    const res = await fetch(`${http}/containers/openbot-postgres-1/stop`, { method: 'POST' });
+    const res = await fetch(`${http}/containers/openbots-postgres-1/stop`, { method: 'POST' });
     expect(res.status).toBe(403);
     expect(upstream.seen.map((r) => `${r.method} ${r.url}`)).toEqual([
-      'GET /containers/openbot-postgres-1/json',
+      'GET /containers/openbots-postgres-1/json',
     ]);
     expect((await fetch(`${http}/containers/missing/start`, { method: 'POST' })).status).toBe(404);
   });
@@ -549,7 +554,7 @@ describe('docker guard over HTTP', () => {
 
   it('identifies itself, and the provider refuses a Docker API that does not', async () => {
     const { http, guardUrl } = await setup();
-    expect(await (await fetch(`${http}/_openbot/guard`)).json()).toMatchObject({
+    expect(await (await fetch(`${http}/_openbots/guard`)).json()).toMatchObject({
       guard: GUARD_NAME,
       image: IMAGE,
     });
@@ -560,8 +565,8 @@ describe('docker guard over HTTP', () => {
     const raw = await fakeUpstream();
     servers.push(raw.server);
     const direct = createDockerProvider({ dockerHost: raw.url });
-    await expect(direct.create(spec)).rejects.toThrow(/not the OpenBot docker guard/);
-    expect(raw.seen.map((r) => r.url)).toEqual(['/_openbot/guard']);
+    await expect(direct.create(spec)).rejects.toThrow(/not the OpenBots docker guard/);
+    expect(raw.seen.map((r) => r.url)).toEqual(['/_openbots/guard']);
 
     const unguarded = mockDocker();
     unguarded.guarded = false;

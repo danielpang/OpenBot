@@ -4,10 +4,10 @@ import { signUp } from './auth.js';
 // The Computer page (K1, K7) against an install that has a computer: start
 // it, open the terminal, upload a file and download it again. Skipped unless
 // the server reports a computer provider, which needs the docker guard
-// (`pnpm --filter @openbot/computer docker-guard` in front of the local Docker
+// (`pnpm --filter @openbots/computer docker-guard` in front of the local Docker
 // socket, and `DOCKER_HOST=tcp://127.0.0.1:2375` for the server; the server
 // refuses the raw socket or the socket proxy) or a running control agent
-// (`OPENBOT_COMPUTER_AGENT_URL` and `OPENBOT_COMPUTER_AGENT_TOKEN`, e.g.
+// (`OPENBOTS_COMPUTER_AGENT_URL` and `OPENBOTS_COMPUTER_AGENT_TOKEN`, e.g.
 // `apps/computer-agent` started locally). The first start may pull the
 // sandbox image.
 

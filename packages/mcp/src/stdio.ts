@@ -16,11 +16,11 @@ import {
   type Launch,
 } from './privileges.js';
 
-// The stdio host (plan 8): the MCP server is a child process of the OpenBot
+// The stdio host (plan 8): the MCP server is a child process of the OpenBots
 // process. Its environment is built from scratch, never inherited, so it holds
 // PATH, a private HOME (npm's cache inside it, so npx never needs a writable
 // global cache) and that connector's own secrets and nothing else: no
-// DATABASE_URL, no OPENBOT_MASTER_KEY, no provider keys (plan 17). When OpenBot
+// DATABASE_URL, no OPENBOTS_MASTER_KEY, no provider keys (plan 17). When OpenBots
 // can switch users (root, or CAP_SETUID and CAP_SETGID, as in the compose
 // service) the child runs as an unprivileged user with no capabilities
 // (`launchAs`), and `makeNonDumpable` keeps that user out of the server's /proc
@@ -54,7 +54,7 @@ export function childEnvironment(spec: StdioSpawn, home: string): Record<string,
 
 function prepareHome(key: string, user: { uid: number; gid: number } | null): string {
   // The parent is traversable so a dropped user can reach its own 0700 HOME inside it.
-  const parent = join(tmpdir(), 'openbot-mcp');
+  const parent = join(tmpdir(), 'openbots-mcp');
   mkdirSync(parent, { recursive: true, mode: 0o711 });
   try {
     chmodSync(parent, 0o711);

@@ -95,16 +95,16 @@ describe('POST /exec', () => {
   });
 
   it('runs the command without the agent token, even when the request sets it (S-7)', async () => {
-    const before = process.env.OPENBOT_AGENT_TOKEN;
-    process.env.OPENBOT_AGENT_TOKEN = TEST_TOKEN;
+    const before = process.env.OPENBOTS_AGENT_TOKEN;
+    process.env.OPENBOTS_AGENT_TOKEN = TEST_TOKEN;
     try {
       const { request } = await createTestAgent();
       const events = await execEvents(
         await request(
           '/exec',
           json({
-            command: 'env; echo "token=${OPENBOT_AGENT_TOKEN-unset}"',
-            env: { OPENBOT_AGENT_TOKEN: 'smuggled-in-0123456789' },
+            command: 'env; echo "token=${OPENBOTS_AGENT_TOKEN-unset}"',
+            env: { OPENBOTS_AGENT_TOKEN: 'smuggled-in-0123456789' },
           }),
         ),
       );
@@ -113,8 +113,8 @@ describe('POST /exec', () => {
       expect(stdout).not.toContain(TEST_TOKEN);
       expect(stdout).not.toContain('smuggled-in');
     } finally {
-      if (before === undefined) delete process.env.OPENBOT_AGENT_TOKEN;
-      else process.env.OPENBOT_AGENT_TOKEN = before;
+      if (before === undefined) delete process.env.OPENBOTS_AGENT_TOKEN;
+      else process.env.OPENBOTS_AGENT_TOKEN = before;
     }
   });
 
@@ -136,7 +136,7 @@ describe('POST /exec', () => {
 
   it("runs commands as the bot user, with the group of the Bot's screen, through the helper (S-7)", async () => {
     const dir = await tempHome();
-    // A stand-in for openbot-runas that says whom it would run the command as.
+    // A stand-in for openbots-runas that says whom it would run the command as.
     const helper = path.join(dir, 'runas');
     await writeFile(helper, '#!/bin/sh\necho "as $1:$2"\nshift 3\nexec "$@"\n', { mode: 0o755 });
     const { request } = await createTestAgent({ users: new Users(helper) });

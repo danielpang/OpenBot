@@ -11,11 +11,11 @@ import type { BetterAuthPlugin } from 'better-auth';
 import { APIError, createAuthEndpoint } from 'better-auth/api';
 import { setSessionCookie } from 'better-auth/cookies';
 import { and, count, desc, eq, gt, lte } from 'drizzle-orm';
-import type { ExtensionContext } from '@openbot/server';
-import type { Config } from '@openbot/server/config';
-import { schema, type Db } from '@openbot/server/db/client';
-import { CLIENT_IP_HEADER } from '@openbot/server/client-ip';
-import { parseMasterKey } from '@openbot/server/secrets';
+import type { ExtensionContext } from '@openbots/server';
+import type { Config } from '@openbots/server/config';
+import { schema, type Db } from '@openbots/server/db/client';
+import { CLIENT_IP_HEADER } from '@openbots/server/client-ip';
+import { parseMasterKey } from '@openbots/server/secrets';
 import {
   emailEnabled,
   errorText,
@@ -55,7 +55,7 @@ import { invitationProof } from './invitations.js';
 // blocks new codes for it for up to a day. Codes last 10 minutes, are stored as an
 // HMAC bound to their request, and compared in constant time. A code
 // reaches a log only on a development server without email that sets
-// OPENBOT_DEV_LOG_EMAIL_LINKS (refused in production). The invite of
+// OPENBOTS_DEV_LOG_EMAIL_LINKS (refused in production). The invite of
 // /sign-up?invite=<id> travels with the request; invite mode checks it at
 // both ends.
 
@@ -72,7 +72,7 @@ export const FAILS_PER_HOUR = 15;
 export const STARTS_PER_IP = 20;
 /** Code tries one IP may make in an hour. */
 export const TRIES_PER_IP = 50;
-export const SIGN_UP_COOKIE = 'openbot_sign_up';
+export const SIGN_UP_COOKIE = 'openbots_sign_up';
 const COOKIE_PATH = '/api/auth/sign-up';
 
 interface Pending {
@@ -91,7 +91,7 @@ const identifierOf = (requestId: string) => `sign-up:${sha256(requestId)}`;
 
 function codeMac(config: Pick<Config, 'masterKey'>, identifier: string, code: string) {
   const key = Buffer.from(
-    hkdfSync('sha256', parseMasterKey(config.masterKey), '', 'openbot:sign-up-code', 32),
+    hkdfSync('sha256', parseMasterKey(config.masterKey), '', 'openbots:sign-up-code', 32),
   );
   return createHmac('sha256', key).update(`${identifier}:${code}`).digest('base64url');
 }
@@ -184,7 +184,7 @@ export function signUpPlugin(
   }
 
   return {
-    id: 'openbot-sign-up',
+    id: 'openbots-sign-up',
     rateLimit: [
       { pathMatcher: (path) => path === '/sign-up/start', window: 600, max: 10 },
       { pathMatcher: (path) => path === '/sign-up/verify', window: 600, max: 30 },

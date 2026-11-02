@@ -11,13 +11,13 @@ import type {
   McpStdioServerMessage,
   McpStdioStart,
   ScreenInfo,
-} from '@openbot/computer-agent/protocol';
+} from '@openbots/computer-agent/protocol';
 import { WebSocket, type RawData } from 'ws';
 import type { InputAction } from './actions.js';
 import { COMPUTER_HOME } from './types.js';
 
 // The HTTP client for the control agent inside the computer (plan 9.3), whose
-// wire format is `@openbot/computer-agent/protocol`. Every request carries
+// wire format is `@openbots/computer-agent/protocol`. Every request carries
 // `Authorization: Bearer <agent token>`; errors are problem documents, thrown
 // here as `AgentError` with their `detail` and `code`.
 //

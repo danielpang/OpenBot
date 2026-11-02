@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { PRODUCT_NAME, packageName } from './index.js';
 
-describe('@openbot/shared', () => {
+describe('@openbots/shared', () => {
   it('names the product', () => {
-    expect(PRODUCT_NAME).toBe('OpenBot');
+    expect(PRODUCT_NAME).toBe('OpenBots');
   });
 
   it('scopes package names', () => {
-    expect(packageName('agent')).toBe('@openbot/agent');
+    expect(packageName('agent')).toBe('@openbots/agent');
   });
 });

@@ -4,9 +4,9 @@ import {
   localEmbedder,
   type SerializedRunState,
   type ToolGroup,
-} from '@openbot/agent';
-import { promptText, scriptedModel, type ScriptedTurn } from '@openbot/agent/testing';
-import { EVENTS_CHANNEL, type MessagePart, type WsEvent } from '@openbot/shared';
+} from '@openbots/agent';
+import { promptText, scriptedModel, type ScriptedTurn } from '@openbots/agent/testing';
+import { EVENTS_CHANNEL, type MessagePart, type WsEvent } from '@openbots/shared';
 import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -114,7 +114,7 @@ describe('approvals', () => {
   }
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     cookie = (await t.signUp('dana@example.com')).cookie!;
     const [user] = await t.db.select().from(schema.users);
     ownerId = user!.id;
@@ -428,7 +428,7 @@ describe('approvals', () => {
     });
   });
 
-  it('expires a request after OPENBOT_APPROVAL_TTL_MINUTES when the operator sets it', async () => {
+  it('expires a request after OPENBOTS_APPROVAL_TTL_MINUTES when the operator sets it', async () => {
     const { processLimits } = t.deps.config;
     const enqueue = vi.spyOn(proc.infra.queue<ExpireJob>(APPROVALS_QUEUE), 'enqueue');
     t.deps.config.processLimits = { ...processLimits, approvalTtlMinutes: 5 };

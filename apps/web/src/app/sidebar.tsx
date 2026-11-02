@@ -7,7 +7,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@openbot/ui';
+} from '@openbots/ui';
 import { Link } from '@tanstack/react-router';
 import { useCallback, useState, type ReactNode } from 'react';
 import { Roster } from '../features/bots/roster.js';

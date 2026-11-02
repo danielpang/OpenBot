@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { renderPng } from '@openbot/avatars/png';
-import { AvatarSchema } from '@openbot/shared';
+import { renderPng } from '@openbots/avatars/png';
+import { AvatarSchema } from '@openbots/shared';
 import { requireUser } from '../middleware/auth.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import { getBot } from '../services/bots.js';

@@ -1,6 +1,6 @@
-import { localEmbedder } from '@openbot/agent';
-import { promptText, scriptedModel, type ScriptedTurn } from '@openbot/agent/testing';
-import type { MessagePart } from '@openbot/shared';
+import { localEmbedder } from '@openbots/agent';
+import { promptText, scriptedModel, type ScriptedTurn } from '@openbots/agent/testing';
+import type { MessagePart } from '@openbots/shared';
 import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
@@ -34,7 +34,7 @@ describe('form widget', () => {
   const models = new Map<string, RunModel>();
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     cookie = (await t.signUp('dana@example.com')).cookie!;
     unhook = registerRunHooks();
     const worker = createRunWorker(t.deps, {

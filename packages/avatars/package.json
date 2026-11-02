@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/avatars",
+  "name": "@openbots/avatars",
   "version": "0.0.0",
   "private": true,
   "description": "generator, motion states, server-side PNG rendering",
@@ -7,17 +7,17 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./react": {
-      "@openbot/source": "./src/react.ts",
+      "@openbots/source": "./src/react.ts",
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
     },
     "./png": {
-      "@openbot/source": "./src/png.ts",
+      "@openbots/source": "./src/png.ts",
       "types": "./dist/png.d.ts",
       "default": "./dist/png.js"
     },
@@ -31,8 +31,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openbot/shared": "workspace:*",
-    "@openbot/ui": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "@openbots/ui": "workspace:*",
     "@resvg/resvg-js": "^2.6.2"
   },
   "peerDependencies": {

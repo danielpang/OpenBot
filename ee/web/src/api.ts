@@ -1,4 +1,4 @@
-import { unwrap } from '@openbot/api-client';
+import { unwrap } from '@openbots/api-client';
 import { queryOptions } from '@tanstack/react-query';
 import createFetchClient from 'openapi-fetch';
 import type { components, paths } from './schema.js';

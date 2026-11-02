@@ -1,4 +1,4 @@
-import { Button, Input } from '@openbot/ui';
+import { Button, Input } from '@openbots/ui';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { auth, meQuery } from '../../app/api.js';

@@ -47,7 +47,7 @@ describe('the welcome screen flow', () => {
   it('warns about plain http as the address is typed, and shows a failed check by the field', async () => {
     const bridge = fakeBridge();
     bridge.connect.server.mockRejectedValueOnce(
-      new Error("Error invoking remote method 'openbot:connect:server': Error: No server there."),
+      new Error("Error invoking remote method 'openbots:connect:server': Error: No server there."),
     );
     const flow = createStartFlow(bridge, welcomeQuery);
     flow.welcome.setAddress('192.168.1.4:3000');
@@ -277,7 +277,7 @@ describe('the status page flow', () => {
     await flush();
     expect(flow.store.get().status.logs).toEqual({
       open: true,
-      lines: ['openbot-1 | listening', 'postgres-1 | ready'],
+      lines: ['openbots-1 | listening', 'postgres-1 | ready'],
     });
     await flow.status.toggleLogs();
     expect(flow.store.get().status.logs.open).toBe(false);
@@ -317,7 +317,7 @@ describe('stack controls', () => {
   it('names the stack health as the connection indicator does', () => {
     expect(stackHealth(stackView(running))).toBe('running');
     expect(stackHealth(stackView({ ...running, services: [] }))).toBe('stopped');
-    const unhealthy = { service: 'openbot', state: 'running', health: 'unhealthy' };
+    const unhealthy = { service: 'openbots', state: 'running', health: 'unhealthy' };
     expect(
       stackHealth(stackView({ docker: ready, services: [unhealthy], upgrade: null, port })),
     ).toBe('unhealthy');

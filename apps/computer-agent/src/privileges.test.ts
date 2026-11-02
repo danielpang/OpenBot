@@ -133,7 +133,7 @@ describe.skipIf(!root)('layOut (as root)', () => {
 // The helper itself, compiled from native/runas.c, called the way the agent
 // calls it: from a process whose effective uid is the bot user's and whose
 // real uid is still root.
-describe.skipIf(!root || !cc)('openbot-runas (as root)', () => {
+describe.skipIf(!root || !cc)('openbots-runas (as root)', () => {
   let helper: string;
   const source = fileURLToPath(new URL('../native/runas.c', import.meta.url));
 

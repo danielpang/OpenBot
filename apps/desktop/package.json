@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/desktop",
+  "name": "@openbots/desktop",
   "version": "0.0.0",
   "private": true,
   "description": "Electron shell (main process, preload), loads apps/web",
@@ -8,7 +8,7 @@
   "main": "./dist/main/index.js",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -30,10 +30,10 @@
   },
   "devDependencies": {
     "@electron/notarize": "catalog:",
-    "@openbot/api-client": "workspace:*",
-    "@openbot/avatars": "workspace:*",
-    "@openbot/shared": "workspace:*",
-    "@openbot/ui": "workspace:*",
+    "@openbots/api-client": "workspace:*",
+    "@openbots/avatars": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "@openbots/ui": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",

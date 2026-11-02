@@ -1,4 +1,4 @@
-import type { ModelPricing } from '@openbot/shared';
+import type { ModelPricing } from '@openbots/shared';
 
 // Cost estimates (plan 5.8, 5.9). Pricing comes from `provider_models.pricing`;
 // when it is missing the answer is "no estimate", never a guess.

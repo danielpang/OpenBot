@@ -1,14 +1,14 @@
 import { and, asc, count, desc, eq, gt, ne, sql } from 'drizzle-orm';
-import type { Account, AppDeps, CurrentUser } from '@openbot/server/context';
-import { schema, type Db } from '@openbot/server/db/client';
-import { DomainError, forbidden, notFound } from '@openbot/server/errors';
-import { endMembershipAccess } from '@openbot/server/membership';
-import { recordAudit, userActor } from '@openbot/server/services/audit';
-import { lockOrganization, organizationSlug, type Role } from '@openbot/server/workspace';
+import type { Account, AppDeps, CurrentUser } from '@openbots/server/context';
+import { schema, type Db } from '@openbots/server/db/client';
+import { DomainError, forbidden, notFound } from '@openbots/server/errors';
+import { endMembershipAccess } from '@openbots/server/membership';
+import { recordAudit, userActor } from '@openbots/server/services/audit';
+import { lockOrganization, organizationSlug, type Role } from '@openbots/server/workspace';
 import { can } from './access.js';
 import { errorText, sendInviteEmail, type EmailOptions } from './email.js';
 import { INVITATION_DAYS, PENDING_INVITATIONS } from './plugin.js';
-import { asDirectory, inWorkspace } from '@openbot/server/db/scope';
+import { asDirectory, inWorkspace } from '@openbots/server/db/scope';
 
 // Organizations, members and invitations on the managed service (plan
 // 21.6). Creating an organization, switching to one and accepting an

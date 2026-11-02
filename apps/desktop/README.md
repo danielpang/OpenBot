@@ -1,41 +1,41 @@
-# @openbot/desktop
+# @openbots/desktop
 
 The OpenBots Mac app: an Electron shell around the web app (plan section 14.4, Phase 7).
 
 ```sh
-pnpm --filter @openbot/desktop dev     # electron-vite dev: main, preload and the app pages
-pnpm exec turbo run build --filter=@openbot/desktop   # tsc for src/release, then electron-vite into dist/
+pnpm --filter @openbots/desktop dev     # electron-vite dev: main, preload and the app pages
+pnpm exec turbo run build --filter=@openbots/desktop   # tsc for src/release, then electron-vite into dist/
 cd apps/desktop && pnpm dist:dev       # unsigned .app in release/ (macOS), see RELEASING.md
 ```
 
-`OPENBOT_DESKTOP_LOCAL_URL=http://localhost:5173` points the local profile at the web app's Vite dev
-server instead of the local stack. `OPENBOT_CLOUD_URL=https://...` enables "Sign in to an OpenBots
+`OPENBOTS_DESKTOP_LOCAL_URL=http://localhost:5173` points the local profile at the web app's Vite dev
+server instead of the local stack. `OPENBOTS_CLOUD_URL=https://...` enables "Sign in to an OpenBots
 account" in a development run (a release build takes it from the build; see RELEASING.md).
 
 ## Testing "Run OpenBots on this Mac" against images built from source
 
 A development run has no release of its own, and until a release is published (and its GHCR
 packages made public) pulling the default images fails. Build the three images the local stack
-runs, then start the app with `OPENBOT_IMAGE_PREFIX` and `OPENBOT_VERSION`, which a development run
+runs, then start the app with `OPENBOTS_IMAGE_PREFIX` and `OPENBOTS_VERSION`, which a development run
 writes into the stack's `.env` on every start (a packaged app ignores both):
 
 ```sh
-docker build -f docker/server.Dockerfile -t openbot-local/server:dev .
-docker build -f docker/computer.Dockerfile -t openbot-local/computer:dev .
-docker build -f docker/sandbox-firewall.Dockerfile -t openbot-local/sandbox-firewall:dev docker
-OPENBOT_IMAGE_PREFIX=openbot-local OPENBOT_VERSION=dev pnpm --filter @openbot/desktop dev
+docker build -f docker/server.Dockerfile -t openbots-local/server:dev .
+docker build -f docker/computer.Dockerfile -t openbots-local/computer:dev .
+docker build -f docker/sandbox-firewall.Dockerfile -t openbots-local/sandbox-firewall:dev docker
+OPENBOTS_IMAGE_PREFIX=openbots-local OPENBOTS_VERSION=dev pnpm --filter @openbots/desktop dev
 ```
 
 When every image the stack's services run is already on this Mac, a start skips the pull and
-starts with them. The stack lives in `~/Library/Application Support/@openbot/desktop/stack` in a
+starts with them. The stack lives in `~/Library/Application Support/@openbots/desktop/stack` in a
 development run (`.env` there; delete it to start over as on first launch). It runs as the Compose
-project `openbot-app`, so a `docker compose up` in a checkout (project `openbot`) is never touched,
+project `openbots-app`, so a `docker compose up` in a checkout (project `openbots`) is never touched,
 and a new `.env` gets the first free port from 3000 up. A new `.env` also gets a sandbox network of
-its own (`openbot-app-sandbox-<n>`, bridge `openbot-app-<n>`) on the first `/24` from
+its own (`openbots-app-sandbox-<n>`, bridge `openbots-a-<n>`) on the first `/24` from
 `172.30.254.0/24` down to `172.30.1.0/24` that no Docker network on this Mac overlaps (read with
 `docker network ls` and `docker network inspect`; `src/stack/network.ts`), so the app's stack runs
-beside a checkout's, which keeps `openbot-sandbox` on `172.30.255.0/24`. An older `.env` without
-`OPENBOT_SANDBOX_NETWORK` keeps `openbot-sandbox` while its containers are on it, and gets its own
+beside a checkout's, which keeps `openbots-sbx` on `172.30.255.0/24`. An older `.env` without
+`OPENBOTS_SANDBOX_NETWORK` keeps `openbots-sbx` while its containers are on it, and gets its own
 network otherwise. When a start fails because another stack holds the network ("Address already in
 use", or Compose's "exists but was not created for project" warning), the app says so and offers
 "Use a separate network": it stops the app's stack, writes a fresh name and subnet into `.env` and
@@ -66,7 +66,7 @@ its files.
     window already shows that chat, with the Bot's avatar (`GET /bots/{id}/avatar.png`) as the
     image. Which events notify is the shared watcher in `packages/shared/src/notices.ts`, which the
     web app's browser notifications use too.
-  - `deep-links.ts`: `openbot://bot/{id}/message/{seq}` (and `openbot://chat/{id}/message/{seq}`
+  - `deep-links.ts`: `openbots://bot/{id}/message/{seq}` (and `openbots://chat/{id}/message/{seq}`
     for groups), with `?thread={root id}` for a reply in a thread and `?chat={chat id}` for a
     message in one of the Bot's chats with another Bot, which the web app opens under the Bot's
     transcript. Registered with `setAsDefaultProtocolClient`; notifications and the tray open them.
@@ -87,7 +87,7 @@ its files.
   - `updater.ts`: electron-updater against the GitHub Releases in `electron-builder.publish.cjs`.
   - `ipc.ts`: the app pages' IPC handlers.
 - `src/preload`: the preload (sandboxed, `contextIsolation` on, no Node integration), built as one
-  CommonJS file. `bridge.ts` is what it exposes as `window.openbot`: every page gets `platform`,
+  CommonJS file. `bridge.ts` is what it exposes as `window.openbots`: every page gets `platform`,
   `onNavigate`, `onNew` and `connection`, which `apps/web` reads (`src/app/platform.ts`) to hand
   notifications to the shell, follow deep links, open New from the menu and show the sidebar's
   connection icon. `connection` answers only the active server's own page in the main window, and
@@ -100,22 +100,22 @@ its files.
   the local stack; the main window shows it when the server does not answer, and on launch when
   the app is a newer release than the stack, to update the stack.
   `quick-ask.html` is the quick-ask window (`Cmd+Shift+Space`). The pages are React with Tailwind
-  and the web app's theme and components (`@openbot/ui`, its `styles.css`); each page's logic is a
+  and the web app's theme and components (`@openbots/ui`, its `styles.css`); each page's logic is a
   plain module tested without a DOM (`start-flow.ts`, `quick-ask-flow.ts`, `welcome.ts`,
   `stack-view.ts`) that the views render.
 - `src/stack`: the local stack manager. It detects Docker Desktop or OrbStack, starts and stops
   the compose stack bundled in the app (`Contents/Resources/stack`, state and `.env` in userData),
   and tails its logs from a child process. The first start writes `.env` with a master key and
-  database password, as `install.sh` does, `OPENBOT_VERSION` set to the app's version, the first
-  free port from 3000 up (`OPENBOT_HTTP_PORT`, with `OPENBOT_PUBLIC_URL` to match), the Compose
-  project, `openbot-app` (`COMPOSE_PROJECT_NAME`), and a sandbox network of its own on a free
-  subnet (`OPENBOT_SANDBOX_NETWORK` and the rest, `network.ts`). An install from before that
-  name, whose containers carry project `openbot` and the app's stack directory as their working
-  directory, keeps `openbot`. A start refuses a port another app took and the start page offers a
+  database password, as `install.sh` does, `OPENBOTS_VERSION` set to the app's version, the first
+  free port from 3000 up (`OPENBOTS_HTTP_PORT`, with `OPENBOTS_PUBLIC_URL` to match), the Compose
+  project, `openbots-app` (`COMPOSE_PROJECT_NAME`), and a sandbox network of its own on a free
+  subnet (`OPENBOTS_SANDBOX_NETWORK` and the rest, `network.ts`). An install from before that
+  name, whose containers carry project `openbots` and the app's stack directory as their working
+  directory, keeps `openbots`. A start refuses a port another app took and the start page offers a
   free one;
   it pulls only when an image is missing here, and says plainly when the images are not published
   or not public, with Compose's output behind "Show details". When the
-  app is a newer release, the next start or Update sets `OPENBOT_VERSION` to it (the rest of `.env`
+  app is a newer release, the next start or Update sets `OPENBOTS_VERSION` to it (the rest of `.env`
   stays), pulls the images and restarts the stack; a tag that is not a release, such as `latest`,
   is left alone. `bridge.ts` puts it behind the preload bridge.
 - Packaging and release: `electron-builder.yml`, the `afterSign` notarization hook in

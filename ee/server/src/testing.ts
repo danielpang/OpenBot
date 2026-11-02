@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { ORIGIN, type TestApp } from '@openbot/server/test-app';
+import { ORIGIN, type TestApp } from '@openbots/server/test-app';
 import { SIGN_UP_COOKIE } from './sign-up.js';
 
 // Test helpers for the managed server (not built): a fake Resend that keeps

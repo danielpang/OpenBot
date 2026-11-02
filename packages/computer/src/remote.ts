@@ -3,7 +3,7 @@ import { waitForAgent } from './docker.js';
 import type { ComputerProvider, MachineStatus } from './types.js';
 
 // The remote provider (plan 9.2): a control agent already running on some
-// machine (a VM, a spare box), reached at its URL with its token. OpenBot
+// machine (a VM, a spare box), reached at its URL with its token. OpenBots
 // cannot create, start or stop that machine; `start` only waits for the agent
 // and `stop` leaves it running.
 

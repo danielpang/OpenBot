@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Routines (plan 4.6, 10.2, R1 to R5): the trigger stored in `routines.trigger`
 // and the value set of `routine_runs.status`. The schedule arithmetic (presets
 // to cron, intervals, next runs in the Routine's timezone) lives in
-// `@openbot/routines`.
+// `@openbots/routines`.
 
 /** `HH:MM`, 24-hour, in the Routine's timezone. */
 export const TimeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM, 24-hour');

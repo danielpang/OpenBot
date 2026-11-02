@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Job, JobQueue } from '@openbot/shared';
+import type { Job, JobQueue } from '@openbots/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import { BullJobQueue } from './queue-bullmq.js';
 import { MemoryJobQueue } from './queue-memory.js';

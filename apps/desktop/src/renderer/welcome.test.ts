@@ -22,7 +22,7 @@ const ready = {
 };
 const running: StackStatus = {
   docker: ready,
-  services: [{ service: 'openbot', state: 'running', health: 'healthy' }],
+  services: [{ service: 'openbots', state: 'running', health: 'healthy' }],
   upgrade: null,
   port: null,
 };
@@ -92,9 +92,9 @@ describe('the welcome screen', () => {
   it('warns under the address field about plain http only', () => {
     expect(addressWarning('192.168.1.4:3000')).toMatch(/not encrypted/);
     expect(addressWarning('http://localhost:3000')).toMatch(/not encrypted/);
-    expect(addressWarning('openbot.example.com')).toBeNull();
+    expect(addressWarning('openbots.example.com')).toBeNull();
     // Half typed, or wrong: the error comes on Connect.
-    expect(addressWarning('http://openbot.example.com')).toBeNull();
+    expect(addressWarning('http://openbots.example.com')).toBeNull();
     expect(addressWarning('')).toBeNull();
   });
 
@@ -176,7 +176,7 @@ describe('Run OpenBots on this Mac', () => {
     const { bridge } = fakeBridge(
       {
         docker: ready,
-        services: [{ service: 'openbot', state: 'exited', health: '' }],
+        services: [{ service: 'openbots', state: 'exited', health: '' }],
         upgrade: null,
         port: null,
       },
@@ -208,14 +208,14 @@ describe('Run OpenBots on this Mac', () => {
     const { bridge } = fakeBridge({ docker: ready, services: [], upgrade: null, port: null });
     bridge.stack.start.mockRejectedValueOnce(
       new Error(
-        "Error invoking remote method 'openbot:stack:start': Error: The OpenBots images for this version are not published yet, or are not public. Connect to a self-hosted server instead, or build the images from source.\n openbot Error error from registry: denied\n",
+        "Error invoking remote method 'openbots:stack:start': Error: The OpenBots images for this version are not published yet, or are not public. Connect to a self-hosted server instead, or build the images from source.\n openbots Error error from registry: denied\n",
       ),
     );
     const { view } = fakeView();
     await expect(runLocalSetup(bridge, view)).resolves.toBe('failed');
     expect(view.failed).toHaveBeenCalledWith(
       expect.stringMatching(/^The OpenBots images for this version are not published yet/),
-      'openbot Error error from registry: denied',
+      'openbots Error error from registry: denied',
     );
     // The choice is saved only once the server opens: the welcome screen stays usable.
     expect(bridge.connect.local).not.toHaveBeenCalled();
@@ -256,7 +256,7 @@ describe('Run OpenBots on this Mac', () => {
     const { bridge } = fakeBridge({ docker: ready, services: [], upgrade: null, port: null });
     bridge.stack.start.mockRejectedValueOnce(
       new Error(
-        `Error invoking remote method 'openbot:stack:start': Error: ${NETWORK_CLASH}\nfailed to set up container networking: Address already in use`,
+        `Error invoking remote method 'openbots:stack:start': Error: ${NETWORK_CLASH}\nfailed to set up container networking: Address already in use`,
       ),
     );
     const { view } = fakeView();

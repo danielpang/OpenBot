@@ -196,7 +196,7 @@ export const emailNotVerified = () =>
   new DomainError(403, 'EMAIL_NOT_VERIFIED', 'Verify your email first. We sent you a link.');
 
 export const notOwner = () =>
-  new DomainError(403, 'NOT_OWNER', 'This OpenBot has one account, its owner.');
+  new DomainError(403, 'NOT_OWNER', 'This OpenBots server has one account, its owner.');
 
 export const noOrganization = () =>
   new DomainError(403, 'NO_ORGANIZATION', 'Create or pick an organization first.');

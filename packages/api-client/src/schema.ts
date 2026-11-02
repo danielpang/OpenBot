@@ -123,7 +123,7 @@ export interface paths {
             'application/problem+json': components['schemas']['Problem'];
           };
         };
-        /** @description Metrics are off (no OPENBOT_METRICS_TOKEN) */
+        /** @description Metrics are off (no OPENBOTS_METRICS_TOKEN) */
         404: {
           headers: {
             [name: string]: unknown;
@@ -3345,7 +3345,7 @@ export interface paths {
               items: components['schemas']['ConnectorCatalogEntry'][];
               /**
                * Format: uri
-               * @description The redirect URL an OAuth app made by hand must allow (from `OPENBOT_PUBLIC_URL`)
+               * @description The redirect URL an OAuth app made by hand must allow (from `OPENBOTS_PUBLIC_URL`)
                */
               oauthCallbackUrl: string;
             };
@@ -4021,7 +4021,7 @@ export interface paths {
     };
     /**
      * Begin an OAuth 2.1 sign-in (PKCE, dynamic registration when offered)
-     * @description Answers with the authorization URL to open. After consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOT_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).
+     * @description Answers with the authorization URL to open. After consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOTS_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).
      */
     get: {
       parameters: {
@@ -6548,7 +6548,7 @@ export interface paths {
         };
       };
       responses: {
-        /** @description The endpoint, with a signing secret when OpenBot chose a new one */
+        /** @description The endpoint, with a signing secret when OpenBots chose a new one */
         200: {
           headers: {
             [name: string]: unknown;
@@ -7348,13 +7348,13 @@ export interface paths {
     put?: never;
     /**
      * Sign in the owner of the Mac app’s local stack (its main process only)
-     * @description Needs OPENBOT_LOCAL_TOKEN in the `x-openbot-local-token` header. Creates the owner when there is none, then sets an ordinary session cookie. Browsers are refused.
+     * @description Needs OPENBOTS_LOCAL_TOKEN in the `x-openbots-local-token` header. Creates the owner when there is none, then sets an ordinary session cookie. Browsers are refused.
      */
     post: {
       parameters: {
         query?: never;
         header?: {
-          'x-openbot-local-token'?: string;
+          'x-openbots-local-token'?: string;
         };
         path?: never;
         cookie?: never;
@@ -7702,12 +7702,12 @@ export interface components {
        * @enum {string}
        */
       deployment: 'self_hosted' | 'managed';
-      /** @description Admins may turn on custom command (stdio) connectors (OPENBOT_CUSTOM_STDIO; off by default on the managed service) */
+      /** @description Admins may turn on custom command (stdio) connectors (OPENBOTS_CUSTOM_STDIO; off by default on the managed service) */
       customStdio?: boolean;
-      /** @description Admins may mark endpoints as on their own network (OPENBOT_LOCAL_ENDPOINTS; off by default on the managed service) */
+      /** @description Admins may mark endpoints as on their own network (OPENBOTS_LOCAL_ENDPOINTS; off by default on the managed service) */
       localEndpoints?: boolean;
       /**
-       * @description `local`: the Mac app on This Mac signs its owner in itself (OPENBOT_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in.
+       * @description `local`: the Mac app on This Mac signs its owner in itself (OPENBOTS_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in.
        * @enum {string}
        */
       auth?: 'password' | 'local';
@@ -9607,7 +9607,7 @@ export interface components {
       endpoint: components['schemas']['WebhookEndpoint'];
       /** @description Shown once; send it as a bearer token */
       token?: string;
-      /** @description Shown once, when OpenBot chose it (GitHub, generic) */
+      /** @description Shown once, when OpenBots chose it (GitHub, generic) */
       signingSecret?: string;
     };
     CreateWebhookEndpoint: {
@@ -9630,7 +9630,7 @@ export interface components {
       /** @enum {string} */
       preset: 'github' | 'slack' | 'stripe' | 'generic';
       header?: string;
-      /** @description Required for Slack and Stripe; OpenBot chooses one for GitHub and generic */
+      /** @description Required for Slack and Stripe; OpenBots chooses one for GitHub and generic */
       secret?: string;
     } | null;
     UpdateWebhookEndpoint: {
@@ -9709,7 +9709,7 @@ export interface components {
     };
     IssuedEventSubscription: {
       subscription: components['schemas']['EventSubscription'];
-      /** @description Shown once. Deliveries carry `X-OpenBot-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">` */
+      /** @description Shown once. Deliveries carry `X-OpenBots-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<body>">` */
       secret?: string;
     };
     CreateEventSubscription: {

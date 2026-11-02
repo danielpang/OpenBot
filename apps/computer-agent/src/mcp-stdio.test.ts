@@ -29,7 +29,7 @@ process.stdin.on('data', (d) => {
     buffered = buffered.slice(at + 1);
     if (line === 'secret') process.stdout.write('secret:' + process.env.MY_SECRET + '\\n');
     else if (line === 'cwd') process.stdout.write('cwd:' + process.cwd() + '\\n');
-    else if (line === 'token') process.stdout.write('token:' + (process.env.OPENBOT_AGENT_TOKEN ?? 'none') + '\\n');
+    else if (line === 'token') process.stdout.write('token:' + (process.env.OPENBOTS_AGENT_TOKEN ?? 'none') + '\\n');
     else if (line === 'quit') process.exit(3);
     else process.stdout.write('echo:' + line + '\\n');
   }
@@ -136,9 +136,9 @@ describe('WS /mcp/stdio', () => {
         consoleLines.push(args.map(String).join(' '));
       });
     }
-    process.env.OPENBOT_AGENT_TOKEN = 'agent-token-never-shared';
+    process.env.OPENBOTS_AGENT_TOKEN = 'agent-token-never-shared';
     cleanups.push(() => {
-      delete process.env.OPENBOT_AGENT_TOKEN;
+      delete process.env.OPENBOTS_AGENT_TOKEN;
     });
     const { url } = await startSession({ log });
     const c = connect(url);

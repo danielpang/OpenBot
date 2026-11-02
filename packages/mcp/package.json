@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/mcp",
+  "name": "@openbots/mcp",
   "version": "0.0.0",
   "private": true,
   "description": "MCP client manager, catalog, OAuth, McpHost implementations",
@@ -7,12 +7,12 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./testing": {
-      "@openbot/source": "./src/testing.ts",
+      "@openbots/source": "./src/testing.ts",
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
     }
@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
-    "@openbot/shared": "workspace:*",
+    "@openbots/shared": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {

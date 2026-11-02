@@ -1,14 +1,14 @@
-import { unwrap } from '@openbot/api-client';
-import { Button, Input } from '@openbot/ui';
-import { meQuery } from '@openbot/web/api';
-import { isAdmin } from '@openbot/web/extensions';
+import { unwrap } from '@openbots/api-client';
+import { Button, Input } from '@openbots/ui';
+import { meQuery } from '@openbots/web/api';
+import { isAdmin } from '@openbots/web/extensions';
 import {
   LimitFields,
   limitsPatch,
   SaveRow,
   settingsQuery,
   useSaveSettings,
-} from '@openbot/web/limits';
+} from '@openbots/web/limits';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { orgApi, organizationsQuery, reloadInto } from './api.js';

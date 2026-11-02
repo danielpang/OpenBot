@@ -1,4 +1,4 @@
-import { EVENTS_CHANNEL, type WsEvent } from '@openbot/shared';
+import { EVENTS_CHANNEL, type WsEvent } from '@openbots/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { schema } from '../db/client.js';
@@ -25,7 +25,7 @@ describe('chats and messages', () => {
   const events: WsEvent[] = [];
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     alice = (await t.signUp('alice@example.com')).cookie!;
     bob = (await t.signUp('bob@example.com')).cookie!;
     aliceId = (await t.db.select().from(schema.users)).find(

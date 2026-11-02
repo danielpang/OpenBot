@@ -3,7 +3,7 @@
 # signed, notarized and unsigned paths. Paths are relative to apps/desktop.
 extends: ./electron-builder.publish.cjs
 
-appId: app.openbot.desktop
+appId: com.openbots.app
 productName: OpenBots
 copyright: Copyright © OpenBots contributors
 
@@ -33,7 +33,7 @@ extraResources:
 
 protocols:
   - name: OpenBots
-    schemes: [openbot]
+    schemes: [openbots]
 
 # Notarization runs in this hook with @electron/notarize; electron-builder's
 # built-in notarization is off (mac.notarize) so it does not run twice.

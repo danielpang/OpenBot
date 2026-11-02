@@ -1,4 +1,4 @@
-import type { ArtifactKind } from '@openbot/shared';
+import type { ArtifactKind } from '@openbots/shared';
 import type { z } from 'zod';
 import type { ArtifactPropsSchema } from '../kinds/artifact.js';
 import type { WidgetRendererProps } from './types.js';

@@ -7,16 +7,16 @@
 # It first verifies the backup (MANIFEST checksums, a readable database dump,
 # intact archives) and stops before touching anything if that fails. With
 # Docker running it restores into the compose stack in this checkout: it
-# stops openbot and the computers, recreates the database, refills the files
+# stops openbots and the computers, recreates the database, refills the files
 # volume and each computer volume, starts the stack again and checks that the
 # files and users came back. Without Docker it restores a development install
-# from DATABASE_URL and OPENBOT_FILES_DIR (computer volumes are skipped).
+# from DATABASE_URL and OPENBOTS_FILES_DIR (computer volumes are skipped).
 #
-# Use the same OPENBOT_MASTER_KEY as the install the backup came from.
+# Use the same OPENBOTS_MASTER_KEY as the install the backup came from.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HELPER_IMAGE="${OPENBOT_BACKUP_HELPER_IMAGE:-pgvector/pgvector:pg16}"
+HELPER_IMAGE="${OPENBOTS_BACKUP_HELPER_IMAGE:-pgvector/pgvector:pg16}"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() {
@@ -51,16 +51,16 @@ sha256() {
 }
 
 compose() { (cd "$REPO_DIR" && docker compose "$@"); }
-# Runs a command on the files volume in a one-off openbot container, as root
+# Runs a command on the files volume in a one-off openbots container, as root
 # with just the capabilities tar needs to put back files of two owners (the
-# server's uid 1000 and nobody, S-1) with their modes: the openbot service
+# server's uid 1000 and nobody, S-1) with their modes: the openbots service
 # itself holds none of them.
 files_run() {
   local entrypoint="$1"
   shift
   compose run --rm --no-deps -T --user 0:0 \
     --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
-    --entrypoint "$entrypoint" openbot "$@"
+    --entrypoint "$entrypoint" openbots "$@"
 }
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
@@ -100,7 +100,7 @@ listing="$(list_dump)" || die "pg_restore cannot read database.dump"
 grep -q 'TABLE DATA public users ' <<<"$listing" || die "database.dump has no users table"
 
 if [ "$YES" = 0 ]; then
-  printf 'This replaces the current OpenBot data with %s. Continue? [y/N] ' "$SRC"
+  printf 'This replaces the current OpenBots data with %s. Continue? [y/N] ' "$SRC"
   read -r answer
   case "$answer" in
     y | Y | yes) ;;
@@ -109,13 +109,13 @@ if [ "$YES" = 0 ]; then
 fi
 
 if [ "$MODE" = compose ]; then
-  log "Stopping openbot"
-  compose stop openbot
+  log "Stopping openbots"
+  compose stop openbots
 
   log "Database"
-  compose exec -T postgres psql -U openbot -d postgres -v ON_ERROR_STOP=1 \
-    -c 'DROP DATABASE IF EXISTS openbot WITH (FORCE)' -c 'CREATE DATABASE openbot OWNER openbot'
-  compose exec -T postgres pg_restore -U openbot -d openbot --no-owner --exit-on-error <"$SRC/database.dump"
+  compose exec -T postgres psql -U openbots -d postgres -v ON_ERROR_STOP=1 \
+    -c 'DROP DATABASE IF EXISTS openbots WITH (FORCE)' -c 'CREATE DATABASE openbots OWNER openbots'
+  compose exec -T postgres pg_restore -U openbots -d openbots --no-owner --exit-on-error <"$SRC/database.dump"
 
   log "Files"
   files_run sh -c 'find /data/files -mindepth 1 -delete && tar --numeric-owner -xzf - -C /data/files' \
@@ -135,9 +135,9 @@ if [ "$MODE" = compose ]; then
 
   log "Starting the stack"
   compose up -d --wait
-  users="$(compose exec -T postgres psql -U openbot -d openbot -tA -c 'SELECT count(*) FROM users')"
+  users="$(compose exec -T postgres psql -U openbots -d openbots -tA -c 'SELECT count(*) FROM users')"
 else
-  FILES_DIR="${OPENBOT_FILES_DIR:-/data/files}"
+  FILES_DIR="${OPENBOTS_FILES_DIR:-/data/files}"
   log "Docker is not running; restoring into the database and $FILES_DIR"
 
   log "Database"

@@ -1,4 +1,4 @@
-import { Button, Input } from '@openbot/ui';
+import { Button, Input } from '@openbots/ui';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { EmailDraft, EmailDraftState } from '../kinds/email_draft.js';
 import type { WidgetRendererProps } from './types.js';

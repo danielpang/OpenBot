@@ -10,7 +10,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from '@openbot/ui';
+} from '@openbots/ui';
 import { useCallback, useEffect, useState, type SVGProps } from 'react';
 import { useRealtimeStatus } from '../features/transcript/realtime.js';
 import { indicatorState, type IndicatorTone } from './connection.js';

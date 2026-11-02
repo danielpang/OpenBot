@@ -6,7 +6,7 @@ import type { McpPrompt, McpResource, McpSnapshot, McpTool } from './types.js';
 
 // One MCP session (plan 8). `McpHost` is the seam the manager talks to; the
 // stdio and Streamable HTTP hosts differ only in how they build the transport,
-// and the post-1.0 `openbot-mcp-runner` container will be a third host behind
+// and the post-1.0 `openbots-mcp-runner` container will be a third host behind
 // the same interface.
 
 export type ToolCallResult = CallToolResult;

@@ -10,7 +10,7 @@ import { z } from 'zod';
 // payloads carry camelCase fields like the REST API.
 
 /** The bus channel every realtime event is published on. */
-export const EVENTS_CHANNEL = 'openbot:events';
+export const EVENTS_CHANNEL = 'openbots:events';
 
 const id = z.string().min(1);
 const nullableId = id.nullable();

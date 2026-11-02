@@ -1,4 +1,4 @@
-import { ApiError } from '@openbot/api-client';
+import { ApiError } from '@openbots/api-client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';

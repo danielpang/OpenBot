@@ -28,7 +28,7 @@ describe('limits', () => {
 
   it('names an env var for every limit', () => {
     expect(Object.keys(LIMIT_ENV_VARS).sort()).toEqual(Object.keys(DEFAULT_LIMITS).sort());
-    expect(LIMIT_ENV_VARS.botsPerAccount).toBe('OPENBOT_LIMITS_BOTS_PER_ACCOUNT');
+    expect(LIMIT_ENV_VARS.botsPerAccount).toBe('OPENBOTS_LIMITS_BOTS_PER_ACCOUNT');
   });
 
   it('keeps the process limits at their former constants, overridable one by one', () => {

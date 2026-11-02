@@ -1,5 +1,5 @@
 {
-  "name": "@openbot/server",
+  "name": "@openbots/server",
   "version": "0.0.0",
   "private": true,
   "description": "Hono API, WS gateway, workers, scheduler (roles: api | worker | all)",
@@ -7,45 +7,45 @@
   "type": "module",
   "exports": {
     ".": {
-      "@openbot/source": "./src/index.ts",
+      "@openbots/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./*": {
-      "@openbot/source": "./src/*.ts",
+      "@openbots/source": "./src/*.ts",
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "tsx watch --conditions=@openbot/source src/main.ts",
+    "dev": "tsx watch --conditions=@openbots/source src/main.ts",
     "start": "node dist/main.js",
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "openapi": "tsx --conditions=@openbot/source src/openapi-cli.ts",
+    "openapi": "tsx --conditions=@openbots/source src/openapi-cli.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate-cli.ts",
     "keygen": "tsx src/keygen.ts",
-    "rotate-key": "tsx --conditions=@openbot/source src/rotate-key.ts",
-    "soak": "tsx --conditions=@openbot/source src/soak/main.ts"
+    "rotate-key": "tsx --conditions=@openbots/source src/rotate-key.ts",
+    "soak": "tsx --conditions=@openbots/source src/soak/main.ts"
   },
   "dependencies": {
     "@better-auth/api-key": "catalog:",
     "@hono/node-server": "catalog:",
     "@hono/zod-openapi": "catalog:",
     "@mozilla/readability": "^0.6.0",
-    "@openbot/agent": "workspace:*",
-    "@openbot/artifacts": "workspace:*",
-    "@openbot/avatars": "workspace:*",
-    "@openbot/computer": "workspace:*",
-    "@openbot/mcp": "workspace:*",
-    "@openbot/models": "workspace:*",
-    "@openbot/router": "workspace:*",
-    "@openbot/routines": "workspace:*",
-    "@openbot/shared": "workspace:*",
-    "@openbot/widgets": "workspace:*",
+    "@openbots/agent": "workspace:*",
+    "@openbots/artifacts": "workspace:*",
+    "@openbots/avatars": "workspace:*",
+    "@openbots/computer": "workspace:*",
+    "@openbots/mcp": "workspace:*",
+    "@openbots/models": "workspace:*",
+    "@openbots/router": "workspace:*",
+    "@openbots/routines": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "@openbots/widgets": "workspace:*",
     "ai": "catalog:",
     "better-auth": "catalog:",
     "bullmq": "catalog:",

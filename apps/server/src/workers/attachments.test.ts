@@ -1,8 +1,8 @@
-import { localEmbedder } from '@openbot/agent';
-import { promptText, scriptedModel, type ScriptedTurn } from '@openbot/agent/testing';
-import { TINY_PNG } from '@openbot/computer/testing';
-import type { ProviderModel } from '@openbot/models';
-import { DEFAULT_CAPABILITIES, type MessagePart } from '@openbot/shared';
+import { localEmbedder } from '@openbots/agent';
+import { promptText, scriptedModel, type ScriptedTurn } from '@openbots/agent/testing';
+import { TINY_PNG } from '@openbots/computer/testing';
+import type { ProviderModel } from '@openbots/models';
+import { DEFAULT_CAPABILITIES, type MessagePart } from '@openbots/shared';
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
@@ -55,7 +55,7 @@ describe('attachments in a run', () => {
   const models = new Map<string, RunModel>();
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_DEPLOYMENT: 'managed', OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     computer = await useTestComputer(t.ownerDeps);
     cookie = (await t.signUp('dana@example.com')).cookie!;
     other = (await t.signUp('mallory@example.com')).cookie!;

@@ -1,4 +1,4 @@
-import type { ComputerProviderName } from '@openbot/shared';
+import type { ComputerProviderName } from '@openbots/shared';
 import type { ComputerAgentClient } from './agent-client.js';
 
 // The provider interface (plan 9.2). `docker` is v1; `remote` points at a
@@ -89,4 +89,4 @@ export interface ComputerProvider {
 /** The persistent home every Bot of the account shares (plan 9.1). */
 export const COMPUTER_HOME = '/home/bot';
 /** The agent's state volume: the token file and the screens' Chromium profiles, root's (S-7). */
-export const STATE_DIR = '/var/lib/openbot';
+export const STATE_DIR = '/var/lib/openbots';

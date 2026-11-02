@@ -1,4 +1,4 @@
-import { describeTrigger } from '@openbot/routines';
+import { describeTrigger } from '@openbots/routines';
 import type { RoutineCreatedProps } from '../kinds/routine_created.js';
 import type { WidgetRendererProps } from './types.js';
 

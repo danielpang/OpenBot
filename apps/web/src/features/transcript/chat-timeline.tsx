@@ -1,4 +1,4 @@
-import { cn } from '@openbot/ui';
+import { cn } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { useVirtualizer } from '@tanstack/react-virtual';

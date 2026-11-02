@@ -1,4 +1,4 @@
-import { ApiError } from '@openbot/api-client';
+import { ApiError } from '@openbots/api-client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { desktopOAuth, platform } from '../../app/platform.js';
@@ -18,11 +18,11 @@ import { useConnectorsAdded, useTestConnector } from './hooks.js';
 // the Mac app comes back to the front.
 
 /** The `postMessage` type the callback page sends (apps/server `oauth-page.ts`). */
-export const OAUTH_MESSAGE_TYPE = 'openbot:oauth';
+export const OAUTH_MESSAGE_TYPE = 'openbots:oauth';
 
 /** How long a started sign-in is good for, as on the server. */
 const FLOW_MS = 10 * 60_000;
-const POPUP_NAME = 'openbot-oauth';
+const POPUP_NAME = 'openbots-oauth';
 const POPUP_WIDTH = 520;
 const POPUP_HEIGHT = 720;
 

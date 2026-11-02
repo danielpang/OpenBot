@@ -1,4 +1,4 @@
-// `pnpm --filter @openbot/server openapi`: writes the OpenAPI document to
+// `pnpm --filter @openbots/server openapi`: writes the OpenAPI document to
 // packages/api-client/openapi.json, where the web client is generated from.
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +15,7 @@ const out = fileURLToPath(new URL('../../../packages/api-client/openapi.json', i
 
 // Building the app needs a config, but nothing here touches the database.
 const config = loadConfig({
-  OPENBOT_MASTER_KEY: generateMasterKey(),
+  OPENBOTS_MASTER_KEY: generateMasterKey(),
   DATABASE_URL: 'postgres://unused',
 });
 const db = createDb(config.databaseUrl);

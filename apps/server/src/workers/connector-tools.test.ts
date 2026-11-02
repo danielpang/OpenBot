@@ -3,9 +3,9 @@ import type { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { localEmbedder } from '@openbot/agent';
-import { promptText, scriptedModel, type ScriptedTurn } from '@openbot/agent/testing';
-import type { MessagePart } from '@openbot/shared';
+import { localEmbedder } from '@openbots/agent';
+import { promptText, scriptedModel, type ScriptedTurn } from '@openbots/agent/testing';
+import type { MessagePart } from '@openbots/shared';
 import { SMTPServer } from 'smtp-server';
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -117,7 +117,7 @@ describe('connector tools and built-ins in a run', () => {
   const models = new Map<string, RunModel>();
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     // The fake MCP, GitHub and SMTP servers listen on 127.0.0.1 (S-8).
     t.deps.net = { allowPrivateNetwork: true };
     cookie = (await t.signUp('dana@example.com')).cookie!;

@@ -1,4 +1,4 @@
-import { ConnectorNeedsLogin, type GithubApi, type GithubIssueQuery } from '@openbot/agent';
+import { ConnectorNeedsLogin, type GithubApi, type GithubIssueQuery } from '@openbots/agent';
 
 // The GitHub built-in (decision 5 in plan 20, T2): a thin REST client with
 // the connector's personal access token, covering issues and pull requests
@@ -68,7 +68,7 @@ export function githubApi(
         accept: 'application/vnd.github+json',
         authorization: `Bearer ${token}`,
         'x-github-api-version': '2022-11-28',
-        'user-agent': 'OpenBot',
+        'user-agent': 'OpenBots',
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),

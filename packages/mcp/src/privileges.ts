@@ -1,7 +1,7 @@
 import { chmodSync, chownSync, existsSync, readFileSync } from 'node:fs';
 
 // Who stdio servers run as, and keeping them out of the server's own process
-// (S-1). When OpenBot may switch users (root, or a non-root process holding
+// (S-1). When OpenBots may switch users (root, or a non-root process holding
 // CAP_SETUID and CAP_SETGID) each child runs as `nobody` with no capabilities
 // at all (`launchAs`), and the server makes itself non-dumpable so that user
 // cannot read its /proc/<pid>/environ or memory. The compose service starts the
@@ -52,7 +52,7 @@ export function makeNonDumpable(): boolean {
   return true;
 }
 
-/** The unprivileged user stdio servers run as when OpenBot can switch users. */
+/** The unprivileged user stdio servers run as when OpenBots can switch users. */
 export function unprivilegedUser(): { uid: number; gid: number } | null {
   if (typeof process.getuid !== 'function' || !canSwitchUser()) return null;
   try {

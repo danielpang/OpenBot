@@ -1,4 +1,4 @@
-import { Button, Input } from '@openbot/ui';
+import { Button, Input } from '@openbots/ui';
 import { useState, type FormEvent } from 'react';
 import type { z } from 'zod';
 import type { QuestionPropsSchema, QuestionState } from '../kinds/question.js';

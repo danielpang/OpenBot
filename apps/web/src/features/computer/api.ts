@@ -1,5 +1,5 @@
-import { ApiError, unwrap, type components } from '@openbot/api-client';
-import { COMPUTER_OFF, type WsEventOf } from '@openbot/shared';
+import { ApiError, unwrap, type components } from '@openbots/api-client';
+import { COMPUTER_OFF, type WsEventOf } from '@openbots/shared';
 import { queryOptions } from '@tanstack/react-query';
 import { api } from '../../app/api.js';
 

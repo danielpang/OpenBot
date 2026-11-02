@@ -1,4 +1,4 @@
-import { Badge, Button, cn } from '@openbot/ui';
+import { Badge, Button, cn } from '@openbots/ui';
 import type { ServerProfile } from '../ipc.js';
 import { KindIcon } from './icons.js';
 import { connectionLine, Notice } from './parts.js';

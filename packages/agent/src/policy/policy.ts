@@ -1,11 +1,11 @@
-import type { PolicyDecision, RunSource } from '@openbot/shared';
+import type { PolicyDecision, RunSource } from '@openbots/shared';
 
 // Tool policy (plan 5.5, P1). Every tool call is evaluated before it runs:
 // `auto` runs it, `ask` pauses the run for the owner's approval, `deny`
 // refuses it. `createPolicy` (engine.ts) is the real rule set; a test or a
 // caller with its own rules can implement `Policy` directly.
 
-export type { PolicyDecision } from '@openbot/shared';
+export type { PolicyDecision } from '@openbots/shared';
 
 /** The run as the policy sees it. */
 export interface PolicyRun {

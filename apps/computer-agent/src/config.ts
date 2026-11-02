@@ -4,10 +4,10 @@ import path from 'node:path';
 // container (plan 9.2), and its token from a file (S-7): the docker provider
 // writes it into the state volume before each start, and the agent reads and
 // deletes it before it listens, so it is in no process's environment. A
-// remote agent may still take OPENBOT_AGENT_TOKEN.
+// remote agent may still take OPENBOTS_AGENT_TOKEN.
 
 export interface AgentConfig {
-  /** Shared secret from OPENBOT_AGENT_TOKEN; when unset the agent reads `tokenFile`. */
+  /** Shared secret from OPENBOTS_AGENT_TOKEN; when unset the agent reads `tokenFile`. */
   token?: string;
   tokenFile: string;
   port: number;
@@ -26,22 +26,22 @@ export interface AgentConfig {
 }
 
 export const AGENT_ENV_VARS = [
-  'OPENBOT_AGENT_TOKEN',
-  'OPENBOT_AGENT_TOKEN_FILE',
-  'OPENBOT_AGENT_PORT',
-  'OPENBOT_AGENT_HOST',
-  'OPENBOT_HOME',
-  'OPENBOT_SCREEN_SIZE',
-  'OPENBOT_CHROMIUM',
-  'OPENBOT_RUNTIME_DIR',
-  'OPENBOT_STATE_DIR',
+  'OPENBOTS_AGENT_TOKEN',
+  'OPENBOTS_AGENT_TOKEN_FILE',
+  'OPENBOTS_AGENT_PORT',
+  'OPENBOTS_AGENT_HOST',
+  'OPENBOTS_HOME',
+  'OPENBOTS_SCREEN_SIZE',
+  'OPENBOTS_CHROMIUM',
+  'OPENBOTS_RUNTIME_DIR',
+  'OPENBOTS_STATE_DIR',
 ] as const;
 
 /**
  * The agent's own secrets, which no program it starts may see (S-7): a Bot's
  * command holding the token could call the agent API and drive any screen.
  */
-export const SECRET_ENV_VARS = ['OPENBOT_AGENT_TOKEN'] as const;
+export const SECRET_ENV_VARS = ['OPENBOTS_AGENT_TOKEN'] as const;
 
 /**
  * The environment for a child process: the agent's own, then `overlays` in
@@ -62,26 +62,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
   };
   const problems: string[] = [];
 
-  const token = e('OPENBOT_AGENT_TOKEN');
+  const token = e('OPENBOTS_AGENT_TOKEN');
   if (token !== undefined && token.length < MIN_TOKEN_LENGTH) {
-    problems.push(`OPENBOT_AGENT_TOKEN must be at least ${MIN_TOKEN_LENGTH} characters`);
+    problems.push(`OPENBOTS_AGENT_TOKEN must be at least ${MIN_TOKEN_LENGTH} characters`);
   }
 
-  const port = Number(e('OPENBOT_AGENT_PORT') ?? 7070);
+  const port = Number(e('OPENBOTS_AGENT_PORT') ?? 7070);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    problems.push('OPENBOT_AGENT_PORT must be a port number');
+    problems.push('OPENBOTS_AGENT_PORT must be a port number');
   }
 
-  const size = /^(\d+)x(\d+)$/.exec(e('OPENBOT_SCREEN_SIZE') ?? '1280x800');
-  if (!size) problems.push('OPENBOT_SCREEN_SIZE must look like 1280x800');
+  const size = /^(\d+)x(\d+)$/.exec(e('OPENBOTS_SCREEN_SIZE') ?? '1280x800');
+  if (!size) problems.push('OPENBOTS_SCREEN_SIZE must look like 1280x800');
 
-  const home = e('OPENBOT_HOME') ?? '/home/bot';
-  const stateDir = e('OPENBOT_STATE_DIR') ?? '/var/lib/openbot';
-  const tokenFile = e('OPENBOT_AGENT_TOKEN_FILE') ?? path.join(stateDir, 'token');
+  const home = e('OPENBOTS_HOME') ?? '/home/bot';
+  const stateDir = e('OPENBOTS_STATE_DIR') ?? '/var/lib/openbots';
+  const tokenFile = e('OPENBOTS_AGENT_TOKEN_FILE') ?? path.join(stateDir, 'token');
   for (const [name, value] of [
-    ['OPENBOT_HOME', home],
-    ['OPENBOT_STATE_DIR', stateDir],
-    ['OPENBOT_AGENT_TOKEN_FILE', tokenFile],
+    ['OPENBOTS_HOME', home],
+    ['OPENBOTS_STATE_DIR', stateDir],
+    ['OPENBOTS_AGENT_TOKEN_FILE', tokenFile],
   ]) {
     if (!path.isAbsolute(value!)) problems.push(`${name} must be an absolute path`);
   }
@@ -93,12 +93,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     ...(token !== undefined ? { token } : {}),
     tokenFile,
     port,
-    host: e('OPENBOT_AGENT_HOST') ?? '0.0.0.0',
+    host: e('OPENBOTS_AGENT_HOST') ?? '0.0.0.0',
     home,
     width: Number(size![1]),
     height: Number(size![2]),
-    chromiumPath: e('OPENBOT_CHROMIUM'),
-    runtimeDir: e('OPENBOT_RUNTIME_DIR') ?? '/tmp/openbot',
+    chromiumPath: e('OPENBOTS_CHROMIUM'),
+    runtimeDir: e('OPENBOTS_RUNTIME_DIR') ?? '/tmp/openbots',
     stateDir,
   };
 }

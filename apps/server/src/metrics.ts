@@ -5,7 +5,7 @@ import { collectDefaultMetrics, Counter, Gauge, Histogram, Registry } from 'prom
 import { schema, type Db } from './db/client.js';
 
 // One registry per process: default Node metrics, an HTTP request histogram,
-// and the OpenBot metrics below (plan 16.3), served at `GET /metrics`.
+// and the OpenBots metrics below (plan 16.3), served at `GET /metrics`.
 // `docs/grafana-dashboard.json` charts them.
 
 export const registry = new Registry();
@@ -30,14 +30,14 @@ export const httpMetrics = createMiddleware(async (c, next) => {
 });
 
 const runsFinished = new Counter({
-  name: 'openbot_runs_finished_total',
+  name: 'openbots_runs_finished_total',
   help: 'Runs that reached completed, failed or cancelled, by trigger',
   labelNames: ['status', 'trigger'] as const,
   registers: [registry],
 });
 
 const runDuration = new Histogram({
-  name: 'openbot_run_duration_seconds',
+  name: 'openbots_run_duration_seconds',
   help: 'Wall time from a run starting to it finishing, waits included',
   labelNames: ['status'] as const,
   buckets: [1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1800, 3600],
@@ -64,7 +64,7 @@ export function observeRun(run: {
 // Read from the database at scrape time, so every process reports the whole
 // install whichever queue backend it runs on; chart it with max(), not sum().
 const runsActive = new Gauge({
-  name: 'openbot_runs',
+  name: 'openbots_runs',
   help: 'Runs queued (the run queue depth), running, or waiting on an approval or answer',
   labelNames: ['status'] as const,
   registers: [registry],
@@ -85,7 +85,7 @@ export async function collectRunGauges(db: Db) {
 }
 
 const webhookDeliveries = new Counter({
-  name: 'openbot_webhook_deliveries_total',
+  name: 'openbots_webhook_deliveries_total',
   help: 'Inbound webhook requests by outcome, and outbound event delivery attempts by result',
   labelNames: ['direction', 'outcome'] as const,
   registers: [registry],
@@ -101,7 +101,7 @@ export function observeWebhook(direction: string, outcome: string) {
 }
 
 const providerLatency = new Histogram({
-  name: 'openbot_provider_step_duration_seconds',
+  name: 'openbots_provider_step_duration_seconds',
   help: 'Duration of one model step (request to finished response) by provider and model',
   labelNames: ['provider', 'model'] as const,
   buckets: [0.25, 0.5, 1, 2, 4, 8, 15, 30, 60, 120, 300],

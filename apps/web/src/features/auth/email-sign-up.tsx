@@ -1,4 +1,4 @@
-import { Button } from '@openbot/ui';
+import { Button } from '@openbots/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { auth } from '../../app/api.js';

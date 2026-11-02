@@ -1,6 +1,6 @@
 import { runSoak } from './soak.js';
 
-// `pnpm --filter @openbot/server soak`: the 1.0 soak test (plan 18.9), an hour
+// `pnpm --filter @openbots/server soak`: the 1.0 soak test (plan 18.9), an hour
 // by default. SOAK_MINUTES, SOAK_BOTS, SOAK_IN_FLIGHT and SOAK_SEED change the
 // shape; DATABASE_URL and REDIS_URL point it at a real Postgres and Redis (the
 // compose stack's, for example). Exits non-zero on any violation or leak.

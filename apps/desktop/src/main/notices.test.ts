@@ -1,4 +1,4 @@
-import { wsEvent } from '@openbot/shared';
+import { wsEvent } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import { formatDeepLink } from './deep-links.js';
 import { createNoticeWatcher, isWatching, linkFor, type NoticeContext } from './notices.js';
@@ -86,7 +86,7 @@ describe('notices', () => {
     );
     expect(reply).toMatchObject({ kind: 'mention', title: 'Ada mentioned you' });
     expect(reply!.link).toEqual({ kind: 'chat', chatId: GROUP, seq: 10, thread: ROOT });
-    expect(formatDeepLink(reply!.link)).toBe(`openbot://chat/${GROUP}/message/10?thread=${ROOT}`);
+    expect(formatDeepLink(reply!.link)).toBe(`openbots://chat/${GROUP}/message/10?thread=${ROOT}`);
   });
 
   it('links a Bot to Bot request to that chat under the Bot, not to a group', () => {
@@ -95,7 +95,7 @@ describe('notices', () => {
       wsEvent('approval.requested', { approval }, { bot_id: BOT, chat_id: PAIR, seq: 4 }),
     );
     expect(notice!.link).toEqual({ kind: 'bot', botId: BOT, chat: PAIR, seq: 4 });
-    expect(formatDeepLink(notice!.link)).toBe(`openbot://bot/${BOT}/message/4?chat=${PAIR}`);
+    expect(formatDeepLink(notice!.link)).toBe(`openbots://bot/${BOT}/message/4?chat=${PAIR}`);
   });
 
   it('links a finished long task to the run’s last message', () => {

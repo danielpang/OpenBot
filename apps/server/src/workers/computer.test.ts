@@ -1,7 +1,7 @@
-import { localEmbedder } from '@openbot/agent';
-import { scriptedModel } from '@openbot/agent/testing';
-import { TINY_PNG } from '@openbot/computer/testing';
-import { EVENTS_CHANNEL, OWNER_HAS_SCREEN, type MessagePart, type WsEvent } from '@openbot/shared';
+import { localEmbedder } from '@openbots/agent';
+import { scriptedModel } from '@openbots/agent/testing';
+import { TINY_PNG } from '@openbots/computer/testing';
+import { EVENTS_CHANNEL, OWNER_HAS_SCREEN, type MessagePart, type WsEvent } from '@openbots/shared';
 import { asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
@@ -32,7 +32,7 @@ describe('computer tools in a run', () => {
   };
 
   beforeAll(async () => {
-    t = await createTestApp({ OPENBOT_SIGNUP_MODE: 'open' });
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
     computer = await useTestComputer(t.ownerDeps);
     cookie = (await t.signUp('dana@example.com')).cookie!;
     unhook = registerRunHooks();
@@ -288,7 +288,7 @@ describe('computer tools in a run', () => {
   it('says so in the row when the start updated the computer first (plan 16.3)', async () => {
     expect((await call('POST', '/computer/stop')).status).toBe(200);
     const old = t.deps.config.sandboxImage;
-    t.deps.config.sandboxImage = 'ghcr.io/danielpang/openbot/computer:9.9.9';
+    t.deps.config.sandboxImage = 'ghcr.io/danielpang/openbots/computer:9.9.9';
     try {
       const bot = await newBot('Updater', [
         [{ tool: 'list_dir', args: {}, id: 'u1' }],

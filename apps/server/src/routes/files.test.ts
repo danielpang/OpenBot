@@ -17,12 +17,12 @@ describe('/api/v1/files', () => {
   let bob: string;
 
   beforeAll(async () => {
-    dir = await mkdtemp(path.join(tmpdir(), 'openbot-files-'));
+    dir = await mkdtemp(path.join(tmpdir(), 'openbots-files-'));
     t = await createTestApp({
-      OPENBOT_DEPLOYMENT: 'managed',
-      OPENBOT_SIGNUP_MODE: 'open',
-      OPENBOT_FILES_DIR: dir,
-      OPENBOT_LIMITS_UPLOAD_BYTES: '1024',
+      OPENBOTS_DEPLOYMENT: 'managed',
+      OPENBOTS_SIGNUP_MODE: 'open',
+      OPENBOTS_FILES_DIR: dir,
+      OPENBOTS_LIMITS_UPLOAD_BYTES: '1024',
     });
     alice = (await t.signUp('alice@example.com')).cookie!;
     bob = (await t.signUp('bob@example.com')).cookie!;

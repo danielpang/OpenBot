@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Bootstraps the OpenBot toolchain: Node 22, pnpm (via corepack) and the
+# Bootstraps the OpenBots toolchain: Node 22, pnpm (via corepack) and the
 # workspace dependencies. Safe to run repeatedly.
 #
 #   bash scripts/dev-setup.sh              # Node, pnpm, pnpm install
 #   bash scripts/dev-setup.sh --services   # also Postgres 16 + pgvector and Redis
 #
 # Environment overrides:
-#   OPENBOT_TOOLCHAIN_DIR  where Node, corepack and the pnpm store go (default:
-#                          /workspace/.openbot-toolchain if it has room, else
-#                          ~/.local/openbot-toolchain; an existing install is reused)
-#   OPENBOT_MIN_FREE_MB    free space a first install needs on the toolchain volume (default 768)
+#   OPENBOTS_TOOLCHAIN_DIR  where Node, corepack and the pnpm store go (default:
+#                          /workspace/.openbots-toolchain if it has room, else
+#                          ~/.local/openbots-toolchain; an existing install is reused)
+#   OPENBOTS_MIN_FREE_MB    free space a first install needs on the toolchain volume (default 768)
 set -euo pipefail
 
 NODE_MAJOR=22
-MIN_FREE_MB="${OPENBOT_MIN_FREE_MB:-768}"
+MIN_FREE_MB="${OPENBOTS_MIN_FREE_MB:-768}"
 SERVICES_MIN_FREE_MB=500
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -48,13 +48,13 @@ free_mb() {
 # --- Choose the toolchain directory -------------------------------------------
 
 choose_toolchain_dir() {
-  if [ -n "${OPENBOT_TOOLCHAIN_DIR:-}" ]; then
-    echo "$OPENBOT_TOOLCHAIN_DIR"
+  if [ -n "${OPENBOTS_TOOLCHAIN_DIR:-}" ]; then
+    echo "$OPENBOTS_TOOLCHAIN_DIR"
     return
   fi
   local candidates=()
-  [ -d /workspace ] && [ -w /workspace ] && candidates+=("/workspace/.openbot-toolchain")
-  candidates+=("$HOME/.local/openbot-toolchain")
+  [ -d /workspace ] && [ -w /workspace ] && candidates+=("/workspace/.openbots-toolchain")
+  candidates+=("$HOME/.local/openbots-toolchain")
   local best="" best_free=-1 c f
   # Reuse an earlier install so reruns never move the toolchain.
   for c in "${candidates[@]}"; do
@@ -90,7 +90,7 @@ export PNPM_HOME="$TOOLCHAIN_DIR/pnpm"
 if [ "$(stat -c %d "$(dirname "$TOOLCHAIN_DIR")" 2>/dev/null)" = "$(stat -c %d "$REPO_DIR" 2>/dev/null)" ]; then
   PNPM_STORE_DIR="$TOOLCHAIN_DIR/pnpm-store"
 else
-  PNPM_STORE_DIR="$(dirname "$REPO_DIR")/.openbot-pnpm-store"
+  PNPM_STORE_DIR="$(dirname "$REPO_DIR")/.openbots-pnpm-store"
 fi
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
@@ -116,7 +116,7 @@ FIRST_INSTALL=0
 [ -n "$NODE_BIN_DIR" ] && [ -d "$REPO_DIR/node_modules/.pnpm" ] || FIRST_INSTALL=1
 if [ "$FIRST_INSTALL" = 1 ] && [ "$free" -lt "$MIN_FREE_MB" ]; then
   die "only ${free} MB free on the volume holding $TOOLCHAIN_DIR; need ${MIN_FREE_MB} MB.
-Free some space, or point OPENBOT_TOOLCHAIN_DIR at a bigger volume."
+Free some space, or point OPENBOTS_TOOLCHAIN_DIR at a bigger volume."
 fi
 if [ "$FIRST_INSTALL" = 1 ] && [ "$PNPM_STORE_DIR" != "$TOOLCHAIN_DIR/pnpm-store" ]; then
   store_free="$(free_mb "$PNPM_STORE_DIR")"
@@ -139,7 +139,7 @@ if [ -z "$NODE_BIN_DIR" ]; then
   tarball="$(curl -fsSL "$base/SHASUMS256.txt" | awk -v n="-${os}-${arch}.tar.xz" '$2 ~ n"$" { print $2 }')"
   [ -n "$tarball" ] || die "could not find a Node ${NODE_MAJOR} tarball for ${os}-${arch}"
   log "Installing ${tarball%.tar.xz} into $NODE_DIR"
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/openbot-node.XXXXXX")"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/openbots-node.XXXXXX")"
   trap 'rm -rf "$tmp"' EXIT
   curl -fsSL "$base/$tarball" -o "$tmp/$tarball"
   expected="$(curl -fsSL "$base/SHASUMS256.txt" | awk -v t="$tarball" '$2 == t { print $1 }')"
@@ -208,13 +208,13 @@ if [ "$WITH_SERVICES" = 1 ]; then
     $SUDO redis-server --daemonize yes --save '' --appendonly no
   fi
 
-  psql_admin -qtAc "SELECT 1 FROM pg_roles WHERE rolname = 'openbot'" | grep -q 1 ||
-    psql_admin -qc "CREATE ROLE openbot LOGIN SUPERUSER PASSWORD 'openbot'"
-  psql_admin -qtAc "SELECT 1 FROM pg_database WHERE datname = 'openbot'" | grep -q 1 ||
-    psql_admin -qc "CREATE DATABASE openbot OWNER openbot"
-  psql_admin -q -d openbot -c "CREATE EXTENSION IF NOT EXISTS vector"
+  psql_admin -qtAc "SELECT 1 FROM pg_roles WHERE rolname = 'openbots'" | grep -q 1 ||
+    psql_admin -qc "CREATE ROLE openbots LOGIN SUPERUSER PASSWORD 'openbots'"
+  psql_admin -qtAc "SELECT 1 FROM pg_database WHERE datname = 'openbots'" | grep -q 1 ||
+    psql_admin -qc "CREATE DATABASE openbots OWNER openbots"
+  psql_admin -q -d openbots -c "CREATE EXTENSION IF NOT EXISTS vector"
 
-  SERVICE_EXPORTS="export DATABASE_URL=postgres://openbot:openbot@127.0.0.1:5432/openbot
+  SERVICE_EXPORTS="export DATABASE_URL=postgres://openbots:openbots@127.0.0.1:5432/openbots
 export REDIS_URL=redis://127.0.0.1:6379"
 fi
 

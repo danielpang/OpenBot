@@ -1,4 +1,4 @@
-import { ApiError } from '@openbot/api-client';
+import { ApiError } from '@openbots/api-client';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { meQuery } from '../app/api.js';
 import { isActive, webExtensions } from '../app/extensions.js';

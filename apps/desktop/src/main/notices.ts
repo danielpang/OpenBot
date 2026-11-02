@@ -4,17 +4,17 @@ import {
   type Notice as SharedNotice,
   type NoticeTarget,
   type WsEvent,
-} from '@openbot/shared';
+} from '@openbots/shared';
 import { deepLinkPath, type MessageLink } from './deep-links.js';
 
 // Native notifications (N1) for approvals, questions, mentions of the owner,
 // Routine exceptions and finished long tasks. Which events notify is decided
-// in @openbot/shared (notices.ts), which the web app's browser notifications
+// in @openbots/shared (notices.ts), which the web app's browser notifications
 // use too; in the Mac app the shell shows them instead, so they also arrive
 // while the window is closed. This module adds the deep link each one opens.
 
-export { ownerHandles } from '@openbot/shared';
-export type { NoticeKind } from '@openbot/shared';
+export { ownerHandles } from '@openbots/shared';
+export type { NoticeKind } from '@openbots/shared';
 
 export interface Notice extends SharedNotice {
   link: MessageLink;

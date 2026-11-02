@@ -228,7 +228,7 @@ describe('screens', () => {
     expect(cdpPortFor(10)).toBe(9222);
     expect(cdpPortFor(12)).toBe(9224);
     expect(screenNumber(12)).toBe(2);
-    expect(browserProfileDir(12)).toBe('/var/lib/openbot/screens/screen-2/profile');
+    expect(browserProfileDir(12)).toBe('/var/lib/openbots/screens/screen-2/profile');
     expect(() => nextDisplay(Array.from({ length: 90 }, (_, i) => 10 + i))).toThrow(/taken/);
   });
 

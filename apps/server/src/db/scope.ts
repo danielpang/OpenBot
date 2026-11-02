@@ -12,7 +12,7 @@ import type { Db } from './client.js';
 // The app's database (`scopedDb`) runs every query, and every transaction,
 // as a transaction that starts with
 //
-//   SELECT set_config('role', 'openbot_app', true),
+//   SELECT set_config('role', 'openbots_app', true),
 //          set_config('app.workspace_id', <organization>, true)
 //
 // for the organization of the work in hand: the scope set with
@@ -25,26 +25,26 @@ import type { Db } from './client.js';
 // mechanism, never a blanket bypass:
 // - `asDirectory`: better-auth and the organization directory (which
 //   organizations an account is in, an invitation by its id, an API key)
-//   work as openbot_auth, which reaches the account tables, workspaces,
+//   work as openbots_auth, which reaches the account tables, workspaces,
 //   memberships, invitations and API keys of every organization, and no
 //   other table.
 // - `forEachWorkspace`: work for every organization (startup upkeep,
 //   sweeps, retention) runs in each one's scope in turn, from the ids that
-//   openbot_workspace_ids(), a SECURITY DEFINER function, returns.
+//   openbots_workspace_ids(), a SECURITY DEFINER function, returns.
 // - `webhookWorkspaces`: which organization a webhook path belongs to,
-//   through openbot_webhook_workspaces(); the delivery then works in it.
+//   through openbots_webhook_workspaces(); the delivery then works in it.
 // - `dueRoutineWorkspaces`: which organizations have a Routine due, through
-//   openbot_due_routine_workspaces(); the scheduler ticks in each.
+//   openbots_due_routine_workspaces(); the scheduler ticks in each.
 // - `connectorWorkspace`: which organization a connector's OAuth callback
-//   belongs to, through openbot_connector_workspace(); the state is then
+//   belongs to, through openbots_connector_workspace(); the state is then
 //   checked there.
 // - Jobs carry the organization that queued them and run in it
 //   (infra/index.ts); realtime events carry it too, and the gateway and the
 //   outbound fan-out work in it.
 // - Migrations run as the database owner (DATABASE_URL), before the app.
 
-export const APP_ROLE = 'openbot_app';
-export const DIRECTORY_ROLE = 'openbot_auth';
+export const APP_ROLE = 'openbots_app';
+export const DIRECTORY_ROLE = 'openbots_auth';
 
 export type DbScope = { workspaceId: string } | { directory: true };
 
@@ -181,9 +181,9 @@ export function withScope<D extends Db>(db: D, scope: DbScope): D {
   return base ? scopedDb(base as D, scope) : db;
 }
 
-/** Every organization's id (openbot_workspace_ids(), a SECURITY DEFINER function). */
+/** Every organization's id (openbots_workspace_ids(), a SECURITY DEFINER function). */
 export async function workspaceIds(db: Db): Promise<string[]> {
-  const result = await db.execute<{ id: string }>(sql`select openbot_workspace_ids() as id`);
+  const result = await db.execute<{ id: string }>(sql`select openbots_workspace_ids() as id`);
   return rowsOf<{ id: string }>(result).map((r) => r.id);
 }
 
@@ -208,23 +208,23 @@ export async function webhookWorkspaces(
   byId: boolean,
 ): Promise<string[]> {
   const result = await db.execute<{ id: string }>(
-    sql`select openbot_webhook_workspaces(${bot}, ${slug}, ${byId}) as id`,
+    sql`select openbots_webhook_workspaces(${bot}, ${slug}, ${byId}) as id`,
   );
   return rowsOf<{ id: string }>(result).map((r) => r.id);
 }
 
-/** The organizations with a Routine due at `now` (openbot_due_routine_workspaces()). */
+/** The organizations with a Routine due at `now` (openbots_due_routine_workspaces()). */
 export async function dueRoutineWorkspaces(db: Db, now = new Date()): Promise<string[]> {
   const result = await db.execute<{ id: string }>(
-    sql`select openbot_due_routine_workspaces(${now.toISOString()}::timestamptz) as id`,
+    sql`select openbots_due_routine_workspaces(${now.toISOString()}::timestamptz) as id`,
   );
   return rowsOf<{ id: string }>(result).map((r) => r.id);
 }
 
-/** The organization of a connector, by id (openbot_connector_workspace()): for its OAuth callback. */
+/** The organization of a connector, by id (openbots_connector_workspace()): for its OAuth callback. */
 export async function connectorWorkspace(db: Db, connectorId: string): Promise<string | null> {
   const result = await db.execute<{ id: string | null }>(
-    sql`select openbot_connector_workspace(${connectorId}::uuid) as id`,
+    sql`select openbots_connector_workspace(${connectorId}::uuid) as id`,
   );
   return rowsOf<{ id: string | null }>(result)[0]?.id ?? null;
 }

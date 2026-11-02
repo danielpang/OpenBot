@@ -398,7 +398,7 @@ importers:
       '@hono/node-server':
         specifier: 'catalog:'
         version: 2.1.5(hono@4.13.13)
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       hono:
@@ -446,16 +446,16 @@ importers:
       '@electron/notarize':
         specifier: 'catalog:'
         version: 3.1.2(supports-color@10.2.2)
-      '@openbot/api-client':
+      '@openbots/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@openbot/avatars':
+      '@openbots/avatars':
         specifier: workspace:*
         version: link:../../packages/avatars
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@openbot/ui':
+      '@openbots/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@tailwindcss/vite':
@@ -527,34 +527,34 @@ importers:
       '@mozilla/readability':
         specifier: ^0.6.0
         version: 0.6.0
-      '@openbot/agent':
+      '@openbots/agent':
         specifier: workspace:*
         version: link:../../packages/agent
-      '@openbot/artifacts':
+      '@openbots/artifacts':
         specifier: workspace:*
         version: link:../../packages/artifacts
-      '@openbot/avatars':
+      '@openbots/avatars':
         specifier: workspace:*
         version: link:../../packages/avatars
-      '@openbot/computer':
+      '@openbots/computer':
         specifier: workspace:*
         version: link:../../packages/computer
-      '@openbot/mcp':
+      '@openbots/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
-      '@openbot/models':
+      '@openbots/models':
         specifier: workspace:*
         version: link:../../packages/models
-      '@openbot/router':
+      '@openbots/router':
         specifier: workspace:*
         version: link:../../packages/router
-      '@openbot/routines':
+      '@openbots/routines':
         specifier: workspace:*
         version: link:../../packages/routines
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@openbot/widgets':
+      '@openbots/widgets':
         specifier: workspace:*
         version: link:../../packages/widgets
       ai:
@@ -669,25 +669,25 @@ importers:
       '@novnc/novnc':
         specifier: ^1.7.0
         version: 1.7.0
-      '@openbot/api-client':
+      '@openbots/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@openbot/artifacts':
+      '@openbots/artifacts':
         specifier: workspace:*
         version: link:../../packages/artifacts
-      '@openbot/avatars':
+      '@openbots/avatars':
         specifier: workspace:*
         version: link:../../packages/avatars
-      '@openbot/routines':
+      '@openbots/routines':
         specifier: workspace:*
         version: link:../../packages/routines
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@openbot/ui':
+      '@openbots/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      '@openbot/widgets':
+      '@openbots/widgets':
         specifier: workspace:*
         version: link:../../packages/widgets
       '@tanstack/react-query':
@@ -724,7 +724,7 @@ importers:
         specifier: ^4.5.0
         version: 4.5.0
     devDependencies:
-      '@openbot/mcp':
+      '@openbots/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
       '@playwright/test':
@@ -769,10 +769,10 @@ importers:
       '@hono/zod-openapi':
         specifier: 'catalog:'
         version: 1.6.3(hono@4.13.13)(zod@4.6.7)
-      '@openbot/server':
+      '@openbots/server':
         specifier: workspace:*
         version: link:../../apps/server
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       better-auth:
@@ -806,16 +806,16 @@ importers:
 
   ee/web:
     dependencies:
-      '@openbot/api-client':
+      '@openbots/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@openbot/ui':
+      '@openbots/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      '@openbot/web':
+      '@openbots/web':
         specifier: workspace:*
         version: link:../../apps/web
       '@tanstack/react-query':
@@ -879,19 +879,19 @@ importers:
       '@ai-sdk/openai':
         specifier: 'catalog:'
         version: 4.0.93(zod@4.6.7)
-      '@openbot/computer':
+      '@openbots/computer':
         specifier: workspace:*
         version: link:../computer
-      '@openbot/models':
+      '@openbots/models':
         specifier: workspace:*
         version: link:../models
-      '@openbot/routines':
+      '@openbots/routines':
         specifier: workspace:*
         version: link:../routines
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
-      '@openbot/widgets':
+      '@openbots/widgets':
         specifier: workspace:*
         version: link:../widgets
       ai:
@@ -916,7 +916,7 @@ importers:
 
   packages/api-client:
     dependencies:
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
       openapi-fetch:
@@ -944,7 +944,7 @@ importers:
 
   packages/artifacts:
     dependencies:
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
       diff:
@@ -966,10 +966,10 @@ importers:
 
   packages/avatars:
     dependencies:
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
-      '@openbot/ui':
+      '@openbots/ui':
         specifier: workspace:*
         version: link:../ui
       '@resvg/resvg-js':
@@ -1015,10 +1015,10 @@ importers:
 
   packages/computer:
     dependencies:
-      '@openbot/computer-agent':
+      '@openbots/computer-agent':
         specifier: workspace:*
         version: link:../../apps/computer-agent
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
       dockerode:
@@ -1061,7 +1061,7 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
         version: 1.32.1(supports-color@10.2.2)(zod@4.6.7)
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
       zod:
@@ -1098,7 +1098,7 @@ importers:
       '@ai-sdk/xai':
         specifier: 'catalog:'
         version: 5.0.21(zod@4.6.7)
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
       ai:
@@ -1123,7 +1123,7 @@ importers:
 
   packages/router:
     dependencies:
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
       ai:
@@ -1148,7 +1148,7 @@ importers:
 
   packages/routines:
     dependencies:
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
       croner:
@@ -1189,7 +1189,7 @@ importers:
 
   packages/ui:
     dependencies:
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
       '@radix-ui/react-avatar':
@@ -1247,13 +1247,13 @@ importers:
 
   packages/widgets:
     dependencies:
-      '@openbot/routines':
+      '@openbots/routines':
         specifier: workspace:*
         version: link:../routines
-      '@openbot/shared':
+      '@openbots/shared':
         specifier: workspace:*
         version: link:../shared
-      '@openbot/ui':
+      '@openbots/ui':
         specifier: workspace:*
         version: link:../ui
       zod:

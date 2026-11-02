@@ -1,5 +1,5 @@
-import { unwrap } from '@openbot/api-client';
-import { Button } from '@openbot/ui';
+import { unwrap } from '@openbots/api-client';
+import { Button } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { api } from '../../app/api.js';
@@ -46,7 +46,7 @@ export function CustomStdioSetting() {
         {managed ? 'Let admins add command (stdio) servers' : 'Allow command (stdio) servers'}
       </label>
       <p className="text-xs text-muted-foreground">
-        They run programs on the OpenBot server. Catalog servers are unaffected.
+        They run programs on the OpenBots server. Catalog servers are unaffected.
       </p>
       <ErrorText error={error} />
     </div>

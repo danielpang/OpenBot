@@ -89,7 +89,7 @@ for (const path of sources) {
   if (!/\.(c|m)?(t|j)sx?$/.test(path)) continue;
   const text = readFileSync(join(root, path), 'utf8');
   if (
-    /from\s+['"][^'"]*(\.\.\/)+ee\/|import\(\s*['"][^'"]*(\.\.\/)+ee\/|['"]@openbot\/ee/.test(text)
+    /from\s+['"][^'"]*(\.\.\/)+ee\/|import\(\s*['"][^'"]*(\.\.\/)+ee\/|['"]@openbots\/ee/.test(text)
   ) {
     problems.push(`${path}: imports ee/`);
   }
