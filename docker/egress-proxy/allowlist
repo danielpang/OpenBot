@@ -1,0 +1,10 @@
+# The hosts the Bots' computers may reach through the egress proxy, one
+# extended regular expression per line, matched against the host name.
+# Anything not listed is refused. To keep your own list outside the checkout,
+# point OPENBOTS_SANDBOX_EGRESS_ALLOWLIST in .env at it.
+#
+# A domain and its subdomains:  (^|\.)example\.com$
+# One exact host:               ^api\.example\.com$
+(^|\.)wikipedia\.org$
+(^|\.)github\.com$
+(^|\.)githubusercontent\.com$

@@ -1,0 +1,181 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1791978556855,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792040073759,
+      "tag": "0001_messages_delta_seq",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792077416721,
+      "tag": "0002_runs_and_memory_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792300910907,
+      "tag": "0003_bot_state_current_tool",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792320514106,
+      "tag": "0004_routine_runs_slot",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792322754570,
+      "tag": "0005_webhook_pipeline",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792854866196,
+      "tag": "0006_connectors_trusted",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792901207865,
+      "tag": "0007_providers_local_header_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792902875141,
+      "tag": "0008_connectors_local",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793317245089,
+      "tag": "0009_members_disabled",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793319363958,
+      "tag": "0010_webhook_endpoints_disabled_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793319569039,
+      "tag": "0011_bots_is_main",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793330529956,
+      "tag": "0012_files_purpose",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793330544741,
+      "tag": "0013_bot_memories_embedding_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793336536507,
+      "tag": "0014_messages_updated_seq",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793338449246,
+      "tag": "0015_event_subscriptions_local",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793403247560,
+      "tag": "0016_providers_key_hint",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793407036814,
+      "tag": "0017_skills_imported",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793408436251,
+      "tag": "0018_first_bot_main",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793410198908,
+      "tag": "0019_skills_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793422141994,
+      "tag": "0020_drop_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793424115444,
+      "tag": "0021_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793424122189,
+      "tag": "0022_organizations_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793459023962,
+      "tag": "0023_row_level_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793637279538,
+      "tag": "0024_message_deletions",
+      "breakpoints": true
+    }
+  ]
+}

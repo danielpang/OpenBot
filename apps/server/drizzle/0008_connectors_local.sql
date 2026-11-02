@@ -1,0 +1,1 @@
+ALTER TABLE "connectors" ADD COLUMN "local" boolean DEFAULT false NOT NULL;

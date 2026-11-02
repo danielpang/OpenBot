@@ -1,0 +1,31 @@
+{
+  "name": "@openbots/artifacts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "storage, versions, viewer components",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@openbots/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openbots/shared": "workspace:*",
+    "diff": "^8.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

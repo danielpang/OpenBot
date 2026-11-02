@@ -1,0 +1,1 @@
+ALTER TABLE "bot_memories" ADD COLUMN "embedding_model" text;

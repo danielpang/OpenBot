@@ -1,0 +1,44 @@
+{
+  "name": "@openbots/computer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ComputerProvider, docker provider, agent client, screen locks",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@openbots/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "@openbots/source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "docker-guard": "OPENBOTS_DOCKER_UPSTREAM=${OPENBOTS_DOCKER_UPSTREAM:-unix:///var/run/docker.sock} OPENBOTS_DOCKER_GUARD_HOST=${OPENBOTS_DOCKER_GUARD_HOST:-127.0.0.1} tsx --conditions=@openbots/source src/docker-guard-main.ts",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openbots/computer-agent": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "dockerode": "^4.0.12",
+    "ws": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^4.0.2",
+    "@types/node": "catalog:",
+    "@types/ws": "catalog:",
+    "eslint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "yaml": "^2.9.1"
+  }
+}

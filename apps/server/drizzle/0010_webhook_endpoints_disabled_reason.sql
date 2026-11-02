@@ -1,0 +1,1 @@
+ALTER TABLE "webhook_endpoints" ADD COLUMN "disabled_reason" text;

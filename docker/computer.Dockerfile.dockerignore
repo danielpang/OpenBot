@@ -1,0 +1,16 @@
+# Build context exclusions for docker/computer.Dockerfile. BuildKit reads
+# <Dockerfile>.dockerignore next to the Dockerfile in preference to a
+# .dockerignore at the context root, so this applies to `docker build -f
+# docker/computer.Dockerfile .`.
+.git
+.github
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/*.log
+.env
+.env.*
+!.env.example
+**/.DS_Store

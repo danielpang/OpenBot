@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- The style hash is the avatars' motion CSS (AVATAR_CSS) that <Avatar> puts in a style element; index-html.test.ts checks it. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'sha256-AUu6K0ZZtaDBO2Z0EQI2AtOl+8wvoh+UuipVOqyZaaw='; img-src 'self' data:"
+    />
+    <title>OpenBots</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./start.tsx"></script>
+  </body>
+</html>

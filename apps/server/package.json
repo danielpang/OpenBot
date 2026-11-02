@@ -1,0 +1,83 @@
+{
+  "name": "@openbots/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Hono API, WS gateway, workers, scheduler (roles: api | worker | all)",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@openbots/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "@openbots/source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch --conditions=@openbots/source src/main.ts",
+    "start": "node dist/main.js",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "openapi": "tsx --conditions=@openbots/source src/openapi-cli.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate-cli.ts",
+    "keygen": "tsx src/keygen.ts",
+    "rotate-key": "tsx --conditions=@openbots/source src/rotate-key.ts",
+    "soak": "tsx --conditions=@openbots/source src/soak/main.ts"
+  },
+  "dependencies": {
+    "@better-auth/api-key": "catalog:",
+    "@hono/node-server": "catalog:",
+    "@hono/zod-openapi": "catalog:",
+    "@mozilla/readability": "^0.6.0",
+    "@openbots/agent": "workspace:*",
+    "@openbots/artifacts": "workspace:*",
+    "@openbots/avatars": "workspace:*",
+    "@openbots/computer": "workspace:*",
+    "@openbots/mcp": "workspace:*",
+    "@openbots/models": "workspace:*",
+    "@openbots/router": "workspace:*",
+    "@openbots/routines": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "@openbots/widgets": "workspace:*",
+    "ai": "catalog:",
+    "better-auth": "catalog:",
+    "bullmq": "catalog:",
+    "drizzle-orm": "catalog:",
+    "hono": "catalog:",
+    "imapflow": "^2.4.3",
+    "ioredis": "catalog:",
+    "linkedom": "^0.18.13",
+    "nodemailer": "^10.2.1",
+    "pino": "catalog:",
+    "postgres": "catalog:",
+    "prom-client": "catalog:",
+    "turndown": "^7.2.4",
+    "undici": "^7.30.1",
+    "ws": "catalog:",
+    "yaml": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "catalog:",
+    "@electric-sql/pglite-pgvector": "catalog:",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@types/node": "catalog:",
+    "@types/nodemailer": "^8.0.2",
+    "@types/smtp-server": "^3.5.13",
+    "@types/turndown": "^5.0.6",
+    "@types/ws": "catalog:",
+    "drizzle-kit": "catalog:",
+    "eslint": "catalog:",
+    "smtp-server": "^3.21.1",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

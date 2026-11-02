@@ -1,0 +1,311 @@
+# The release (apps/desktop/RELEASING.md). One version tag releases everything
+# together:
+#
+#   node scripts/release-version.mjs bump 1.2.0   # then commit
+#   git tag v1.2.0 && git push origin v1.2.0
+#
+#   version    checks the tag against the package.json versions
+#   images     server, computer and sandbox-firewall for linux/amd64 and
+#              linux/arm64, pushed to ghcr.io/<owner>/openbots, plus a
+#              `docker load` archive of each per architecture
+#              (release-images.yml)
+#   mac        the universal DMG, the zip and latest-mac.yml, signed and
+#              notarized when the Apple secrets are set (release-mac.yml)
+#   bundle     the compose bundle (scripts/release-bundle.sh)
+#   release    after all three: the GitHub Release with notes, every file
+#              above and SHA256SUMS, then a check that the images are public
+#
+# The Mac app's local stack runs the images of its own version, so the release
+# (and with it latest-mac.yml) appears only after the images are pushed.
+#
+# A pull request that changes the release files, or a manual run, is a dry run:
+# it builds every artifact without publishing anything or reading a secret, and
+# uploads them as workflow artifacts (release-image-*, release-mac,
+# release-bundle).
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+  pull_request:
+    paths:
+      - .github/workflows/release*.yml
+      - docker/**
+      - apps/desktop/electron-builder*
+      - apps/desktop/packaging/**
+      - scripts/release-*
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  # A newer push to a pull request replaces its dry run; a release always finishes.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: {}
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      minor: ${{ steps.version.outputs.minor }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      image-prefix: ${{ steps.version.outputs.image-prefix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # A tag must equal the version in package.json and apps/desktop/package.json;
+      # a dry run uses that version (and fails if the two differ).
+      - name: Check the release version
+        id: version
+        env:
+          EVENT: ${{ github.event_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            node scripts/release-version.mjs check "$GITHUB_REF_NAME" >>"$GITHUB_OUTPUT"
+            echo "publish=true" >>"$GITHUB_OUTPUT"
+          else
+            node scripts/release-version.mjs current >>"$GITHUB_OUTPUT"
+            echo "publish=false" >>"$GITHUB_OUTPUT"
+          fi
+          echo "image-prefix=ghcr.io/${OWNER,,}/openbots" >>"$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  images:
+    name: Images
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/release-images.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      minor: ${{ needs.version.outputs.minor }}
+      prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
+      image-prefix: ${{ needs.version.outputs.image-prefix }}
+      publish: true
+
+  images-dry-run:
+    name: Images (dry run)
+    needs: version
+    if: needs.version.outputs.publish != 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-images.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      minor: ${{ needs.version.outputs.minor }}
+      image-prefix: ${{ needs.version.outputs.image-prefix }}
+      publish: false
+
+  mac:
+    name: Mac app
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-mac.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      publish: true
+    secrets:
+      MAC_CERTS_P12_BASE64: ${{ secrets.MAC_CERTS_P12_BASE64 }}
+      MAC_CERTS_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+      APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+  # No secrets: the dry run always builds the unsigned app.
+  mac-dry-run:
+    name: Mac app (dry run)
+    needs: version
+    if: needs.version.outputs.publish != 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-mac.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      publish: false
+
+  bundle:
+    name: Compose bundle
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pack the bundle
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          IMAGE_PREFIX: ${{ needs.version.outputs.image-prefix }}
+        run: |
+          archive="$(bash scripts/release-bundle.sh "$VERSION" "$IMAGE_PREFIX" "$RUNNER_TEMP/bundle")"
+          tar -tzvf "$archive"
+          # The bundle's compose files must resolve on their own.
+          mkdir "$RUNNER_TEMP/check"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/check"
+          cd "$RUNNER_TEMP/check/openbots-$VERSION"
+          cp .env.example .env
+          docker compose config --quiet
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-bundle
+          path: ${{ runner.temp }}/bundle/*.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: ${{ needs.version.outputs.publish == 'true' && 7 || 3 }}
+
+  release:
+    name: GitHub Release
+    needs: [version, images, mac, bundle]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+      IMAGE_PREFIX: ${{ needs.version.outputs.image-prefix }}
+      SIGNED: ${{ needs.mac.outputs.signed }}
+      REPOSITORY: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+    steps:
+      # Every tag, for the notes' "changes since" range.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/assets
+
+      # Squirrel.Mac installs only updates signed by the same Developer ID, so
+      # an unsigned release offers no update: without latest-mac.yml, earlier
+      # signed installs do not download an app they cannot install.
+      - name: Leave the update manifest out of an unsigned release
+        if: env.SIGNED != 'true'
+        run: rm -f "$RUNNER_TEMP"/assets/latest-mac.yml "$RUNNER_TEMP"/assets/*.blockmap
+
+      - name: Check the assets and write SHA256SUMS
+        working-directory: ${{ runner.temp }}/assets
+        run: |
+          expected=(
+            "OpenBots-$VERSION-universal.dmg"
+            "OpenBots-$VERSION-universal-mac.zip"
+            "openbots.rb"
+            "openbots-compose-$VERSION.tar.gz"
+          )
+          for image in server computer sandbox-firewall; do
+            for arch in amd64 arm64; do
+              expected+=("openbots-$image-$VERSION-linux-$arch.tar.gz")
+            done
+          done
+          if [ "$SIGNED" = true ]; then expected+=(latest-mac.yml); fi
+          status=0
+          for file in "${expected[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "::error::$file is missing"
+              status=1
+            fi
+          done
+          limit=$((2 * 1024 * 1024 * 1024))
+          for file in *; do
+            if [ "$(stat -c %s "$file")" -ge "$limit" ]; then
+              echo "::error::$file is over GitHub's 2 GiB limit for a release asset"
+              status=1
+            fi
+          done
+          [ "$status" = 0 ] || exit 1
+          sha256sum -- * >"$RUNNER_TEMP/SHA256SUMS"
+          mv "$RUNNER_TEMP/SHA256SUMS" SHA256SUMS
+          cat SHA256SUMS
+
+      # GHCR makes a new package private and its API cannot change that, so
+      # the owner sets each one to public by hand after the first release.
+      - name: Check the images are public
+        id: public
+        run: |
+          if result="$(bash scripts/release-check-public.sh "$IMAGE_PREFIX" "$VERSION")"; then
+            private=""
+          else
+            private="$(awk '$2 == "private" { print $1 }' <<<"$result" | paste -sd, - | sed 's/,/, /g')"
+          fi
+          echo "$result"
+          echo "private=$private" >>"$GITHUB_OUTPUT"
+
+      - name: Write the release notes
+        env:
+          PRIVATE_IMAGES: ${{ steps.public.outputs.private }}
+        run: |
+          bash scripts/release-notes.sh >"$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      # gh uploads the assets to a draft and publishes it once all are there,
+      # so electron-updater never sees a release without its files. A rerun
+      # updates the existing release.
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "OpenBots $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+            gh release upload "$TAG" "$RUNNER_TEMP"/assets/* --clobber
+          else
+            flags=(--latest)
+            if [ "$PRERELEASE" = true ]; then flags=(--prerelease --latest=false); fi
+            gh release create "$TAG" --verify-tag --title "OpenBots $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}" "$RUNNER_TEMP"/assets/*
+          fi
+
+      - name: Summarize
+        if: always() && steps.public.outcome == 'success'
+        env:
+          PRIVATE_IMAGES: ${{ steps.public.outputs.private }}
+        run: |
+          {
+            echo "## OpenBots $VERSION"
+            echo
+            echo "Release: https://github.com/$REPOSITORY/releases/tag/$TAG"
+            echo
+            if [ "$SIGNED" = true ]; then
+              echo "Mac app: Developer ID signed and notarized."
+            else
+              echo "Mac app: **unsigned build** (no Apple secrets). No latest-mac.yml, so no automatic updates."
+            fi
+            echo
+            if [ -n "$PRIVATE_IMAGES" ]; then
+              echo "> [!WARNING]"
+              echo "> **These images are private: $PRIVATE_IMAGES.** Installs and the Mac app cannot pull them."
+              echo "> GitHub's API cannot change a package's visibility. Open https://github.com/$OWNER?tab=packages,"
+              echo "> then for each OpenBots package: Package settings, Change visibility, Public."
+              echo "> Then check again: \`bash scripts/release-check-public.sh $IMAGE_PREFIX $VERSION\`"
+            else
+              echo "Images: all public."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+          for image in ${PRIVATE_IMAGES//,/ }; do
+            echo "::warning::$IMAGE_PREFIX/$image is private: make the package public in its settings (Change visibility, Public)"
+          done

@@ -1,0 +1,41 @@
+{
+  "name": "@openbots/ee-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The managed OpenBots web app: the core app with organizations",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "generate": "openapi-typescript ../server/openapi.json -o src/schema.ts && prettier --write src/schema.ts",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openbots/api-client": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "@openbots/ui": "workspace:*",
+    "@openbots/web": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "openapi-fetch": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "eslint": "catalog:",
+    "happy-dom": "^21.0.4",
+    "openapi-typescript": "catalog:",
+    "prettier": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

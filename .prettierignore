@@ -1,0 +1,6 @@
+pnpm-lock.yaml
+docs/PRD.md
+docs/TECHNICAL_PLAN.md
+docs/bento/
+apps/server/drizzle/
+apps/web/src/routeTree.gen.ts

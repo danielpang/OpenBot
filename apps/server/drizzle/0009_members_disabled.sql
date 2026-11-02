@@ -1,0 +1,1 @@
+ALTER TABLE "workspace_members" ADD COLUMN "disabled_at" timestamp with time zone;

@@ -1,0 +1,31 @@
+{
+  "name": "@openbots/routines",
+  "version": "0.0.0",
+  "private": true,
+  "description": "scheduler, presets, event matching",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@openbots/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openbots/shared": "workspace:*",
+    "croner": "^10.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

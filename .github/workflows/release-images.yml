@@ -1,0 +1,203 @@
+# Builds the server, computer and sandbox-firewall images for a release
+# (plan 3, 16.1), called by release.yml. See apps/desktop/RELEASING.md.
+#
+# With `publish`, each image is built for linux/amd64 and linux/arm64 and
+# pushed as
+#   <prefix>/server:1.2.0, :1.2 and :latest
+#   <prefix>/computer:1.2.0, :1.2 and :latest
+#   <prefix>/sandbox-firewall:1.2.0, :1.2 and :latest
+# where <prefix> is ghcr.io/<repository owner in lower case>/openbots, so a
+# fork publishes to its own namespace. A prerelease (1.3.0-rc.1) gets only its
+# own tag. Compose pulls from OPENBOTS_IMAGE_PREFIX (.env.example), and the Mac
+# app's local stack runs these images with `compose up --no-build`, so every
+# image docker/docker-compose.yml names under OPENBOTS_IMAGE_PREFIX is built here.
+#
+# Every run also writes each image, per architecture, as a gzipped
+# `docker load` archive, openbots-<image>-<version>-linux-<arch>.tar.gz, and
+# uploads it as the workflow artifact release-image-<image> for the GitHub
+# Release. The archives come from the same build (its cache), tagged with the
+# full version only. GitHub caps a release asset at 2 GiB, so the job fails
+# when an archive reaches that.
+#
+# Without `publish` (the dry run) nothing is pushed or logged in to. To keep it
+# cheap the computer image is built for linux/amd64 only: its arm64 build
+# compiles node-pty and installs Chromium under QEMU and takes much longer. The
+# server and the sandbox firewall are built for both architectures.
+#
+# Permissions come from the calling job: contents: read, plus packages: write
+# to publish.
+name: Release images
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release version, such as 1.2.0
+        type: string
+        required: true
+      minor:
+        description: The floating major.minor tag, such as 1.2
+        type: string
+        required: true
+      prerelease:
+        description: A prerelease gets only its own tag, never major.minor or latest
+        type: boolean
+        default: false
+      image-prefix:
+        description: Registry namespace, such as ghcr.io/danielpang/openbots
+        type: string
+        required: true
+      publish:
+        description: Push to the registry; otherwise build only (the dry run)
+        type: boolean
+        default: false
+
+jobs:
+  image:
+    name: ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    # The computer image compiles node-pty and installs Chromium's
+    # dependencies for arm64 under QEMU.
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: server
+            context: .
+            dockerfile: docker/server.Dockerfile
+            description: OpenBots server, web UI, workers and scheduler
+            dry-run-platforms: linux/amd64,linux/arm64
+          - image: computer
+            context: .
+            dockerfile: docker/computer.Dockerfile
+            description: OpenBots computer, the per-account sandbox
+            dry-run-platforms: linux/amd64
+          - image: sandbox-firewall
+            context: docker
+            dockerfile: docker/sandbox-firewall.Dockerfile
+            description: OpenBots sandbox firewall, the computers' network rules on the Docker host
+            dry-run-platforms: linux/amd64,linux/arm64
+    env:
+      IMAGE: ${{ inputs.image-prefix }}/${{ matrix.image }}
+      PLATFORMS: ${{ inputs.publish && 'linux/amd64,linux/arm64' || matrix.dry-run-platforms }}
+      ARCHIVE_BASE: openbots-${{ matrix.image }}-${{ inputs.version }}-linux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Two architectures of the computer image, their build cache and the
+      # uncompressed archives outgrow the runner's free disk.
+      - name: Free disk space
+        if: matrix.image == 'computer'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Make the archive directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/archives"
+          echo "ARCHIVES=$RUNNER_TEMP/archives" >>"$GITHUB_ENV"
+
+      - if: contains(env.PLATFORMS, 'linux/arm64')
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - if: inputs.publish
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          # major.minor and latest only for a published release, never for a prerelease.
+          tags: |
+            type=raw,value=${{ inputs.version }}
+            type=raw,value=${{ inputs.minor }},enable=${{ inputs.publish && !inputs.prerelease }}
+            type=raw,value=latest,enable=${{ inputs.publish && !inputs.prerelease }}
+          labels: |
+            org.opencontainers.image.title=openbots-${{ matrix.image }}
+            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.licenses=BUSL-1.1
+            org.opencontainers.image.version=${{ inputs.version }}
+
+      - name: Build and push
+        if: inputs.publish
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+      # The archives: one platform each, in the format `docker save` writes.
+      # After the push these steps reuse the builder's cache; in a dry run
+      # they are the build.
+      - name: Write the linux/amd64 archive
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          tags: ${{ env.IMAGE }}:${{ inputs.version }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=docker,dest=${{ env.ARCHIVES }}/${{ env.ARCHIVE_BASE }}-amd64.tar
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+
+      - name: Write the linux/arm64 archive
+        if: contains(env.PLATFORMS, 'linux/arm64')
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/arm64
+          tags: ${{ env.IMAGE }}:${{ inputs.version }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=docker,dest=${{ env.ARCHIVES }}/${{ env.ARCHIVE_BASE }}-arm64.tar
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+
+      - name: Compress the archives and check their size
+        working-directory: ${{ env.ARCHIVES }}
+        run: |
+          limit=$((2 * 1024 * 1024 * 1024))
+          status=0
+          {
+            echo "### $IMAGE"
+            echo
+            echo "| Archive | Size |"
+            echo "| --- | --- |"
+          } >>"$GITHUB_STEP_SUMMARY"
+          for tar in "$ARCHIVE_BASE"-*.tar; do
+            gzip -6 "$tar"
+            size="$(stat -c %s "$tar.gz")"
+            echo "| \`$tar.gz\` | $(numfmt --to=iec-i --suffix=B "$size") |" >>"$GITHUB_STEP_SUMMARY"
+            if [ "$size" -ge "$limit" ]; then
+              echo "::error::$tar.gz is $(numfmt --to=iec-i --suffix=B "$size"), over GitHub's 2 GiB limit for a release asset"
+              status=1
+            fi
+          done
+          ls -l
+          exit "$status"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-image-${{ matrix.image }}
+          path: ${{ env.ARCHIVES }}/*.tar.gz
+          if-no-files-found: error
+          # Already gzipped.
+          compression-level: 0
+          retention-days: ${{ inputs.publish && 7 || 3 }}

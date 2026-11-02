@@ -1,0 +1,56 @@
+{
+  "name": "@openbots/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Electron shell (main process, preload), loads apps/web",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "main": "./dist/main/index.js",
+  "exports": {
+    ".": {
+      "@openbots/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && electron-vite build",
+    "app-icon": "node scripts/make-icon.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dist:dev": "electron-builder --mac --dir --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false",
+    "dist:mac": "electron-builder --mac --universal --publish never",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "tray-icon": "node scripts/tray-icon.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "electron-updater": "catalog:",
+    "ws": "catalog:"
+  },
+  "devDependencies": {
+    "@electron/notarize": "catalog:",
+    "@openbots/api-client": "workspace:*",
+    "@openbots/avatars": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "@openbots/ui": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/ws": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "electron": "catalog:",
+    "electron-builder": "catalog:",
+    "electron-vite": "catalog:",
+    "eslint": "catalog:",
+    "happy-dom": "^21.0.4",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:",
+    "yaml": "catalog:"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "@openbots/agent",
+  "version": "0.0.0",
+  "private": true,
+  "description": "run loop, context assembly, tool registry, policy, steering, activity labels",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@openbots/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "@openbots/source": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/openai": "catalog:",
+    "@openbots/computer": "workspace:*",
+    "@openbots/models": "workspace:*",
+    "@openbots/routines": "workspace:*",
+    "@openbots/shared": "workspace:*",
+    "@openbots/widgets": "workspace:*",
+    "ai": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

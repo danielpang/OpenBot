@@ -1,0 +1,54 @@
+# Development overrides: the server runs from this checkout's sources with
+# `tsx watch`, and Postgres and Redis are published on localhost for tools and
+# tests on the host. Paths are relative to the repository root:
+#
+#   docker compose --project-directory . -f docker/docker-compose.yml \
+#     -f docker/docker-compose.dev.yml up -d
+#
+# `scripts/dev.sh` uses this file to start just Postgres and Redis. Run the web
+# app on the host with `pnpm --filter @openbots/web dev`.
+name: openbots
+
+services:
+  openbots:
+    build:
+      # The build stage has every dependency, dev tools included.
+      target: build
+    image: openbots-server-dev
+    command: ['pnpm', '--filter', '@openbots/server', 'dev']
+    # The build stage runs as root and has no entrypoint, so nothing would hand
+    # the capabilities on to uid 1000: keep Docker's defaults, as before S-1.
+    cap_drop: !reset []
+    cap_add: !reset []
+    security_opt: !reset []
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./apps/server/src:/app/apps/server/src
+      - ./apps/server/drizzle:/app/apps/server/drizzle
+      - ./packages/agent/src:/app/packages/agent/src
+      - ./packages/api-client/src:/app/packages/api-client/src
+      - ./packages/artifacts/src:/app/packages/artifacts/src
+      - ./packages/avatars/src:/app/packages/avatars/src
+      - ./packages/computer/src:/app/packages/computer/src
+      - ./packages/mcp/src:/app/packages/mcp/src
+      - ./packages/models/src:/app/packages/models/src
+      - ./packages/router/src:/app/packages/router/src
+      - ./packages/routines/src:/app/packages/routines/src
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./packages/ui/src:/app/packages/ui/src
+      - ./packages/widgets/src:/app/packages/widgets/src
+    # tsx compiles on start, so give it longer before counting failures.
+    healthcheck:
+      start_period: 120s
+
+  postgres:
+    environment:
+      # The fixed development password scripts/dev.sh prints in DATABASE_URL.
+      POSTGRES_PASSWORD: openbots
+    ports:
+      - '127.0.0.1:5432:5432'
+
+  redis:
+    ports:
+      - '127.0.0.1:6379:6379'

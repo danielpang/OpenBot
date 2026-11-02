@@ -1,0 +1,23 @@
+/*
+ * The app pages' styles: Tailwind and the web app's theme and components,
+ * as apps/web/src/index.css imports them.
+ */
+@import 'tailwindcss';
+@import '@openbots/ui/styles.css';
+@source './';
+
+@layer base {
+  html,
+  body {
+    min-height: 100%;
+  }
+  body {
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    cursor: default;
+  }
+  /* A frameless window with vibrancy (the quick-ask window on macOS) shows it through. */
+  html[data-vibrancy] body {
+    background: transparent;
+  }
+}

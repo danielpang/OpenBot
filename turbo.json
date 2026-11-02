@@ -1,0 +1,32 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "stream",
+  "globalDependencies": [
+    "tsconfig.base.json",
+    "eslint.config.js",
+    "vitest.shared.ts",
+    ".env.example"
+  ],
+  "globalPassThroughEnv": ["TMPDIR"],
+  "tasks": {
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "lint": {},
+    "typecheck": {
+      "dependsOn": ["^transit"]
+    },
+    "test": {
+      "dependsOn": ["^transit"],
+      "env": ["DATABASE_URL", "REDIS_URL"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

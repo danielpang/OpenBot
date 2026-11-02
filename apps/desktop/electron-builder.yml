@@ -1,0 +1,69 @@
+# electron-builder configuration for the OpenBots Mac app (plan 14.4, 18.8).
+# Built by .github/workflows/release-mac.yml; see RELEASING.md for the
+# signed, notarized and unsigned paths. Paths are relative to apps/desktop.
+extends: ./electron-builder.publish.cjs
+
+appId: com.openbots.app
+productName: OpenBots
+copyright: Copyright © OpenBots contributors
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - '!dist/**/*.test.*'
+  - '!dist/**/*.map'
+  - package.json
+
+extraResources:
+  # No web UI: the main window loads it from the server it opens.
+  # The bundled compose stack the local stack manager runs (src/stack).
+  - from: ../../docker/docker-compose.yml
+    to: stack/docker-compose.yml
+  - from: ../../docker/docker-compose.tunnels.yml
+    to: stack/docker-compose.tunnels.yml
+  - from: ../../.env.example
+    to: stack/env.example
+  # The menu bar icon (src/main/tray-icon.ts), a macOS template image at 1x and 2x.
+  - from: resources/tray
+    to: tray
+    filter: ['*.png']
+
+protocols:
+  - name: OpenBots
+    schemes: [openbots]
+
+# Notarization runs in this hook with @electron/notarize; electron-builder's
+# built-in notarization is off (mac.notarize) so it does not run twice.
+afterSign: ./dist/release/notarize.js
+
+mac:
+  category: public.app-category.productivity
+  # The app icon, a Bot avatar on Apple's icon grid; scripts/make-icon.mjs
+  # renders it and its source (build/icon.svg).
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch: universal
+    # The zip is what electron-updater downloads on macOS.
+    - target: zip
+      arch: universal
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+  # The zip (dmg overrides this below).
+  artifactName: ${productName}-${version}-universal-mac.${ext}
+  # Signing identity comes from CSC_LINK and CSC_KEY_PASSWORD (a Developer ID
+  # Application certificate). Without them the build is unsigned; see RELEASING.md.
+
+dmg:
+  artifactName: ${productName}-${version}-universal.${ext}
+  writeUpdateInfo: false
+
+# electron-updater reads latest-mac.yml from the GitHub Release the publish
+# settings name. They live in electron-builder.publish.cjs, which takes the
+# repository from GITHUB_REPOSITORY in CI and defaults to danielpang/OpenBots.

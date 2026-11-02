@@ -1,0 +1,34 @@
+{
+  "name": "openbots",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "BUSL-1.1",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": "^22.12.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "release:bump": "node scripts/release-version.mjs bump",
+    "release:check": "node scripts/release-version.mjs check"
+  },
+  "devDependencies": {
+    "@eslint/js": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "globals": "catalog:",
+    "prettier": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,239 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit
+      - run: node scripts/check-licenses.mjs
+      - run: pnpm lint
+      - run: pnpm typecheck
+      # The committed OpenAPI document and the client generated from it must
+      # match the routes: regenerate both and fail on any difference.
+      - name: Check the OpenAPI document and client are current
+        run: |
+          pnpm --filter @openbots/server openapi
+          pnpm exec prettier --write packages/api-client/openapi.json
+          pnpm --filter @openbots/api-client generate
+          if ! git diff --exit-code -- packages/api-client; then
+            echo "::error::packages/api-client is stale; run the three commands above and commit the result"
+            exit 1
+          fi
+      # The same for the managed routes (ee/server) and ee/web's types.
+      - name: Check the managed OpenAPI document and types are current
+        run: |
+          pnpm --filter @openbots/ee-server openapi
+          pnpm exec prettier --write ee/server/openapi.json
+          pnpm --filter @openbots/ee-web generate
+          if ! git diff --exit-code -- ee/server/openapi.json ee/web/src/schema.ts; then
+            echo "::error::ee/server/openapi.json or ee/web/src/schema.ts is stale; run the three commands above and commit the result"
+            exit 1
+          fi
+      - run: pnpm test
+      - run: pnpm build
+
+  # The server tests again, on real Postgres instead of PGlite (db/test-db.ts):
+  # with DATABASE_URL set, each test app gets its own database, copied from a
+  # migrated template. Real connections run queries side by side where PGlite
+  # runs them one at a time, which shows races PGlite hides.
+  server-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: openbots
+          POSTGRES_PASSWORD: openbots
+          POSTGRES_DB: openbots
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U openbots -d openbots"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://openbots:openbots@localhost:5432/openbots
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run test --filter @openbots/server
+
+  server-image:
+    runs-on: ubuntu-24.04
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@v4
+      # Every Dockerfile, with the repository's .hadolint.yaml.
+      - name: Lint the Dockerfiles
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro" -w /repo hadolint/hadolint:v2.12.0
+          hadolint docker/server.Dockerfile docker/computer.Dockerfile
+          docker/sandbox-firewall.Dockerfile ee/server/Dockerfile
+      - name: Validate the compose files
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          docker compose --profile s3 --profile ngrok --profile cloudflare config --quiet
+          docker compose --project-directory . -f docker/docker-compose.yml -f docker/docker-compose.dev.yml config --quiet
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/server.Dockerfile
+          push: false
+          load: true
+          tags: openbots-ci/server:ci
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+      # The managed image (ee/server): built, not published here.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ee/server/Dockerfile
+          push: false
+          tags: openbots-ci/managed-server:ci
+          cache-from: type=gha,scope=managed-server
+          cache-to: type=gha,scope=managed-server,mode=max
+      - name: Smoke-test the stack
+        run: |
+          key="$(docker run --rm openbots-ci/server:ci keygen)"
+          # As install.sh does: one database password in both places.
+          db="$(openssl rand -hex 24)"
+          sed -i "s|^OPENBOTS_MASTER_KEY=.*|OPENBOTS_MASTER_KEY=$key|; s|^OPENBOTS_IMAGE_PREFIX=.*|OPENBOTS_IMAGE_PREFIX=openbots-ci|; s|^OPENBOTS_VERSION=.*|OPENBOTS_VERSION=ci|; s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$db|; s|:change-me@|:$db@|" .env
+          docker compose up -d --wait
+          curl -fsS http://localhost:3000/readyz
+          curl -fsS http://localhost:3000/ | grep -q "<title>OpenBots</title>"
+      - if: failure()
+        run: docker compose logs
+
+  # The Playwright specs in apps/web/e2e against the built server and web app,
+  # with Postgres and Redis as services and the scripted model of
+  # e2e/fake-model.ts. Each job gets a fresh database. The computer spec
+  # skips: there is no Docker provider. The server is the managed one
+  # (ee/server, serving ee/web), since specs sign up several users and a
+  # self-hosted install closes sign-up after its owner: each user verifies
+  # their email with the code the server logs (OPENBOTS_DEV_LOG_EMAIL_LINKS,
+  # read from E2E_SERVER_LOG) and creates an organization. The fake model and
+  # sign-in servers listen on 127.0.0.1, so OPENBOTS_LOCAL_ENDPOINTS is on.
+  # The self-hosted job runs the core server on its default deployment.
+  e2e:
+    name: e2e (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: basics
+            specs: e2e/smoke.spec.ts e2e/bots.spec.ts e2e/computer.spec.ts
+          - name: transcript
+            specs: e2e/transcript.spec.ts
+          - name: tools
+            specs: e2e/tools.spec.ts
+          - name: groups
+            specs: e2e/groups.spec.ts
+          - name: routines
+            specs: e2e/routines.spec.ts
+          - name: artifacts
+            specs: e2e/artifacts.spec.ts
+          - name: organizations
+            specs: e2e/organizations.spec.ts
+          - name: self-hosted
+            specs: e2e/self-hosted.spec.ts
+            deployment: self_hosted
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: openbots
+          POSTGRES_PASSWORD: openbots
+          POSTGRES_DB: openbots
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U openbots -d openbots"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://openbots:openbots@localhost:5432/openbots
+      # Migrations as openbots (the owner), then the server as openbots_app,
+      # under row-level security between organizations.
+      OPENBOTS_DB_APP_PASSWORD: ci-openbots-app-password
+      REDIS_URL: redis://localhost:6379
+      OPENBOTS_PUBLIC_URL: http://localhost:3000
+      OPENBOTS_DEPLOYMENT: ${{ matrix.deployment || 'managed' }}
+      OPENBOTS_SIGNUP_MODE: open
+      OPENBOTS_LOCAL_ENDPOINTS: 'true'
+      OPENBOTS_DEV_LOG_EMAIL_LINKS: '1'
+      E2E: '1'
+      # The server serves the built web app, so Playwright reuses it instead
+      # of starting the Vite dev server.
+      E2E_BASE_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @openbots/web exec playwright install --with-deps chromium
+      - name: Start the server
+        run: |
+          mkdir -p "$RUNNER_TEMP/files"
+          # The managed server from ee/server; the self-hosted job, the core's.
+          main=ee/server/dist/main.js
+          [ "$OPENBOTS_DEPLOYMENT" = self_hosted ] && main=apps/server/dist/main.js
+          OPENBOTS_MASTER_KEY="$(node apps/server/dist/keygen.js)" \
+            OPENBOTS_FILES_DIR="$RUNNER_TEMP/files" \
+            nohup node "$main" >"$RUNNER_TEMP/server.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS http://localhost:3000/readyz && exit 0
+            sleep 1
+          done
+          echo "::error::the server did not become ready"
+          exit 1
+      - name: Run the specs
+        working-directory: apps/web
+        env:
+          SPECS: ${{ matrix.specs }}
+          E2E_SERVER_LOG: ${{ runner.temp }}/server.log
+        # SPECS is a space-separated list of paths.
+        run: |
+          read -ra specs <<<"$SPECS"
+          pnpm exec playwright test --workers=1 "${specs[@]}"
+      - if: failure()
+        run: cat "$RUNNER_TEMP/server.log"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.name }}
+          path: |
+            apps/web/test-results/
+            ${{ runner.temp }}/server.log
+          retention-days: 7

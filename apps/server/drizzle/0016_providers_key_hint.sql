@@ -1,0 +1,1 @@
+ALTER TABLE "providers" ADD COLUMN "key_hint" text;

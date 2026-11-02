@@ -1,0 +1,5 @@
+/*
+ * Lets the app's Tailwind build see the classes the widget renderers use.
+ * Import it after Tailwind and @openbots/ui/styles.css.
+ */
+@source './';

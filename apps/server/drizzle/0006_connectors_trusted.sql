@@ -1,0 +1,1 @@
+ALTER TABLE "connectors" ADD COLUMN "trusted" boolean DEFAULT false NOT NULL;

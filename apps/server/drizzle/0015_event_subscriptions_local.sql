@@ -1,0 +1,1 @@
+ALTER TABLE "event_subscriptions" ADD COLUMN "local" boolean DEFAULT false NOT NULL;

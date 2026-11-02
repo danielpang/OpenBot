@@ -1,0 +1,6 @@
+/*
+ * Lets the app's Tailwind build see the classes the avatar editor uses.
+ * Import it after Tailwind and @openbots/ui/styles.css. The avatar motion CSS
+ * ships with the <Avatar> component itself.
+ */
+@source './';

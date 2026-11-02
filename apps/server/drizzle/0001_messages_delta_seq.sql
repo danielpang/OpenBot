@@ -1,0 +1,2 @@
+ALTER TABLE "messages" ADD COLUMN "delta_seq" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE INDEX "messages_thread_seq" ON "messages" USING btree ("thread_root_id","seq") WHERE "messages"."thread_root_id" is not null;

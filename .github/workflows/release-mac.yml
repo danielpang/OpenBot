@@ -1,0 +1,215 @@
+# Builds the OpenBots Mac app for a release (plan 14.4, 18.8), called by
+# release.yml: a universal binary with electron-builder, as a DMG plus the zip
+# and latest-mac.yml electron-updater reads, and a rendered Homebrew cask. See
+# apps/desktop/RELEASING.md.
+#
+# It never publishes: everything goes to the workflow artifact release-mac,
+# and release.yml attaches it to the GitHub Release.
+#
+# With `publish` and all five Apple secrets, the app is Developer ID signed,
+# notarized with @electron/notarize and verified. With none of them, or in a
+# dry run (which gets no secrets), it is ad-hoc signed instead: an unsigned
+# build that Gatekeeper blocks until it is opened with right-click Open, and
+# that electron-updater cannot update. Some but not all of them fail the job,
+# since that is a broken setup rather than a choice. The `signed` output says
+# which it built.
+#
+# Secrets (signed builds):
+#   MAC_CERTS_P12_BASE64     Developer ID Application certificate and key, .p12, base64
+#   MAC_CERTS_PASSWORD       password of that .p12
+#   APPLE_API_KEY_P8_BASE64  App Store Connect API key (AuthKey_XXXX.p8), base64
+#   APPLE_API_KEY_ID         its key ID
+#   APPLE_API_ISSUER         its issuer ID
+name: Release Mac app
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release version, such as 1.2.0; the DMG's file name carries it
+        type: string
+        required: true
+      publish:
+        description: A real release (sign when the secrets are set); otherwise the dry run
+        type: boolean
+        default: false
+    secrets:
+      MAC_CERTS_P12_BASE64:
+        required: false
+      MAC_CERTS_PASSWORD:
+        required: false
+      APPLE_API_KEY_P8_BASE64:
+        required: false
+      APPLE_API_KEY_ID:
+        required: false
+      APPLE_API_ISSUER:
+        required: false
+    outputs:
+      signed:
+        description: true when the app was signed and notarized
+        value: ${{ jobs.mac.outputs.signed }}
+
+jobs:
+  mac:
+    name: Mac app
+    runs-on: macos-15
+    timeout-minutes: 60
+    outputs:
+      signed: ${{ steps.signing.outputs.signed }}
+    env:
+      VERSION: ${{ inputs.version }}
+      # The hosted OpenBots server behind "Sign in to an OpenBots account"
+      # (apps/desktop/RELEASING.md). Unset, the app shows that choice disabled.
+      OPENBOTS_CLOUD_URL: ${{ vars.OPENBOTS_CLOUD_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The same pnpm/action-setup as ci.yml's v4 tag resolves to, which CI has
+      # proven with this repository's pnpm; v5 and later install pnpm differently.
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # The shell loads the web UI from the server, so the app bundles no web build.
+      - name: Build the desktop shell
+        run: pnpm exec turbo run build --filter=@openbots/desktop
+
+      - name: Decide whether to sign
+        id: signing
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          MAC_CERTS_P12_BASE64: ${{ secrets.MAC_CERTS_P12_BASE64 }}
+          MAC_CERTS_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          missing=()
+          for name in MAC_CERTS_P12_BASE64 MAC_CERTS_PASSWORD APPLE_API_KEY_P8_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ "$PUBLISH" != true ]; then
+            signed=false
+            echo "Dry run: building the unsigned app"
+          elif [ "${#missing[@]}" -eq 0 ]; then
+            signed=true
+            echo "Signing and notarizing with the Developer ID certificate"
+          elif [ "${#missing[@]}" -eq 5 ]; then
+            signed=false
+            echo "::warning::No Apple signing secrets are set, so the Mac app is an unsigned build (apps/desktop/RELEASING.md)"
+          else
+            echo "::error::Some Apple signing secrets are set but not ${missing[*]}. Set all five to sign the Mac app, or none to build it unsigned."
+            exit 1
+          fi
+          echo "signed=$signed" >>"$GITHUB_OUTPUT"
+
+      - name: Write the App Store Connect API key
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$APPLE_API_KEY_P8_BASE64" | base64 --decode >"$key"
+          chmod 600 "$key"
+          echo "APPLE_API_KEY=$key" >>"$GITHUB_ENV"
+
+      # The workflow fails rather than ship an un-notarized signed app.
+      - name: Package, sign and notarize
+        if: steps.signing.outputs.signed == 'true'
+        working-directory: apps/desktop
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTS_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          OPENBOTS_REQUIRE_NOTARIZATION: '1'
+        run: pnpm exec electron-builder --mac --universal --publish never
+
+      # Ad-hoc signed (no Developer ID), so it launches on Apple Silicon; the
+      # hardened runtime is off because ad-hoc signing cannot satisfy library
+      # validation. electron-builder skips all signing in a pull request build
+      # unless CSC_FOR_PULL_REQUEST is set; this step has no secrets to leak,
+      # so the dry run's app is ad-hoc signed like a release's.
+      - name: Package unsigned
+        if: steps.signing.outputs.signed != 'true'
+        working-directory: apps/desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_FOR_PULL_REQUEST: 'true'
+        run: pnpm exec electron-builder --mac --universal --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false
+
+      - name: Verify the signature, Gatekeeper and the stapled ticket
+        if: steps.signing.outputs.signed == 'true'
+        working-directory: apps/desktop/release/mac-universal
+        run: |
+          codesign --verify --deep --strict --verbose=2 OpenBots.app
+          spctl --assess --type execute --verbose=2 OpenBots.app
+          xcrun stapler validate OpenBots.app
+
+      - name: Check the packaged files
+        working-directory: apps/desktop/release
+        run: |
+          ls -l
+          for file in "OpenBots-$VERSION-universal.dmg" "OpenBots-$VERSION-universal-mac.zip" latest-mac.yml; do
+            if [ ! -f "$file" ]; then
+              echo "::error::electron-builder did not write $file"
+              exit 1
+            fi
+          done
+          # electron-updater reads the version and the zip from latest-mac.yml.
+          if ! grep -qx "version: $VERSION" latest-mac.yml ||
+            ! grep -q "OpenBots-$VERSION-universal-mac.zip" latest-mac.yml; then
+            echo "::error::latest-mac.yml does not name version $VERSION and its zip"
+            cat latest-mac.yml
+            exit 1
+          fi
+
+      - name: Render the Homebrew cask
+        working-directory: apps/desktop
+        run: |
+          sha="$(shasum -a 256 "release/OpenBots-$VERSION-universal.dmg" | cut -d ' ' -f 1)"
+          # The repository the release goes to: GITHUB_REPOSITORY, or the default.
+          repo="$(node -p "require('./electron-builder.publish.cjs').releaseRepository().slug")"
+          sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{SHA256}}/$sha/g" -e "s#{{REPOSITORY}}#$repo#g" \
+            packaging/homebrew/openbots.rb.template >release/openbots.rb
+          ruby -c release/openbots.rb
+
+      - name: Summarize
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        working-directory: apps/desktop/release
+        run: |
+          {
+            echo "### Mac app $VERSION"
+            echo
+            if [ "$SIGNED" = true ]; then
+              echo "Developer ID signed and notarized."
+            else
+              echo "Unsigned build (ad-hoc signed): right-click Open on first launch, and no automatic updates."
+            fi
+            echo
+            echo "| File | Size |"
+            echo "| --- | --- |"
+            for file in *.dmg *.zip *.blockmap latest-mac.yml openbots.rb; do
+              [ -f "$file" ] || continue
+              echo "| \`$file\` | $(du -h "$file" | cut -f 1) |"
+            done
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-mac
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest-mac.yml
+            apps/desktop/release/openbots.rb
+          if-no-files-found: error
+          # The DMG and zip are compressed already.
+          compression-level: 0
+          retention-days: ${{ inputs.publish && 7 || 3 }}

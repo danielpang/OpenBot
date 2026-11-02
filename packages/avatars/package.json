@@ -1,0 +1,55 @@
+{
+  "name": "@openbots/avatars",
+  "version": "0.0.0",
+  "private": true,
+  "description": "generator, motion states, server-side PNG rendering",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@openbots/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./react": {
+      "@openbots/source": "./src/react.ts",
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    },
+    "./png": {
+      "@openbots/source": "./src/png.ts",
+      "types": "./dist/png.d.ts",
+      "default": "./dist/png.js"
+    },
+    "./styles.css": "./src/styles.css"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "grid": "vite",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openbots/shared": "workspace:*",
+    "@openbots/ui": "workspace:*",
+    "@resvg/resvg-js": "^2.6.2"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "eslint": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

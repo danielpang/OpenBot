@@ -1,0 +1,430 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "github",
+      "name": "GitHub",
+      "description": "Repositories, issues, pull requests and code search.",
+      "kind": "mcp_http",
+      "icon": "github",
+      "homepage": "https://github.com/github/github-mcp-server",
+      "version": null,
+      "http": {
+        "url": "https://api.githubcopilot.com/mcp/",
+        "auth": ["bearer", "oauth"],
+        "bearer_secret": "GITHUB_PERSONAL_ACCESS_TOKEN"
+      },
+      "secrets": [
+        {
+          "name": "GITHUB_PERSONAL_ACCESS_TOKEN",
+          "label": "Personal access token",
+          "description": "A fine-grained token. Leave empty to sign in with OAuth.",
+          "required": false
+        }
+      ],
+      "oauth": {
+        "scopes": ["repo", "read:org", "read:user"],
+        "dynamic_registration": false,
+        "client_setup_url": "https://github.com/settings/applications/new"
+      }
+    },
+    {
+      "id": "gmail",
+      "name": "Gmail",
+      "description": "Search, read and draft mail. In preview: needs your own Google OAuth client.",
+      "kind": "mcp_http",
+      "icon": "gmail",
+      "homepage": "https://developers.google.com/workspace/guides/configure-mcp-servers",
+      "version": null,
+      "http": {
+        "url": "https://gmailmcp.googleapis.com/mcp/v1",
+        "auth": ["oauth"]
+      },
+      "secrets": [],
+      "oauth": {
+        "scopes": [
+          "https://www.googleapis.com/auth/gmail.readonly",
+          "https://www.googleapis.com/auth/gmail.compose"
+        ],
+        "dynamic_registration": false,
+        "client_setup_url": "https://console.cloud.google.com/apis/credentials",
+        "authorization_params": {
+          "access_type": "offline",
+          "prompt": "consent"
+        }
+      }
+    },
+    {
+      "id": "google_docs",
+      "name": "Google Docs",
+      "description": "Read and edit documents. In preview: needs your own Google OAuth client.",
+      "kind": "mcp_http",
+      "icon": "googledocs",
+      "homepage": "https://developers.google.com/workspace/docs/api/guides/configure-mcp-server",
+      "version": null,
+      "http": {
+        "url": "https://docsmcp.googleapis.com/mcp/v1",
+        "auth": ["oauth"]
+      },
+      "secrets": [],
+      "oauth": {
+        "scopes": [
+          "https://www.googleapis.com/auth/documents",
+          "https://www.googleapis.com/auth/drive.readonly"
+        ],
+        "dynamic_registration": false,
+        "client_setup_url": "https://console.cloud.google.com/apis/credentials",
+        "authorization_params": {
+          "access_type": "offline",
+          "prompt": "consent"
+        }
+      }
+    },
+    {
+      "id": "slack",
+      "name": "Slack",
+      "description": "Search, read and post in Slack.",
+      "kind": "mcp_http",
+      "icon": "lettermark",
+      "homepage": "https://docs.slack.dev/ai/mcp-server",
+      "version": null,
+      "http": {
+        "url": "https://mcp.slack.com/mcp",
+        "auth": ["oauth"]
+      },
+      "secrets": [],
+      "oauth": {
+        "scopes": [
+          "search:read.public",
+          "channels:history",
+          "channels:read",
+          "chat:write",
+          "users:read"
+        ],
+        "dynamic_registration": false,
+        "client_setup_url": "https://api.slack.com/apps"
+      }
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "description": "The Cloudflare API and docs: Workers, DNS, R2, D1 and more.",
+      "kind": "mcp_http",
+      "icon": "cloudflare",
+      "homepage": "https://developers.cloudflare.com/agents/model-context-protocol/mcp-servers-for-cloudflare/",
+      "version": null,
+      "http": {
+        "url": "https://mcp.cloudflare.com/mcp",
+        "auth": ["oauth", "bearer"],
+        "bearer_secret": "CLOUDFLARE_API_TOKEN"
+      },
+      "secrets": [
+        {
+          "name": "CLOUDFLARE_API_TOKEN",
+          "label": "API token",
+          "description": "From dash.cloudflare.com/profile/api-tokens. Leave empty to sign in with OAuth.",
+          "required": false
+        }
+      ],
+      "oauth": {
+        "scopes": ["user:read", "account:read", "offline_access"],
+        "dynamic_registration": true
+      }
+    },
+    {
+      "id": "vercel",
+      "name": "Vercel",
+      "description": "Projects, deployments, logs and docs. Sign-in may need Vercel's approval.",
+      "kind": "mcp_http",
+      "icon": "vercel",
+      "homepage": "https://vercel.com/docs/agent-resources/vercel-mcp",
+      "version": null,
+      "http": {
+        "url": "https://mcp.vercel.com",
+        "auth": ["oauth"]
+      },
+      "secrets": [],
+      "oauth": {
+        "scopes": ["openid", "email", "profile", "offline_access"],
+        "dynamic_registration": true
+      }
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "description": "Projects, SQL, migrations, Edge Functions and logs.",
+      "kind": "mcp_http",
+      "icon": "supabase",
+      "homepage": "https://supabase.com/docs/guides/getting-started/mcp",
+      "version": null,
+      "http": {
+        "url": "https://mcp.supabase.com/mcp",
+        "auth": ["oauth", "bearer"],
+        "bearer_secret": "SUPABASE_ACCESS_TOKEN"
+      },
+      "secrets": [
+        {
+          "name": "SUPABASE_ACCESS_TOKEN",
+          "label": "Personal access token",
+          "description": "From supabase.com/dashboard/account/tokens. Leave empty to sign in with OAuth.",
+          "required": false
+        }
+      ],
+      "oauth": {
+        "scopes": [
+          "organizations:read",
+          "projects:read",
+          "projects:write",
+          "database:read",
+          "database:write",
+          "analytics:read",
+          "secrets:read",
+          "edge_functions:read",
+          "edge_functions:write",
+          "environment:read",
+          "environment:write",
+          "storage:read",
+          "storage:write"
+        ],
+        "dynamic_registration": true
+      }
+    },
+    {
+      "id": "neon",
+      "name": "Neon",
+      "description": "Neon Postgres projects, branches, SQL and migrations.",
+      "kind": "mcp_http",
+      "icon": "neon",
+      "homepage": "https://neon.com/docs/ai/neon-mcp-server",
+      "version": null,
+      "http": {
+        "url": "https://mcp.neon.tech/mcp",
+        "auth": ["oauth", "bearer"],
+        "bearer_secret": "NEON_API_KEY"
+      },
+      "secrets": [
+        {
+          "name": "NEON_API_KEY",
+          "label": "API key",
+          "description": "From Neon Console, Account settings, API keys. Leave empty to sign in with OAuth.",
+          "required": false
+        }
+      ],
+      "oauth": {
+        "scopes": ["read", "write"],
+        "dynamic_registration": true
+      }
+    },
+    {
+      "id": "railway",
+      "name": "Railway",
+      "description": "Projects, services, deployments, variables and logs.",
+      "kind": "mcp_http",
+      "icon": "railway",
+      "homepage": "https://docs.railway.com/ai/remote-mcp-server",
+      "version": null,
+      "http": {
+        "url": "https://mcp.railway.com",
+        "auth": ["oauth"]
+      },
+      "secrets": [],
+      "oauth": {
+        "scopes": ["workspace:member", "offline_access"],
+        "dynamic_registration": true
+      }
+    },
+    {
+      "id": "firecrawl",
+      "name": "Firecrawl",
+      "description": "Scrape, crawl, map and search the web as Markdown.",
+      "kind": "mcp_http",
+      "icon": "lettermark",
+      "homepage": "https://docs.firecrawl.dev/mcp-server",
+      "version": null,
+      "http": {
+        "url": "https://mcp.firecrawl.dev/v2/mcp",
+        "auth": ["bearer"],
+        "bearer_secret": "FIRECRAWL_API_KEY"
+      },
+      "secrets": [
+        {
+          "name": "FIRECRAWL_API_KEY",
+          "label": "API key",
+          "description": "From firecrawl.dev/app/api-keys.",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "filesystem",
+      "name": "Filesystem",
+      "description": "Read, write and search files in your own folder.",
+      "kind": "mcp_stdio",
+      "icon": "folder",
+      "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+      "version": "2026.8.31",
+      "runtime": "node",
+      "stdio": {
+        "bin": "mcp-server-filesystem",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "{{root}}"]
+      },
+      "params": [
+        {
+          "name": "root",
+          "label": "Folder",
+          "description": "A folder in your directory, such as notes. Leave empty for all of it.",
+          "required": false,
+          "user_dir": true
+        }
+      ],
+      "secrets": []
+    },
+    {
+      "id": "postgres",
+      "name": "Postgres",
+      "description": "Read-only SQL queries and schema inspection against a Postgres database.",
+      "kind": "mcp_stdio",
+      "icon": "postgresql",
+      "homepage": "https://github.com/modelcontextprotocol/servers-archived/tree/main/src/postgres",
+      "version": "0.6.2",
+      "runtime": "node",
+      "stdio": {
+        "bin": "mcp-server-postgres",
+        "command": "npx",
+        "args": [
+          "-y",
+          "@modelcontextprotocol/server-postgres@0.6.2",
+          "{{POSTGRES_URL|without_password}}"
+        ],
+        "env": {
+          "PGPASSWORD": "{{POSTGRES_URL|password}}"
+        }
+      },
+      "secrets": [
+        {
+          "name": "POSTGRES_URL",
+          "label": "Connection URL",
+          "description": "postgresql://user:password@host:5432/db. Use a read-only role.",
+          "required": true,
+          "public_host": true
+        }
+      ]
+    },
+    {
+      "id": "web_search",
+      "name": "Web search",
+      "description": "Search the web with Brave Search or Tavily.",
+      "kind": "builtin",
+      "icon": "search",
+      "version": null,
+      "builtin": "web_search",
+      "secrets": [
+        {
+          "name": "BRAVE_API_KEY",
+          "label": "Brave Search API key",
+          "description": "From api-dashboard.search.brave.com. Used when set.",
+          "required": false
+        },
+        {
+          "name": "TAVILY_API_KEY",
+          "label": "Tavily API key",
+          "description": "From app.tavily.com. Used when no Brave key is set.",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "web_fetch",
+      "name": "Web fetch",
+      "description": "Fetch a web page as readable text.",
+      "kind": "builtin",
+      "icon": "globe",
+      "version": null,
+      "builtin": "web_fetch",
+      "secrets": []
+    },
+    {
+      "id": "http_request",
+      "name": "HTTP request",
+      "description": "Call an HTTP API, limited to the domains a Bot is allowed.",
+      "kind": "builtin",
+      "icon": "network",
+      "version": null,
+      "builtin": "http_request",
+      "secrets": []
+    },
+    {
+      "id": "email",
+      "name": "Email",
+      "description": "Read mail over IMAP and send it over SMTP from one mailbox.",
+      "kind": "builtin",
+      "icon": "mail",
+      "version": null,
+      "builtin": "email",
+      "secrets": [
+        {
+          "name": "PASSWORD",
+          "label": "Password",
+          "description": "An app password where the provider offers them.",
+          "required": true
+        }
+      ],
+      "params": [
+        {
+          "name": "smtp_host",
+          "label": "SMTP server",
+          "description": "For example smtp.fastmail.com.",
+          "required": true
+        },
+        {
+          "name": "smtp_port",
+          "label": "SMTP port",
+          "description": "465 for TLS, 587 (the default) for STARTTLS.",
+          "required": false
+        },
+        {
+          "name": "imap_host",
+          "label": "IMAP server",
+          "description": "For example imap.fastmail.com; leave empty to send only.",
+          "required": false
+        },
+        {
+          "name": "imap_port",
+          "label": "IMAP port",
+          "description": "993 (the default) for TLS.",
+          "required": false
+        },
+        {
+          "name": "username",
+          "label": "Username",
+          "description": "Usually the email address.",
+          "required": true
+        },
+        {
+          "name": "from",
+          "label": "From address",
+          "description": "Defaults to the username.",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "github_builtin",
+      "name": "GitHub (built-in)",
+      "description": "Built-in tools for GitHub issues and pull requests.",
+      "kind": "builtin",
+      "icon": "github",
+      "version": null,
+      "builtin": "github",
+      "secrets": [
+        {
+          "name": "GITHUB_TOKEN",
+          "label": "Personal access token",
+          "description": "A fine-grained token with Issues and Pull requests access.",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

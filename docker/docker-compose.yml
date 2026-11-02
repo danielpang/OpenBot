@@ -1,0 +1,287 @@
+# The OpenBots stack (plan 16.1). Start it from the repository root with
+# `docker compose up -d`: the root compose.yaml includes this file and
+# docker-compose.tunnels.yml with the repository root as the project directory,
+# so every relative path below is relative to the repository root, and `.env`
+# there supplies both the container environment and the ${...} values.
+#
+# Optional profiles: `s3` (MinIO, below), `egress` (the computers' allowlisting
+# proxy, below), `ngrok` and `cloudflare` (docker-compose.tunnels.yml).
+name: openbots
+
+services:
+  openbots:
+    # Published by .github/workflows/release.yml; see OPENBOTS_IMAGE_PREFIX in
+    # .env.example.
+    image: ${OPENBOTS_IMAGE_PREFIX:-ghcr.io/danielpang/openbots}/server:${OPENBOTS_VERSION:-latest}
+    # Used when the image is not published or not pullable: builds this checkout.
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    restart: unless-stopped
+    init: true
+    # Keeps stdio MCP servers out of the server's process (S-1). The container
+    # starts as root holding only SETUID and SETGID (Docker gives added
+    # capabilities to root only), and docker/entrypoint.sh at once becomes uid
+    # 1000 keeping just those two. With them the server starts each stdio
+    # server as `nobody` with no capabilities, signals it through a helper
+    # running as that user, and makes itself non-dumpable, so a stdio server
+    # can read neither its memory nor /proc/<pid>/environ.
+    user: '0:0'
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID]
+    security_opt: ['no-new-privileges:true']
+    # docker/entrypoint.sh moves the secrets from the environment into files
+    # here, only uid 1000 can read them, and the server gets NAME_FILE (S-1).
+    tmpfs:
+      - /run/openbots:uid=1000,gid=1000,mode=0700,size=1m
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      # The tunnels on this stack's networks forward the client's address; see
+      # TRUSTED_PROXIES in .env.example. Docker's default address pool
+      # (172.16.0.0/12) less 172.30.0.0/16, which holds the sandbox network:
+      # a computer is never a proxy.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-172.16.0.0/13,172.24.0.0/14,172.28.0.0/15,172.31.0.0/16}
+      # The computer image of the same release as the server, unless .env names one.
+      OPENBOTS_SANDBOX_IMAGE: ${OPENBOTS_SANDBOX_IMAGE:-${OPENBOTS_IMAGE_PREFIX:-ghcr.io/danielpang/openbots}/computer:${OPENBOTS_VERSION:-latest}}
+      # The sandbox network below, so the computers join the one this stack made.
+      OPENBOTS_SANDBOX_NETWORK: ${OPENBOTS_SANDBOX_NETWORK:-openbots-sbx}
+      OPENBOTS_SANDBOX_BRIDGE: ${OPENBOTS_SANDBOX_BRIDGE:-${OPENBOTS_SANDBOX_NETWORK:-openbots-sbx}}
+    ports:
+      # OPENBOTS_HTTP_BIND is empty (every interface) unless set to an address
+      # and a colon: the Mac app sets 127.0.0.1: so only This Mac reaches it.
+      - '${OPENBOTS_HTTP_BIND:-}${OPENBOTS_HTTP_PORT:-3000}:3000'
+    volumes:
+      # OPENBOTS_FILES_DIR
+      - files:/data/files
+    networks:
+      default: {}
+      docker-api: {}
+      # A fixed address, so the sandbox firewall can let the server, and only
+      # the server, open connections to the computers' control agents.
+      sandbox:
+        ipv4_address: ${OPENBOTS_SANDBOX_SERVER_IP:-172.30.255.2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      docker-guard:
+        condition: service_healthy
+      sandbox-firewall:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/readyz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      # Must match DATABASE_URL in .env. install.sh generates the password
+      # (S-3); Postgres refuses to create a database without one, and an
+      # existing database keeps the password it was created with.
+      POSTGRES_USER: openbots
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: openbots
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U openbots -d openbots']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Append-only file so queued jobs survive a restart.
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The server's only route to the Docker daemon (threat model S-2). OpenBots
+  # reaches it at tcp://docker-guard:2375 (DOCKER_HOST) on the internal
+  # `docker-api` network. It checks every request against what the docker
+  # computer provider sends (packages/computer/src/docker-guard.ts):
+  # `containers/create` only with the sandbox image, not privileged, no binds,
+  # no host network, PID or IPC, on the sandbox network, with every capability
+  # dropped; volumes and the network only with their fixed options; start,
+  # stop, inspect and remove only on containers labelled as computers. Anything
+  # else gets a 403. It runs from the server image, holds no secrets, and the
+  # provider refuses a DOCKER_HOST that is not this guard.
+  docker-guard:
+    image: ${OPENBOTS_IMAGE_PREFIX:-ghcr.io/danielpang/openbots}/server:${OPENBOTS_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    command: ['docker-guard']
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    environment:
+      OPENBOTS_DOCKER_UPSTREAM: tcp://docker-socket-proxy:2375
+      OPENBOTS_SANDBOX_IMAGE: ${OPENBOTS_SANDBOX_IMAGE:-${OPENBOTS_IMAGE_PREFIX:-ghcr.io/danielpang/openbots}/computer:${OPENBOTS_VERSION:-latest}}
+      # The only network computers may join, and its bridge.
+      OPENBOTS_SANDBOX_NETWORK: ${OPENBOTS_SANDBOX_NETWORK:-openbots-sbx}
+      OPENBOTS_SANDBOX_BRIDGE: ${OPENBOTS_SANDBOX_BRIDGE:-${OPENBOTS_SANDBOX_NETWORK:-openbots-sbx}}
+    networks:
+      - docker-api
+      - docker-raw
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:2375/_openbots/guard').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # The Docker API, filtered by URL. Only the docker guard reaches it (the
+  # internal `docker-raw` network), and it allows just the sections the docker
+  # computer provider needs to run one sandbox per account:
+  #   CONTAINERS  create, inspect, start, stop and remove computer containers
+  #   IMAGES      pull and inspect the sandbox image (OPENBOTS_SANDBOX_IMAGE)
+  #   NETWORKS    create and inspect the sandbox network, attach containers
+  #   VOLUMES     create and inspect the per-account /home/bot volume
+  #   POST        write access to the sections above (without it they are read-only)
+  # Everything else stays off, including EXEC, BUILD, AUTH, SECRETS, SYSTEM and
+  # SWARM. EVENTS, PING and VERSION are on by default and read-only.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      POST: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-raw
+
+  # Applies docker/sandbox-firewall.sh in the Docker host's network namespace
+  # and keeps it applied: computers reach neither each other, nor the server
+  # except as replies on the agent channel, nor link-local, private or LAN
+  # addresses, nor the host. The server waits for it, because with icc off
+  # it cannot reach the agents until the rules are in. It needs NET_ADMIN on
+  # the host network and nothing else; rootless Docker or Docker's nftables
+  # backend cannot run it (see the README).
+  sandbox-firewall:
+    # Published by .github/workflows/release.yml with the server and computer
+    # images; the Mac app's local stack has no build context and runs it from
+    # there.
+    image: ${OPENBOTS_IMAGE_PREFIX:-ghcr.io/danielpang/openbots}/sandbox-firewall:${OPENBOTS_VERSION:-latest}
+    # Used when the image is not published or not pullable: builds this checkout.
+    build:
+      context: docker
+      dockerfile: sandbox-firewall.Dockerfile
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, NET_RAW]
+    tmpfs: [/tmp]
+    environment:
+      # Its rules and chains match this stack's bridge only, so another
+      # stack's firewall on the same host keeps its own.
+      OPENBOTS_SANDBOX_BRIDGE: ${OPENBOTS_SANDBOX_BRIDGE:-${OPENBOTS_SANDBOX_NETWORK:-openbots-sbx}}
+      OPENBOTS_SANDBOX_SUBNET: ${OPENBOTS_SANDBOX_SUBNET:-172.30.255.0/24}
+      OPENBOTS_SANDBOX_SERVER_IP: ${OPENBOTS_SANDBOX_SERVER_IP:-172.30.255.2}
+      # The computers' egress proxy gets an exception (below).
+      OPENBOTS_SANDBOX_EGRESS_PROXY: ${OPENBOTS_SANDBOX_EGRESS_PROXY:-}
+      OPENBOTS_SANDBOX_EGRESS_PROXY_ONLY: ${OPENBOTS_SANDBOX_EGRESS_PROXY_ONLY:-false}
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/tmp/applied']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Optional allowlisting forward proxy for the computers (plan 9.5):
+  # `docker compose --profile egress up -d`, with
+  # OPENBOTS_SANDBOX_EGRESS_PROXY=http://172.30.255.3:8888 in .env (this
+  # service's address and port) and, to make the allowlist binding,
+  # OPENBOTS_SANDBOX_EGRESS_PROXY_ONLY=true. Only on the sandbox network, so its
+  # own traffic meets the sandbox firewall too. Hosts it allows:
+  # docker/egress-proxy/allowlist, or OPENBOTS_SANDBOX_EGRESS_ALLOWLIST.
+  egress-proxy:
+    image: kalaksi/tinyproxy:1.7
+    profiles: [egress]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    tmpfs: [/tmp]
+    volumes:
+      - ./docker/egress-proxy/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
+      - ${OPENBOTS_SANDBOX_EGRESS_ALLOWLIST:-./docker/egress-proxy/allowlist}:/etc/tinyproxy/allowlist:ro
+    networks:
+      sandbox:
+        ipv4_address: ${OPENBOTS_SANDBOX_EGRESS_PROXY_IP:-172.30.255.3}
+
+  # Optional S3-compatible object storage: `docker compose --profile s3 up -d`.
+  # Set MINIO_ROOT_PASSWORD (8 characters or more) in .env first.
+  minio:
+    image: minio/minio:latest
+    profiles: [s3]
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-openbots}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+    volumes:
+      - miniodata:/data
+
+networks:
+  default: {}
+  # OpenBots and the docker guard only; no route out.
+  docker-api:
+    internal: true
+  # The docker guard and the socket proxy only; no route out.
+  docker-raw:
+    internal: true
+  # Computer containers are created on this network at runtime. It holds no
+  # database or Redis, so a sandbox cannot reach them. With icc off its
+  # containers cannot reach each other; the sandbox firewall lets the server
+  # through to the agents. The bridge name, icc and subnet must match
+  # docker/sandbox-firewall.sh and networkSpec in packages/computer. Its name
+  # is not the project's: two stacks on one Docker host (a source checkout's
+  # and the Mac app's) need different OPENBOTS_SANDBOX_NETWORK names and
+  # subnets. The bridge is named like the network unless OPENBOTS_SANDBOX_BRIDGE
+  # says otherwise (a Linux interface name has at most 15 characters).
+  sandbox:
+    name: ${OPENBOTS_SANDBOX_NETWORK:-openbots-sbx}
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${OPENBOTS_SANDBOX_BRIDGE:-${OPENBOTS_SANDBOX_NETWORK:-openbots-sbx}}
+      com.docker.network.bridge.enable_icc: 'false'
+    ipam:
+      config:
+        - subnet: ${OPENBOTS_SANDBOX_SUBNET:-172.30.255.0/24}
+
+volumes:
+  pgdata: {}
+  redisdata: {}
+  files: {}
+  miniodata: {}

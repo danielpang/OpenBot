@@ -1,0 +1,25 @@
+OpenBots Enterprise License
+
+Copyright (c) 2026 Daniel Pang. All rights reserved.
+
+The software in this "ee/" directory and its subdirectories (the "Enterprise
+Software") is proprietary. It is not covered by the Business Source License
+that applies to the rest of this repository.
+
+You may view the Enterprise Software, and you may copy and modify it only to
+develop and test the Enterprise Software or OpenBots.
+
+You may not use the Enterprise Software in production, distribute it,
+sublicense it, sell it, or make it available to third parties, in original or
+modified form, without a separate written agreement with the copyright
+holder.
+
+The copyright holder retains all rights not expressly granted here. Any use
+outside these terms ends your rights under this license.
+
+THE ENTERPRISE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE ENTERPRISE SOFTWARE OR ITS USE.
