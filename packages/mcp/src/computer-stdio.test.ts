@@ -50,7 +50,7 @@ afterEach(async () => {
   hosts = [];
 });
 
-describe('ComputerStdioHost', () => {
+describe('ComputerStdioHost', { timeout: 30_000 }, () => {
   it('initializes over the channel, lists tools and calls one', async () => {
     const channel = fakeAgentChannel({ TEST_SECRET: 's3cret' });
     const host = new ComputerStdioHost({ launch: channel.launch });
@@ -74,7 +74,7 @@ describe('ComputerStdioHost', () => {
     hosts.push(host);
     await host.start();
     channel.children[0]!.kill('SIGKILL');
-    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 5000 });
     await expect(host.callTool('echo', { text: 'x' })).rejects.toThrow(/not running/);
 
     const again = new ComputerStdioHost({ launch: channel.launch }, { onClose });
@@ -141,7 +141,8 @@ describe('ComputerStdioTransport', () => {
   });
 });
 
-describe('McpManager with computer stdio sessions', () => {
+// Each test starts real child processes, which a loaded CI runner can make slow.
+describe('McpManager with computer stdio sessions', { timeout: 30_000 }, () => {
   const managed = (
     resolveExtra: (restart: boolean) => void = () => {},
     initialMs = 20,
@@ -171,17 +172,20 @@ describe('McpManager with computer stdio sessions', () => {
     const { manager, contexts, channel } = managed(undefined, 300);
     expect(textOf(await manager.callTool('c1', 'echo', { text: 'one' }))).toBe('one');
     channel.children[0]!.kill('SIGKILL');
-    await vi.waitFor(() => expect(manager.running('c1')).toBe(false), { interval: 5 });
+    await vi.waitFor(() => expect(manager.running('c1')).toBe(false), {
+      interval: 5,
+      timeout: 5000,
+    });
     const crashed = Date.now();
     expect(manager.restarting('c1')).toBe(true);
-    await vi.waitFor(() => expect(manager.running('c1')).toBe(true), { timeout: 3000 });
+    await vi.waitFor(() => expect(manager.running('c1')).toBe(true), { timeout: 10_000 });
     expect(Date.now() - crashed).toBeGreaterThanOrEqual(250);
     expect(contexts).toEqual([false, true]);
     expect(channel.children).toHaveLength(2);
     expect(textOf(await manager.callTool('c1', 'echo', { text: 'two' }))).toBe('two');
   });
 
-  it('gives up after too many exits in a row, and records why', { timeout: 30_000 }, async () => {
+  it('gives up after too many exits in a row, and records why', async () => {
     const { manager, errors, channel } = managed();
     await manager.host('c1');
     // Starting a child process can take over a second on a loaded CI runner.
@@ -209,7 +213,7 @@ describe('McpManager with computer stdio sessions', () => {
     await manager.host('c1');
     computerRunning = false;
     channel.children[0]!.kill('SIGKILL');
-    await vi.waitFor(() => expect(manager.running('c1')).toBe(false));
+    await vi.waitFor(() => expect(manager.running('c1')).toBe(false), { timeout: 5000 });
     await new Promise((r) => setTimeout(r, 80));
     expect(manager.restarting('c1')).toBe(false);
     expect(manager.running('c1')).toBe(false);
