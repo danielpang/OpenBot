@@ -104,6 +104,7 @@ All tables carry `workspace_id`, the organization (one implicit organization on 
 | `chats` | id, owner_id, type (`bot_dm`, `group`, `bot_to_bot`), title, settings jsonb, summary, summary_through_seq | `bot_dm` is unique per (owner, bot): the Bot's one transcript (B4). `bot_to_bot` is unique per unordered Bot pair and visible to the owner (C6) |
 | `chat_members` | chat_id, member_type (`user`, `bot`), member_id, joined_at | Group cap enforced in code (B8) |
 | `messages` | id, chat_id, seq bigint, updated_seq bigint, thread_root_id, author_type (`user`, `bot`, `system`, `webhook`, `routine`), author_id, parts jsonb, mentions uuid[], mention_everyone bool, run_id, status (`complete`, `streaming`, `failed`), created_at | `parts`: ordered array of text, image, file, tool_call, tool_result, reasoning, widget, event, artifact, skill_ref (C2, W1, W3) |
+| `message_deletions` | message_id, chat_id, message_seq, thread_root_id, seq, created_at | A streaming Bot message deleted before it showed anything, with the chat seq its deletion took, for resync (14.2) |
 | `reactions` | message_id, reactor_type, reactor_id, emoji | C8 |
 | `widget_states` | message_id, part_index, state jsonb, pending_run_id, updated_at | Interactive widget state and which run is waiting on it (W2) |
 
@@ -586,6 +587,7 @@ Routes are declared with zod schemas; the OpenAPI document and the TypeScript cl
 | Event | Payload |
 | --- | --- |
 | `message.created`, `message.delta`, `message.completed` | message, coalesced part deltas, usage |
+| `message.deleted` | message id, chat id, thread root: a streaming Bot message removed before it showed anything |
 | `bot.state` | bot_id, state, current_action, run_id |
 | `run.status`, `run.step` | run id, status; new activity log entry |
 | `approval.requested`, `approval.resolved`, `widget.updated` | rows |
@@ -594,7 +596,7 @@ Routes are declared with zod schemas; the OpenAPI document and the TypeScript cl
 | `computer.status`, `screen.control` | status, who controls a screen |
 | `reaction.added` | message id, emoji, reactor |
 
-Every message carries `seq`; `resync` replays after reconnect. A message also carries `updated_seq`, a fresh seq from the chat's counter each time it changes for a reader (it completes, its mentions change, or a widget state or reaction on it changes), kept by database triggers so no writer can skip it. `resync?since=` returns the messages whose `updated_seq` is past the client's last seq, so a message the client already holds comes back when it finished, was answered or got a reaction while the socket was down. Workers publish on Redis; API instances forward to subscribed sockets.
+Every message carries `seq`; `resync` replays after reconnect. A message also carries `updated_seq`, a fresh seq from the chat's counter each time it changes for a reader (it completes, its mentions change, or a widget state or reaction on it changes), kept by database triggers so no writer can skip it. `resync?since=` returns the messages whose `updated_seq` is past the client's last seq, so a message the client already holds comes back when it finished, was answered or got a reaction while the socket was down. A streaming Bot message that never showed anything is deleted instead of closed empty when its worker loses the run to another (K4), when the run is cancelled first, or when a failing run closes an earlier worker's leftovers (`discardIfEmpty`). The delete is conditional on the row still being empty, so a late delta keeps it. It publishes `message.deleted` and records the deletion in `message_deletions` with a fresh seq from the chat's counter; `resync` lists the deletions past the client's seq under `deleted`, so a client that missed the event drops the message. The gap a deleted message leaves in `seq` needs nothing else: paging asks for seqs below a bound, and resync for `updated_seq` past one. Workers publish on Redis; API instances forward to subscribed sockets.
 
 ### 14.3 Web app (PRD section 5)
 

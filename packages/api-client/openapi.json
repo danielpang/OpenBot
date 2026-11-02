@@ -487,9 +487,29 @@
           },
           "hasMore": {
             "type": "boolean"
+          },
+          "deleted": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "seq": {
+                  "type": "integer"
+                },
+                "threadRootId": {
+                  "type": ["string", "null"],
+                  "format": "uuid"
+                }
+              },
+              "required": ["id", "seq", "threadRootId"]
+            }
           }
         },
-        "required": ["messages", "hasMore"]
+        "required": ["messages", "hasMore", "deleted"]
       },
       "Message": {
         "type": "object",
@@ -6746,7 +6766,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Messages with `updatedSeq` greater than `since`, in `updatedSeq` order",
+            "description": "Messages with `updatedSeq` greater than `since`, in `updatedSeq` order, and those deleted since",
             "content": {
               "application/json": {
                 "schema": {

@@ -72,6 +72,8 @@ export const NOTICE_EVENTS = [
   'message.created',
   'message.delta',
   'message.completed',
+  // So the watcher lets go of a streamed message that was deleted.
+  'message.deleted',
   'run.status',
 ] as const;
 

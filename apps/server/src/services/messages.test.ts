@@ -14,6 +14,7 @@ import {
   appendPart,
   createStreaming,
   DELTA_FLUSH_MS,
+  discardIfEmpty,
   finalize,
   listMessages,
   postMessage,
@@ -203,6 +204,158 @@ describe('streaming Bot messages', () => {
     const done = await finalize(t.ownerDeps, message.id, { status: 'failed' });
     expect(done).toMatchObject({ status: 'failed', parts: [{ type: 'text', text: 'partial' }] });
     await expect(finalize(t.ownerDeps, message.id)).rejects.toThrow(/not streaming/);
+  });
+});
+
+describe('discarding a streaming message that shows nothing (K4)', () => {
+  let t: TestApp;
+  let botId: string;
+  let chatId: string;
+  let workspaceId: string;
+  const events: WsEvent[] = [];
+
+  beforeAll(async () => {
+    t = await createTestApp({ OPENBOTS_SIGNUP_MODE: 'open' });
+    await t.signUp('alice@example.com');
+    const [user] = await t.db.select().from(schema.users);
+    const [member] = await t.db.select().from(schema.workspaceMembers);
+    workspaceId = member!.workspaceId;
+    const record = await createBot(t.ownerDeps, { id: user!.id, workspaceId }, { name: 'Ada' });
+    botId = record.bot.id;
+    chatId = record.chatId;
+    await t.deps.infra.bus.subscribe<WsEvent>(EVENTS_CHANNEL, (e) => events.push(e));
+  });
+  afterAll(() => t.close());
+  beforeEach(() => {
+    events.length = 0;
+  });
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const row = async (id: string) =>
+    (await t.db.select().from(schema.messages).where(eq(schema.messages.id, id)))[0];
+  const tombstone = async (id: string) =>
+    (
+      await t.db
+        .select()
+        .from(schema.messageDeletions)
+        .where(eq(schema.messageDeletions.messageId, id))
+    )[0];
+  const deletedEvents = () => events.filter((e) => e.type === 'message.deleted');
+
+  it('deletes a message with no parts, publishes message.deleted and records it for resync', async () => {
+    const message = await createStreaming(t.ownerDeps, { chatId, botId });
+    expect(await discardIfEmpty(t.ownerDeps, message.id)).toBe('deleted');
+    expect(await row(message.id)).toBeUndefined();
+    const [chat] = await t.db.select().from(schema.chats).where(eq(schema.chats.id, chatId));
+    expect(await tombstone(message.id)).toMatchObject({
+      chatId,
+      workspaceId,
+      messageSeq: message.seq,
+      threadRootId: null,
+      // The deletion took the chat's newest seq.
+      seq: chat!.chatSeq,
+    });
+    await settle();
+    expect(deletedEvents()).toEqual([
+      expect.objectContaining({
+        type: 'message.deleted',
+        chat_id: chatId,
+        bot_id: botId,
+        seq: message.seq,
+        payload: { messageId: message.id, chatId, threadRootId: null },
+      }),
+    ]);
+    expect(events.some((e) => e.type === 'message.completed')).toBe(false);
+    // Nothing more goes into it, and a second discard finds nothing to do.
+    await expect(
+      appendPart(t.ownerDeps, message.id, { type: 'text_delta', text: 'late' }),
+    ).rejects.toThrow(/not found/i);
+    expect(await discardIfEmpty(t.ownerDeps, message.id)).toBe('gone');
+  });
+
+  it('deletes a message whose only parts are empty text and reasoning', async () => {
+    const message = await createStreaming(t.ownerDeps, { chatId, botId });
+    await appendPart(t.ownerDeps, message.id, { type: 'reasoning', text: '' });
+    await appendPart(t.ownerDeps, message.id, { type: 'text', text: '' });
+    expect((await row(message.id))!.parts).toHaveLength(2);
+    expect(await discardIfEmpty(t.ownerDeps, message.id)).toBe('deleted');
+    expect(await row(message.id)).toBeUndefined();
+  });
+
+  it('flushes buffered text first and finalizes a message that has some', async () => {
+    const message = await createStreaming(t.ownerDeps, { chatId, botId });
+    await appendPart(t.ownerDeps, message.id, { type: 'text_delta', text: 'Hel' });
+    await appendPart(t.ownerDeps, message.id, { type: 'text_delta', text: 'lo' });
+    // Still buffered: nothing written yet.
+    expect((await row(message.id))!.parts).toEqual([]);
+    expect(await discardIfEmpty(t.ownerDeps, message.id)).toBe('finalized');
+    expect(await row(message.id)).toMatchObject({
+      status: 'complete',
+      parts: [{ type: 'text', text: 'Hello' }],
+    });
+    expect(await tombstone(message.id)).toBeUndefined();
+    await settle();
+    expect(deletedEvents()).toEqual([]);
+    expect(events.map((e) => e.type)).toEqual([
+      'message.created',
+      'message.delta',
+      'message.completed',
+    ]);
+  });
+
+  it('keeps a message another process wrote a part into after this one last looked', async () => {
+    const message = await createStreaming(t.ownerDeps, { chatId, botId });
+    // This process holds the message empty; another flushed a delta into the row.
+    await t.db
+      .update(schema.messages)
+      .set({ parts: [{ type: 'text', text: 'Late' }], deltaSeq: 1 })
+      .where(eq(schema.messages.id, message.id));
+    expect(await discardIfEmpty(t.ownerDeps, message.id, { status: 'failed' })).toBe('finalized');
+    expect(await row(message.id)).toMatchObject({
+      status: 'failed',
+      deltaSeq: 1,
+      parts: [{ type: 'text', text: 'Late' }],
+    });
+    await settle();
+    expect(deletedEvents()).toEqual([]);
+    expect(events.find((e) => e.type === 'message.completed')).toMatchObject({
+      payload: { messageId: message.id, status: 'failed', deltaSeq: 1 },
+    });
+  });
+
+  it('keeps an empty message that has a thread reply', async () => {
+    const message = await createStreaming(t.ownerDeps, { chatId, botId });
+    const reply = await postMessage(t.ownerDeps, chatId, {
+      authorType: 'system',
+      threadRootId: message.id,
+      parts: [{ type: 'text', text: 'In the thread' }],
+    });
+    expect(await discardIfEmpty(t.ownerDeps, message.id)).toBe('finalized');
+    expect(await row(message.id)).toMatchObject({ status: 'complete' });
+    expect(await row(reply.id)).toBeDefined();
+  });
+
+  it('leaves a finished message alone', async () => {
+    const message = await createStreaming(t.ownerDeps, { chatId, botId });
+    await finalize(t.ownerDeps, message.id);
+    expect(await discardIfEmpty(t.ownerDeps, message.id)).toBe('gone');
+    expect(await row(message.id)).toMatchObject({ status: 'complete' });
+  });
+
+  it('works only in the organization of the work in hand (row-level security)', async () => {
+    const other = await t.createOrganization('Elsewhere');
+    const message = await createStreaming(t.ownerDeps, { chatId, botId });
+    // The app's own database handle, scoped to another organization, sees nothing to delete.
+    expect(await t.inOrganization(() => discardIfEmpty(t.deps, message.id), other)).toBe('gone');
+    expect(await row(message.id)).toMatchObject({ status: 'streaming' });
+    // In the message's own organization the delete and its record go through.
+    expect(await t.inOrganization(() => discardIfEmpty(t.deps, message.id), workspaceId)).toBe(
+      'deleted',
+    );
+    expect(await row(message.id)).toBeUndefined();
+    expect(await tombstone(message.id)).toMatchObject({ workspaceId });
+    await settle();
+    expect(deletedEvents()).toHaveLength(1);
   });
 });
 

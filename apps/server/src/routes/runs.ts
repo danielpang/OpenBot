@@ -157,6 +157,7 @@ function belongsToRun(event: WsEvent, runId: string, messageIds: Set<string>): b
       return true;
     case 'message.delta':
     case 'message.completed':
+    case 'message.deleted':
       return messageIds.has(event.payload.messageId);
     case 'run.step':
       return event.payload.step.runId === runId;

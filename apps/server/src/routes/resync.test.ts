@@ -1,7 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { nextSeq, schema } from '../db/client.js';
-import { appendPart, createStreaming, finalize, postMessage } from '../services/messages.js';
+import {
+  appendPart,
+  createStreaming,
+  discardIfEmpty,
+  finalize,
+  postMessage,
+} from '../services/messages.js';
 import { createTestApp, type TestApp } from '../test-app.js';
 import { ensureWorkspace } from '../workspace.js';
 
@@ -154,6 +160,24 @@ describe('GET /api/v1/chats/:id/resync', () => {
         parts: [{ type: 'text', text: 'Hello.' }],
       });
       expect(back!.updatedSeq).toBeGreaterThan(since);
+    });
+
+    it('lists a message deleted while the client was away, from the seq its deletion took', async () => {
+      const empty = await createStreaming(t.ownerDeps, { chatId, botId });
+      // The client saw the message start streaming, then lost the socket.
+      const since = await chatSeq();
+      expect(await discardIfEmpty(t.ownerDeps, empty.id)).toBe('deleted');
+      const body = (await (await resync(alice, `?since=${since}`)).json()) as {
+        messages: Read[];
+        deleted: unknown[];
+      };
+      expect(body.messages).toEqual([]);
+      expect(body.deleted).toEqual([{ id: empty.id, seq: empty.seq, threadRootId: null }]);
+      // A client that has heard everything since has nothing to drop.
+      const after = (await (await resync(alice, `?since=${await chatSeq()}`)).json()) as {
+        deleted: unknown[];
+      };
+      expect(after.deleted).toEqual([]);
     });
 
     it('returns a message whose widget changed while the client was away', async () => {

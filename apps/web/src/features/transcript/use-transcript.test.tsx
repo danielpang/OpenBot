@@ -6,6 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Message } from './api.js';
 import { RealtimeContext, type Realtime } from './realtime.js';
+import { topLevel } from './chat-timeline.js';
 import { messagesOf } from './timeline.js';
 import { useTranscript, type TranscriptData } from './use-transcript.js';
 
@@ -175,7 +176,11 @@ describe('useTranscript', () => {
       deltaSeq: 3,
       parts: [{ type: 'text', text: 'ABC' }],
     });
-    server.pages[`/api/v1/chats/${CHAT}/resync?since=3`] = { messages: [caughtUp], hasMore: false };
+    server.pages[`/api/v1/chats/${CHAT}/resync?since=3`] = {
+      messages: [caughtUp],
+      hasMore: false,
+      deleted: [],
+    };
     fake.emit('message.created', { message: streaming }, 4);
     fake.emit(
       'message.delta',
@@ -197,6 +202,7 @@ describe('useTranscript', () => {
     server.pages[`/api/v1/chats/${CHAT}/resync?since=3`] = {
       messages: [message(4), message(5)],
       hasMore: false,
+      deleted: [],
     };
     await fake.reconnect(3);
     await flush();
@@ -214,12 +220,14 @@ describe('useTranscript', () => {
         message(4, { updatedSeq: 5, deltaSeq: 2, parts: [{ type: 'text', text: 'Halt.' }] }),
       ],
       hasMore: true,
+      deleted: [],
     };
     server.pages[`/api/v1/chats/${CHAT}/resync?since=5`] = {
       messages: [
         message(2, { updatedSeq: 7, parts: [{ type: 'text', text: 'm2!' }], reactions: [thumbs] }),
       ],
       hasMore: false,
+      deleted: [],
     };
     await fake.reconnect(4);
     await flush();
@@ -250,10 +258,70 @@ describe('useTranscript', () => {
     server.pages[`/api/v1/chats/${CHAT}/resync?since=0`] = {
       messages: [message(1, { reactions: [] })],
       hasMore: false,
+      deleted: [],
     };
     await fake.reconnect(0);
     await flush();
     expect(data.reactions[m1]).toEqual([]);
+  });
+
+  it('removes a streaming message deleted before it showed anything (K4)', () => {
+    const empty = message(4, { status: 'streaming', parts: [] });
+    fake.emit('message.created', { message: empty }, 4);
+    expect(data.timeline.order).toContain(empty.id);
+    // Another chat's deletion changes nothing here.
+    fake.emit(
+      'message.deleted',
+      { messageId: empty.id, chatId: 'another-chat' },
+      4,
+      'another-chat',
+    );
+    expect(data.timeline.order).toContain(empty.id);
+    fake.emit('message.deleted', { messageId: empty.id, chatId: CHAT, threadRootId: null }, 4);
+    expect(texts()).toEqual(['m2', 'm3']);
+    expect(data.timeline.byId[empty.id]).toBeUndefined();
+    // Replayed, it is a no-op.
+    fake.emit('message.deleted', { messageId: empty.id, chatId: CHAT }, 4);
+    expect(texts()).toEqual(['m2', 'm3']);
+  });
+
+  it('drops a message a resync lists as deleted while the socket was down', async () => {
+    const empty = message(4, { status: 'streaming', parts: [] });
+    fake.emit('message.created', { message: empty }, 4);
+    server.pages[`/api/v1/chats/${CHAT}/resync?since=4`] = {
+      messages: [message(5, { parts: [{ type: 'text', text: 'Fresh reply.' }] })],
+      hasMore: false,
+      deleted: [{ id: empty.id, seq: 4, threadRootId: null }],
+    };
+    await fake.reconnect(4);
+    await flush();
+    expect(texts()).toEqual(['m2', 'm3', 'Fresh reply.']);
+    expect(data.timeline.byId[empty.id]).toBeUndefined();
+  });
+
+  it('takes a deleted thread reply off its root’s reply count', async () => {
+    const root = message(3);
+    server.pages[`/api/v1/chats/${CHAT}/resync?since=3`] = {
+      // The read counted two replies, the newest at seq 5.
+      messages: [message(3, { updatedSeq: 6, replyCount: 2, lastReplySeq: 5 })],
+      hasMore: false,
+      deleted: [],
+    };
+    await fake.reconnect(3);
+    await flush();
+    const replies = () => topLevel(messagesOf(data.timeline)).replies.get(root.id);
+    expect(replies()).toBe(2);
+    // A reply the read counted, which this timeline never held.
+    const counted = message(5, { threadRootId: root.id });
+    fake.emit('message.deleted', { messageId: counted.id, chatId: CHAT, threadRootId: root.id }, 5);
+    expect(replies()).toBe(1);
+    // A reply that arrived after the read, counted by being here.
+    const live = message(7, { threadRootId: root.id, status: 'streaming', parts: [] });
+    fake.emit('message.created', { message: live }, 7);
+    expect(replies()).toBe(2);
+    fake.emit('message.deleted', { messageId: live.id, chatId: CHAT, threadRootId: root.id }, 7);
+    expect(replies()).toBe(1);
+    expect(data.timeline.byId[live.id]).toBeUndefined();
   });
 
   it('applies widget.updated to the widget part', () => {

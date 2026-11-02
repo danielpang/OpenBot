@@ -208,6 +208,27 @@ describe('notices', () => {
     ).toBeNull();
   });
 
+  it('forgets a streamed message once it is deleted', () => {
+    const watcher = createNoticeWatcher(() => context);
+    const scope = { bot_id: BOT, chat_id: DM };
+    watcher.onEvent(
+      wsEvent('message.created', { message: message({ id: 'm5', status: 'streaming' }) }, scope),
+    );
+    watcher.onEvent(
+      wsEvent(
+        'message.delta',
+        { messageId: 'm5', deltaSeq: 1, deltas: [{ partIndex: 0, type: 'text', text: '@dana' }] },
+        scope,
+      ),
+    );
+    expect(
+      watcher.onEvent(wsEvent('message.deleted', { messageId: 'm5', chatId: DM }, scope)),
+    ).toBeNull();
+    expect(
+      watcher.onEvent(wsEvent('message.completed', { messageId: 'm5', status: 'complete' }, scope)),
+    ).toBeNull();
+  });
+
   it('notifies for a failed or cancelled Routine run, not a completed one', () => {
     const watcher = createNoticeWatcher(() => context);
     const run = (outcome: string, id: string) =>

@@ -12,6 +12,7 @@ const SECTION_4_TABLES = [
   'chats',
   'chat_members',
   'messages',
+  'message_deletions',
   'reactions',
   'widget_states',
   'runs',

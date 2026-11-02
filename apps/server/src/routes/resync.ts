@@ -11,7 +11,9 @@ import { withReadOverlays } from '../services/messages.js';
 // that is new or changed since the last seq the client saw, in the order it
 // last changed. A change (completing, a widget state, a reaction) takes a
 // fresh chat seq into `updated_seq`, so a message the client already holds
-// comes back when it changed while the client was away.
+// comes back when it changed while the client was away. A deleted message
+// (an empty Bot reply a lost run left, `discardIfEmpty`) comes back under
+// `deleted`, from the seq its deletion took, so the client drops it.
 
 const RESYNC_PAGE = 500;
 
@@ -20,6 +22,18 @@ export const ResyncSchema = z
     messages: z.array(MessageSchema),
     /** More messages remain; call again with the last `updatedSeq` returned. */
     hasMore: z.boolean(),
+    /**
+     * Messages deleted after `since`, which the client should drop: each one's
+     * id, its own seq and the thread it was a reply in (for the root's reply
+     * count). Every page lists them all.
+     */
+    deleted: z.array(
+      z.object({
+        id: z.uuid(),
+        seq: z.number().int(),
+        threadRootId: z.uuid().nullable(),
+      }),
+    ),
   })
   .openapi('Resync');
 
@@ -41,7 +55,8 @@ export const resyncRoutes = createRouter().openapi(
     },
     responses: {
       200: {
-        description: 'Messages with `updatedSeq` greater than `since`, in `updatedSeq` order',
+        description:
+          'Messages with `updatedSeq` greater than `since`, in `updatedSeq` order, and those deleted since',
         content: { 'application/json': { schema: ResyncSchema } },
       },
       ...authProblems,
@@ -60,6 +75,12 @@ export const resyncRoutes = createRouter().openapi(
       .orderBy(asc(schema.messages.updatedSeq))
       .limit(RESYNC_PAGE + 1);
     const messages = await withReadOverlays(db, rows.slice(0, RESYNC_PAGE).map(toMessage));
-    return c.json({ messages, hasMore: rows.length > RESYNC_PAGE }, 200);
+    const d = schema.messageDeletions;
+    const deleted = await db
+      .select({ id: d.messageId, seq: d.messageSeq, threadRootId: d.threadRootId })
+      .from(d)
+      .where(and(eq(d.chatId, id), gt(d.seq, since)))
+      .orderBy(asc(d.seq));
+    return c.json({ messages, hasMore: rows.length > RESYNC_PAGE, deleted }, 200);
   },
 );

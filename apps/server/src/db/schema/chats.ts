@@ -145,6 +145,30 @@ export const messages = pgTable(
   ],
 );
 
+/**
+ * Messages deleted from a chat, for resync (plan 14.2): a streaming Bot
+ * message removed before it showed anything, because its worker lost the
+ * run to another (K4) or the run ended first (`discardIfEmpty`). `seq` is
+ * the chat seq taken when it was deleted, so a client that missed
+ * `message.deleted` drops the message on its next resync.
+ */
+export const messageDeletions = pgTable(
+  'message_deletions',
+  {
+    messageId: uuid('message_id').primaryKey(),
+    workspaceId: workspaceId(),
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => chats.id, { onDelete: 'cascade' }),
+    /** The deleted message's own seq and thread, for correcting a thread's reply count. */
+    messageSeq: bigint('message_seq', { mode: 'number' }).notNull(),
+    threadRootId: uuid('thread_root_id'),
+    seq: bigint('seq', { mode: 'number' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('message_deletions_chat_seq').on(t.chatId, t.seq)],
+);
+
 export const reactions = pgTable(
   'reactions',
   {

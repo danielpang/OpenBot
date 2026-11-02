@@ -95,6 +95,7 @@ import {
   appendPart,
   botReactor,
   createStreaming,
+  discardIfEmpty,
   finalize,
   postMessage,
   storeMessage,
@@ -590,7 +591,8 @@ async function processRun(
       return;
     }
     if (outcome.status === 'cancelled') {
-      await finalize(deps, message.id, { usage: tokens });
+      // Cancelled before it showed anything: no empty reply is left behind.
+      await discardIfEmpty(deps, message.id, { usage: tokens });
       messageId = null;
       const [row] = await deps.db
         .update(schema.runs)
@@ -649,7 +651,8 @@ const ownedBy = (takeovers: number) =>
  * Claims a run whose worker died mid-run (its job was delivered again). The
  * claim bumps `takeovers`, so the old worker, if it was only stalled, finds
  * the run is no longer its own and stops. What the old worker streamed stays
- * in its message; the run continues in a new one.
+ * in its message, and a message it had not streamed anything into yet is
+ * deleted; the run continues in a new one.
  */
 async function takeOver(deps: AppDeps, existing: RunRow): Promise<RunRow[]> {
   const state = (existing.state as RunState | null) ?? {};
@@ -670,15 +673,19 @@ async function takeOver(deps: AppDeps, existing: RunRow): Promise<RunRow[]> {
     .select({ id: schema.messages.id })
     .from(schema.messages)
     .where(and(eq(schema.messages.runId, existing.id), eq(schema.messages.status, 'streaming')));
-  for (const m of open) await finalize(deps, m.id, {});
+  for (const m of open) await discardIfEmpty(deps, m.id);
   return claimed;
 }
 
-/** A worker whose run another worker took over leaves it alone, closing only its own message. */
+/**
+ * A worker whose run another worker took over leaves it alone, closing only
+ * its own message, or deleting it when it shows nothing: the run's reply is
+ * the new worker's.
+ */
 async function stopLostRun(deps: AppDeps, run: RunRow, messageId: string | null, error?: unknown) {
   deps.logger.warn({ err: error, runId: run.id }, 'run taken over by another worker; stopping');
-  // The takeover may have closed it already.
-  if (messageId) await finalize(deps, messageId, {}).catch(() => {});
+  // The takeover may have closed or deleted it already.
+  if (messageId) await discardIfEmpty(deps, messageId).catch(() => {});
 }
 
 interface CheckpointWriter extends RunCheckpointer {
@@ -1264,13 +1271,17 @@ async function failRun(deps: AppDeps, run: RunRow, messageId: string | null, err
   const text = describeError(error);
   deps.logger.error({ err: error, runId: run.id }, 'run failed');
   try {
+    // This worker's own message stays, failed, even empty: it says the reply
+    // did not finish and opens the run's activity.
     if (messageId) await finalize(deps, messageId, { status: 'failed' });
-    // A crash can leave this run's earlier messages streaming; close them too.
+    // A crash can leave messages of this run's earlier workers streaming:
+    // close them too, deleting those that show nothing (the event row below
+    // tells what happened).
     const open = await deps.db
       .select({ id: schema.messages.id })
       .from(schema.messages)
       .where(and(eq(schema.messages.runId, run.id), eq(schema.messages.status, 'streaming')));
-    for (const m of open) await finalize(deps, m.id, { status: 'failed' });
+    for (const m of open) await discardIfEmpty(deps, m.id, { status: 'failed' });
     // The status, the event row and the error step commit together, so a
     // reader never sees a failed run without them.
     const failed = await deps.db.transaction(async (tx) => {

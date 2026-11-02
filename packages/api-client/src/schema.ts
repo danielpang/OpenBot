@@ -457,7 +457,7 @@ export interface paths {
       };
       requestBody?: never;
       responses: {
-        /** @description Messages with `updatedSeq` greater than `since`, in `updatedSeq` order */
+        /** @description Messages with `updatedSeq` greater than `since`, in `updatedSeq` order, and those deleted since */
         200: {
           headers: {
             [name: string]: unknown;
@@ -7605,6 +7605,13 @@ export interface components {
     Resync: {
       messages: components['schemas']['Message'][];
       hasMore: boolean;
+      deleted: {
+        /** Format: uuid */
+        id: string;
+        seq: number;
+        /** Format: uuid */
+        threadRootId: string | null;
+      }[];
     };
     Message: {
       /** Format: uuid */

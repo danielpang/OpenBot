@@ -18,6 +18,7 @@ import {
   emptyTimeline,
   newestSeq,
   oldestSeq,
+  removeMessage,
   upsertMessages,
   type DeltaResult,
   type Timeline,
@@ -27,8 +28,9 @@ import {
 // (upward by seq), live `message.*`, `widget.updated` and `reaction.*` events, and a resync after a reconnect or whenever a delta shows something
 // was missed. A resync brings back the messages new or changed since the seq
 // it is given, so one that completed, or whose widget or reactions changed,
-// while the socket was down is current again. With `thread` it is one thread
-// (C7): the root and its replies.
+// while the socket was down is current again, and lists those deleted since
+// (an empty Bot reply a lost run left), which leave. With `thread` it is one
+// thread (C7): the root and its replies.
 
 export interface TranscriptData {
   timeline: Timeline;
@@ -93,6 +95,9 @@ export function useTranscript(
       for (let from = since; ;) {
         const page = await fetchResync(chatId, from);
         read(page.messages.filter(inScope));
+        if (page.deleted.length) {
+          update((t) => page.deleted.reduce(removeMessage, t));
+        }
         // Pages run in the order messages last changed, which a reply or a
         // reaction can move past newer ones (plan 14.2).
         const last = page.messages.at(-1);
@@ -100,7 +105,7 @@ export function useTranscript(
         from = last.updatedSeq;
       }
     },
-    [chatId, inScope, read],
+    [chatId, inScope, read, update],
   );
 
   // The newest page.
@@ -159,6 +164,12 @@ export function useTranscript(
         if (!mine(event)) return;
         const payload = event.payload;
         update((t) => settle(applyCompleted(t, payload), event.seq, payload.messageId));
+      }),
+      // A streaming Bot message removed before it showed anything (K4).
+      client.on('message.deleted', (event) => {
+        if (!mine(event)) return;
+        const { messageId, threadRootId } = event.payload;
+        update((t) => removeMessage(t, { id: messageId, seq: event.seq, threadRootId }));
       }),
       client.on('widget.updated', (event) => {
         if (!mine(event)) return;

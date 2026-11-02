@@ -48,6 +48,11 @@ const samples: WsEvent[] = [
     { chat_id: chat, seq: 7 },
   ),
   wsEvent(
+    'message.deleted',
+    { messageId: message.id, chatId: chat, threadRootId: null },
+    { chat_id: chat, bot_id: bot, seq: 7 },
+  ),
+  wsEvent(
     'bot.state',
     { botId: bot, state: 'working', currentAction: 'Reading the inbox', runId: run },
     { bot_id: bot },
@@ -90,7 +95,7 @@ const samples: WsEvent[] = [
 describe('WS events', () => {
   it('has a sample for every event type', () => {
     expect(new Set(samples.map((e) => e.type))).toEqual(new Set(WS_EVENT_TYPES));
-    expect(WS_EVENT_TYPES).toHaveLength(17);
+    expect(WS_EVENT_TYPES).toHaveLength(18);
   });
 
   it.each(samples.map((e) => [e.type, e] as const))('%s round-trips through JSON', (_, event) => {

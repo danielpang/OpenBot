@@ -89,6 +89,32 @@ export function applyCompleted(
   return { timeline: replace(timeline, { ...message, status: payload.status }), gap: false };
 }
 
+/**
+ * Applies `message.deleted`, or a deletion resync lists: the message leaves
+ * the timeline. A thread reply the root's `replyCount` counted (its seq is at
+ * or below the root's `lastReplySeq`) comes off that count too; a reply that
+ * arrived after the read was counted only by being here.
+ */
+export function removeMessage(
+  timeline: Timeline,
+  deleted: { id: string; seq?: number; threadRootId?: string | null },
+): Timeline {
+  const held = timeline.byId[deleted.id];
+  const rootId = held?.threadRootId ?? deleted.threadRootId;
+  const seq = held?.seq ?? deleted.seq;
+  const root = rootId ? timeline.byId[rootId] : undefined;
+  const counted =
+    root?.replyCount !== undefined &&
+    root.lastReplySeq != null &&
+    seq !== undefined &&
+    seq <= root.lastReplySeq;
+  if (!held && !counted) return timeline;
+  const byId = { ...timeline.byId };
+  delete byId[deleted.id];
+  if (counted) byId[root.id] = { ...root, replyCount: Math.max(0, root.replyCount! - 1) };
+  return { byId, order: held ? timeline.order.filter((id) => id !== deleted.id) : timeline.order };
+}
+
 /** Applies `widget.updated` (or a widget action's reply) to the widget part's state. */
 export function applyWidgetState(
   timeline: Timeline,

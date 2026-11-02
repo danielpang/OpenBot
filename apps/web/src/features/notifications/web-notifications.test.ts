@@ -48,6 +48,7 @@ describe('web notifications', () => {
       'approval.requested',
       'message.completed',
       'message.created',
+      'message.deleted',
       'message.delta',
       'run.status',
     ]);

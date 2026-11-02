@@ -169,6 +169,13 @@
       "when": 1793459023962,
       "tag": "0023_row_level_security",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793637279538,
+      "tag": "0024_message_deletions",
+      "breakpoints": true
     }
   ]
 }

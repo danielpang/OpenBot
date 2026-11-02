@@ -5,7 +5,21 @@ import {
   type PartDelta,
   type TextDelta,
 } from '@openbots/shared';
-import { and, asc, count, desc, eq, inArray, isNull, lt, max, ne, or, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  lt,
+  max,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { nextSeq, schema, type Db } from '../db/client.js';
 import { inWorkspace } from '../db/scope.js';
@@ -25,7 +39,8 @@ import { referableSkill } from './skills.js';
 // `message.created`. Bot replies stream: `createStreaming` inserts an empty
 // `streaming` message, `appendPart` folds parts and text deltas into it and
 // publishes them as numbered `message.delta` events, `finalize` closes it with
-// `message.completed`.
+// `message.completed`. `discardIfEmpty` deletes one that never showed anything
+// instead, with `message.deleted`, when its run went on elsewhere or ended.
 
 type Owner = Pick<CurrentUser, 'id' | 'workspaceId'>;
 type MessagesDeps = Pick<AppDeps, 'db' | 'infra' | 'logger'>;
@@ -406,6 +421,8 @@ interface Stream {
   timer: ReturnType<typeof setTimeout> | null;
   /** Flushes run one after another so writes and events stay in deltaSeq order. */
   chain: Promise<void>;
+  /** Deleted by `discardIfEmpty`: takes no more parts and writes nothing. */
+  discarded?: boolean;
 }
 
 // Streams live in the process running the run. A stream missing here (another
@@ -488,6 +505,7 @@ export async function appendPart(
   input: MessagePart | TextDelta,
 ): Promise<void> {
   const stream = await streamFor(deps, messageId);
+  if (stream.discarded) throw notFound('Message not found');
   if (!isTextDelta(input)) {
     stream.open = null;
     stream.parts.push(input);
@@ -538,10 +556,14 @@ function flush(deps: MessagesDeps, stream: Stream): Promise<void> {
   stream.chain = stream.chain
     .catch(() => {})
     .then(async () => {
-      await deps.db
+      if (stream.discarded) return;
+      const written = await deps.db
         .update(schema.messages)
         .set({ parts, deltaSeq })
-        .where(eq(schema.messages.id, stream.messageId));
+        .where(eq(schema.messages.id, stream.messageId))
+        .returning({ id: schema.messages.id });
+      // Deleted meanwhile (`discardIfEmpty` in another process): nobody shows it any more.
+      if (!written.length) return;
       await publishEvent(
         deps.infra.bus,
         wsEvent('message.delta', { messageId: stream.messageId, deltaSeq, deltas }, scope(stream)),
@@ -577,6 +599,8 @@ export async function finalize(
     .set({ parts: stream.parts, deltaSeq: stream.deltaSeq, status })
     .where(eq(schema.messages.id, messageId))
     .returning();
+  // Deleted meanwhile: a takeover in another process discarded it (`discardIfEmpty`).
+  if (!row) throw notFound('Message not found');
   await publishEvent(
     deps.infra.bus,
     wsEvent(
@@ -585,7 +609,110 @@ export async function finalize(
       scope(stream),
     ),
   );
-  return toMessage(row!);
+  return toMessage(row);
+}
+
+/** Whether parts show a reader anything: a part other than empty text or reasoning. */
+function showsSomething(parts: readonly MessagePart[]): boolean {
+  return parts.some((p) => !((p.type === 'text' || p.type === 'reasoning') && p.text === ''));
+}
+
+/**
+ * `showsSomething` in SQL, negated, for the `messages` row a statement works
+ * on: no parts, or only empty text and reasoning ones; and no thread replies.
+ */
+const showsNothing = sql`not exists (
+    select 1 from jsonb_array_elements("messages"."parts") as part
+    where not (part ->> 'type' in ('text', 'reasoning') and coalesce(part ->> 'text', '') = '')
+  )
+  and not exists (
+    select 1 from "messages" as reply where reply."thread_root_id" = "messages"."id"
+  )`;
+
+/** Rolls back a deletion that found text arriving in this process. */
+class StreamedMeanwhile extends Error {}
+
+export type DiscardOutcome = 'deleted' | 'finalized' | 'gone';
+
+/**
+ * Closes a streaming message whose run went on elsewhere or ended (K4): one
+ * that never showed anything is deleted, with `message.deleted` and a row in
+ * `message_deletions` for resync, instead of left as an empty reply; one that
+ * did is finalized as `finalize` would. `gone` when nothing is left to close:
+ * deleted or finalized already, or not this organization's.
+ *
+ * Text buffered in this process is flushed first. The delete is one
+ * conditional statement, so a part another process flushed meanwhile keeps
+ * the message, and it commits only if no text arrived in this process either.
+ * A thread reply to the message keeps it too.
+ */
+export async function discardIfEmpty(
+  deps: MessagesDeps,
+  messageId: string,
+  input: FinalizeInput = {},
+): Promise<DiscardOutcome> {
+  const local = streams.get(messageId);
+  if (local) {
+    await flush(deps, local);
+    if (showsSomething(local.parts)) {
+      await finalize(deps, messageId, input);
+      return 'finalized';
+    }
+  }
+  const m = schema.messages;
+  let deleted: Pick<MessageRow, 'chatId' | 'seq' | 'threadRootId' | 'authorType' | 'authorId'>;
+  try {
+    const result = await deps.db.transaction(async (tx) => {
+      const [row] = await tx
+        .delete(m)
+        .where(and(eq(m.id, messageId), eq(m.status, 'streaming'), showsNothing))
+        .returning();
+      if (!row) {
+        const [left] = await tx.select({ status: m.status }).from(m).where(eq(m.id, messageId));
+        return { row: null, left };
+      }
+      // No await from this check to the flag, so no delta lands here in between.
+      if (local && showsSomething(local.parts)) throw new StreamedMeanwhile();
+      if (local) local.discarded = true;
+      await tx.insert(schema.messageDeletions).values({
+        messageId,
+        workspaceId: row.workspaceId,
+        chatId: row.chatId,
+        messageSeq: row.seq,
+        threadRootId: row.threadRootId,
+        seq: sql`openbots_next_chat_seq(${row.chatId})`,
+      });
+      return { row, left: undefined };
+    });
+    dropStream(messageId);
+    if (!result.row) {
+      if (result.left?.status !== 'streaming') return 'gone';
+      // Another process wrote parts this one never saw: close it from the row.
+      await finalize(deps, messageId, input);
+      return 'finalized';
+    }
+    deleted = result.row;
+  } catch (error) {
+    if (local) local.discarded = false;
+    if (!(error instanceof StreamedMeanwhile)) throw error;
+    await finalize(deps, messageId, input);
+    return 'finalized';
+  }
+  await publishEvent(
+    deps.infra.bus,
+    wsEvent(
+      'message.deleted',
+      { messageId, chatId: deleted.chatId, threadRootId: deleted.threadRootId },
+      scopeOf(deleted, deleted.authorType === 'bot'),
+    ),
+  );
+  return 'deleted';
+}
+
+function dropStream(messageId: string) {
+  const stream = streams.get(messageId);
+  if (stream?.timer) clearTimeout(stream.timer);
+  streams.delete(messageId);
 }
 
 // Reactions (C8)

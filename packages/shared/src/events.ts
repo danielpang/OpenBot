@@ -122,6 +122,17 @@ export const EVENT_PAYLOADS = {
     status: z.enum(['complete', 'failed']),
     usage: UsageSchema.optional(),
   }),
+  /**
+   * A streaming Bot message removed before it showed anything: the worker
+   * that opened it lost its run to another (K4), or the run ended first. The
+   * envelope's `seq` is the message's; resync lists it under `deleted`.
+   */
+  'message.deleted': z.looseObject({
+    messageId: id,
+    chatId: id,
+    /** The thread it was a reply in, so a client can correct the root's reply count. */
+    threadRootId: nullableId.optional(),
+  }),
   'bot.state': z.looseObject({
     botId: id,
     state: BotStateKindSchema,

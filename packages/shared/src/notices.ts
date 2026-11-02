@@ -330,6 +330,11 @@ export function createNoticeWatcher(context: () => NoticeContext) {
         );
       }
 
+      // Removed before it showed anything: nothing in it to notify about.
+      case 'message.deleted':
+        streaming.delete(event.payload.messageId);
+        return null;
+
       case 'run.status':
         return once(longTask(event));
 

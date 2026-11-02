@@ -163,6 +163,29 @@ describe('run worker', () => {
       .where(eq(schema.runSteps.runId, runId))
       .orderBy(asc(schema.runSteps.idx));
 
+  /** A scripted model whose first call waits, before it streams anything, until `release`. */
+  function stalledFirstCall(turns: ScriptedTurn[]) {
+    const model = scriptedModel(turns);
+    const play = model.doStream.bind(model);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let entered = false;
+    model.doStream = async (options) => {
+      if (!entered) {
+        entered = true;
+        await gate;
+      }
+      return play(options);
+    };
+    return { model, release, entered: () => entered };
+  }
+
+  const deletedIn = (chatId: string, from: WsEvent[] = events) =>
+    from.filter(
+      (e): e is Extract<WsEvent, { type: 'message.deleted' }> =>
+        e.type === 'message.deleted' && e.chat_id === chatId,
+    );
+
   it('streams a prose reply, finalizes it and records usage', async () => {
     const { bot, model } = await newBot(
       'Prose',
@@ -465,6 +488,31 @@ describe('run worker', () => {
     });
   });
 
+  it('cancels a run before it streams anything, leaving no empty reply', async () => {
+    const stalled = stalledFirstCall([[{ text: 'Too late.' }]]);
+    const { bot } = await newBot('Hesitant', []);
+    models.set(bot.id, { model: stalled.model, info: null, providerOptions: {} });
+    try {
+      await say(bot, 'hi');
+      await until(async () => {
+        expect(stalled.entered()).toBe(true);
+        expect((await botMessages(bot.chatId)).map((m) => m.status)).toEqual(['streaming']);
+      });
+      const [pending] = await botMessages(bot.chatId);
+      const [run] = await runsOf(bot.id);
+      expect((await call('POST', `/runs/${run!.id}/cancel`)).status).toBe(200);
+      stalled.release();
+      await until(async () => {
+        expect(await botMessages(bot.chatId)).toEqual([]);
+        expect(statesOf(bot.id).at(-1)).toBe('idle');
+      });
+      expect(deletedIn(bot.chatId).map((e) => e.payload.messageId)).toEqual([pending!.id]);
+      expect((await runsOf(bot.id))[0]!.status).toBe('cancelled');
+    } finally {
+      stalled.release();
+    }
+  });
+
   it('runs a Bot’s queued runs by priority, then age', async () => {
     const { bot } = await newBot('Busy', [
       [{ text: 'first' }],
@@ -600,6 +648,8 @@ describe('run worker', () => {
     const warn = vi.spyOn(t.deps.logger, 'warn');
     const infra = createInfra(t.deps.config);
     const deps2: AppDeps = { ...t.ownerDeps, infra };
+    const events2: WsEvent[] = [];
+    await infra.bus.subscribe<WsEvent>(EVENTS_CHANNEL, (e) => events2.push(e));
     try {
       await infra.queue<RunJob>(RUNS_QUEUE).process(createRunWorker(deps2, optionsFor()));
       expect(await inEveryOrganization(deps2, () => recoverInterruptedRuns(deps2))).toBe(1);
@@ -628,6 +678,8 @@ describe('run worker', () => {
       );
       expect((await runsOf(bot.id))[0]).toMatchObject({ status: 'completed', state: null });
       expect(await botMessages(bot.chatId)).toHaveLength(2);
+      // What the old worker streamed stays, closed; nothing was deleted.
+      expect(deletedIn(bot.chatId, [...events, ...events2])).toEqual([]);
     } finally {
       release();
       embedHooks.delete('crash');
@@ -703,6 +755,7 @@ describe('run worker', () => {
       // closing the message it opened. It logs before closing it, so wait for
       // both: on Postgres the check can overtake the close (PGlite runs one
       // query at a time, in order).
+      // It streamed only an empty text part, so its message is deleted, not left empty.
       release();
       await until(async () => {
         expect(warn).toHaveBeenCalledWith(
@@ -710,11 +763,79 @@ describe('run worker', () => {
           expect.stringContaining('taken over'),
         );
         expect((await botMessages(bot.chatId)).every((m) => m.status !== 'streaming')).toBe(true);
+        expect(deletedIn(bot.chatId)).toHaveLength(1);
       });
       expect((await runsOf(bot.id))[0]!.status).toBe('failed');
+      const left = await botMessages(bot.chatId);
+      expect(left.map((m) => m.authorType)).toEqual(['bot', 'system']);
+      expect(left[0]!.parts).toEqual([{ type: 'text', text: 'Hello again.' }]);
     } finally {
       release();
       warn.mockRestore();
+      await infra.close();
+    }
+  });
+
+  it('deletes the message of a worker that lost its run before streaming anything (K4)', async () => {
+    // The first call stalls; the new worker's call plays the first turn, and
+    // the old worker's, once released, the empty second.
+    const stalled = stalledFirstCall([[{ text: 'Fresh reply.' }], []]);
+    const { bot } = await newBot('Stalled', []);
+    models.set(bot.id, { model: stalled.model, info: null, providerOptions: {} });
+    await say(bot, 'hi');
+    await until(async () => {
+      expect(stalled.entered()).toBe(true);
+      expect((await botMessages(bot.chatId)).map((m) => m.status)).toEqual(['streaming']);
+    });
+    const [abandoned] = await botMessages(bot.chatId);
+    const [run] = await runsOf(bot.id);
+
+    const warn = vi.spyOn(t.deps.logger, 'warn');
+    const error = vi.spyOn(t.deps.logger, 'error');
+    const infra = createInfra(t.deps.config);
+    const deps2: AppDeps = { ...t.ownerDeps, infra };
+    const events2: WsEvent[] = [];
+    await infra.bus.subscribe<WsEvent>(EVENTS_CHANNEL, (e) => events2.push(e));
+    try {
+      await infra.queue<RunJob>(RUNS_QUEUE).process(createRunWorker(deps2, optionsFor()));
+      await inEveryOrganization(deps2, () => recoverInterruptedRuns(deps2));
+      await until(async () => expect((await runsOf(bot.id))[0]!.status).toBe('completed'));
+
+      // The takeover deleted the empty message and said so; the new reply stays.
+      const [reply, ...rest] = await botMessages(bot.chatId);
+      expect(rest).toEqual([]);
+      expect(reply).toMatchObject({ status: 'complete', runId: run!.id });
+      expect(reply!.id).not.toBe(abandoned!.id);
+      expect(reply!.parts).toEqual([{ type: 'text', text: 'Fresh reply.' }]);
+      expect(deletedIn(bot.chatId, events2)).toEqual([
+        expect.objectContaining({
+          chat_id: bot.chatId,
+          bot_id: bot.id,
+          seq: abandoned!.seq,
+          payload: { messageId: abandoned!.id, chatId: bot.chatId, threadRootId: null },
+        }),
+      ]);
+      const [record] = await t.db
+        .select()
+        .from(schema.messageDeletions)
+        .where(eq(schema.messageDeletions.messageId, abandoned!.id));
+      expect(record).toMatchObject({ chatId: bot.chatId, messageSeq: abandoned!.seq });
+
+      // The old worker's model call returns at last. Its message is gone, so it
+      // gives up (a log line about the run) and leaves the run and transcript be.
+      stalled.release();
+      await until(() => {
+        expect(stalled.model.calls).toHaveLength(2);
+        const logged = [...warn.mock.calls, ...error.mock.calls].map(([fields]) => fields);
+        expect(logged).toContainEqual(expect.objectContaining({ runId: run!.id }));
+      });
+      expect(await botMessages(bot.chatId)).toEqual([reply]);
+      expect(deletedIn(bot.chatId, [...events, ...events2])).toHaveLength(1);
+      expect((await runsOf(bot.id))[0]!.status).toBe('completed');
+    } finally {
+      stalled.release();
+      warn.mockRestore();
+      error.mockRestore();
       await infra.close();
     }
   });
