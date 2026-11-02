@@ -140,14 +140,17 @@ describe('threads, reactions and chat summaries', () => {
     const reply = (await messagesOf(bot.chatId)).find((m) => m.runId === runs[2]!.id)!;
     expect(reply).toMatchObject({ threadRootId: root.id, status: 'complete' });
     // The finished run points at its reply in the thread, for the notification (N1).
-    expect(
-      events.find(
-        (e) =>
-          e.type === 'run.status' &&
-          e.payload.runId === runs[2]!.id &&
-          e.payload.status === 'completed',
-      ),
-    ).toMatchObject({ seq: reply.seq, payload: { messageId: reply.id, threadRootId: root.id } });
+    // The event goes out just after the status is stored, so wait for it.
+    await until(() =>
+      expect(
+        events.find(
+          (e) =>
+            e.type === 'run.status' &&
+            e.payload.runId === runs[2]!.id &&
+            e.payload.status === 'completed',
+        ),
+      ).toMatchObject({ seq: reply.seq, payload: { messageId: reply.id, threadRootId: root.id } }),
+    );
     const top = await call('GET', `/chats/${bot.chatId}/messages`);
     const texts = ((await top.json()) as { messages: Message[] }).messages.flatMap((m) =>
       m.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])),

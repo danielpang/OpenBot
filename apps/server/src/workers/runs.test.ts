@@ -699,16 +699,19 @@ describe('run worker', () => {
       await until(async () => expect((await runsOf(bot.id))[0]!.status).toBe('failed'));
       expect((await runsOf(bot.id))[0]!.error).toBe('The run was interrupted by a server restart');
 
-      // The first worker wakes up, finds the run is not its own, and stops.
+      // The first worker wakes up, finds the run is not its own, and stops,
+      // closing the message it opened. It logs before closing it, so wait for
+      // both: on Postgres the check can overtake the close (PGlite runs one
+      // query at a time, in order).
       release();
-      await until(() =>
+      await until(async () => {
         expect(warn).toHaveBeenCalledWith(
           expect.objectContaining({ runId: run!.id }),
           expect.stringContaining('taken over'),
-        ),
-      );
+        );
+        expect((await botMessages(bot.chatId)).every((m) => m.status !== 'streaming')).toBe(true);
+      });
       expect((await runsOf(bot.id))[0]!.status).toBe('failed');
-      expect((await botMessages(bot.chatId)).every((m) => m.status !== 'streaming')).toBe(true);
     } finally {
       release();
       warn.mockRestore();

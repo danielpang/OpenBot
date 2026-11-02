@@ -21,6 +21,12 @@ export interface TestDb {
  * under vitest). Either way each test database is a copy of one migrated
  * template, so test files running in parallel do not each replay every
  * migration, and a test that builds a second app does not pay for initdb.
+ *
+ * To run the server tests on real Postgres, as CI's `server-postgres` job
+ * does, set DATABASE_URL to a server with pgvector whose user may create
+ * databases (docs/CONTRIBUTING.md). PGlite runs one query at a time, in
+ * order; a real server runs a pool's queries side by side, so a test that
+ * checks one write right after waiting for another can race there.
  */
 export async function createTestDb(): Promise<TestDb> {
   const url = process.env.DATABASE_URL;

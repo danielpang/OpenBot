@@ -133,6 +133,9 @@ describe('outbound event subscriptions', () => {
     const { subscription, secret } = await subscribe(['message.created', 'run.completed']);
     expect(secret).toMatch(/^obs_/);
     const bot = await newBot('Speaker');
+    // The greeting's delivery is recorded off the bus, after the request; wait
+    // for it so the log's order below does not depend on which lands first.
+    await until(async () => expect(await deliveriesOf(subscription.id)).toHaveLength(1));
     const message = await t.inOrganization(() =>
       postMessage(t.ownerDeps, bot.chatId, {
         authorType: 'system',

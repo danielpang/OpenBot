@@ -48,6 +48,36 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  # The server tests again, on real Postgres instead of PGlite (db/test-db.ts):
+  # with DATABASE_URL set, each test app gets its own database, copied from a
+  # migrated template. Real connections run queries side by side where PGlite
+  # runs them one at a time, which shows races PGlite hides.
+  server-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: openbots
+          POSTGRES_PASSWORD: openbots
+          POSTGRES_DB: openbots
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U openbots -d openbots"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://openbots:openbots@localhost:5432/openbots
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run test --filter @openbots/server
+
   server-image:
     runs-on: ubuntu-24.04
     continue-on-error: false

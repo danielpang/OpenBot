@@ -29,6 +29,25 @@ pnpm --filter @openbots/api-client generate
 
 - Tests for every change in behaviour, next to the code (`*.test.ts`). Server tests run on an
   in-memory PGlite database, so they need no Docker, Redis or provider key.
+- For a change to queries, transactions or workers, run the server tests on real Postgres too, as
+  CI does (the `server-postgres` job). PGlite runs one query at a time, so a test can pass there
+  and still race on a real server. Set `DATABASE_URL` to a Postgres with pgvector whose user may
+  create databases; each test app then gets its own database, copied from a migrated template
+  (`apps/server/src/db/test-db.ts`):
+
+  ```sh
+  docker run -d --rm --name openbots-test-pg -p 55432:5432 \
+    -e POSTGRES_USER=openbots -e POSTGRES_PASSWORD=openbots -e POSTGRES_DB=openbots \
+    pgvector/pgvector:pg16
+  DATABASE_URL=postgres://openbots:openbots@127.0.0.1:55432/openbots \
+    pnpm turbo run test --filter @openbots/server
+  docker rm -f openbots-test-pg
+  ```
+
+  A `DATABASE_URL` left in your shell (from `scripts/dev.sh`, say) does the same, against that
+  server. Postgres needs CPU of its own beside the test workers, so on a busy machine fewer
+  workers keep tests clear of their 5 second timeout: add `-- --maxWorkers=4`.
+
 - The docs it affects: the README for anything an operator sees, `.env.example` for a new setting,
   and the rows of [TRACEABILITY.md](TRACEABILITY.md) for the PRD requirements it touches.
 - Code that matches its neighbours. Read the module you change and follow its style.

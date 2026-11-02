@@ -392,10 +392,17 @@ describe('router', () => {
       const chat = await group([a, b]);
       let posted = false;
       embedHooks.set(a.id, async (texts) => {
-        // While the Painter's tool runs, the owner talks to the Critic, then to nobody.
+        // While the Painter's tool runs, the owner talks to the Critic, then,
+        // once the Critic has answered, to nobody. A Bot still at work would
+        // take that message without being asked (plan 5.2), and on Postgres
+        // the Critic's run is often still going by then.
         if (posted || texts[0] !== 'Paints the fence red') return;
         posted = true;
         await say(chat.id, '@critic what do you think so far?');
+        await until(async () => {
+          const critic = (await runsIn(chat.id)).find((r) => r.botId === b.id);
+          expect(critic?.status).toBe('completed');
+        });
         await say(chat.id, 'use blue instead');
       });
       asked.length = 0;
