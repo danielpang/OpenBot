@@ -11,7 +11,7 @@ You need [flyctl](https://fly.io/docs/flyctl/install/) and a Fly.io account.
 From a checkout of this repository:
 
 ```sh
-cd deploy/relay-fly
+cd deploy/relay
 fly launch --copy-config --no-deploy --name <your app>
 ```
 
