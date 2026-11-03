@@ -451,6 +451,24 @@ When you start the stack with a profile, keep passing it (`docker compose --prof
 `docker compose --profile ngrok pull`), or set `COMPOSE_PROFILES=ngrok` in `.env` so plain
 `docker compose` commands include the tunnel.
 
+## Reaching your server from your phone
+
+The OpenBots app for iOS is in development ([docs/IOS_APP_PLAN.md](docs/IOS_APP_PLAN.md)). The server side it needs is in place: a phone pairs with a server by scanning a QR code, and reaches it either directly (a public URL from the section above) or through the private relay, which needs no public address, port, DNS or certificate. The wire protocol is in [docs/RELAY_PROTOCOL.md](docs/RELAY_PROTOCOL.md) and the design in [docs/MOBILE_AND_VM_PLAN.md](docs/MOBILE_AND_VM_PLAN.md).
+
+**Pairing.** Settings > Devices in the web app (and "Pair your phone…" in the Mac app) shows a QR code that is good for 5 minutes and works once. On a VM with no browser at hand, print it in the terminal:
+
+```sh
+docker compose run --rm openbots pair          # add --link to print the link too
+docker compose run --rm openbots devices       # list paired devices, or `devices revoke <id>`
+docker compose run --rm openbots relay         # the server's host id and whether the relay sees it
+```
+
+On a fresh install with no owner yet, `openbots pair` prints a code that creates the owner when the phone pairs, so a server on a VM needs no browser to get going. A paired device holds a key with the owner's access; revoke a lost phone in Settings > Devices, which stops its key at once.
+
+**The relay.** Set `OPENBOTS_RELAY_URL` in `.env` to a relay's `wss://` address and run `docker compose up -d`. The server dials the relay out, only once a device is paired or a pairing is open, and the phone reaches it through the relay when no direct address answers. Everything between the phone and the server is end-to-end encrypted with keys the relay never holds: the relay sees your server's id, when it is connected, how many streams and bytes, and nothing of what they carry. Leave the setting empty and the phone needs a direct address (`OPENBOTS_PUBLIC_URL` over https, or the same network).
+
+To run a relay of your own, build `docker/relay.Dockerfile` and put it behind a TLS terminator; it listens on port 3200 and needs no state. `apps/relay/README.md` has its settings. Push notifications go through the relay too, and only a relay holding the app's APNs key can send them, so a self-hosted relay carries the tunnel and no push.
+
 ## Development
 
 Requirements: Linux or macOS with `curl`, `tar` and `xz`. Nothing else needs to be preinstalled.
