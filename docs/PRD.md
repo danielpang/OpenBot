@@ -207,6 +207,32 @@ The Mac app running OpenBots on This Mac has no sign-in at all. It is one person
 | D3 | README documents exposing the instance through ngrok and Cloudflare Tunnel, including setting the public URL and protecting the UI while leaving webhook paths reachable. | Must |
 | D4 | Windows and Linux desktop builds, PWA, mobile. | Later |
 
+**Mobile** ([MOBILE_AND_VM_PLAN.md](MOBILE_AND_VM_PLAN.md) 2.1, extends D4, N1, N2). These M IDs are the plan's and are distinct from Memory's M1 to M3 (4.10); written alone they are "M1 (mobile)" and so on. Requirements the iOS app carries are marked (iOS app); the rest are the server's, the web app's or the Mac app's part.
+
+| ID | Requirement | Priority |
+| --- | --- | --- |
+| M1 | (iOS app) The iOS app connects to a server three ways, as the Mac app does (D2): pair with a QR code (a self-hosted server or the Mac app's This Mac, over the relay or directly), sign in to a self-hosted server by address, or sign in to an OpenBots account. Several servers can be saved; one is active. | Must |
+| M2 | Pairing is one scan. The QR code (or a pairing link sent to oneself) carries everything the phone needs, is good for 5 minutes and works once. The server shows it in Settings > Devices, the Mac app in its menu, and the server image prints it in the terminal (`openbots pair`). | Must |
+| M3 | The phone reaches a server with no public address through the relay. The relay cannot read the traffic: every byte between phone and server is end-to-end encrypted with keys the relay never holds. When the server is reachable directly (a public URL or the same network), the app uses that path and the relay only as a fallback. | Must |
+| M4 | (iOS app) The app shows the roster with live Bot state, each Bot's transcript and the groups, streams replies as they are written, and sends messages with photos and files. Approvals, questions and sign-in requests are answered in place, and an Inbox lists every pending one across Bots (N2's tray, on the phone). | Must |
+| M5 | Push notifications for the same events as N1 (approvals, questions, sign-in requests, mentions, Routine exceptions, finished long tasks), opening the exact message. Their content is encrypted for the phone; the push gateway sees only that a notification exists. | Must |
+| M6 | (iOS app) Work continues when the phone is closed (K4 holds). A reconnecting app catches up through `resync`, never losing a message. | Must |
+| M7 | A device is listed in Settings > Devices with its name, platform and last use, and can be revoked there: its key stops working, its relay streams close and its push token is forgotten. | Must |
+| M8 | (iOS app) Screen preview (view only), the activity log, Artifacts, and Routines (enable, run now) on the phone. | Should |
+| M9 | (iOS app) Share sheet ("Send to a Bot"), Siri Shortcuts, a Home Screen widget with Bots at work, a Live Activity for a long task. | Later |
+| M10 | (iOS app) Setting up providers, connectors, the computer's terminal and files stay on the desktop and the web. The phone shows them read-only at most. | Must (as a non-goal) |
+
+**Server mode** ([MOBILE_AND_VM_PLAN.md](MOBILE_AND_VM_PLAN.md) 2.2, extends D1, D3).
+
+| ID | Requirement | Priority |
+| --- | --- | --- |
+| V1 | One image runs the whole of OpenBots in one container with one persistent volume: server, Postgres, Redis and the Bots' computer. It starts on a platform that runs one container and no Docker inside it (Fly Machines, Sprites, Modal, Railway, Render), and on any Docker host. | Must |
+| V2 | A fresh server pairs headlessly: `openbots pair` in the container's terminal prints the QR code before any owner exists, and the phone's onboarding creates the owner. No browser, public URL, DNS or TLS is needed to get going. | Must |
+| V3 | The server stays reachable with no open port: it dials the relay out. A public URL remains optional (webhooks and connector OAuth need one, as today). | Must |
+| V4 | `deploy/` carries a template per platform (Fly, Sprites, EC2 with the compose stack) and the README has a "Run OpenBots 24/7 on a VM" section with the cost and isolation trade-offs stated. | Must |
+| V5 | Upgrades, backups and restore work for the standalone image with the existing scripts and `docker pull`. | Must |
+| V6 | The standalone image is single tenant: `OPENBOTS_DEPLOYMENT=self_hosted` only. It refuses `managed`. | Must |
+
 ### 4.15 Models and providers
 
 Bots need a model, and self-hosters want to point at whatever they already pay for or run locally. Providers are configured once; each Bot picks one model.

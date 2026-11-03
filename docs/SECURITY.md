@@ -18,21 +18,22 @@ The review found that boundary 2 did not hold. MCP stdio servers run inside the 
 
 ## Controls
 
-| #   | Control                                              | Status      | Findings                                              |
-| --- | ---------------------------------------------------- | ----------- | ----------------------------------------------------- |
-| 1   | Encrypted secrets                                    | Partial     | S-9 (fixed except stdio `args`)                       |
-| 2   | Approvals (policy gate)                              | Implemented | S-4 (fixed), S-10 (fixed), S-15 (fixed), S-16 (fixed) |
-| 3   | Per-Bot domain allowlists                            | Implemented | S-8 (fixed), S-12 (fixed)                             |
-| 4   | Sandbox network separation                           | Partial     | S-7 (fixed), S-17 (fixed)                             |
-| 5   | Docker socket proxy                                  | Partial     | S-2 (fixed), S-20                                     |
-| 6   | Rate limits on auth and webhooks                     | Implemented | S-6 (fixed), S-14 (fixed)                             |
-| 7   | Constant-time token checks                           | Implemented | S-13 (fixed)                                          |
-| 8   | Same-site cookies, Origin check on WebSocket upgrade | Implemented | S-19 (fixed)                                          |
-| 9   | Audit log                                            | Implemented | S-11 (fixed)                                          |
-| 10  | Secure cookies on https                              | Implemented |                                                       |
-| 11  | Pinned MCP catalog versions                          | Partial     | S-1 (fixed), S-3 (fixed), S-20                        |
-| 12  | Screen control lock during takeover                  | Partial     | S-7 (fixed)                                           |
-| 13  | Private relay and paired devices                     | Implemented |                                                       |
+| #   | Control                                              | Status           | Findings                                              |
+| --- | ---------------------------------------------------- | ---------------- | ----------------------------------------------------- |
+| 1   | Encrypted secrets                                    | Partial          | S-9 (fixed except stdio `args`)                       |
+| 2   | Approvals (policy gate)                              | Implemented      | S-4 (fixed), S-10 (fixed), S-15 (fixed), S-16 (fixed) |
+| 3   | Per-Bot domain allowlists                            | Implemented      | S-8 (fixed), S-12 (fixed)                             |
+| 4   | Sandbox network separation                           | Partial          | S-7 (fixed), S-17 (fixed)                             |
+| 5   | Docker socket proxy                                  | Partial          | S-2 (fixed), S-20                                     |
+| 6   | Rate limits on auth and webhooks                     | Implemented      | S-6 (fixed), S-14 (fixed)                             |
+| 7   | Constant-time token checks                           | Implemented      | S-13 (fixed)                                          |
+| 8   | Same-site cookies, Origin check on WebSocket upgrade | Implemented      | S-19 (fixed)                                          |
+| 9   | Audit log                                            | Implemented      | S-11 (fixed)                                          |
+| 10  | Secure cookies on https                              | Implemented      |                                                       |
+| 11  | Pinned MCP catalog versions                          | Partial          | S-1 (fixed), S-3 (fixed), S-20                        |
+| 12  | Screen control lock during takeover                  | Partial          | S-7 (fixed)                                           |
+| 13  | Private relay and paired devices                     | Implemented      |                                                       |
+| 14  | Standalone image and a self-hosted relay             | Known difference |                                                       |
 
 ### 1. Encrypted secrets
 
@@ -320,12 +321,30 @@ Each organization has its own. On the managed service its owners and admins read
 The phone app reaches a server through the relay (`apps/relay`, `apps/server/src/relay`, `packages/tunnel`; the contract is `docs/RELAY_PROTOCOL.md`). What holds:
 
 - The relay is untrusted. A stream carries a Noise IK session (`Noise_IK_25519_ChaChaPoly_SHA256`) between the phone and the server; the relay sees the server's host id, link and stream counts and byte counts, and nothing inside. The server proves its identity to the relay with its Ed25519 instance key (a signed challenge), so nobody can register another server's host id. The phone pins the server's tunnel key from the pairing link, so a relay that lies about which host it is fails the handshake.
-- A pairing is a 32 byte code, stored as a SHA-256 and compared in constant time, good for 5 minutes and spent by one conditional update. `POST /devices/pair` is rate limited per client (10 an hour) and per code (5 tries an hour). A device's key is an ordinary API key with the owner's permissions, so a paired phone is the owner: revocation (`DELETE /devices/{id}`) deletes the key in the same step as it marks the device, closes the device's relay streams on every API instance through `device.revoked`, and forgets its push token and static key. Pairing and revocation are audited. A device key cannot mint credentials (`POST /api-keys` and `POST /devices/pairings` answer 403 `DEVICE_KEY_NOT_ALLOWED`), so a stolen phone cannot leave a key or a paired device behind its revocation.
+- A pairing is a 32 byte code, stored as a SHA-256 and compared in constant time, good for 5 minutes and spent by one conditional update. `POST /devices/pair` is rate limited per client (10 an hour) and per code (5 tries an hour). A device's key is an ordinary API key with the owner's permissions, so a paired phone is the owner: revocation (`DELETE /devices/{id}`) deletes the key in the same step as it marks the device, closes the device's relay streams on every API instance through `device.revoked` (and, without Redis, by re-checking each open stream's device against the database every 15 seconds; a revoked device's stream answers 401 to new requests and closes 4403 once its in-flight responses are sent, or after 5 seconds), and forgets its push token and static key. Pairing and revocation are audited. A device key cannot mint credentials (`POST /api-keys` and `POST /devices/pairings` answer 403 `DEVICE_KEY_NOT_ALLOWED`), so a stolen phone cannot leave a key or a paired device behind its revocation.
 - Tunneled requests reach the server's own port on loopback. The tunnel drops `cookie`, `origin`, `sec-fetch-*`, `x-forwarded-*` and `host`, so a tunneled request is never a browser request and never a trusted-proxy request. The adapter adds `x-openbots-device` (the rate-limit key) and, for a pairing, `x-openbots-device-key`; both are honoured only from loopback and only beside a secret the in-process adapter makes at each start (`x-openbots-adapter`), so neither a request from another address nor a reverse proxy or program on the same host can name a device or dodge its rate limit.
 - Push payloads are encrypted for the device (ChaCha20-Poly1305 under a per-device key made at pairing) before they leave the server; the relay and APNs see "You have a notification" and a Bot id. An APNs 410 forgets the token.
 - The server's instance key and every device's push token and key are sealed with the master key and re-sealed on rotation. Cross-organization lookups for a device by static key and a pairing by code hash go through two SECURITY DEFINER functions that return an organization id and nothing else (`openbots_device_workspace`, `openbots_pairing_workspace`), beside one that answers whether any device or open pairing exists (`openbots_devices_exist`), so the relay link knows whether to dial.
 
 **Tests:** `apps/server/src/routes/devices.test.ts`, `apps/server/src/relay/*.test.ts` (the end-to-end check pairs a Node client through a real relay, revokes it and sees its stream close), `packages/tunnel/src/*.test.ts` (including the official Noise known-answer vector), `apps/relay/src/*.test.ts`.
+
+### 14. Standalone image and a self-hosted relay
+
+Two deployment shapes from [MOBILE_AND_VM_PLAN.md](MOBILE_AND_VM_PLAN.md) section 8 that hold less than the compose stack does. Both are documented choices, not findings.
+
+**The standalone image** (`docker/standalone.Dockerfile`, `deploy/`) runs the server, Postgres, Redis and the computer agent in one container, for platforms that run one container and no Docker inside it. Boundary 3 (the computer sandbox) is weaker there:
+
+- One kernel and one network namespace. There is no sandbox network, no Docker guard and no sandbox firewall between a Bot's shell and the server.
+- The Bots' shells run beside the server as another user: the agent drops every Bot process to the `bot` user as in the computer image (S-7), the server runs as its own user (uid 990, not the `bot` user's 1000) with no capabilities and `no-new-privileges`, its secrets in files only it reads, and the cookie store and the agent's files under `/data/agent` are root only.
+- Postgres and Redis listen on loopback, which a Bot's shell shares. Every Postgres login over TCP needs a scram password (the socket is the superuser's only), and Redis needs a password generated at first boot and kept in a file only the `redis` user reads, so a Bot cannot read or inject queue jobs.
+- The computer agent's token is removed from the environment of every program it starts, as in the computer image, so a Bot cannot drive the agent.
+- A Bot's shell can reach the server's port on loopback. Every route needs a key the Bot does not have; `POST /devices/pair` needs a live pairing code and is rate limited (control 13).
+- A Bot's shell can reach the VM's own network and, on a cloud VM, its metadata address. Block the metadata address in the platform (on EC2, IMDSv2 required with a hop limit of 1, as `deploy/ec2/cloud-init.yaml` says), and do not give the VM a role it does not need.
+- It is single tenant: it refuses `OPENBOTS_DEPLOYMENT=managed` (V6).
+
+The README's "Run OpenBots 24/7 on a VM" and `deploy/README.md` say this in plain words and name the compose stack as the hardened path.
+
+**A self-hosted relay** (the compose `relay` profile, `docker/docker-compose.relay.yml`) is the same untrusted relay as control 13, run by the owner. Its container is read only, holds no capability and no secret, and writes nothing to disk. Its port is published on loopback by default, for a TLS terminator on the same host or a tunnel on the stack's network, and it trusts the last `X-Forwarded-For` hop (`RELAY_TRUST_PROXY=true`) for its rate limits; publishing the port on every interface without a proxy in front lets a client choose the address its limits key on, so `docker/docker-compose.relay.yml` says to set `OPENBOTS_RELAY_TRUST_PROXY=false` then. It carries no push, since it has no APNs key. Running it moves nothing inside the Noise session into its reach: it sees what the hosted relay sees, and now the owner holds those logs.
 
 ### Other checks
 

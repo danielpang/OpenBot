@@ -45,7 +45,7 @@ again, it keeps an existing `.env`, key and password.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/danielpang/OpenBots/main/install.sh | bash
-# or, from a checkout: bash install.sh [--dir <path>] [--ref <tag>] [--no-start]
+# or, from a checkout: bash install.sh [--dir <path>] [--ref <tag>] [--no-start] [--pair]
 ```
 
 By hand, the same steps:
@@ -467,7 +467,24 @@ On a fresh install with no owner yet, `openbots pair` prints a code that creates
 
 **The relay.** Set `OPENBOTS_RELAY_URL` in `.env` to a relay's `wss://` address and run `docker compose up -d`. The server dials the relay out, only once a device is paired or a pairing is open, and the phone reaches it through the relay when no direct address answers. Everything between the phone and the server is end-to-end encrypted with keys the relay never holds: the relay sees your server's id, when it is connected, how many streams and bytes, and nothing of what they carry. Leave the setting empty and the phone needs a direct address (`OPENBOTS_PUBLIC_URL` over https, or the same network).
 
-To run a relay of your own, build `docker/relay.Dockerfile` and put it behind a TLS terminator; it listens on port 3200 and needs no state. `apps/relay/README.md` has its settings. Push notifications go through the relay too, and only a relay holding the app's APNs key can send them, so a self-hosted relay carries the tunnel and no push.
+To run a relay of your own, start the compose stack's `relay` profile (see [Run OpenBots 24/7 on a VM](#run-openbots-247-on-a-vm)) or run `docker/relay.Dockerfile`'s image on its own, behind a TLS terminator; it listens on port 3200 and needs no state. `apps/relay/README.md` has its settings. Push notifications go through the relay too, and only a relay holding the app's APNs key can send them, so a self-hosted relay carries the tunnel and no push.
+
+## Run OpenBots 24/7 on a VM
+
+The Mac app's This Mac stack is the free way to run OpenBots, but it pauses while the Mac sleeps: Routines wait, and Bots stop mid-task until the lid opens. To have Bots and Routines work around the clock, run OpenBots on a machine that stays on, such as a cloud VM or a home server. Your phone reaches it through the relay, so the VM needs no public address, open port, DNS or certificate. Templates and step-by-step guides are in [deploy/](deploy/README.md).
+
+There are two shapes:
+
+- **The compose stack**, on any VM where you can run Docker (EC2, Hetzner, DigitalOcean, a home server). It is this README's install, with every Bot's computer in its own container behind the Docker guard and the sandbox firewall. **This is the hardened path; use it wherever Docker is available.** On a new Ubuntu VM, [deploy/ec2/cloud-init.yaml](deploy/ec2/cloud-init.yaml) installs Docker and runs the installer for you; elsewhere, run `bash install.sh --pair`.
+- **The standalone image**, `ghcr.io/danielpang/openbots/standalone`, for platforms that run one container and no Docker inside it (Fly Machines, Sprites, Railway, Render), or for one person on one VM. The server, Postgres, Redis and the Bots' computer share one container with one volume at `/data`. Give it about 2 GB of memory and 2 CPUs. [deploy/fly](deploy/fly/README.md) and [deploy/sprites](deploy/sprites/README.md) have the steps.
+
+**Pairing from the terminal.** A new server needs no browser. `bash install.sh --pair` starts the stack and prints a QR code once it is ready; with no terminal attached (cloud-init, for instance) it also writes the code to `openbots-pair.txt` beside `.env`, readable by you only. Scan it with the OpenBots app. On a server with no owner yet, the phone that pairs becomes the owner. A code works once and for 5 minutes. For a new one, run `docker compose run --rm openbots pair` (compose stack), `docker exec <container> openbots pair` (standalone image) or `fly ssh console -C "openbots pair"` (Fly).
+
+**Your own relay.** On a VM with a public address you can run a relay beside the compose stack, with the `relay` profile: `docker compose --profile relay up -d`. It listens on `OPENBOTS_RELAY_PORT` (3200), on loopback unless `OPENBOTS_RELAY_BIND` says otherwise, and needs TLS in front of it: a Cloudflare Tunnel hostname whose service is `http://relay:3200` (the `cloudflare` profile), or a reverse proxy on the host. Set `OPENBOTS_RELAY_URL` to that `wss://` address. A relay of your own carries the tunnel and no push notifications, since only the project's relay holds the app's APNs key; the phone then gets notices only while the app is open.
+
+**Cost.** You pay the platform for a machine that runs all month, plus your model provider's usage, which each Bot's usage rows show. Check the platform's own pricing page for a machine with 2 CPUs and 4 GB of memory and a 10 to 30 GB disk: [Fly.io](https://fly.io/docs/about/pricing/), [Amazon EC2](https://aws.amazon.com/ec2/pricing/on-demand/). A Sprite costs nothing while paused, but it pauses when idle, and OpenBots pauses with it, so it does not suit Routines around the clock.
+
+**What the standalone image gives up.** In the compose stack a Bot's shell runs in its own container, which cannot reach the server, the database or the server's network. In the standalone image there is one container and one kernel: the Bots' shells run beside the server, as another user. They cannot read the server's secrets: the computer agent's token is kept out of every program it starts, and the server's routes all need a key the Bots do not have. But a Bot's shell can reach the server's port on loopback, the VM's own network and, on a cloud VM, the metadata address that hands out the machine's credentials. Block that address in the platform's firewall (on EC2, require IMDSv2 with a hop limit of 1). The image is meant for one person's own server; for anything more, use the compose stack.
 
 ## Development
 
