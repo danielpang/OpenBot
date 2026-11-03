@@ -12,6 +12,7 @@ import {
   type WebhookSignaturePreset,
 } from '@openbots/shared';
 import { and, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { INTERNAL_HEADERS } from '../client-ip.js';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
@@ -81,6 +82,7 @@ const REDACTED_HEADERS = new Set([
   'proxy-authorization',
   'cookie',
   'x-openbots-token',
+  ...INTERNAL_HEADERS,
 ]);
 
 const keyring = (deps: Pick<AppDeps, 'config'>) => keyringFromConfig(deps.config);

@@ -1,7 +1,7 @@
 import { WebhookSignatureSchema } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
-import { clientIp } from '../client-ip.js';
+import { clientIp, INTERNAL_HEADERS } from '../client-ip.js';
 import type { AppEnv } from '../context.js';
 import { schema } from '../db/client.js';
 import { DomainError, notFound, unauthorized } from '../errors.js';
@@ -91,8 +91,14 @@ async function throttle(c: Context<AppEnv>, key: string, max: number, what: stri
   throw rateLimited(what);
 }
 
+// The relay adapter's own headers are dropped here, before anything stores a
+// delivery or hands it to a Bot (client-ip.ts).
 const lowerHeaders = (c: Context<AppEnv>) =>
-  Object.fromEntries([...c.req.raw.headers.entries()].map(([k, v]) => [k.toLowerCase(), v]));
+  Object.fromEntries(
+    [...c.req.raw.headers.entries()]
+      .map(([k, v]) => [k.toLowerCase(), v] as const)
+      .filter(([k]) => !INTERNAL_HEADERS.has(k)),
+  );
 
 /** `[slug, token]` from the path segments after the handle. */
 function route(rest: string[]): [slug: string, token: string | undefined] {

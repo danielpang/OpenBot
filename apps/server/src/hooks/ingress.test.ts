@@ -244,7 +244,15 @@ describe('webhook ingress', () => {
     expect(token).toMatch(/^whk_/);
 
     const body = JSON.stringify({ alert: 'disk full', host: 'db-1' });
-    const res = await hook(`/hooks/${bot.id}`, { body, headers: bearer(token) });
+    const res = await hook(`/hooks/${bot.id}`, {
+      body,
+      headers: {
+        ...bearer(token),
+        'x-openbots-adapter': 'secret',
+        'x-openbots-device': 'd-1',
+        'x-openbots-device-key': 'k',
+      },
+    });
     expect(res.status).toBe(202);
     const { delivery_id, run_id } = (await res.json()) as { delivery_id: string; run_id: string };
 
@@ -278,6 +286,9 @@ describe('webhook ingress', () => {
       body,
     });
     expect(items[0]!['headers']).not.toHaveProperty('authorization');
+    for (const name of ['x-openbots-adapter', 'x-openbots-device', 'x-openbots-device-key']) {
+      expect(items[0]!['headers']).not.toHaveProperty(name);
+    }
     // The whole body is a file the owner can read.
     const file = await call('GET', `/files/${items[0]!['bodyFileId'] as string}`);
     expect(await file.text()).toBe(body);

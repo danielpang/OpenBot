@@ -118,6 +118,17 @@ const LOOPBACK = ['127.0.0.0/8', '::1'];
  * the adapter drops a client-sent copy before it adds its own.
  */
 export const ADAPTER_SECRET_HEADER = 'x-openbots-adapter';
+
+/**
+ * The headers the relay adapter adds for the server's own use. Nothing that
+ * stores or shows a request's headers (the webhook delivery log, a Bot's view
+ * of a delivery) may keep them: the secret above must never leave this process.
+ */
+export const INTERNAL_HEADERS: ReadonlySet<string> = new Set([
+  'x-openbots-adapter',
+  'x-openbots-device',
+  'x-openbots-device-key',
+]);
 const ADAPTER_SECRET = randomBytes(32).toString('base64url');
 
 /** The header the relay adapter adds to every loopback request and socket. */
