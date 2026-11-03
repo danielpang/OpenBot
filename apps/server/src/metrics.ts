@@ -111,3 +111,25 @@ const providerLatency = new Histogram({
 export function observeProviderStep(provider: string, model: string, durationMs: number) {
   providerLatency.observe({ provider, model }, durationMs / 1000);
 }
+
+// The relay link (src/relay): whether this process is linked, and how many
+// client streams it carries now.
+const relayLinked = new Gauge({
+  name: 'openbots_relay_linked',
+  help: 'Whether this process holds a linked relay host link (1) or not (0)',
+  registers: [registry],
+});
+
+const relayStreams = new Gauge({
+  name: 'openbots_relay_streams',
+  help: "Client streams open on this process's relay host link",
+  registers: [registry],
+});
+
+export function setRelayLinked(linked: boolean) {
+  relayLinked.set(linked ? 1 : 0);
+}
+
+export function setRelayStreams(streams: number) {
+  relayStreams.set(streams);
+}
