@@ -372,7 +372,7 @@ describe('the computer dot on Preview (I5)', () => {
     const [next] = applyBotState([bot()], working);
     render(<BotTitleBar bot={next!} />);
     // A dot on the Preview button itself, not an icon beside it.
-    const preview = button('Preview')!;
+    const preview = button('Computer')!;
     const dot = preview.querySelector('[data-active]');
     expect(dot?.getAttribute('aria-label')).toBe('Using its computer');
     expect(dot?.getAttribute('title')).toBe('Opening example.com');
@@ -382,7 +382,7 @@ describe('the computer dot on Preview (I5)', () => {
     act(() => root!.render(<></>));
     render(<BotTitleBar bot={bot()} />);
     expect(host.querySelector('[data-active]')).toBeNull();
-    expect(button('Preview')!.hasAttribute('title')).toBe(false);
+    expect(button('Computer')!.hasAttribute('title')).toBe(false);
     expect(host.querySelector('[aria-label="Computer idle"]')).toBeNull();
   });
 
@@ -391,57 +391,68 @@ describe('the computer dot on Preview (I5)', () => {
       computer: false,
     });
     expect(host.querySelector('[data-active]')).toBeNull();
-    expect(button('Preview')).toBeUndefined();
+    expect(button('Computer')).toBeUndefined();
   });
 });
 
-describe('Preview and Takeover (K3)', () => {
+describe('The Computer panel and Takeover (K3)', () => {
   it('opens a view-only screen in the right panel and closes it again', async () => {
     render(<BotTitleBar bot={bot()} />);
-    const toggle = button('Preview')!;
+    const toggle = button('Computer')!;
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
     click(toggle);
     await until(() => vnc.screens.length === 1, 'the screen');
     const panel = host.querySelector('aside')!;
-    expect(panel.querySelector('h2')?.textContent).toBe('Preview');
+    expect(panel.querySelector('h2')?.textContent).toBe('Computer');
     expect(vnc.screens[0]!.url).toBe(`ws://localhost:3000/api/v1/bots/${BOT}/screen/vnc`);
     expect(vnc.screens[0]!.viewOnly).toBe(true);
     expect(vnc.screens[0]!.scaleViewport).toBe(true);
     expect(vnc.screens[0]!.resizeSession).toBe(false);
-    expect(button('Preview')!.getAttribute('aria-pressed')).toBe('true');
+    expect(button('Computer')!.getAttribute('aria-pressed')).toBe('true');
     expect(JSON.parse(localStorage.getItem(`openbots.panel.${BOT}`)!)).toEqual({ kind: 'screen' });
 
     act(() => vnc.screens[0]!.dispatchEvent(new Event('connect')));
     expect(panel.querySelector('[data-screen]')?.getAttribute('data-screen')).toBe('connected');
 
-    click(button('Preview'));
+    click(button('Computer'));
     expect(host.querySelector('aside')).toBeNull();
     expect(vnc.screens[0]!.disconnected).toBe(true);
   });
 
-  it('does not start a stopped computer to preview it, and offers Start', async () => {
+  it('starts a stopped computer once when the panel opens, and shows its screen', async () => {
     state = { available: true, computer: computer('stopped') };
     render(<BotTitleBar bot={bot()} />);
-    click(button('Preview'));
-    await until(
-      () =>
-        !!host
-          .querySelector('aside')
-          ?.textContent?.includes("The computer is off. Start it to see Scout's screen."),
-      'the off message',
-    );
-    expect(vnc.screens).toHaveLength(0);
-    expect(posts('/api/v1/computer/start')).toHaveLength(0);
-
-    // Start is the owner's explicit action; the screen shows once it runs.
-    click(button('Start', host.querySelector('aside')!));
+    click(button('Computer'));
+    await until(() => posts('/api/v1/computer/start').length === 1, 'the start');
     await until(() => vnc.screens.length === 1, 'the screen');
     expect(posts('/api/v1/computer/start')).toHaveLength(1);
   });
 
+  it('waits for a hidden tab to come into view before it starts the computer', async () => {
+    state = { available: true, computer: computer('stopped') };
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    try {
+      render(<BotTitleBar bot={bot()} />);
+      click(button('Computer'));
+      await until(
+        () =>
+          !!host
+            .querySelector('aside')
+            ?.textContent?.includes("The computer is off. Start it to see Scout's screen."),
+        'the off message',
+      );
+      expect(posts('/api/v1/computer/start')).toHaveLength(0);
+      visibility.mockReturnValue('visible');
+      act(() => document.dispatchEvent(new Event('visibilitychange')));
+      await until(() => posts('/api/v1/computer/start').length === 1, 'the start');
+    } finally {
+      visibility.mockRestore();
+    }
+  });
+
   it('shows a computer that went off while the tab missed it, without starting it', async () => {
     render(<BotTitleBar bot={bot()} />);
-    click(button('Preview'));
+    click(button('Computer'));
     await until(() => vnc.screens.length === 1, 'the screen');
     // Stopped elsewhere; the proxy refuses the screen and noVNC disconnects.
     state = { available: true, computer: computer('stopped') };
@@ -458,7 +469,7 @@ describe('Preview and Takeover (K3)', () => {
 
   it('takes over full screen with exactly two controls and reflects screen.control', async () => {
     render(<BotTitleBar bot={bot()} />);
-    click(button('Preview'));
+    click(button('Computer'));
     await until(() => vnc.screens.length === 1, 'the preview');
     click(button('Open full screen'));
     await until(() => vnc.screens.length === 2, 'the full-screen view');
@@ -532,7 +543,7 @@ describe('Preview and Takeover (K3)', () => {
 
   it('leaves full screen with Hand back or Escape when only watching', async () => {
     render(<BotTitleBar bot={bot()} />);
-    click(button('Preview'));
+    click(button('Computer'));
     await until(() => vnc.screens.length === 1, 'the preview');
     click(button('Open full screen'));
     await until(() => !!document.body.querySelector('[role="dialog"]'), 'full screen');
