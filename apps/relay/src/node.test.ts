@@ -145,7 +145,8 @@ describe('the machine budget in the relay', () => {
 
   it('closes a stream that would pass the byte budget with 1013, and keeps the link', async () => {
     const relay = await startRelay({
-      budget: { maxBytes: 1024 * KiB },
+      // The whole budget for one host here; the host share has its own test.
+      budget: { maxBytes: 1024 * KiB, hostShare: 1 },
       // Flow control would pause the phone long before; here it must not.
       flow: {
         highWaterBytes: 512 * 1024 * 1024,
@@ -180,6 +181,63 @@ describe('the machine budget in the relay', () => {
       /openbots_relay_rejections_total\{reason="bytes"\} 1/,
     );
   }, 20_000);
+});
+
+describe('the host share of the budget in the relay', () => {
+  it('refuses one host at its share while another host gets its full share and serves', async () => {
+    const relay = await startRelay({
+      budget: { maxBytes: 4 * 1024 * KiB, hostShare: 0.125 },
+      flow: {
+        highWaterBytes: 512 * 1024 * 1024,
+        lowWaterBytes: 1024,
+        sourceHighWaterBytes: 512 * 1024 * 1024,
+        sourceLowWaterBytes: 1024,
+      },
+      limits: { maxBufferedBytes: 512 * 1024 * 1024, bytesPerMinute: 1_000_000_000 },
+    });
+    const share = relay.budget.hostMaxBytes;
+    expect(share).toBe(512 * KiB);
+    const [a, b] = [makeHost(), makeHost()];
+    const linkA = await linkHost(relay, a);
+    const linkB = await linkHost(relay, b);
+    const phoneA = await connectClient(relay, a, linkA);
+    const phoneB = await connectClient(relay, b, linkB);
+    const toB = watch(linkB);
+
+    // Host a's server stops reading; its phone floods: a is held to its share.
+    linkA.socket.pause();
+    for (let i = 0; i < 200; i += 1) phoneA.client.send(Buffer.alloc(FRAME, 1));
+    expect(await phoneA.client.closed).toEqual({ code: 1013, reason: 'relay busy' });
+    expect(relay.budget.hostBytes(a.hostId)).toBeLessThanOrEqual(share);
+    expect(relay.budget.bytesInFlight).toBeLessThan(relay.budget.options.maxBytes);
+
+    // Host b, on the same machine, still gets all of its own share.
+    linkB.socket.pause();
+    for (let i = 0; i < 200; i += 1) phoneB.client.send(Buffer.alloc(FRAME, 2));
+    expect((await phoneB.client.closed).code).toBe(1013);
+    expect(relay.budget.hostBytes(b.hostId)).toBeGreaterThan(share - FRAME - 64);
+    expect(relay.budget.hostBytes(a.hostId)).toBeGreaterThan(0);
+    expect(await relay.metrics.render()).toMatch(
+      /openbots_relay_rejections_total\{reason="host_share"\} 2/,
+    );
+    expect(await relay.metrics.render()).toMatch(/openbots_relay_budget_host_bytes_max \d+/);
+
+    // Once b's server reads again its share comes back, and b serves traffic.
+    linkB.socket.resume();
+    await vi.waitFor(() => expect(relay.budget.hostBytes(b.hostId)).toBe(0), { timeout: 10_000 });
+    const next = await Peer.open(wsUrl(relay, `/v1/connect/${b.hostId}`));
+    expect(await next.text()).toEqual({ type: 'open', v: 1 });
+    next.send(Buffer.from('b again'));
+    await vi.waitFor(() =>
+      expect(
+        toB.some(
+          (frame) => 'binary' in frame && frame.binary.subarray(4).equals(Buffer.from('b again')),
+        ),
+      ).toBe(true),
+    );
+    linkA.socket.resume();
+    await vi.waitFor(() => expect(relay.budget.hostBytes(a.hostId)).toBe(0), { timeout: 10_000 });
+  }, 30_000);
 });
 
 describe('drain in a cluster', () => {

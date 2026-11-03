@@ -17,6 +17,7 @@ export type Direction = 'to_host' | 'to_client';
 export type RejectionReason =
   | 'sockets'
   | 'bytes'
+  | 'host_share'
   | 'draining'
   | 'host_offline'
   | 'too_many_streams'
@@ -112,6 +113,18 @@ export class RelayMetrics {
       'openbots_relay_budget_bytes_limit',
       'The byte budget for bytes in flight on this machine',
       () => sources().budget?.().maxBytes,
+    );
+    gauge(
+      registers,
+      'openbots_relay_budget_host_bytes_max',
+      'The most bytes in flight that any one host holds on this machine, against its share',
+      () => sources().budget?.().largestHostBytes,
+    );
+    gauge(
+      registers,
+      'openbots_relay_budget_host_bytes_limit',
+      'The bytes in flight one host may hold on this machine (its share of the budget)',
+      () => sources().budget?.().hostMaxBytes,
     );
     gauge(
       registers,

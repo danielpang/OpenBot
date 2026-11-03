@@ -21,7 +21,8 @@ import type { RelayMetrics, RejectionReason } from './metrics.js';
 // client socket is an outlet of its own, shed with 1013 when it stays behind
 // past the delivery deadline. Bytes held for the client are reserved on its
 // ticket (budget.ts); one the machine's budget refuses closes this stream
-// with 1013, never the host's shared link.
+// with 1013, never the host's shared link. So does one past its host's share
+// of that budget (every reservation for the host's link and streams counts).
 
 export interface ClientStreamDeps {
   registry: HostRegistry;
@@ -147,7 +148,7 @@ export class ClientStream implements StreamPeer {
   /** The machine's budget refused bytes for this stream: it goes, the shared link stays. */
   private refused(sent: Exclude<SendResult, { ok: true }>) {
     if (sent.reason !== 'budget') return;
-    this.deps.metrics.rejected('bytes');
+    this.deps.metrics.rejected(sent.refusal.reason === 'host' ? 'host_share' : 'bytes');
     this.closeBoth(sent.refusal.closeCode, 'relay busy');
   }
 

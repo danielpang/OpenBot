@@ -14,6 +14,14 @@ import { counterKey, type Registry } from './registry.js';
 // opens and pushes are counted there one by one, and stream bytes, which pass
 // on every frame, are counted here and added to the registry's total every
 // `bytesFlushMs`, so the minute's limit holds across machines within that lag.
+//
+// When the registry cannot be reached the limits do not lapse: each host also
+// has local window counters with the same limits and windows, which count
+// everything this machine lets through, and decide on their own until the
+// registry answers again. That is more permissive across machines than the
+// shared limit, but never unlimited. Bytes need no extra counter: the
+// minute's check already adds what is pending here to the registry's last
+// total, and bytes that could not be added stay pending.
 
 export type Capability = 'streams' | 'push';
 
@@ -79,6 +87,41 @@ export interface Presence {
   linked(hostId: string): Promise<boolean>;
 }
 
+/** A fixed window counter in memory, aligned to the clock as the registry's windows are. */
+class LocalWindow {
+  private window = -1;
+  private count = 0;
+
+  constructor(private readonly windowMs: number) {}
+
+  /** Counts `n` that the registry already let through. */
+  add(n: number, now: number): void {
+    this.roll(now);
+    this.count += n;
+  }
+
+  /** Counts `n` unless they would pass `limit`: the decision while the registry is away. */
+  take(n: number, limit: number, now: number): boolean {
+    this.roll(now);
+    if (this.count + n > limit) return false;
+    this.count += n;
+    return true;
+  }
+
+  idle(now: number): boolean {
+    this.roll(now);
+    return this.count === 0;
+  }
+
+  private roll(now: number) {
+    const window = Math.floor(now / this.windowMs);
+    if (window !== this.window) {
+      this.window = window;
+      this.count = 0;
+    }
+  }
+}
+
 /** The bytes of one host's current minute: the registry's total when last asked, and what is not added yet. */
 interface ByteWindow {
   window: number;
@@ -95,6 +138,9 @@ interface HostEntry {
   /** Opens waiting on the registry, counted against the open streams. */
   reserved: number;
   bytes: ByteWindow;
+  /** The hour's opens and pushes on this machine, which decide while the registry is away. */
+  opens: LocalWindow;
+  pushes: LocalWindow;
 }
 
 export type OpenResult =
@@ -171,8 +217,8 @@ export class HostRegistry {
   /**
    * Opens a stream for a client on the host's next `streams` link in turn,
    * after the limits of 3.4, and tells the host. The caller tells the client.
-   * The hour's opens are counted in the registry; if it cannot be reached the
-   * open is let through, since these are abuse limits and not billing.
+   * The hour's opens are counted in the registry; if it cannot be reached
+   * the host's local counter decides.
    */
   async openStream(hostId: string, peer: StreamPeer, remote: string): Promise<OpenResult> {
     const entry = this.hosts.get(hostId);
@@ -184,14 +230,7 @@ export class HostRegistry {
     entry.reserved += 1;
     let counted: boolean;
     try {
-      counted = await this.counters.take(
-        counterKey('opens', hostId, HOUR_MS, this.now()),
-        1,
-        this.limits.opensPerHour,
-        HOUR_MS,
-      );
-    } catch {
-      counted = true;
+      counted = await this.count(entry.opens, 'opens', hostId, this.limits.opensPerHour);
     } finally {
       entry.reserved -= 1;
     }
@@ -255,24 +294,47 @@ export class HostRegistry {
     await Promise.all(flushes);
   }
 
-  /** Counts one push frame for a host; false means the hour's limit is passed. */
-  async countPush(hostId: string): Promise<boolean> {
+  /**
+   * Counts one push frame for a host; false means the hour's limit is passed,
+   * by the registry or, while it cannot be reached, by the local counter.
+   */
+  countPush(hostId: string): Promise<boolean> {
+    const entry = this.entry(hostId);
+    return this.count(entry.pushes, 'pushes', hostId, this.limits.pushesPerHour);
+  }
+
+  /** One unit of an hourly limit: the registry's count, or the local one while it is away. */
+  private async count(
+    local: LocalWindow,
+    kind: string,
+    hostId: string,
+    limit: number,
+  ): Promise<boolean> {
     try {
-      return await this.counters.take(
-        counterKey('pushes', hostId, HOUR_MS, this.now()),
+      const counted = await this.counters.take(
+        counterKey(kind, hostId, HOUR_MS, this.now()),
         1,
-        this.limits.pushesPerHour,
+        limit,
         HOUR_MS,
       );
+      if (counted) local.add(1, this.now());
+      return counted;
     } catch {
-      return true;
+      return local.take(1, limit, this.now());
     }
   }
 
-  /** Drops hosts with no links and no bytes left to add. */
+  /** Drops hosts with no links, no bytes left to add and nothing in their local counters. */
   sweep(): void {
+    const now = this.now();
     for (const [hostId, entry] of this.hosts) {
-      if (entry.links.length === 0 && entry.reserved === 0 && entry.bytes.pending === 0) {
+      if (
+        entry.links.length === 0 &&
+        entry.reserved === 0 &&
+        entry.bytes.pending === 0 &&
+        entry.opens.idle(now) &&
+        entry.pushes.idle(now)
+      ) {
         this.hosts.delete(hostId);
       }
     }
@@ -296,6 +358,8 @@ export class HostRegistry {
         cursor: 0,
         reserved: 0,
         bytes: { window: Math.floor(this.now() / MINUTE_MS), shared: 0, pending: 0, loaded: false },
+        opens: new LocalWindow(HOUR_MS),
+        pushes: new LocalWindow(HOUR_MS),
       };
       this.hosts.set(hostId, entry);
     }

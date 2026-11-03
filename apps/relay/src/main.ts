@@ -18,7 +18,7 @@ import { RedisRegistry } from './registry.js';
 const config = loadConfig();
 // Read before anything listens, so a bad setting stops the process at boot.
 const flow = flowOptionsFromEnv();
-const budget = budgetOptionsFromEnv();
+const budget = { ...budgetOptionsFromEnv(), hostShare: config.hostBudgetShare };
 const drain = drainOptionsFromEnv();
 const drainAtBoot = drainRequested();
 const logger = pino({ level: config.logLevel, base: { service: 'openbots-relay' } });

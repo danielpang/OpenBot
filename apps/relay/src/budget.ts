@@ -8,6 +8,11 @@
 // callbacks) still returns everything it held. Binding the ticket to the
 // socket's `close` event does that without the caller remembering to.
 //
+// Every host also has a share of the byte budget (`hostShare`, a fraction of
+// `maxBytes`): the bytes reserved for its links and its streams together. A
+// host at its share is refused more even while the machine has room, so one
+// host with many busy or slow phones cannot starve the others on the machine.
+//
 // A refusal says how to answer: close the socket with 1013 (try again later)
 // when it is already a WebSocket, or refuse the upgrade with 503 so Fly's
 // proxy tries another machine.
@@ -26,14 +31,18 @@ export interface BudgetOptions {
   maxBytes: number;
   /** Sockets on this machine, host links and client streams together. Default 20,000. */
   maxSockets: number;
+  /** The share of `maxBytes` one host's sockets may hold together, above 0 and at most 1. Default 0.125. */
+  hostShare: number;
 }
 
 export const DEFAULT_BUDGET: BudgetOptions = {
   maxBytes: 512 * 1024 * 1024,
   maxSockets: 20_000,
+  hostShare: 0.125,
 };
 
-export type RefusalReason = 'sockets' | 'bytes' | 'closed';
+/** `host`: the host's own share is full, though the machine may have room. */
+export type RefusalReason = 'sockets' | 'bytes' | 'host' | 'closed';
 
 /** Why the ledger said no, and how to say so to the peer. */
 export interface Refusal {
@@ -55,6 +64,10 @@ export interface BudgetSnapshot {
   sockets: number;
   socketsByKind: Record<SocketKind, number>;
   maxSockets: number;
+  /** The bytes one host may hold: `hostShare` of `maxBytes`. */
+  hostMaxBytes: number;
+  /** The most bytes any one host holds right now. */
+  largestHostBytes: number;
   /** Refusals since the ledger was made, by reason. */
   refusals: Record<RefusalReason, number>;
 }
@@ -73,13 +86,39 @@ export class NodeBudget {
   readonly options: BudgetOptions;
   private bytes = 0;
   private readonly kinds: Record<SocketKind, number> = { host: 0, client: 0 };
-  private readonly refused: Record<RefusalReason, number> = { sockets: 0, bytes: 0, closed: 0 };
+  private readonly refused: Record<RefusalReason, number> = {
+    sockets: 0,
+    bytes: 0,
+    host: 0,
+    closed: 0,
+  };
+  /** Bytes held per host id; a host holding none has no entry. */
+  private readonly hosts = new Map<string, number>();
+  /** The bytes one host may hold. */
+  readonly hostMaxBytes: number;
 
   constructor(options: Partial<BudgetOptions> = {}) {
     this.options = { ...DEFAULT_BUDGET, ...options };
     if (!(this.options.maxBytes > 0) || !(this.options.maxSockets > 0)) {
       throw new Error('the budget needs a positive byte budget and socket ceiling');
     }
+    const { hostShare } = this.options;
+    if (!(hostShare > 0 && hostShare <= 1)) {
+      throw new Error('the host share must be above 0 and at most 1');
+    }
+    this.hostMaxBytes = Math.max(1, Math.floor(this.options.maxBytes * hostShare));
+  }
+
+  /** Bytes the host's sockets hold right now. */
+  hostBytes(hostId: string): number {
+    return this.hosts.get(hostId) ?? 0;
+  }
+
+  /** The most bytes any one host holds right now: the gauge of the largest share in use. */
+  get largestHostBytes(): number {
+    let largest = 0;
+    for (const bytes of this.hosts.values()) largest = Math.max(largest, bytes);
+    return largest;
   }
 
   get bytesInFlight(): number {
@@ -99,10 +138,10 @@ export class NodeBudget {
    * Admits one socket of `kind`, or refuses it at the ceiling. Call it before
    * the upgrade, so a refusal is a 503, and bind the ticket to the raw socket.
    */
-  admit(kind: SocketKind): Admission {
+  admit(kind: SocketKind, hostId?: string): Admission {
     if (this.full) return { ok: false, refusal: this.refuse('sockets') };
     this.kinds[kind] += 1;
-    return { ok: true, ticket: new Ticket(this, kind) };
+    return { ok: true, ticket: new Ticket(this, kind, hostId) };
   }
 
   snapshot(): BudgetSnapshot {
@@ -112,20 +151,31 @@ export class NodeBudget {
       sockets: this.sockets,
       socketsByKind: { ...this.kinds },
       maxSockets: this.options.maxSockets,
+      hostMaxBytes: this.hostMaxBytes,
+      largestHostBytes: this.largestHostBytes,
       refusals: { ...this.refused },
     };
   }
 
-  /** @internal Takes `n` bytes if they fit. */
-  take(n: number): boolean {
-    if (this.bytes + n > this.options.maxBytes) return false;
+  /** @internal Takes `n` bytes if they fit the machine and the host's share; answers why not. */
+  take(n: number, hostId?: string): RefusalReason | null {
+    if (this.bytes + n > this.options.maxBytes) return 'bytes';
+    if (hostId !== undefined) {
+      const held = this.hostBytes(hostId);
+      if (held + n > this.hostMaxBytes) return 'host';
+      this.hosts.set(hostId, held + n);
+    }
     this.bytes += n;
-    return true;
+    return null;
   }
 
   /** @internal */
-  give(n: number): void {
+  give(n: number, hostId?: string): void {
     this.bytes -= n;
+    if (hostId === undefined) return;
+    const left = this.hostBytes(hostId) - n;
+    if (left > 0) this.hosts.set(hostId, left);
+    else this.hosts.delete(hostId);
   }
 
   /** @internal */
@@ -152,6 +202,8 @@ export class Ticket {
   constructor(
     private readonly budget: NodeBudget,
     readonly kind: SocketKind,
+    /** The host this socket belongs to, whose share its bytes count against. */
+    readonly hostId?: string,
   ) {}
 
   get closed(): boolean {
@@ -165,13 +217,14 @@ export class Ticket {
 
   /**
    * Reserves `bytes` for this socket, or refuses when the machine's budget
-   * would pass its limit (the caller closes the source with 1013) or the
-   * ticket is already closed.
+   * or its host's share would pass its limit (the caller closes the source
+   * with 1013) or the ticket is already closed.
    */
   reserve(bytes: number): ReserveResult {
     if (!this.open) return { ok: false, refusal: this.budget.refuse('closed') };
     const n = Math.max(0, Math.ceil(bytes));
-    if (!this.budget.take(n)) return { ok: false, refusal: this.budget.refuse('bytes') };
+    const refused = this.budget.take(n, this.hostId);
+    if (refused) return { ok: false, refusal: this.budget.refuse(refused) };
     const reservation = new Reservation(this, n);
     this.held.add(reservation);
     this.heldBytes += n;
@@ -196,7 +249,7 @@ export class Ticket {
   drop(reservation: Reservation): void {
     if (!this.held.delete(reservation)) return;
     this.heldBytes -= reservation.bytes;
-    this.budget.give(reservation.bytes);
+    this.budget.give(reservation.bytes, this.hostId);
   }
 }
 
@@ -226,10 +279,15 @@ export function positiveIntFromEnv(env: NodeJS.ProcessEnv, name: string, fallbac
   return value;
 }
 
-/** `RELAY_BUDGET_BYTES` and `RELAY_MAX_SOCKETS`. */
+/**
+ * `RELAY_BUDGET_BYTES` and `RELAY_MAX_SOCKETS`. The host share
+ * (`RELAY_HOST_BUDGET_SHARE`, a fraction) is validated in config.ts and
+ * passed in; here it keeps its default.
+ */
 export function budgetOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): BudgetOptions {
   return {
     maxBytes: positiveIntFromEnv(env, 'RELAY_BUDGET_BYTES', DEFAULT_BUDGET.maxBytes),
     maxSockets: positiveIntFromEnv(env, 'RELAY_MAX_SOCKETS', DEFAULT_BUDGET.maxSockets),
+    hostShare: DEFAULT_BUDGET.hostShare,
   };
 }

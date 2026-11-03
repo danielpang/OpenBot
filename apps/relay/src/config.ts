@@ -29,6 +29,7 @@ export const RELAY_ENV_VARS = [
   'RELAY_NODE_HEARTBEAT_MS',
   'FLY_MACHINE_ID',
   'RELAY_METRICS_TOKEN',
+  'RELAY_HOST_BUDGET_SHARE',
 ] as const;
 
 const milliseconds = (fallback: number) => z.coerce.number().int().min(100).default(fallback);
@@ -54,6 +55,11 @@ const EnvSchema = z.object({
     .regex(/^[A-Za-z0-9._-]{1,64}$/, 'letters, digits, dot, dash or underscore')
     .optional(),
   FLY_MACHINE_ID: z.string().optional(),
+  RELAY_HOST_BUDGET_SHARE: z.coerce
+    .number()
+    .gt(0, 'must be above 0')
+    .max(1, 'must be at most 1')
+    .default(0.125),
   RELAY_METRICS_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
   RELAY_MIN_CLUSTER_SIZE: z.coerce.number().int().min(1).default(1),
   RELAY_LEASE_MS: milliseconds(30_000),
@@ -82,6 +88,8 @@ export interface RelayConfig {
   /** `RELAY_NODE_ID`, else `FLY_MACHINE_ID`; unset means a random one. */
   nodeId?: string;
   minClusterSize: number;
+  /** The fraction of the byte budget one host's sockets may hold together. */
+  hostBudgetShare: number;
   /** The bearer token for `GET /metrics`; unset turns the route off (404). */
   metricsToken?: string;
   cluster: { leaseMs: number; renewMs: number; nodeTtlMs: number; heartbeatMs: number };
@@ -119,6 +127,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayConfig {
     logLevel: e.RELAY_LOG_LEVEL,
     apnsMissing: missing.length === 4 ? [] : missing,
     minClusterSize: e.RELAY_MIN_CLUSTER_SIZE,
+    hostBudgetShare: e.RELAY_HOST_BUDGET_SHARE,
     cluster: {
       leaseMs: e.RELAY_LEASE_MS,
       renewMs: e.RELAY_LEASE_RENEW_MS,

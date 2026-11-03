@@ -10,6 +10,7 @@ describe('config', () => {
       logLevel: 'info',
       apnsMissing: [],
       minClusterSize: 1,
+      hostBudgetShare: 0.125,
       cluster: { leaseMs: 30_000, renewMs: 10_000, nodeTtlMs: 15_000, heartbeatMs: 5_000 },
     });
   });
@@ -39,6 +40,10 @@ describe('config', () => {
       'a-long-enough-token',
     );
     expect(() => loadConfig({ RELAY_METRICS_TOKEN: 'short' })).toThrow(/RELAY_METRICS_TOKEN/);
+    expect(loadConfig({ RELAY_HOST_BUDGET_SHARE: '0.25' }).hostBudgetShare).toBe(0.25);
+    for (const bad of ['0', '-0.1', '1.5', 'half']) {
+      expect(() => loadConfig({ RELAY_HOST_BUDGET_SHARE: bad })).toThrow(/RELAY_HOST_BUDGET_SHARE/);
+    }
   });
 
   it('refuses cluster timings that could not keep a lease', () => {

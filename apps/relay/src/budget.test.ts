@@ -21,7 +21,11 @@ function admitted(budget: NodeBudget, kind: 'host' | 'client' = 'client'): Ticke
 
 describe('NodeBudget', () => {
   it('has the defaults of plan 5.8', () => {
-    expect(DEFAULT_BUDGET).toEqual({ maxBytes: 512 * 1024 * 1024, maxSockets: 20_000 });
+    expect(DEFAULT_BUDGET).toEqual({
+      maxBytes: 512 * 1024 * 1024,
+      maxSockets: 20_000,
+      hostShare: 0.125,
+    });
     expect(new NodeBudget().options).toEqual(DEFAULT_BUDGET);
   });
 
@@ -210,12 +214,68 @@ describe('a ticket bound to a real socket', () => {
   });
 });
 
+describe('the host share', () => {
+  const forHost = (budget: NodeBudget, hostId: string, kind: 'host' | 'client' = 'client') => {
+    const admission = budget.admit(kind, hostId);
+    if (!admission.ok) throw new Error('expected an admission');
+    return admission.ticket;
+  };
+
+  it('refuses a host at its share while another host still gets its full share', () => {
+    const budget = new NodeBudget({ maxBytes: 1_000, hostShare: 0.25 });
+    expect(budget.hostMaxBytes).toBe(250);
+    // The host's link and its streams count together.
+    const link = forHost(budget, 'a', 'host');
+    const stream = forHost(budget, 'a');
+    expect(link.reserve(150).ok).toBe(true);
+    expect(stream.reserve(100).ok).toBe(true);
+    const over = stream.reserve(1);
+    expect(over).toMatchObject({ ok: false, refusal: { reason: 'host', closeCode: 1013 } });
+    // The machine has room, and host b gets all of its own share.
+    expect(budget.bytesInFlight).toBe(250);
+    const other = forHost(budget, 'b');
+    expect(other.reserve(250).ok).toBe(true);
+    expect(other.reserve(1).ok).toBe(false);
+    expect(budget.snapshot()).toMatchObject({
+      hostMaxBytes: 250,
+      largestHostBytes: 250,
+      refusals: { host: 2 },
+    });
+  });
+
+  it('frees a host share as its reservations are released or its sockets close', () => {
+    const budget = new NodeBudget({ maxBytes: 1_000, hostShare: 0.25 });
+    const link = forHost(budget, 'a', 'host');
+    const stream = forHost(budget, 'a');
+    const held = link.reserve(200);
+    if (!held.ok) throw new Error('expected a reservation');
+    expect(stream.reserve(50).ok).toBe(true);
+    expect(stream.reserve(1).ok).toBe(false);
+    held.reservation.release();
+    expect(budget.hostBytes('a')).toBe(50);
+    expect(stream.reserve(200).ok).toBe(true);
+    stream.close();
+    expect(budget.hostBytes('a')).toBe(0);
+    expect(budget.largestHostBytes).toBe(0);
+    expect(link.reserve(250).ok).toBe(true);
+  });
+
+  it('counts no share for a socket with no host, and refuses a share outside (0, 1]', () => {
+    const budget = new NodeBudget({ maxBytes: 1_000, hostShare: 0.1 });
+    expect(admitted(budget).reserve(900).ok).toBe(true);
+    expect(budget.largestHostBytes).toBe(0);
+    expect(() => new NodeBudget({ hostShare: 0 })).toThrow();
+    expect(() => new NodeBudget({ hostShare: 1.5 })).toThrow();
+  });
+});
+
 describe('settings', () => {
   it('reads the budget from the environment', () => {
     expect(budgetOptionsFromEnv({})).toEqual(DEFAULT_BUDGET);
     expect(budgetOptionsFromEnv({ RELAY_BUDGET_BYTES: '1024', RELAY_MAX_SOCKETS: '' })).toEqual({
       maxBytes: 1024,
       maxSockets: 20_000,
+      hostShare: 0.125,
     });
     expect(() => budgetOptionsFromEnv({ RELAY_MAX_SOCKETS: 'lots' })).toThrow(/RELAY_MAX_SOCKETS/);
   });

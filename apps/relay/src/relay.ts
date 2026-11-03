@@ -239,13 +239,14 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
    * ceiling refuses the upgrade with 503, so Fly's proxy tries another.
    * Answers the ticket the socket's bytes are held on, bound to its close.
    */
-  const admit = (socket: Duplex, kind: SocketKind): Ticket | undefined => {
+  const admit = (socket: Duplex, kind: SocketKind, hostId?: string): Ticket | undefined => {
     if (!accepting) {
       metrics.rejected('draining');
       reject(socket, 503);
       return undefined;
     }
-    const admitted = budget.admit(kind);
+    // The ticket names the host, so its bytes count against the host's share.
+    const admitted = budget.admit(kind, hostId);
     if (!admitted.ok) {
       metrics.rejected('sockets');
       reject(socket, admitted.refusal.httpStatus);
@@ -277,7 +278,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
       // Served here, or (replayed once already) upgraded and closed 1012 once
       // the claim finds the other owner, so the host reconnects.
       if (socket.destroyed) return;
-      const ticket = admit(socket, 'host');
+      const ticket = admit(socket, 'host', hostId);
       if (!ticket) return;
       hostWss.handleUpgrade(req, socket, head, (ws) => {
         rawSockets.add(socket);
@@ -295,7 +296,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
         : ({ kind: 'local' } as const);
       if (route.kind === 'replay') return replay(socket, route.nodeId, 'client');
       if (socket.destroyed) return;
-      const ticket = admit(socket, 'client');
+      const ticket = admit(socket, 'client', isHostId(hostId) ? hostId : undefined);
       if (!ticket) return;
       clientWss.handleUpgrade(req, socket, head, (ws) => {
         if (route.kind === 'elsewhere') {
