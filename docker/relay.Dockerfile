@@ -34,6 +34,7 @@ RUN pnpm install --frozen-lockfile --offline --store-dir /pnpm-store \
     && pnpm exec turbo run build --filter=@openbots/relay
 # Gather each package's dist/ under /out, keeping the workspace layout.
 RUN mkdir /out && for dist in apps/*/dist packages/*/dist; do \
+      [ -d "$dist" ] || continue; \
       mkdir -p "/out/$(dirname "$dist")" && cp -r "$dist" "/out/$dist"; \
     done
 
