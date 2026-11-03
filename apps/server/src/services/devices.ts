@@ -879,8 +879,8 @@ export async function refuseDeviceKey(
  * refused when it sends any field outside a short list of harmless ones
  * (`beyond`), so a field added to a schema later is refused until it is
  * listed. `unless` lets the request through: a phone that set up a headless
- * install adds the first model provider itself (plan 8.3 step 4), though not
- * one marked local.
+ * install adds the first model provider itself (plan 8.3 step 4), from a
+ * preset only, with no base URL, headers or `local`.
  * `requireUser` and `requireAdmin` apply the list (middleware/auth.ts), so a
  * route the managed build mounts is covered too.
  */
@@ -936,8 +936,13 @@ export const DEVICE_KEY_RULES: readonly DeviceKeyRule[] = [
     method: 'POST',
     path: /^\/providers$/,
     when: always,
+    // A phone may add the owner's first provider only from a preset, with its
+    // fixed host: no base URL, headers or `local`, which would point the key at
+    // an endpoint the phone chooses.
     unless: async (db, caller, body) =>
-      body?.local !== true && !(await ownerHasProvider(db, caller.workspaceId, caller.id)),
+      typeof body?.presetId === 'string' &&
+      !beyond('presetId', 'name', 'apiKey')(body) &&
+      !(await ownerHasProvider(db, caller.workspaceId, caller.id)),
   },
   { method: 'PATCH', path: /^\/providers\/[^/]+$/, when: beyond('name', 'smallModelId') },
   // The managed build's (ee/server); a self-hosted install answers 404 there anyway.

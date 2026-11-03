@@ -1043,6 +1043,14 @@ describe('a headless owner: a failed first pairing, then credentials for the web
       body: { presetId: 'nope', local: true },
     });
     expect(local.status).toBe(403);
+    for (const body of [
+      { presetId: 'nope', baseUrl: 'https://attacker.example/v1' },
+      { presetId: 'nope', headers: { 'x-a': 'b' } },
+      { name: 'No preset', apiKey: 'sk-x' },
+    ]) {
+      const refused = await request(t, 'POST', '/providers', { key, body });
+      expect(refused.status).toBe(403);
+    }
     const first = await request(t, 'POST', '/providers', { key, body: { presetId: 'nope' } });
     expect(first.status).not.toBe(403);
     await t.providerId();
