@@ -234,6 +234,7 @@ COPY --from=native --chmod=0755 /native/runas /usr/local/libexec/openbots/runas
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/lib/openbots/entrypoint.sh
 COPY --chmod=0755 docker/standalone/lib/ /usr/local/lib/openbots/standalone/
 COPY --chmod=0755 docker/standalone/bin/openbots /usr/local/bin/openbots
+COPY --chmod=0755 docker/standalone/bin/start /usr/local/lib/openbots/start
 COPY --chmod=0755 scripts/backup.sh scripts/restore.sh /app/scripts/
 COPY docker/standalone/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 COPY docker/standalone/user-bundles.d/ /etc/s6-overlay/user-bundles.d/
@@ -254,8 +255,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
 # computer-agent, openbots and disk-watch (docker/standalone/s6-rc.d),
 # restarts any that dies and stops them in order on SIGTERM. Give it 60
 # seconds to do so: `docker stop -t 60`, `docker run --stop-timeout 60`.
-# It must run as root.
+# It must run as root. The entrypoint first refuses a volume another
+# container is using (docker/standalone/bin/start).
 STOPSIGNAL SIGTERM
 # hadolint ignore=DL3002
 USER 0:0
-ENTRYPOINT ["/init"]
+ENTRYPOINT ["/usr/local/lib/openbots/start"]

@@ -29,7 +29,7 @@ jobs:
         run: |
           shellcheck -x install.sh scripts/*.sh docker/*.sh \
             docker/standalone/lib/*.sh docker/standalone/lib/check-redis \
-            docker/standalone/bin/openbots docker/standalone/test/*.sh \
+            docker/standalone/bin/openbots docker/standalone/bin/start docker/standalone/test/*.sh \
             docker/standalone/s6-rc.d/*/run
           shellcheck -s sh docker/standalone/s6-rc.d/*/up
       - name: Test the standalone image's init checks
@@ -216,7 +216,8 @@ jobs:
       - name: A second container on the volume stops at once
         run: |
           status=0
-          timeout 120 docker run --rm -v "$VOLUME:/data" "$IMAGE" >"$RUNNER_TEMP/second.log" 2>&1 || status=$?
+          timeout -k 10 120 docker run --rm --name openbots-second -v "$VOLUME:/data" "$IMAGE" >"$RUNNER_TEMP/second.log" 2>&1 || status=$?
+          docker rm -f openbots-second >/dev/null 2>&1 || true
           cat "$RUNNER_TEMP/second.log"
           [ "$status" != 0 ] && [ "$status" != 124 ]
           grep -q 'another container is using this volume' "$RUNNER_TEMP/second.log"

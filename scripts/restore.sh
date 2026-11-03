@@ -219,7 +219,7 @@ esac
 # and the database is rebuilt beside the space its indexes need.
 backup_bytes=0
 for f in "$SRC/database.dump" "$SRC/files.tar.gz" "$home_archive" "$SRC/agent.tar.gz" "$SRC"/computers/*.tar.gz; do
-  [ -n "$f" ] && [ -f "$f" ] || continue
+  if [ -z "$f" ] || [ ! -f "$f" ]; then continue; fi
   backup_bytes=$((backup_bytes + $(wc -c <"$f")))
 done
 need_kib=$((backup_bytes * 2 / 1024))

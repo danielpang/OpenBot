@@ -31,7 +31,8 @@ unset OPENBOTS_MASTER_KEY OPENBOTS_MASTER_KEY_FILE POSTGRES_PASSWORD POSTGRES_PA
   ANTHROPIC_API_KEY ANTHROPIC_API_KEY_FILE
 
 # Runs "$@" in a subshell with init-lib.sh loaded; prints what it logged,
-# exits as it did.
+# exits as it did. init-lib.sh calls its log and die, which shellcheck cannot see.
+# shellcheck disable=SC2317
 run_lib() {
   (
     log() { printf 'log: %s\n' "$*"; }

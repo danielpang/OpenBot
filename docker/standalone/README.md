@@ -100,8 +100,10 @@ room (10 GB to start, more for Bots that download a lot), and grow it when the w
 ## One volume, one container
 
 Two containers on one volume would run two PostgreSQL servers on one data directory and corrupt
-it. `volume-lock` takes an exclusive `flock` on `/data/.lock` before anything else starts, and a
-second container on the same volume stops at once with "another container is using this volume".
+it. The entrypoint refuses to start while another container holds an exclusive `flock` on
+`/data/.lock`, so a second container on the same volume stops at once (exit 75) with "another
+container is using this volume". Then `volume-lock` takes the lock before anything else starts and
+holds it while the container runs.
 Stop the old container before you start a new one (see [Upgrade](#upgrade)). The lock holds
 between containers on one machine; a volume on a network filesystem shared between machines is not
 supported.
