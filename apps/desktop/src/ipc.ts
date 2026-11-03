@@ -29,6 +29,13 @@ export const DESKTOP_CHANNELS = {
   quickAskBots: 'openbots:quick-ask:bots',
   quickAskSend: 'openbots:quick-ask:send',
   quickAskClose: 'openbots:quick-ask:close',
+  /** The pairing window and its Relay setting (app pages only): the relay, a code, close. */
+  pairRelay: 'openbots:pair:relay',
+  pairSetRelay: 'openbots:pair:set-relay',
+  pairCode: 'openbots:pair:code',
+  pairClose: 'openbots:pair:close',
+  /** main → renderer: a phone used the window's code. */
+  pairPaired: 'openbots:pair:paired',
 } as const;
 
 /**
@@ -111,4 +118,28 @@ export interface ConnectionInfo {
   url: string;
   /** This Mac only; a thin client (cloud, remote) never asks Docker. */
   stack?: LocalStackHealth;
+}
+
+/**
+ * The relay a phone reaches the server through, as the pairing window shows
+ * it. On This Mac it is the project's shared relay unless the owner set their
+ * own in the app's Relay setting, which writes OPENBOTS_RELAY_URL into the
+ * stack's `.env`; on any other connection the server's owner sets it.
+ */
+export interface PairRelayView {
+  /** This Mac: the window may change the relay. */
+  local: boolean;
+  /** The project's shared relay. */
+  sharedUrl: string;
+  /** The relay the server runs with, from `GET /api/v1/relay`; null for none. */
+  current: string | null;
+}
+
+/** A pairing code for the window's QR code. */
+export interface PairCode {
+  /** The `openbots://pair#...` link the QR code shows. */
+  link: string;
+  expiresAt: string;
+  /** The server's clock less this Mac's, from the response's `Date` header; 0 without one. */
+  skewMs: number;
 }

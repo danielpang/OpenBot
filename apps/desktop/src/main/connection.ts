@@ -7,9 +7,10 @@ import {
   type WsStatus,
 } from '@openbots/api-client';
 import type { WsEvent } from '@openbots/shared';
-import type { QuickAskBot, QuickAskResult } from '../ipc.js';
+import type { PairCode, QuickAskBot, QuickAskResult } from '../ipc.js';
 import { createApprovalTracker, type PendingApproval } from './approvals.js';
 import { createNoticeWatcher, ownerHandles, type ChatKind, type Notice } from './notices.js';
+import { clockSkew } from './pairing.js';
 import { cookieHeader, type SessionToken } from './tokens.js';
 
 // The main process's own connection to the active server: a realtime socket
@@ -27,6 +28,8 @@ export interface ConnectionOptions {
   fetch?: typeof fetch;
   onNotice(notice: Notice): void;
   onApprovals(approvals: PendingApproval[]): void;
+  /** A phone paired with the server (`device.paired`), for the pairing window. */
+  onDevicePaired?(device: { name: string; createdAt: string }): void;
   onStatus?(status: WsStatus): void;
   /** The token was refused: the owner has to sign in again. */
   onUnauthorized?(): void;
@@ -47,6 +50,14 @@ export interface Connection {
    * the next refresh.
    */
   avatar(botId: string): Promise<Uint8Array | null>;
+  /** The relay the server runs with (`GET /api/v1/relay`); null for none. */
+  relayUrl(): Promise<string | null>;
+  /** A new pairing code for the phone, good for 5 minutes, once. */
+  createPairing(): Promise<PairCode & { id: string }>;
+  /** Cancels a pairing nobody used; a failure is only logged by the caller. */
+  cancelPairing(id: string): Promise<void>;
+  /** Revokes every phone paired with the owner; returns how many. */
+  revokeDevices(): Promise<number>;
   close(): void;
 }
 
@@ -97,6 +108,7 @@ export function createConnection(options: ConnectionOptions): Connection {
     const notice = notices.onEvent(event);
     if (notice) options.onNotice(notice);
     if (approvals.onEvent(event)) options.onApprovals(approvals.list());
+    if (event.type === 'device.paired') options.onDevicePaired?.(event.payload.device);
   });
 
   async function refresh() {
@@ -193,6 +205,28 @@ export function createConnection(options: ConnectionOptions): Connection {
         }),
       );
       return { botId, seq: message.seq };
+    },
+
+    async relayUrl() {
+      return (await unwrap(api.GET('/api/v1/relay'))).relayUrl;
+    },
+
+    async createPairing() {
+      const result = await api.POST('/api/v1/devices/pairings', { body: {} });
+      const { id, link, expiresAt } = await unwrap(Promise.resolve(result));
+      return { id, link, expiresAt, skewMs: clockSkew(result.response.headers.get('date')) };
+    },
+
+    async cancelPairing(id) {
+      await unwrap(api.DELETE('/api/v1/devices/pairings/{id}', { params: { path: { id } } }));
+    },
+
+    async revokeDevices() {
+      const { items } = await unwrap(api.GET('/api/v1/devices'));
+      for (const device of items) {
+        await unwrap(api.DELETE('/api/v1/devices/{id}', { params: { path: { id: device.id } } }));
+      }
+      return items.length;
     },
 
     close() {

@@ -49,6 +49,7 @@ export default defineConfig({
         input: {
           index: resolve('src/renderer/index.html'),
           'quick-ask': resolve('src/renderer/quick-ask.html'),
+          pair: resolve('src/renderer/pair.html'),
         },
       },
     },
