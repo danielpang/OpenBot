@@ -212,6 +212,65 @@ describe('push worker', () => {
     expect(sent).toEqual([]);
   });
 
+  it('reads the organization again on device.updated, so a token registered just after pairing is used', async () => {
+    const cached = await startPushWorker(deps, { cacheMs: 3_600_000 });
+    try {
+      const org = await t.createOrganization('Fresh pairing');
+      const [bot] = await t.db
+        .insert(schema.bots)
+        .values({ workspaceId: org, ownerId, handle: 'fresh', name: 'Fresh' })
+        .returning();
+      const keyring = keyringFromConfig(t.deps.config);
+      const [phone] = await t.db
+        .insert(schema.devices)
+        .values({
+          workspaceId: org,
+          ownerId,
+          name: 'New phone',
+          platform: 'ios',
+          publicKey: randomBytes(32),
+          pushKey: encryptSecret(pushKey, keyring),
+        })
+        .returning();
+      const inOrg = () => ({ ...approval(), bot_id: bot!.id, workspace_id: org }) as WsEvent;
+      // Paired, no token yet: both workers cache an organization with nobody to push to.
+      await publish(inOrg());
+      await cached.idle();
+      expect(sent).toEqual([]);
+      // The phone registers its token; nothing is published, so the caches still say nobody.
+      await t.db
+        .update(schema.devices)
+        .set({ pushToken: encryptSecret(token, keyring), pushEnvironment: 'production' })
+        .where(eq(schema.devices.id, phone!.id));
+      await publish(inOrg());
+      await cached.idle();
+      expect(sent).toEqual([]);
+      // registerPush publishes device.updated: the next notice goes out.
+      await publish(
+        wsEvent(
+          'device.updated',
+          {
+            device: {
+              id: phone!.id,
+              name: 'New phone',
+              platform: 'ios',
+              createdAt: new Date().toISOString(),
+              revokedAt: null,
+              pushRegistered: true,
+            },
+          },
+          { user_id: ownerId, workspace_id: org },
+        ),
+      );
+      await publish(inOrg());
+      await cached.idle();
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.token).toBe(token);
+    } finally {
+      await cached.stop();
+    }
+  });
+
   it('forgets the token when the relay says it is unregistered', async () => {
     outcome = { ok: false, reason: 'unregistered', status: 410 };
     await publish(approval());

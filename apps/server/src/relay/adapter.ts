@@ -15,6 +15,7 @@ import {
   DEVICE_KEY_HEADER,
 } from '../client-ip.js';
 import type { AppDeps } from '../context.js';
+import { outsideScope } from '../db/scope.js';
 import { findDeviceByPublicKey } from '../services/devices.js';
 import type { InstanceKey } from '../services/instance-key.js';
 import type { HostRelayLink, RelayStreamTransport } from './link.js';
@@ -34,7 +35,18 @@ import type { HostRelayLink, RelayStreamTransport } from './link.js';
 // handshake's static key, which the pairing route compares with the body's.
 //
 // Sessions are kept so a `device.revoked` event closes that device's streams
-// at once, on every API process, and at most MAX_SESSIONS run at a time.
+// on every API process, and at most MAX_SESSIONS run at a time. A revoked
+// device's stream refuses new requests at once (401 DEVICE_REVOKED) and is
+// closed 4403 once the responses already in flight are sent, or after
+// REVOKE_DRAIN_MS: a device that revokes itself over its own stream still
+// gets its 204.
+//
+// The event needs a shared bus. With no REDIS_URL, `openbots devices revoke`
+// in another process deletes the key but publishes on a bus of its own, so
+// the adapter also asks the database: every RECHECK_MS for each open
+// session of a known device, and before serving any request on a session
+// whose last check is older than that. A device the database no longer has
+// (revoked, or its key gone) is closed the same way.
 
 /** Open tunnel sessions per process; the next stream is closed 4429. */
 export const MAX_SESSIONS = 8;
@@ -42,6 +54,10 @@ export const MAX_SESSIONS = 8;
 export const FETCH_TIMEOUT_MS = 10 * 60_000;
 /** The close code of a revoked device's streams. */
 export const CLOSE_REVOKED = 4403;
+/** How long a revoked device's stream may take to send the responses in flight. */
+export const REVOKE_DRAIN_MS = 5_000;
+/** How old a session's last look at its device may get before it is looked up again. */
+export const RECHECK_MS = 15_000;
 const CLOSE_TOO_MANY = 4429;
 const CLOSE_GOING_AWAY = 4410;
 
@@ -52,6 +68,26 @@ export interface RelayAdapterOptions {
   port: number;
   maxSessions?: number;
   fetchTimeoutMs?: number;
+  /** How old a session's device check may be before a request looks again. Default RECHECK_MS. */
+  recheckMs?: number;
+  /** How often every known session's device is looked up. Default `recheckMs`. */
+  recheckIntervalMs?: number;
+  revokeDrainMs?: number;
+}
+
+/** One tunnel session and when its device was last found in the database. */
+interface SessionState {
+  readonly stream: RelayStreamTransport;
+  server: TunnelServer | null;
+  checkedAt: number;
+  checking: Promise<boolean> | null;
+}
+
+function revokedResponse(): Response {
+  return Response.json(
+    { code: 'DEVICE_REVOKED', message: 'This device was revoked. Pair it again.' },
+    { status: 401 },
+  );
 }
 
 export interface RelayAdapter {
@@ -101,13 +137,63 @@ export function startRelayAdapter(
   const logger = deps.logger.child({ component: 'relay-adapter' });
   const maxSessions = options.maxSessions ?? MAX_SESSIONS;
   const fetchTimeoutMs = options.fetchTimeoutMs ?? FETCH_TIMEOUT_MS;
+  const recheckMs = options.recheckMs ?? RECHECK_MS;
+  const recheckIntervalMs = options.recheckIntervalMs ?? recheckMs;
+  const revokeDrainMs = options.revokeDrainMs ?? REVOKE_DRAIN_MS;
   const origin = `http://127.0.0.1:${options.port}`;
   const wsOrigin = `ws://127.0.0.1:${options.port}`;
   /** Streams in their handshake, which count against the cap before they are sessions. */
   const handshaking = new Set<RelayStreamTransport>();
-  const sessions = new Set<TunnelServer>();
+  const sessions = new Map<TunnelServer, SessionState>();
   const sockets = new Set<WebSocket>();
   let stopped = false;
+
+  /** Refuses the session's new requests and closes it 4403 once what is in flight is sent. */
+  function revoke(session: TunnelServer, why: string): void {
+    if (session.closed || session.draining) return;
+    logger.info({ deviceId: session.deviceId, why }, 'closing a revoked device’s stream');
+    session.drain(CLOSE_REVOKED, 'device revoked', {
+      timeoutMs: revokeDrainMs,
+      refuse: revokedResponse,
+    });
+  }
+
+  /** Looks the session's device up again; false (and the session drains) when it is gone. */
+  function verify(state: SessionState): Promise<boolean> {
+    const session = state.server;
+    if (!session || session.deviceId === null) return Promise.resolve(true);
+    if (session.draining) return Promise.resolve(false);
+    state.checking ??= (async () => {
+      try {
+        const device = await outsideScope(() => findDeviceByPublicKey(db, session.clientKey));
+        state.checkedAt = Date.now();
+        if (device?.id === session.deviceId) return true;
+        revoke(session, 'not in the database');
+        return false;
+      } catch (err) {
+        // The request itself needs the database too; let it fail there.
+        logger.warn({ err, deviceId: session.deviceId }, 'could not check a tunnel’s device');
+        return true;
+      } finally {
+        state.checking = null;
+      }
+    })();
+    return state.checking;
+  }
+
+  /** True when the session may serve a request: its device was seen lately, or is seen now. */
+  function current(state: SessionState): Promise<boolean> {
+    const session = state.server;
+    if (session?.draining) return Promise.resolve(false);
+    if (!session || session.deviceId === null) return Promise.resolve(true);
+    if (Date.now() - state.checkedAt < recheckMs) return Promise.resolve(true);
+    return verify(state);
+  }
+
+  const recheck = setInterval(() => {
+    for (const state of sessions.values()) void verify(state);
+  }, recheckIntervalMs);
+  recheck.unref();
 
   let unsubscribe: Unsubscribe | null = null;
   const subscribed = infra.bus
@@ -115,11 +201,8 @@ export function startRelayAdapter(
       if (event.type !== 'device.revoked') return;
       const id = (event.payload as { device?: { id?: string } }).device?.id;
       if (!id) return;
-      for (const session of sessions) {
-        if (session.deviceId === id) {
-          logger.info({ deviceId: id }, 'closing a revoked device’s stream');
-          session.close(CLOSE_REVOKED, 'device revoked');
-        }
+      for (const session of sessions.keys()) {
+        if (session.deviceId === id) revoke(session, 'device.revoked');
       }
     })
     .then(
@@ -129,9 +212,14 @@ export function startRelayAdapter(
       (err: unknown) => logger.warn({ err }, 'relay adapter could not subscribe to device events'),
     );
 
-  function handlerFor(stream: RelayStreamTransport, clientKey: () => Uint8Array): TunnelHandler {
+  function handlerFor(state: SessionState, clientKey: () => Uint8Array): TunnelHandler {
+    const { stream } = state;
     return {
       async fetch(request, { deviceId }) {
+        if (!(await current(state))) {
+          request.body?.cancel().catch(() => {});
+          return revokedResponse();
+        }
         const url = new URL(request.url);
         const headers = requestHeaders(request.headers, deviceId, stream);
         if (request.method === 'POST' && url.pathname === PAIR_PATH) {
@@ -147,9 +235,10 @@ export function startRelayAdapter(
           ...(hasBody && request.body ? { duplex: 'half' } : {}),
         } as RequestInit);
       },
-      openSocket(path, sent, { deviceId }) {
+      async openSocket(path, sent, { deviceId }) {
+        if (!(await current(state))) return revokedResponse();
         const target = loopbackTarget(wsOrigin, path);
-        if (target === null) return Promise.resolve(new Response(null, { status: 400 }));
+        if (target === null) return new Response(null, { status: 400 });
         return openLoopbackSocket(target, requestHeaders(sent, deviceId, stream));
       },
     };
@@ -266,6 +355,7 @@ export function startRelayAdapter(
     }
     handshaking.add(stream);
     let clientKey: Uint8Array | null = null;
+    const state: SessionState = { stream, server: null, checkedAt: Date.now(), checking: null };
     let session: TunnelServer;
     try {
       session = await createTunnelServer({
@@ -274,9 +364,10 @@ export function startRelayAdapter(
         lookupDevice: async (publicKey) => {
           clientKey = publicKey;
           const device = await findDeviceByPublicKey(db, publicKey);
+          state.checkedAt = Date.now();
           return device ? { known: true, id: device.id } : { known: false };
         },
-        handler: handlerFor(stream, () => clientKey!),
+        handler: handlerFor(state, () => clientKey!),
       });
     } catch (err) {
       logger.info({ stream: stream.id, error: (err as Error).message }, 'tunnel handshake failed');
@@ -288,7 +379,8 @@ export function startRelayAdapter(
       session.close(1000, 'shutting down');
       return;
     }
-    sessions.add(session);
+    state.server = session;
+    sessions.set(session, state);
     logger.info(
       { stream: stream.id, device: session.device, deviceId: session.deviceId },
       'tunnel session opened',
@@ -313,10 +405,11 @@ export function startRelayAdapter(
     sessions: () => handshaking.size + sessions.size,
     async stop() {
       stopped = true;
+      clearInterval(recheck);
       await subscribed;
       await (unsubscribe as Unsubscribe | null)?.().catch(() => {});
       for (const stream of handshaking) stream.close(1000, 'shutting down');
-      for (const session of sessions) session.close(1000, 'shutting down');
+      for (const session of sessions.keys()) session.close(1000, 'shutting down');
       for (const socket of sockets) socket.terminate();
       sessions.clear();
       handshaking.clear();

@@ -8,6 +8,7 @@ import {
 } from './handshake.js';
 import {
   BodyQueue,
+  CLOSE_QUEUE_FULL,
   DEFAULT_LIMITS,
   MessageAssembler,
   PAIR_PATH,
@@ -26,6 +27,7 @@ import {
   type BodyInit,
   type ChannelHandler,
   type HeadersInit,
+  type KeepaliveOptions,
   type TunnelLimits,
 } from './session.js';
 import type { ByteTransport } from './transport.js';
@@ -47,6 +49,11 @@ import type { ByteTransport } from './transport.js';
 // Ids are odd from 1 and never reused. The 64 open ids and the 16 MiB request
 // body are enforced here as well as on the server, so a client fails fast
 // rather than waiting for the server's refusal.
+//
+// Like the server, the client pings a stream it has been quiet on for 25
+// seconds and closes one it has heard nothing on for 60 (spec 5.3), and a
+// TunnelWebSocket whose `bufferedAmount` would pass 8 MiB (beyond the message
+// being sent) is closed 1008 instead of queueing more.
 
 export interface TunnelClientOptions {
   transport: ByteTransport;
@@ -57,6 +64,8 @@ export interface TunnelClientOptions {
   /** Overrides of the protocol's limits, for tests. */
   limits?: Partial<TunnelLimits>;
   handshakeTimeoutMs?: number;
+  /** The ping and idle close of spec 5.3; 25 and 60 seconds by default. */
+  keepalive?: Partial<KeepaliveOptions>;
 }
 
 export interface TunnelSocketOptions {
@@ -93,6 +102,7 @@ export async function createTunnelClient(options: TunnelClientOptions): Promise<
     transport,
     ciphers: handshake.ciphers,
     limits,
+    keepalive: options.keepalive,
   });
   route.take(
     (bytes) => session.receive(bytes),
@@ -552,6 +562,10 @@ export class TunnelWebSocket {
         : 'size' in data
           ? data.size
           : data.byteLength;
+    if (this.#bufferedAmount > 0 && this.#bufferedAmount + size > this.#ctx.limits.maxQueuedBytes) {
+      this.#overflow();
+      return;
+    }
     this.#bufferedAmount += size;
     channel.sendChain = channel.sendChain
       .then(async () => {
@@ -600,6 +614,29 @@ export class TunnelWebSocket {
         // The stream closed; #onError reports it.
       }
     });
+  }
+
+  /**
+   * The server's window stayed shut while the application kept sending: drop
+   * what is queued and close 1008 ahead of it. The close event follows the
+   * server's echo.
+   */
+  #overflow(): void {
+    const channel = this.#channel!;
+    const { session } = this.#ctx;
+    const reason = 'send buffer full';
+    this.#readyState = CLOSING;
+    this.#sentClose = true;
+    channel.fail(new TunnelError('cancelled', reason));
+    try {
+      session.sendIfOpen(channel, {
+        type: FrameType.WsClose,
+        id: channel.id,
+        header: { code: CLOSE_QUEUE_FULL, reason },
+      });
+    } catch {
+      // The stream closed; #onError reports it.
+    }
   }
 
   #onFrame(frame: Frame): void {
@@ -657,10 +694,12 @@ export class TunnelWebSocket {
           this.#finish({ type: 'close', code: 1009, reason: 'message too big', wasClean: false });
           return;
         }
+        // Each fragment is credited as the assembler takes it (its own bound
+        // holds the memory), so a message larger than the window completes.
+        session.consumed(channel, frame.body.length);
         if (!message) return;
         if (this.#readyState === OPEN)
           dispatch(this.onmessage, { type: 'message', data: this.#messageData(message) });
-        session.consumed(channel, message.data.length);
         return;
       }
       case FrameType.WsClose: {

@@ -11,5 +11,15 @@ export * from './transport.js';
 export * from './relay-client.js';
 export * from './client.js';
 export * from './server.js';
-export { DEFAULT_LIMITS, PAIR_PATH, type TunnelLimits } from './session.js';
+export {
+  CLOSE_IDLE,
+  CLOSE_QUEUE_FULL,
+  DEFAULT_IDLE_TIMEOUT_MS,
+  DEFAULT_LIMITS,
+  DEFAULT_PING_INTERVAL_MS,
+  IDLE_REASON,
+  PAIR_PATH,
+  type KeepaliveOptions,
+  type TunnelLimits,
+} from './session.js';
 export { DEFAULT_HANDSHAKE_TIMEOUT_MS, type DeviceStatus } from './handshake.js';

@@ -63,7 +63,7 @@ queued while connecting). `memoryTransportPair()` joins two ends in memory for t
 
 ### Client (`client.ts`)
 
-`createTunnelClient({ transport, serverKey, staticKey, limits?, handshakeTimeoutMs? }): Promise<TunnelClient>`
+`createTunnelClient({ transport, serverKey, staticKey, limits?, handshakeTimeoutMs?, keepalive? }): Promise<TunnelClient>`
 runs the handshake as the initiator. `serverKey` is the server's X25519 public key from the pairing
 link; `staticKey` is the device's X25519 private key.
 
@@ -82,7 +82,7 @@ with `TunnelClosedError` (`closeCode`, `reason`).
 
 ### Server (`server.ts`)
 
-`createTunnelServer({ transport, staticKey, lookupDevice, handler, limits?, handshakeTimeoutMs? }): Promise<TunnelServer>`
+`createTunnelServer({ transport, staticKey, lookupDevice, handler, limits?, handshakeTimeoutMs?, keepalive? }): Promise<TunnelServer>`
 runs the handshake as the responder. `staticKey` is the server tunnel key's X25519 private key.
 
 - `lookupDevice(publicKey) => Promise<{ known: true, id } | { known: false }>` decides `device` in
@@ -97,14 +97,22 @@ An unknown device reaches the handler only with `POST /api/v1/devices/pair`; eve
 less `x-openbots-device`, which the adapter sets itself from `deviceId`); response headers go back
 less `set-cookie`, `connection`, `transfer-encoding` and `content-length`.
 
-`TunnelServer` has `deviceId`, `device`, `clientKey`, `closed`, `handshakeHash`, `ping()`,
-`close(code?, reason?)` and `onClose(handler)`.
+`TunnelServer` has `deviceId`, `device`, `clientKey`, `closed`, `draining`, `handshakeHash`,
+`ping()`, `close(code?, reason?)`, `drain(code, reason, { timeoutMs?, refuse? })` and
+`onClose(handler)`. `drain` answers every later request and `ws.open` with `refuse()` (503
+`STREAM_CLOSING` by default) and closes the stream with `code` once the HTTP responses in flight are
+sent, or after `timeoutMs` (5 seconds); the relay adapter drains a revoked device's streams with
+4403 so a device that revokes itself still gets its 204.
 
 ### Limits and errors
 
 `DEFAULT_LIMITS` holds the protocol's numbers (`windowBytes` 1,048,576, `maxOpenIds` 64,
-`maxRequestBodyBytes` and `maxMessageBytes` 16 MiB, `maxMessages` 2^32); `limits` overrides them,
-for tests. `TunnelError.code` is one of `protocol`, `too_many_requests`, `too_large`, `cancelled`,
+`maxRequestBodyBytes` and `maxMessageBytes` 16 MiB, `maxMessages` 2^32, `maxQueuedBytes` 8 MiB);
+`limits` overrides them, for tests. A WebSocket on either end that would queue more than
+`maxQueuedBytes` behind a shut window (beyond the message being sent) is closed 1008.
+`keepalive: { pingIntervalMs, idleTimeoutMs }` (25 and 60 seconds; 0 turns either off) has each end
+ping a stream it has sent nothing on for `pingIntervalMs`, and close 1000 (`idle`) one it has
+received nothing on for `idleTimeoutMs`. `TunnelError.code` is one of `protocol`, `too_many_requests`, `too_large`, `cancelled`,
 `internal`. `TunnelHandshakeError` means the handshake failed or timed out; the transport is then
 closed with 4400.
 

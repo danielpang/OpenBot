@@ -11,6 +11,7 @@ import {
   type KeyPair,
   type TunnelClient,
 } from '@openbots/tunnel';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { AppDeps } from '../context.js';
@@ -56,6 +57,36 @@ describe('relay adapter', () => {
   const transports: ByteTransport[] = [];
 
   const relayUrl = () => relay.url.replace(/^http/, 'ws');
+  const targetPort = () => (target.address() as AddressInfo).port;
+
+  /** Starts the adapter again with these options, for one test. */
+  async function restartAdapter(extra: Partial<Parameters<typeof startRelayAdapter>[1]> = {}) {
+    await adapter.stop();
+    adapter = startRelayAdapter(deps, { link, instance, port: targetPort(), ...extra });
+  }
+
+  /** A paired device of the owner's, made in the database. */
+  async function addDevice() {
+    const key = generateDeviceKey();
+    const [row] = await t.db
+      .insert(schema.devices)
+      .values({
+        workspaceId,
+        ownerId,
+        name: 'Spare',
+        platform: 'ios',
+        publicKey: Buffer.from(key.publicKey),
+      })
+      .returning();
+    return { key, id: row!.id };
+  }
+
+  /** Revokes a device as `openbots devices revoke` in another process would: no event reaches this one. */
+  const revokeInDatabase = (id: string) =>
+    t.db
+      .update(schema.devices)
+      .set({ revokedAt: new Date(), publicKey: null })
+      .where(eq(schema.devices.id, id));
 
   async function open(staticKey: Uint8Array) {
     const transport = await connectThroughRelay({
@@ -263,6 +294,43 @@ describe('relay adapter', () => {
     // Another device's stream is untouched.
     expect(other.closed).toBe(false);
     expect((await other.fetch('/api/v1/bots')).status).toBe(403);
+  });
+
+  it('closes a revoked device’s stream on its timer when no event comes', async () => {
+    const spare = await addDevice();
+    await restartAdapter({ recheckMs: 100 });
+    try {
+      const client = await open(spare.key.privateKey);
+      const other = await open(known.privateKey);
+      expect(client.device).toBe('known');
+      expect((await client.fetch('/api/v1/bots')).status).toBe(200);
+      const closed = new Promise<number>((resolve) => client.onClose((code) => resolve(code)));
+      await revokeInDatabase(spare.id);
+      expect(await closed).toBe(CLOSE_REVOKED);
+      // A device still paired keeps its stream.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(other.closed).toBe(false);
+    } finally {
+      await restartAdapter();
+    }
+  });
+
+  it('looks a stale session’s device up before serving it, and refuses a revoked one', async () => {
+    const spare = await addDevice();
+    // Every request finds its last check stale; the timer never runs in the test.
+    await restartAdapter({ recheckMs: 0, recheckIntervalMs: 3_600_000 });
+    try {
+      const client = await open(spare.key.privateKey);
+      expect((await client.fetch('/api/v1/bots')).status).toBe(200);
+      const closed = new Promise<number>((resolve) => client.onClose((code) => resolve(code)));
+      await revokeInDatabase(spare.id);
+      const refused = await client.fetch('/api/v1/bots');
+      expect(refused.status).toBe(401);
+      expect(await refused.json()).toMatchObject({ code: 'DEVICE_REVOKED' });
+      expect(await closed).toBe(CLOSE_REVOKED);
+    } finally {
+      await restartAdapter();
+    }
   });
 
   it('caps open sessions at 8 and closes a ninth 4429', async () => {

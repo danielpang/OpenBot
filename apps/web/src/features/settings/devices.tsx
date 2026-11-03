@@ -10,15 +10,17 @@ import {
 } from '@openbots/ui';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toString as qrSvg } from 'qrcode';
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { api } from '../../app/api.js';
-import { useRealtime } from '../transcript/realtime.js';
+import { RealtimeStatusContext, useRealtime } from '../transcript/realtime.js';
 
 // Settings > Devices (docs/MOBILE_AND_VM_PLAN.md 4.3, docs/RELAY_PROTOCOL.md 6):
 // the owner's paired phones with Revoke, "Pair a phone" with the pairing link
-// as a QR code, and the relay's status. `device.paired` and `device.revoked`
-// on the owner's socket refresh the list; the relay has no event, so its
-// status is polled while the tab is open.
+// as a QR code, and the relay's status. `device.paired`, `device.revoked` and
+// `device.updated` on the owner's socket refresh the list. `relay.status`
+// carries the relay's status as it changes, and it is read again each time the
+// socket (re)connects, since an event sent while it was down is lost; a slow
+// poll covers anything else.
 
 export type Device = components['schemas']['Device'];
 type Pairing = components['schemas']['Pairing'];
@@ -28,10 +30,13 @@ export const devicesQuery = queryOptions({
   queryFn: () => unwrap(api.GET('/api/v1/devices')),
 });
 
+/** How often the relay's status is read while the tab is open, beside its event. */
+export const RELAY_POLL_MS = 60_000;
+
 export const relayQuery = queryOptions({
   queryKey: ['relay'],
   queryFn: () => unwrap(api.GET('/api/v1/relay')),
-  refetchInterval: 10_000,
+  refetchInterval: RELAY_POLL_MS,
 });
 
 export const PLATFORM_LABELS: Record<Device['platform'], string> = {
@@ -75,9 +80,11 @@ export function DevicesSettings() {
     const refresh = () => void queryClient.invalidateQueries({ queryKey: devicesQuery.queryKey });
     const offPaired = client.on('device.paired', refresh);
     const offRevoked = client.on('device.revoked', refresh);
+    const offUpdated = client.on('device.updated', refresh);
     return () => {
       offPaired();
       offRevoked();
+      offUpdated();
     };
   }, [client, queryClient]);
 
@@ -305,8 +312,30 @@ function PairingCode({ pairing, onRenew }: { pairing: Pairing; onRenew(): void }
 }
 
 function RelayStatus() {
+  const queryClient = useQueryClient();
   const relay = useQuery(relayQuery);
+  const { client } = useRealtime();
+  const { status } = useContext(RealtimeStatusContext);
   const data = relay.data;
+
+  useEffect(
+    () =>
+      client?.on('relay.status', (event) => {
+        queryClient.setQueryData(relayQuery.queryKey, event.payload);
+      }),
+    [client, queryClient],
+  );
+
+  // A status change while the socket was down sent an event nobody heard, so
+  // read it again each time the socket opens (not on mount: the query just ran).
+  const lastStatus = useRef(status);
+  useEffect(() => {
+    const was = lastStatus.current;
+    lastStatus.current = status;
+    if (status === 'open' && was !== 'open') {
+      void queryClient.invalidateQueries({ queryKey: relayQuery.queryKey });
+    }
+  }, [status, queryClient]);
 
   return (
     <section className="flex flex-col gap-1.5" aria-labelledby="relay-title">

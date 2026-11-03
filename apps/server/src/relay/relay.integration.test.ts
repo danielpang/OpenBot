@@ -23,8 +23,9 @@ import { createRelayLink, type HostRelayLink } from './link.js';
 // over real sockets: the test app served on an ephemeral port, a relay in
 // process, the link and the adapter, and a Node client speaking the tunnel
 // as the phone will. Pairing through the tunnel, REST and `/ws` with the
-// device's key, a large upload, a push from a real notice, revocation, and
-// the link coming back after the relay restarts.
+// device's key, a large upload, a push from a real notice, a device revoking
+// itself over its own stream, and the link coming back after the relay
+// restarts.
 
 async function waitFor(check: () => boolean, timeoutMs = 8_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -307,15 +308,16 @@ describe('relay end to end', { timeout: 60_000 }, () => {
     });
   });
 
-  it('closes the stream when the device is revoked, and the key is unknown after', async () => {
+  it('lets a device revoke itself over its own stream: the 204 arrives, then the close', async () => {
     // An open pairing keeps the link up once the only device is gone.
     await pairing();
     const closed = new Promise<number>((resolve) => tunnel.onClose((code) => resolve(code)));
-    // From another client, as Settings > Devices would. A device that revokes
-    // itself over its own stream may see the stream close before the 204.
-    const res = await t.app.request(`/api/v1/devices/${deviceId}`, authed({ method: 'DELETE' }));
+    // `device.revoked` reaches the adapter while this very request is in
+    // flight; the stream waits for its response before it closes.
+    const res = await tunnel.fetch(`/api/v1/devices/${deviceId}`, authed({ method: 'DELETE' }));
     expect(res.status).toBe(204);
     expect(await closed).toBe(CLOSE_REVOKED);
+    await waitFor(() => adapter.sessions() === 0);
 
     const again = await connect();
     try {

@@ -94,8 +94,7 @@ export const WidgetStateSchema = z.looseObject({
   pendingRunId: nullableId,
 });
 
-/** Payload schema per event type. */
-/** A device in `device.paired` and `device.revoked`. */
+/** A device in `device.paired`, `device.revoked` and `device.updated`. */
 export const DeviceEventSchema = z.looseObject({
   id,
   name: z.string(),
@@ -104,6 +103,7 @@ export const DeviceEventSchema = z.looseObject({
   revokedAt: timestamp.nullable().optional(),
 });
 
+/** Payload schema per event type. */
 export const EVENT_PAYLOADS = {
   'message.created': z.looseObject({ message: MessageSchema }),
   /**
@@ -210,6 +210,25 @@ export const EVENT_PAYLOADS = {
    * API instance closes that device's streams on it.
    */
   'device.revoked': z.looseObject({ device: DeviceEventSchema }),
+  /**
+   * Sent to the owner when a device changes without pairing or revoking: it
+   * registered or refreshed its push token. The push worker reads the
+   * organization's devices again on it.
+   */
+  'device.updated': z.looseObject({
+    device: DeviceEventSchema.extend({ pushRegistered: z.boolean() }),
+  }),
+  /**
+   * Sent to each owner with a device or an open pairing (`user_id`, in
+   * `workspace_id`) when this server's relay link changes status: the
+   * `GET /api/v1/relay` answer (docs/RELAY_PROTOCOL.md 6.4).
+   */
+  'relay.status': z.looseObject({
+    hostId: z.string(),
+    relayUrl: z.string().nullable(),
+    status: z.enum(['off', 'connecting', 'linked']),
+    since: timestamp.nullable(),
+  }),
   /** Who controls a Bot's screen: the Bot, or the owner after a takeover. */
   'screen.control': z.looseObject({
     screenId: id,
@@ -246,7 +265,7 @@ const envelope = <T extends WsEventType>(type: T) =>
     chat_id: id.optional(),
     bot_id: id.optional(),
     /**
-     * Account-level events (`computer.status`, `connector.updated`, `device.*`) go to every
+     * Account-level events (`computer.status`, `connector.updated`, `device.*`, `relay.status`) go to every
      * socket of this user in the organization `workspace_id`, which they carry.
      */
     user_id: id.optional(),

@@ -173,7 +173,8 @@ export interface CreatePairingInput {
   actor: AuditActor;
   /**
    * This process's relay link, woken so it dials now that a pairing is open.
-   * The CLI has none: a running server finds the pairing within a minute.
+   * The CLI has none: a running server's link finds the pairing within 10
+   * seconds (relay/link.ts).
    */
   relay?: Pick<RelayLink, 'wake'>;
 }
@@ -569,26 +570,39 @@ export interface PushRegistration {
 /**
  * Registers or refreshes a device's push token (sealed). Only the device
  * itself: the caller's API key must be the device's (403 NOT_THIS_DEVICE).
+ * Publishes `device.updated`, on which the push worker reads the
+ * organization's devices again, so a token registered just after pairing
+ * gets the next notice.
  */
 export async function registerPush(
-  deps: Pick<AppDeps, 'db' | 'config'>,
+  deps: Pick<AppDeps, 'db' | 'config'> & { infra: Pick<Infra, 'bus'> },
   owner: DeviceOwner & { apiKeyId: string | null },
   deviceId: string,
   push: PushRegistration,
 ): Promise<void> {
-  const { db, config } = deps;
+  const { db, config, infra } = deps;
   await inWorkspace(owner.workspaceId, async () => {
     const device = await ownDevice(db, owner, deviceId);
     if (!owner.apiKeyId || device.apiKeyId !== owner.apiKeyId) {
       throw new DomainError(403, 'NOT_THIS_DEVICE', 'Only the device itself registers its push');
     }
-    await db
+    const [updated] = await db
       .update(schema.devices)
       .set({
         pushToken: encryptSecret(push.token.toLowerCase(), keyringFromConfig(config)),
         pushEnvironment: push.environment,
       })
-      .where(and(eq(schema.devices.id, device.id), isNull(schema.devices.revokedAt)));
+      .where(and(eq(schema.devices.id, device.id), isNull(schema.devices.revokedAt)))
+      .returning();
+    if (!updated) return;
+    await publishEvent(
+      infra.bus,
+      wsEvent(
+        'device.updated',
+        { device: { ...eventDevice(updated), pushRegistered: updated.pushToken !== null } },
+        { user_id: owner.ownerId, workspace_id: owner.workspaceId },
+      ),
+    );
   });
 }
 

@@ -19,7 +19,7 @@ import {
   type TunnelRequestMeta,
   type TunnelServer,
 } from './server.js';
-import type { TunnelLimits } from './session.js';
+import type { KeepaliveOptions, TunnelLimits } from './session.js';
 import { memoryTransportPair, type ByteTransport } from './transport.js';
 
 const hex = (bytes: Uint8Array) => Buffer.from(bytes).toString('hex');
@@ -59,6 +59,10 @@ async function setup(
     known?: boolean;
     clientLimits?: Partial<TunnelLimits>;
     serverLimits?: Partial<TunnelLimits>;
+    clientKeepalive?: Partial<KeepaliveOptions>;
+    serverKeepalive?: Partial<KeepaliveOptions>;
+    /** Wraps the client's transport, e.g. to hold what it receives. */
+    wrapClient?: (transport: ByteTransport) => ByteTransport;
   } = {},
 ): Promise<Setup> {
   const serverKey = generateDeviceKey();
@@ -81,17 +85,49 @@ async function setup(
     },
     handler: fullHandler,
     limits: options.serverLimits,
+    keepalive: options.serverKeepalive,
   });
   const client = await createTunnelClient({
-    transport: clientTransport,
+    transport: options.wrapClient ? options.wrapClient(clientTransport) : clientTransport,
     serverKey: serverKey.publicKey,
     staticKey: deviceKey.privateKey,
     limits: options.clientLimits,
+    keepalive: options.clientKeepalive,
   });
   const server = await serverPromise;
   const result = { client, server, devices, deviceKey, clientTransport };
   open.push(result);
   return result;
+}
+
+/** A transport that holds what it receives while paused, as a peer that stopped reading would. */
+function pausable(transport: ByteTransport) {
+  let paused = false;
+  let handler: ((bytes: Uint8Array) => void) | null = null;
+  const held: Uint8Array[] = [];
+  transport.onMessage((bytes) => {
+    if (paused || !handler) held.push(bytes);
+    else handler(bytes);
+  });
+  const flush = () => {
+    while (!paused && handler && held.length) handler(held.shift()!);
+  };
+  return {
+    send: (bytes: Uint8Array) => transport.send(bytes),
+    onMessage(next: (bytes: Uint8Array) => void) {
+      handler = next;
+      flush();
+    },
+    onClose: (next: (code: number, reason: string) => void) => transport.onClose(next),
+    close: (code?: number, reason?: string) => transport.close(code, reason),
+    pause() {
+      paused = true;
+    },
+    resume() {
+      paused = false;
+      flush();
+    },
+  };
 }
 
 function gate() {
@@ -698,6 +734,206 @@ describe('handshake failures', () => {
         handshakeTimeoutMs: 20,
       }),
     ).rejects.toThrow(/within 20 ms/);
+  });
+});
+
+describe('keepalive (spec 5.3)', () => {
+  it('closes a stream 1000 once nothing at all arrives for the idle timeout', async () => {
+    const { client, server } = await setup(
+      {},
+      {
+        // The server never pings, so the client hears nothing.
+        serverKeepalive: { pingIntervalMs: 0, idleTimeoutMs: 0 },
+        clientKeepalive: { pingIntervalMs: 0, idleTimeoutMs: 80 },
+      },
+    );
+    const closed = new Promise<[number, string]>((resolve) =>
+      client.onClose((code, reason) => resolve([code, reason])),
+    );
+    const serverClosed = new Promise<number>((resolve) => server.onClose((code) => resolve(code)));
+    expect(await closed).toEqual([1000, 'idle']);
+    expect(await serverClosed).toBe(1000);
+  });
+
+  it('closes from the server side too', async () => {
+    const { client, server } = await setup(
+      {},
+      {
+        serverKeepalive: { pingIntervalMs: 0, idleTimeoutMs: 80 },
+        clientKeepalive: { pingIntervalMs: 0, idleTimeoutMs: 0 },
+      },
+    );
+    const closed = new Promise<[number, string]>((resolve) =>
+      server.onClose((code, reason) => resolve([code, reason])),
+    );
+    expect(await closed).toEqual([1000, 'idle']);
+    await waitFor(() => client.closed);
+  });
+
+  it('keeps a quiet stream open with pings from either side', async () => {
+    const { client, server } = await setup(
+      {},
+      {
+        serverKeepalive: { pingIntervalMs: 0, idleTimeoutMs: 120 },
+        clientKeepalive: { pingIntervalMs: 30, idleTimeoutMs: 120 },
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    // The server hears the client's pings; the client hears their pongs.
+    expect(server.closed).toBe(false);
+    expect(client.closed).toBe(false);
+  });
+
+  it('pings every 25 seconds and gives up after 60 by default', async () => {
+    const { DEFAULT_PING_INTERVAL_MS, DEFAULT_IDLE_TIMEOUT_MS } = await import('./session.js');
+    expect(DEFAULT_PING_INTERVAL_MS).toBe(25_000);
+    expect(DEFAULT_IDLE_TIMEOUT_MS).toBe(60_000);
+  });
+});
+
+describe('bounded WebSocket queues (spec 5.3)', () => {
+  const small = { windowBytes: 1024, maxQueuedBytes: 4096 };
+  const message = (n: number) => new Uint8Array(1024).fill(n);
+
+  it('closes a server socket 1008 that queues more than the bound behind a shut window', async () => {
+    const fake = fakeSocket();
+    let held!: ReturnType<typeof pausable>;
+    const { client } = await setup(
+      { openSocket: async () => fake.socket },
+      {
+        clientLimits: small,
+        serverLimits: small,
+        wrapClient: (transport) => (held = pausable(transport)),
+      },
+    );
+    const ws = client.createSocket('/ws');
+    const events = socketEvents(ws);
+    await waitFor(() => ws.readyState === 1);
+    // The client stops reading, so it credits nothing back.
+    held.pause();
+    for (let i = 0; i < 8; i++) fake.emit(message(i));
+    expect(fake.closes).toEqual([{ code: 1008, reason: 'send queue full' }]);
+    held.resume();
+    await waitFor(() => ws.readyState === 3);
+    expect(events.at(-1)).toMatchObject({ type: 'close', code: 1008 });
+    // What was queued behind the window never went out.
+    expect(events.filter((event) => event.type === 'message').length).toBeLessThanOrEqual(1);
+    // The id is free: a new socket opens.
+    const again = client.createSocket('/ws');
+    await waitFor(() => again.readyState === 1);
+  });
+
+  it('carries a message larger than the window both ways, and one on an empty queue', async () => {
+    const fake = fakeSocket();
+    const { client } = await setup(
+      { openSocket: async () => fake.socket },
+      { clientLimits: small, serverLimits: small },
+    );
+    const ws = client.createSocket('/ws');
+    const events = socketEvents(ws);
+    await waitFor(() => ws.readyState === 1);
+    fake.emit(new Uint8Array(10_000).fill(7));
+    await waitFor(() => events.some((event) => event.type === 'message'));
+    expect(fake.closes).toEqual([]);
+    ws.send(new Uint8Array(10_000).fill(8));
+    await waitFor(() => fake.received.length === 1);
+    expect((fake.received[0] as Uint8Array).length).toBe(10_000);
+  });
+
+  it('closes a client socket 1008 whose sends pass the bound behind a shut window', async () => {
+    const fake = fakeSocket();
+    let held!: ReturnType<typeof pausable>;
+    const { client } = await setup(
+      { openSocket: async () => fake.socket },
+      {
+        clientLimits: small,
+        serverLimits: small,
+        wrapClient: (transport) => (held = pausable(transport)),
+      },
+    );
+    const ws = client.createSocket('/ws');
+    const events = socketEvents(ws);
+    await waitFor(() => ws.readyState === 1);
+    // No credit reaches the client, so its window stays shut after the first message.
+    held.pause();
+    for (let i = 0; i < 8 && ws.readyState === 1; i++) ws.send(message(i));
+    expect(ws.readyState).toBe(2);
+    await waitFor(() => fake.closes.length === 1);
+    expect(fake.closes).toEqual([{ code: 1008, reason: 'send buffer full' }]);
+    expect(fake.received.length).toBeLessThanOrEqual(1);
+    held.resume();
+    await waitFor(() => ws.readyState === 3);
+    expect(events.at(-1)).toMatchObject({ type: 'close', code: 1008 });
+  });
+});
+
+describe('drain', () => {
+  it('refuses new requests at once and closes after the response in flight is sent', async () => {
+    const slow = gate();
+    const { client, server } = await setup({
+      fetch: async (request) => {
+        if (new URL(request.url).pathname === '/slow') await slow.promise;
+        return new Response(null, { status: 204 });
+      },
+    });
+    const inFlight = client.fetch('/slow', { method: 'DELETE' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const closed = new Promise<[number, string]>((resolve) =>
+      client.onClose((code, reason) => resolve([code, reason])),
+    );
+    server.drain(4403, 'device revoked', {
+      refuse: () => Response.json({ code: 'DEVICE_REVOKED' }, { status: 401 }),
+    });
+    expect(server.draining).toBe(true);
+    const refused = await client.fetch('/other');
+    expect(refused.status).toBe(401);
+    expect(await refused.json()).toEqual({ code: 'DEVICE_REVOKED' });
+    const socket = client.createSocket('/ws');
+    const socketEventsSeen = socketEvents(socket);
+    await waitFor(() => socketEventsSeen.some((event) => event.type === 'close'));
+    expect(socket.upgradeResponse?.status).toBe(401);
+    expect(client.closed).toBe(false);
+
+    slow.release();
+    expect((await inFlight).status).toBe(204);
+    expect(await closed).toEqual([4403, 'device revoked']);
+  });
+
+  it('closes at once with nothing in flight, and after the bound with a request that never ends', async () => {
+    const idle = await setup({});
+    const closedNow = new Promise<number>((resolve) =>
+      idle.client.onClose((code) => resolve(code)),
+    );
+    idle.server.drain(4403, 'device revoked');
+    expect(await closedNow).toBe(4403);
+
+    const stuck = await setup({ fetch: () => new Promise<Response>(() => {}) });
+    const pending = stuck.client.fetch('/forever').catch((error: unknown) => error);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const started = Date.now();
+    const closed = new Promise<number>((resolve) => stuck.client.onClose((code) => resolve(code)));
+    stuck.server.drain(4403, 'device revoked', { timeoutMs: 80 });
+    expect(await closed).toBe(4403);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(70);
+    expect(await pending).toBeInstanceOf(TunnelClosedError);
+  });
+
+  it('answers 503 while draining when no refusal is given', async () => {
+    const slow = gate();
+    const { client, server } = await setup({
+      fetch: async () => {
+        await slow.promise;
+        return new Response('ok');
+      },
+    });
+    const inFlight = client.fetch('/slow');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    server.drain(1000, 'going');
+    const refused = await client.fetch('/next');
+    expect(refused.status).toBe(503);
+    expect(await refused.json()).toMatchObject({ code: 'STREAM_CLOSING' });
+    slow.release();
+    expect(await (await inFlight).text()).toBe('ok');
   });
 });
 

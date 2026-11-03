@@ -5,7 +5,7 @@ import {
   type PushRequest,
   type Relay,
 } from '@openbots/relay';
-import { wsEvent } from '@openbots/shared';
+import { EVENTS_CHANNEL, wsEvent, type WsEvent } from '@openbots/shared';
 import { connectThroughRelay, hostPresence, RelayConnectError } from '@openbots/tunnel';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
@@ -13,13 +13,19 @@ import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
 import { publishEvent } from '../infra/index.js';
 import { registry } from '../metrics.js';
-import { createPairing } from '../services/devices.js';
+import { createPairing, pairingCodeHash } from '../services/devices.js';
 import { ensureInstanceKey, type InstanceKey } from '../services/instance-key.js';
 import { createTestApp, type TestApp } from '../test-app.js';
-import { createRelayLink, relayCloseCode, type HostRelayLink } from './link.js';
+import {
+  createRelayLink,
+  DEFAULT_LINK_TIMING,
+  relayCloseCode,
+  type HostRelayLink,
+} from './link.js';
 
-// The host link against a real relay in process: linking, status, backoff,
-// dialing only while a device or pairing exists, and push.
+// The host link against a real relay in process: linking, status and its
+// `relay.status` events, backoff, dialing only while a device or pairing
+// exists (and finding one the CLI made), and push.
 
 const FAST = {
   initialBackoffMs: 50,
@@ -136,6 +142,65 @@ describe('relay link', () => {
       relay: l,
     });
     await waitFor(() => l.status().status === 'linked');
+  });
+
+  it('finds a pairing another process made within its off check, with no wake and no event', async () => {
+    expect(DEFAULT_LINK_TIMING.offCheckMs).toBe(10_000);
+    const l = await link({ timing: { ...FAST, offCheckMs: 100 } });
+    expect(l.status().status).toBe('off');
+    // As `openbots pair` would in its own process: a row, and nothing told to this one.
+    await t.db.insert(schema.devicePairings).values({
+      workspaceId,
+      ownerId,
+      codeHash: pairingCodeHash(crypto.getRandomValues(new Uint8Array(32))),
+      directUrls: [],
+      name: 'Server',
+      createsOwner: false,
+      expiresAt: new Date(Date.now() + 5 * 60_000),
+      createdBy: 'cli',
+    });
+    await waitFor(() => l.status().status === 'linked');
+  });
+
+  it('publishes relay.status to the owner as it changes, the GET /relay payload', async () => {
+    const events: WsEvent[] = [];
+    const off = await t.deps.infra.bus.subscribe<WsEvent>(EVENTS_CHANNEL, (event) => {
+      if (event.type === 'relay.status') events.push(event);
+    });
+    try {
+      await pair();
+      const l = await link();
+      await waitFor(() => events.some((e) => e.payload.status === 'linked'));
+      const linked = events.find((e) => e.payload.status === 'linked')!;
+      expect(linked).toMatchObject({ user_id: ownerId, workspace_id: workspaceId });
+      expect(linked.payload).toEqual(l.status());
+      expect(events.map((e) => e.payload.status)).toEqual(['connecting', 'linked']);
+      // Once nothing is left the link goes off, and the owner it told hears that too.
+      await clearPairings();
+      await l.stop();
+      expect(events.at(-1)).toMatchObject({
+        user_id: ownerId,
+        payload: { status: 'off', hostId: instance.hostId },
+      });
+    } finally {
+      await off();
+    }
+  });
+
+  it('publishes no relay.status from a push only link', async () => {
+    const events: WsEvent[] = [];
+    const off = await t.deps.infra.bus.subscribe<WsEvent>(EVENTS_CHANNEL, (event) => {
+      if (event.type === 'relay.status') events.push(event);
+    });
+    try {
+      await pair();
+      const l = await link({ capabilities: ['push'] });
+      await waitFor(() => l.status().status === 'linked');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(events).toEqual([]);
+    } finally {
+      await off();
+    }
   });
 
   it('links at start when a pairing is already open', async () => {

@@ -8,6 +8,7 @@ import {
 } from './handshake.js';
 import {
   BodyQueue,
+  CLOSE_QUEUE_FULL,
   DEFAULT_LIMITS,
   MessageAssembler,
   PAIR_PATH,
@@ -22,6 +23,7 @@ import {
   textEncoder,
   type Channel,
   type ChannelHandler,
+  type KeepaliveOptions,
   type TunnelLimits,
 } from './session.js';
 import type { ByteTransport } from './transport.js';
@@ -46,6 +48,16 @@ import type { ByteTransport } from './transport.js';
 // Headers cross in both directions less the names spec 5.4 lists (and less
 // `x-openbots-device` from the client, which only the adapter may set), so the
 // handler can forward the Request to the server's own port as it is.
+//
+// `drain` ends a stream gently: every request and `ws.open` from then on is
+// refused at once, and the stream closes once the HTTP responses already in
+// flight have been sent, or after a bound. A device that revokes itself over
+// its own stream so still gets its 204. Open WebSockets are not waited for;
+// they close with the stream.
+//
+// A WebSocket the handler opened may queue at most `maxQueuedBytes` behind a
+// shut window (beyond the message being sent). Past that the tunnel socket is
+// closed 1008 and so is the handler's socket.
 
 /** The origin of the Requests handed to `handler.fetch`. Only the path and query mean anything. */
 export const TUNNEL_ORIGIN = 'http://openbots.tunnel';
@@ -86,7 +98,19 @@ export interface TunnelServerOptions {
   handler: TunnelHandler;
   limits?: Partial<TunnelLimits>;
   handshakeTimeoutMs?: number;
+  /** The ping and idle close of spec 5.3; 25 and 60 seconds by default. */
+  keepalive?: Partial<KeepaliveOptions>;
 }
+
+export interface DrainOptions {
+  /** Close anyway after this long. Default 5 seconds. */
+  timeoutMs?: number;
+  /** The answer to a request or `ws.open` that arrives while draining. Default 503. */
+  refuse?: () => Response;
+}
+
+/** How long `drain` waits for in-flight responses by default. */
+export const DEFAULT_DRAIN_TIMEOUT_MS = 5_000;
 
 export interface TunnelServer {
   /** The device id once known; null while the stream serves pairing only. */
@@ -96,8 +120,16 @@ export interface TunnelServer {
   readonly clientKey: Uint8Array;
   readonly closed: boolean;
   readonly handshakeHash: Uint8Array;
+  /** True once `drain` was called. */
+  readonly draining: boolean;
   ping(): Promise<number>;
   close(code?: number, reason?: string): void;
+  /**
+   * Refuses every new request at once and closes the stream with `code` once
+   * the HTTP responses in flight are sent, or after `timeoutMs`. A second
+   * call changes nothing.
+   */
+  drain(code: number, reason: string, options?: DrainOptions): void;
   onClose(handler: (code: number, reason: string) => void): () => void;
 }
 
@@ -140,6 +172,13 @@ function stripRequestHeaders(headers: Record<string, string>): Record<string, st
   return out;
 }
 
+function closingResponse(): Response {
+  return new Response(
+    JSON.stringify({ code: 'STREAM_CLOSING', message: 'This stream is closing. Open a new one.' }),
+    { status: 503, headers: { 'content-type': 'application/json' } },
+  );
+}
+
 function deviceUnknownResponse(): Response {
   return new Response(
     JSON.stringify({
@@ -160,6 +199,10 @@ function readPath(value: unknown, what: string): string {
   return path;
 }
 
+// A backslash, whitespace or a control character: exactly what a path may not hold.
+// eslint-disable-next-line no-control-regex
+const UNSAFE_PATH_CHAR = /[\\\s\u0000-\u001f\u007f]/;
+
 /**
  * A request or socket path as the tunnel accepts it: a path and query on the
  * server itself, and nothing else. Null for a path that could name another
@@ -169,7 +212,7 @@ function readPath(value: unknown, what: string): string {
  * joins to its loopback origin.
  */
 export function normalizeTunnelPath(value: string): string | null {
-  if (!value.startsWith('/') || value.startsWith('//') || /[\\\s\u0000-\u001f\u007f]/.test(value)) {
+  if (!value.startsWith('/') || value.startsWith('//') || UNSAFE_PATH_CHAR.test(value)) {
     return null;
   }
   let url: URL;
@@ -194,6 +237,8 @@ interface ServerContext {
   readonly known: boolean;
   /** Looks the client's key up again after a pairing; true when it is now known. */
   promote(): Promise<boolean>;
+  /** The answer to a new request while the stream drains, or null when it does not. */
+  refusal(): Response | null;
 }
 
 export async function createTunnelServer(options: TunnelServerOptions): Promise<TunnelServer> {
@@ -211,6 +256,21 @@ export async function createTunnelServer(options: TunnelServerOptions): Promise<
   });
   const { clientKey } = handshake;
   let deviceId: string | null = handshake.decision.known ? handshake.decision.id : null;
+  /** The HTTP ids in flight, which a drain waits for. */
+  const exchanges = new Set<Channel>();
+  let draining: {
+    code: number;
+    reason: string;
+    refuse: () => Response;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
+  const settleDrain = () => {
+    if (!draining) return;
+    for (const channel of exchanges) if (!channel.open) exchanges.delete(channel);
+    if (exchanges.size) return;
+    clearTimeout(draining.timer);
+    session.close(draining.code, draining.reason);
+  };
 
   const ctx: ServerContext = {
     session: undefined as unknown as TunnelSession,
@@ -226,16 +286,24 @@ export async function createTunnelServer(options: TunnelServerOptions): Promise<
       if (decision.known) deviceId = decision.id;
       return decision.known;
     },
+    refusal: () => (draining ? draining.refuse() : null),
   };
   const session = new TunnelSession({
     role: 'server',
     transport,
     ciphers: handshake.ciphers,
     limits,
-    accept: (frame, channel) =>
-      frame.type === FrameType.HttpReq
-        ? new ServerExchange(ctx, channel, frame).handler
-        : new ServerSocketChannel(ctx, channel, frame).handler,
+    keepalive: options.keepalive,
+    accept: (frame, channel) => {
+      if (frame.type !== FrameType.HttpReq)
+        return new ServerSocketChannel(ctx, channel, frame).handler;
+      exchanges.add(channel);
+      return new ServerExchange(ctx, channel, frame).handler;
+    },
+    onRelease: (channel) => {
+      exchanges.delete(channel);
+      if (draining && !exchanges.size) queueMicrotask(settleDrain);
+    },
   });
   ctx.session = session;
   route.take(
@@ -256,8 +324,22 @@ export async function createTunnelServer(options: TunnelServerOptions): Promise<
       return session.closed;
     },
     handshakeHash: handshake.handshakeHash,
+    get draining() {
+      return draining !== null;
+    },
     ping: () => session.ping(),
     close: (code = 1000, reason = '') => session.close(code, reason),
+    drain(code, reason, drainOptions = {}) {
+      if (draining || session.closed) return;
+      const timer = setTimeout(
+        () => session.close(code, reason),
+        drainOptions.timeoutMs ?? DEFAULT_DRAIN_TIMEOUT_MS,
+      );
+      (timer as { unref?: () => void }).unref?.();
+      draining = { code, reason, refuse: drainOptions.refuse ?? closingResponse, timer };
+      session.onClose(() => clearTimeout(timer));
+      settleDrain();
+    },
     onClose: (onClose) => session.onClose(onClose),
   };
 }
@@ -399,7 +481,10 @@ class ServerExchange {
     const channel = this.#channel;
     const isPairing = method === 'POST' && pathname(path) === PAIR_PATH;
     let response: Response;
-    if (!ctx.known && !isPairing) {
+    const refused = ctx.refusal();
+    if (refused) {
+      response = refused;
+    } else if (!ctx.known && !isPairing) {
       response = deviceUnknownResponse();
     } else {
       try {
@@ -448,6 +533,8 @@ class ServerSocketChannel {
   #state: 'opening' | 'open' | 'refused' | 'closed' = 'opening';
   #sentClose = false;
   #receivedClose = false;
+  /** Bytes of messages handed to `#forward` and not sent yet. */
+  #queued = 0;
   readonly #assembler: MessageAssembler;
 
   constructor(ctx: ServerContext, channel: Channel, frame: Frame) {
@@ -467,7 +554,10 @@ class ServerSocketChannel {
     const ctx = this.#ctx;
     const channel = this.#channel;
     let result: ServerSocket | Response;
-    if (!ctx.known) {
+    const refused = ctx.refusal();
+    if (refused) {
+      result = refused;
+    } else if (!ctx.known) {
       result = deviceUnknownResponse();
     } else {
       try {
@@ -515,9 +605,41 @@ class ServerSocketChannel {
     if (!channel.open || this.#sentClose) return;
     const text = typeof data === 'string';
     const bytes = typeof data === 'string' ? textEncoder.encode(data) : data;
+    if (this.#queued > 0 && this.#queued + bytes.length > this.#ctx.limits.maxQueuedBytes) {
+      this.#overflow();
+      return;
+    }
+    this.#queued += bytes.length;
     channel.sendChain = channel.sendChain
       .then(() => this.#ctx.session.sendData(channel, FrameType.WsMsg, bytes, { end: true, text }))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        this.#queued -= bytes.length;
+      });
+  }
+
+  /**
+   * The client's window stayed shut while the server's socket kept talking:
+   * drop what is queued, close the tunnel socket 1008 ahead of it, and tell
+   * the server's socket. The client's echo frees the id.
+   */
+  #overflow(): void {
+    const ctx = this.#ctx;
+    const channel = this.#channel;
+    this.#sentClose = true;
+    const reason = 'send queue full';
+    channel.fail(new TunnelError('cancelled', reason));
+    try {
+      ctx.session.sendIfOpen(channel, {
+        type: FrameType.WsClose,
+        id: channel.id,
+        header: { code: CLOSE_QUEUE_FULL, reason },
+      });
+    } catch {
+      // The stream closed meanwhile.
+    }
+    this.#socket?.close(CLOSE_QUEUE_FULL, reason);
+    if (this.#receivedClose) ctx.session.release(channel);
   }
 
   #socketClosed(code: number, reason: string): void {
@@ -555,10 +677,11 @@ class ServerSocketChannel {
           this.#state = 'closed';
           return;
         }
+        // Credited per fragment, as the client does, so a message larger than the window completes.
+        ctx.session.consumed(channel, frame.body.length);
         if (!message) return;
         if (!this.#sentClose)
           this.#socket!.send(message.text ? textDecoder.decode(message.data) : message.data);
-        ctx.session.consumed(channel, message.data.length);
         return;
       }
       case FrameType.WsClose: {

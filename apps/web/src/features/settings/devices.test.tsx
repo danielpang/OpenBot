@@ -2,14 +2,27 @@
 import type { WsClient } from '@openbots/api-client';
 import type { WsEvent } from '@openbots/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RealtimeContext, type Realtime } from '../transcript/realtime.js';
-import { countdown, DevicesSettings, relativeTime, type Device } from './devices.js';
+import {
+  RealtimeContext,
+  RealtimeStatusContext,
+  type Realtime,
+  type RealtimeStatus,
+} from '../transcript/realtime.js';
+import {
+  countdown,
+  DevicesSettings,
+  RELAY_POLL_MS,
+  relativeTime,
+  relayQuery,
+  type Device,
+} from './devices.js';
 
 // Settings > Devices against a fake server: the list, pairing with its QR
-// code and countdown, revoke after the confirm, and the relay's status line.
+// code and countdown, revoke after the confirm, and the relay's status line,
+// which follows `relay.status` and is read again when the socket reconnects.
 
 const PHONE = '00000000-0000-4000-8000-0000000000d1';
 const LINK = 'openbots://pair#v=1&host=h1&key=k&code=c';
@@ -109,18 +122,39 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function render() {
+/** Sets the realtime connection's status the page sees. */
+let setSocketStatus: (status: RealtimeStatus['status']) => void = () => {};
+
+function WithStatus({ initial }: { initial: RealtimeStatus['status'] }) {
+  const [status, setStatus] = useState<RealtimeStatus>({
+    status: initial,
+    everOpen: initial === 'open',
+  });
+  setSocketStatus = (next) =>
+    act(() =>
+      setStatus((current) => ({ status: next, everOpen: current.everOpen || next === 'open' })),
+    );
+  return (
+    <RealtimeStatusContext value={status}>
+      <DevicesSettings />
+    </RealtimeStatusContext>
+  );
+}
+
+function render(socket: RealtimeStatus['status'] = 'open') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   act(() =>
     root.render(
       <QueryClientProvider client={client}>
         <RealtimeContext value={live.realtime}>
-          <DevicesSettings />
+          <WithStatus initial={socket} />
         </RealtimeContext>
       </QueryClientProvider>,
     ),
   );
 }
+
+const relayReads = () => server.requests.filter((r) => r.path === '/api/v1/relay').length;
 
 // Dialogs render in a portal on the body.
 const page = () => document.body.textContent ?? '';
@@ -172,12 +206,15 @@ describe('Settings > Devices', () => {
     await until(() => page().includes('No devices paired yet.'), 'the empty state');
   });
 
-  it('refreshes the list on device.paired and device.revoked', async () => {
+  it('refreshes the list on device.paired, device.updated and device.revoked', async () => {
     render();
     await until(() => page().includes('No devices paired yet.'), 'the empty state');
     server.devices = [device()];
     live.emit('device.paired', { device: device() });
     await until(() => page().includes("Ada's iPhone"), 'the paired device');
+    server.devices = [device({ pushRegistered: true })];
+    live.emit('device.updated', { device: { ...device(), pushRegistered: true } });
+    await until(() => page().includes('Push registered.'), 'the push token');
     server.devices = [];
     live.emit('device.revoked', { device: device() });
     await until(() => page().includes('No devices paired yet.'), 'the revoked device gone');
@@ -272,6 +309,66 @@ describe('Settings > Devices', () => {
     render();
     await until(() => page().includes(text), status);
     expect(page()).not.toContain('OPENBOTS_RELAY_URL');
+  });
+});
+
+describe('the relay status', () => {
+  it('follows relay.status from the socket without asking the server again', async () => {
+    render();
+    await until(() => page().includes('Relay: off'), 'off');
+    const reads = relayReads();
+    live.emit('relay.status', {
+      hostId: 'h1',
+      relayUrl: 'wss://relay.example.com',
+      status: 'connecting',
+      since: '2026-11-01T09:00:00.000Z',
+    });
+    await until(() => page().includes('Relay: connecting…'), 'connecting');
+    live.emit('relay.status', {
+      hostId: 'h1',
+      relayUrl: 'wss://relay.example.com',
+      status: 'linked',
+      since: '2026-11-01T09:00:01.000Z',
+    });
+    await until(
+      () =>
+        page().includes(
+          `Relay: linked since ${new Date('2026-11-01T09:00:01.000Z').toLocaleString()}`,
+        ),
+      'linked',
+    );
+    expect(relayReads()).toBe(reads);
+  });
+
+  it('reads the status again each time the socket reconnects', async () => {
+    render('connecting');
+    await until(() => page().includes('Relay: off'), 'off');
+    expect(relayReads()).toBe(1);
+    // Linked while the socket was down: no event reached the page.
+    server.relay = {
+      hostId: 'h1',
+      relayUrl: 'wss://relay.example.com',
+      status: 'linked',
+      since: null,
+    };
+    setSocketStatus('open');
+    await until(() => page().includes('Relay: linked'), 'linked after the reconnect');
+    expect(relayReads()).toBe(2);
+    setSocketStatus('closed');
+    server.relay = {
+      hostId: 'h1',
+      relayUrl: 'wss://relay.example.com',
+      status: 'off',
+      since: null,
+    };
+    setSocketStatus('open');
+    await until(() => page().includes('Relay: off'), 'off after the second reconnect');
+    expect(relayReads()).toBe(3);
+  });
+
+  it('keeps a slow poll as a fallback', () => {
+    expect(RELAY_POLL_MS).toBe(60_000);
+    expect(relayQuery.refetchInterval).toBe(60_000);
   });
 });
 

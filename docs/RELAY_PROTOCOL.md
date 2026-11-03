@@ -162,10 +162,11 @@ An HTTP id is open from `http.req` until END has gone both ways or an error ends
 
 ### 5.3 Flow control and limits
 
-- Each id has a window per direction, 1,048,576 bytes at open, counting the body bytes of `http.req`, `http.body`, `http.res` and `ws.msg`. A sender never exceeds the window; a receiver sends `credit` with the bytes it has consumed to reopen it. Headers do not count.
+- Each id has a window per direction, 1,048,576 bytes at open, counting the body bytes of `http.req`, `http.body`, `http.res` and `ws.msg`. A sender never exceeds the window; a receiver sends `credit` with the bytes it has consumed to reopen it. Headers do not count. A `ws.msg` fragment counts as consumed once the receiver has taken it into the message it is joining (the 16 MiB message limit bounds that memory), so a message larger than the window completes.
 - At most 64 open ids per stream; a 65th gets `error` with code `too_many_requests` on that id.
 - A request body of more than 16 MiB (the files limit) gets `error` with code `too_large`.
-- A stream idle for 60 seconds with no frame at all, pings included, may be closed by either side with 1000.
+- Keepalive: each side sends `ping` on id 0 once it has sent no frame for 25 seconds, and closes the stream 1000 with reason `idle` once it has received no frame at all (pings and pongs included) for 60 seconds. So a quiet stream stays open as long as both ends are there. The reference implementation takes both numbers as options (`keepalive: { pingIntervalMs, idleTimeoutMs }`).
+- A WebSocket may queue at most 8 MiB of messages behind a shut window, beyond the message being sent. On the server, when the handler's socket keeps talking to a client that credits nothing, the server sends `ws.close` with 1008 (`send queue full`) ahead of what is queued, drops the rest and closes the handler's socket with 1008. On the client, a `send` that would pass the bound does the same toward the server (`send buffer full`), and the socket's close event carries 1008 once the server echoes it.
 - Any frame on a stream whose Noise counter would overflow closes it (5.1).
 
 ### 5.4 What the server does with a frame
@@ -234,11 +235,30 @@ Response, 200:
 | ------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /api/v1/devices/pairings` | A signed-in user           | `{"id","expiresAt","link","qr":{"v":1,"host","key","code","relay","direct":[...],"name","setup"}}`. Body: `{"name"?: string, "direct"?: string[]}`. 409 `TOO_MANY_PAIRINGS` past 5 open pairings per owner |
 | `GET /api/v1/devices`           | A signed-in user or device | `{"items":[{"id","name","platform","createdAt","lastSeenAt","pushRegistered"}]}`, revoked devices left out                                                                                                 |
-| `DELETE /api/v1/devices/{id}`   | A signed-in user or device | 204. The key stops working at once, its streams close, its push token is forgotten                                                                                                                         |
+| `DELETE /api/v1/devices/{id}`   | A signed-in user or device | 204. The key stops working at once, its streams close (4403, once the responses in flight are sent: section 9), its push token is forgotten                                                                |
 | `PUT /api/v1/devices/{id}/push` | That device only           | Body `{"token":"<hex>","environment":"production" or "sandbox"}`. 204; 403 `NOT_THIS_DEVICE` from any other caller                                                                                         |
 | `GET /api/v1/relay`             | A signed-in user or device | `{"hostId","relayUrl","status":"off" / "connecting" / "linked","since"}`                                                                                                                                   |
 
-Events on `/ws`: `device.paired` and `device.revoked` with `{"device":{...}}`, scoped to the owner. A device's API key is an ordinary API key with the owner's permissions; `GET /api/v1/api-keys` leaves device keys out and `DELETE /api/v1/api-keys/{id}` answers 404 for one, so only `DELETE /devices/{id}` removes a device. `GET /api/v1/capabilities` reports `relay: true` when the server has a relay configured.
+Events on `/ws`, each scoped to one owner (`user_id`, in the organization `workspace_id`):
+
+| Event            | Payload                                                                  | When                                                                                                                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `device.paired`  | `{"device":{"id","name","platform","createdAt","revokedAt"}}`            | A device paired with the owner's account                                                                                                                                                                          |
+| `device.revoked` | The same                                                                 | A device was revoked; every API process's relay adapter closes its streams                                                                                                                                        |
+| `device.updated` | The same, the device also carrying `pushRegistered`                      | The device registered or refreshed its push token (`PUT /devices/{id}/push`); the push worker reads the organization's devices again, as it does on every `device.*` event                                        |
+| `relay.status`   | The `GET /api/v1/relay` answer: `{"hostId","relayUrl","status","since"}` | The relay link of an API process changed status. Sent to every owner with an unrevoked device or an open pairing, and to those the previous `relay.status` went to, so an owner whose last device went sees `off` |
+
+A client that shows the relay's status listens for `relay.status` and reads `GET /api/v1/relay` again each time its socket reconnects, since an event sent while it was away is lost. A push only link (a worker process) sends no `relay.status`.
+
+A device's API key is an ordinary API key with the owner's permissions; `GET /api/v1/api-keys` leaves device keys out and `DELETE /api/v1/api-keys/{id}` answers 404 for one, so only `DELETE /devices/{id}` removes a device.
+
+`GET /api/v1/capabilities` (no authentication) reports, besides the sign-in options:
+
+| Field      | Meaning                                                                                                                                                                                              |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `relay`    | `true` when the server has a relay configured                                                                                                                                                        |
+| `version`  | The server's release version, such as `1.2.0` (the root `package.json`, which the release stamps and checks against its tag); `0.0.0` on a development build                                         |
+| `protocol` | `{"relay":1}`: the version of this protocol the server speaks. A client that needs a later one, or a later `version`, tells the owner to update the server. Absent on a server older than this field |
 
 ---
 
@@ -272,16 +292,16 @@ Priority 10 for `approval` and `question`, 5 for the rest; `expiresAt` one day a
 
 Problems from the API are its usual JSON problems (`{"code","message"}`). Codes added by this protocol:
 
-| Code                     | Where                                           | Meaning                                                                                                          |
-| ------------------------ | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `PAIRING_INVALID`        | `POST /devices/pair`, 401                       | The code is unknown, used or expired                                                                             |
-| `PAIRING_KEY_MISMATCH`   | `POST /devices/pair`, 400                       | `publicKey` is not the handshake's static key                                                                    |
-| `DEVICE_UNKNOWN`         | Any tunneled request, 403                       | The stream's device is not paired; only pairing is served                                                        |
-| `DEVICE_REVOKED`         | Any request, 401                                | The device was revoked (its key is gone; a plain 401 from the API)                                               |
-| `DEVICE_ALREADY_PAIRED`  | `POST /devices/pair`, 409                       | An unrevoked device already holds that static key                                                                |
-| `TOO_MANY_PAIRINGS`      | `POST /devices/pairings`, 409                   | Five pairings are already open for this owner                                                                    |
-| `DEVICE_KEY_NOT_ALLOWED` | `POST /api-keys`, `POST /devices/pairings`, 403 | A device key cannot make API keys or pairings, so a stolen phone cannot leave a credential behind its revocation |
-| `NOT_THIS_DEVICE`        | `PUT /devices/{id}/push`, 403                   | The caller is not that device                                                                                    |
+| Code                     | Where                                           | Meaning                                                                                                                                                            |
+| ------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PAIRING_INVALID`        | `POST /devices/pair`, 401                       | The code is unknown, used or expired                                                                                                                               |
+| `PAIRING_KEY_MISMATCH`   | `POST /devices/pair`, 400                       | `publicKey` is not the handshake's static key                                                                                                                      |
+| `DEVICE_UNKNOWN`         | Any tunneled request, 403                       | The stream's device is not paired; only pairing is served                                                                                                          |
+| `DEVICE_REVOKED`         | Any request, 401                                | The device was revoked: a plain 401 from the API (its key is gone), or this code from the adapter for a request on a revoked device's stream before it closes 4403 |
+| `DEVICE_ALREADY_PAIRED`  | `POST /devices/pair`, 409                       | An unrevoked device already holds that static key                                                                                                                  |
+| `TOO_MANY_PAIRINGS`      | `POST /devices/pairings`, 409                   | Five pairings are already open for this owner                                                                                                                      |
+| `DEVICE_KEY_NOT_ALLOWED` | `POST /api-keys`, `POST /devices/pairings`, 403 | A device key cannot make API keys or pairings, so a stolen phone cannot leave a credential behind its revocation                                                   |
+| `NOT_THIS_DEVICE`        | `PUT /devices/{id}/push`, 403                   | The caller is not that device                                                                                                                                      |
 
 Tunnel `error` frame codes: `protocol`, `too_many_requests`, `too_large`, `cancelled`, `internal`.
 
@@ -299,5 +319,7 @@ Tunnel `error` frame codes: `protocol`, `too_many_requests`, `too_large`, `cance
 | 4401       | relay         | The host's signature did not verify                                                      |
 | 4404       | relay         | The host is offline                                                                      |
 | 4410       | relay         | The host link dropped while the stream was open                                          |
-| 4403       | tunnel        | The server closed the stream because its device was revoked                              |
+| 4403       | tunnel        | The server closed the stream because its device was revoked. See below                   |
 | 4429       | relay, tunnel | Too many streams or opens; the server also closes a ninth stream on one instance with it |
+
+On 4403: the moment the server learns a device is revoked, its streams answer every new `http.req` and `ws.open` with `http.res` 401 `{"code":"DEVICE_REVOKED"}`, and each stream closes 4403 once the HTTP responses already in flight have been sent, or after 5 seconds, whichever is first. Open WebSockets are not waited for; they end with the stream. So a device that revokes itself over its own stream gets its 204 before the close. The server learns of a revocation from the `device.revoked` event, and also by looking each open stream's device up again every 15 seconds, and before serving a request on a stream whose last look is older than that; without a shared event bus (no Redis), a revocation made by `openbots devices revoke` in another process is found that way.

@@ -26,8 +26,9 @@ import { ensureInstanceKey } from '../services/instance-key.js';
 // Which owner an event is for: its `user_id` when it names one, else the
 // owner of its Bot, else the owner of its chat, as the gateway would deliver
 // it to that owner's sockets. Events of organizations with no push device
-// are dropped before they reach a watcher; the answer is cached for a minute
-// per organization and forgotten on any `device.*` event.
+// are dropped before they reach a watcher; the answer is cached for ten
+// seconds per organization and forgotten on any `device.*` event (a pairing,
+// a revocation, or `device.updated` when a phone registers its push token).
 //
 // A notice is sent to a device once a day per tag, across worker processes:
 // the rate limiter (Redis when REDIS_URL is set) holds a bucket of one per
@@ -202,7 +203,7 @@ export async function startPushWorker(
     workspaces.set(workspaceId, pending);
     pending.then(
       (state) => {
-        // Forget it after a minute, so a token registered meanwhile is found.
+        // Forget it after `cacheMs`, so a change no event told of is found.
         const timer = setTimeout(
           () => {
             if (workspaces.get(workspaceId) === pending) workspaces.delete(workspaceId);

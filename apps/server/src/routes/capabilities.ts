@@ -1,13 +1,15 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { createRouter } from '../openapi.js';
 import { computerAvailable } from '../services/computer.js';
+import { RELAY_PROTOCOL_VERSION, serverVersion } from '../version.js';
 
 // What this install has turned on, for clients deciding what to show before
 // sign-in (GitHub and Google buttons, U1), whether there is a computer
 // (Phase 4), and what kind of install it is: self-hosted has one owner and no
 // admin screens; managed has organizations, which the managed build adds. `auth` says
-// whether the Mac app signs the owner in itself (routes/local.ts). Public: it
-// names no secrets.
+// whether the Mac app signs the owner in itself (routes/local.ts). `version`
+// and `protocol` let a phone tell an owner their server is too old for it
+// (version.ts). Public: it names no secrets.
 
 const CapabilitiesSchema = z
   .object({
@@ -33,6 +35,19 @@ const CapabilitiesSchema = z
       description:
         'A private relay is configured (OPENBOTS_RELAY_URL), so phones can pair and connect with no public URL',
     }),
+    version: z.string().optional().openapi({
+      description:
+        "The server's release version (the root package.json, which the release stamps), such as `1.2.0`; `0.0.0` on a development build",
+      example: '1.2.0',
+    }),
+    protocol: z
+      .object({
+        relay: z.number().int().openapi({
+          description: 'The relay and tunnel protocol version (docs/RELAY_PROTOCOL.md)',
+        }),
+      })
+      .optional()
+      .openapi({ description: 'Protocol versions this server speaks' }),
     auth: z.enum(['password', 'local']).optional().openapi({
       description:
         '`local`: the Mac app on This Mac signs its owner in itself (OPENBOTS_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in.',
@@ -63,6 +78,8 @@ export const capabilityRoutes = createRouter().openapi(
         customStdio,
         localEndpoints,
         relay: !!c.var.deps.config.relayUrl,
+        version: serverVersion(),
+        protocol: { relay: RELAY_PROTOCOL_VERSION },
         auth: localToken ? ('local' as const) : ('password' as const),
       },
       200,

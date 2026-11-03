@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { EVENTS_CHANNEL, type Unsubscribe, type WsEvent } from '@openbots/shared';
+import { EVENTS_CHANNEL, wsEvent, type Unsubscribe, type WsEvent } from '@openbots/shared';
+import { and, gt, isNotNull, isNull } from 'drizzle-orm';
 import {
   base64urlDecode,
   base64urlEncode,
@@ -14,7 +15,9 @@ import type {
   RelayPushRequest,
   RelayStatus,
 } from '../context.js';
-import { outsideScope } from '../db/scope.js';
+import { schema, type Db } from '../db/client.js';
+import { forEachWorkspace, outsideScope } from '../db/scope.js';
+import { publishEvent } from '../infra/index.js';
 import { setRelayLinked, setRelayStreams } from '../metrics.js';
 import { anyDevicesOrPairings } from '../services/devices.js';
 import type { InstanceKey } from '../services/instance-key.js';
@@ -29,9 +32,16 @@ import type { InstanceKey } from '../services/instance-key.js';
 // The link dials only while some organization has an unrevoked device or an
 // open pairing, so a fresh install makes no outbound connection. It checks at
 // start, on `device.paired` and `device.revoked`, on `wake()` (a pairing was
-// just made in this process) and every minute while off (a pairing made by
-// the CLI, in another process). Any close while it should be up is retried
-// with backoff from 1 second, doubling to a minute, and reset once linked.
+// just made in this process) and every 10 seconds while off, so a pairing
+// made by `openbots pair` in another process (with no Redis to carry an
+// event) is found within seconds. The check is one call to
+// openbots_devices_exist(). Any close while it should be up is retried with
+// backoff from 1 second, doubling to a minute, and reset once linked.
+//
+// A link that serves streams publishes `relay.status` (the `GET /relay`
+// answer) whenever its status changes, to every owner with a device or an
+// open pairing, and to those it told last time, so an owner whose last
+// device went sees the link go off.
 
 const HOST_PATH = '/v1/host';
 const STREAM_ID_BYTES = 4;
@@ -56,7 +66,7 @@ export interface LinkTiming {
 export const DEFAULT_LINK_TIMING: LinkTiming = {
   initialBackoffMs: 1_000,
   maxBackoffMs: 60_000,
-  offCheckMs: 60_000,
+  offCheckMs: 10_000,
   linkTimeoutMs: 10_000,
   pingIntervalMs: 25_000,
   pongTimeoutMs: 50_000,
@@ -414,6 +424,13 @@ export async function createRelayLink(
   let streamHandler: ((stream: RelayStreamTransport) => void) | null = null;
   let checking: Promise<void> | null = null;
   let recheck = false;
+  /** Owners told of the last status, as `workspace:user`. */
+  let told = new Set<string>();
+  /** Status events go out one at a time, in order. */
+  let announcing: Promise<void> = Promise.resolve();
+  const announces = capabilities.includes('streams');
+
+  const currentStatus = (): RelayStatus => ({ hostId: instance.hostId, relayUrl, status, since });
 
   const setStatus = (next: RelayStatus['status']) => {
     if (next === status) return;
@@ -421,7 +438,29 @@ export async function createRelayLink(
     since = new Date().toISOString();
     setRelayLinked(next === 'linked');
     logger.info({ status: next, hostId: instance.hostId }, 'relay link status');
+    if (announces) {
+      const snapshot = currentStatus();
+      announcing = announcing.then(() =>
+        outsideScope(() => announce(snapshot)).catch((err: unknown) =>
+          logger.warn({ err }, 'relay link could not publish its status'),
+        ),
+      );
+    }
   };
+
+  /** Publishes `relay.status` to the owners with a device or an open pairing, and to those told last. */
+  async function announce(payload: RelayStatus): Promise<void> {
+    const now = new Set(await relayOwners(db));
+    for (const key of now) told.add(key);
+    for (const key of told) {
+      const [workspaceId, userId] = key.split(':') as [string, string];
+      await publishEvent(
+        infra.bus,
+        wsEvent('relay.status', { ...payload }, { user_id: userId, workspace_id: workspaceId }),
+      );
+    }
+    told = now;
+  }
 
   const core: LinkCore = {
     instance,
@@ -543,7 +582,7 @@ export async function createRelayLink(
   await check();
 
   return {
-    status: () => ({ hostId: instance.hostId, relayUrl, status, since }),
+    status: currentStatus,
     wake() {
       // A pairing was just made: dial now rather than after the backoff.
       if (retry) {
@@ -578,6 +617,35 @@ export async function createRelayLink(
       }
       connection = null;
       setStatus('off');
+      await announcing;
     },
   };
+}
+
+/**
+ * Every owner with an unrevoked device or an open pairing, as
+ * `workspace:user`: who `relay.status` goes to. One query per organization,
+ * run only when the link's status changes.
+ */
+async function relayOwners(db: Db, now = new Date()): Promise<string[]> {
+  const owners = await forEachWorkspace(db, async (workspaceId) => {
+    const devices = await db
+      .selectDistinct({ ownerId: schema.devices.ownerId })
+      .from(schema.devices)
+      .where(isNull(schema.devices.revokedAt));
+    const pairings = await db
+      .selectDistinct({ ownerId: schema.devicePairings.ownerId })
+      .from(schema.devicePairings)
+      .where(
+        and(
+          isNotNull(schema.devicePairings.ownerId),
+          isNull(schema.devicePairings.usedAt),
+          gt(schema.devicePairings.expiresAt, now),
+        ),
+      );
+    const ids = new Set<string>();
+    for (const row of [...devices, ...pairings]) if (row.ownerId) ids.add(row.ownerId);
+    return [...ids].map((id) => `${workspaceId}:${id}`);
+  });
+  return owners.flat();
 }

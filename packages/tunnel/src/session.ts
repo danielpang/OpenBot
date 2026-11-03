@@ -34,6 +34,10 @@ import type { ByteTransport } from './transport.js';
 // sent before it heard are still in flight. Frames for an id that was opened
 // and has since closed are dropped; frames for an id that was never opened are
 // a protocol error.
+//
+// Keepalive (spec 5.3): each side sends a `ping` on id 0 once it has sent
+// nothing for 25 seconds, and closes the stream 1000 once it has received no
+// frame at all for 60 seconds. Both are options (`KeepaliveOptions`).
 
 export interface TunnelLimits {
   /** The flow control window per id per direction, in body bytes. */
@@ -46,7 +50,28 @@ export interface TunnelLimits {
   maxMessageBytes: number;
   /** Transport messages per direction before the stream closes 4400. */
   maxMessages: number;
+  /**
+   * WebSocket bytes one socket may queue behind a shut window, beyond the
+   * message being sent; past it the socket is closed 1008 (spec 5.3).
+   */
+  maxQueuedBytes: number;
 }
+
+/** When a side pings an idle stream, and when it gives up on one (spec 5.3). 0 turns either off. */
+export interface KeepaliveOptions {
+  /** A `ping` goes out once nothing has been sent for this long. */
+  pingIntervalMs: number;
+  /** The stream is closed 1000 once nothing at all has been received for this long. */
+  idleTimeoutMs: number;
+}
+
+export const DEFAULT_PING_INTERVAL_MS = 25_000;
+export const DEFAULT_IDLE_TIMEOUT_MS = 60_000;
+/** The close code and reason of a stream that went quiet. */
+export const CLOSE_IDLE = 1000;
+export const IDLE_REASON = 'idle';
+/** The close code of a WebSocket whose send queue passed `maxQueuedBytes`. */
+export const CLOSE_QUEUE_FULL = 1008;
 
 /** What the Headers constructor takes (the DOM's HeadersInit, which a Node-only lib does not name). */
 export type HeadersInit = NonNullable<ConstructorParameters<typeof Headers>[0]>;
@@ -62,6 +87,7 @@ export const DEFAULT_LIMITS: Readonly<TunnelLimits> = Object.freeze({
   maxRequestBodyBytes: 16 * 1024 * 1024,
   maxMessageBytes: 16 * 1024 * 1024,
   maxMessages: 2 ** 32,
+  maxQueuedBytes: 8 * 1024 * 1024,
 });
 
 /** A frame that is well formed but wrong for the id's state. Answered with a stream-level `protocol` error. */
@@ -152,6 +178,9 @@ export interface SessionOptions {
   limits: TunnelLimits;
   /** Server only: a frame that opens a new id. Returns the handler for the id. */
   accept?: (frame: Frame, channel: Channel) => ChannelHandler;
+  /** Called each time an id is released. */
+  onRelease?: (channel: Channel) => void;
+  keepalive?: Partial<KeepaliveOptions>;
 }
 
 interface PendingPing {
@@ -173,6 +202,11 @@ export class TunnelSession {
   #closed: { code: number; reason: string } | null = null;
   #closeHandlers = new Set<(code: number, reason: string) => void>();
   #pings: PendingPing[] = [];
+  readonly #onRelease: SessionOptions['onRelease'];
+  readonly #keepalive: KeepaliveOptions;
+  #lastSent = Date.now();
+  #lastReceived = Date.now();
+  #keepaliveTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(options: SessionOptions) {
     this.role = options.role;
@@ -180,6 +214,39 @@ export class TunnelSession {
     this.#transport = options.transport;
     this.#ciphers = options.ciphers;
     this.#accept = options.accept;
+    this.#onRelease = options.onRelease;
+    this.#keepalive = {
+      pingIntervalMs: options.keepalive?.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS,
+      idleTimeoutMs: options.keepalive?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS,
+    };
+    const periods = [this.#keepalive.pingIntervalMs, this.#keepalive.idleTimeoutMs].filter(
+      (ms) => ms > 0,
+    );
+    if (periods.length) {
+      // A fifth of the shorter period: a ping or an idle close is at most that late.
+      const tick = Math.max(1, Math.floor(Math.min(...periods) / 5));
+      this.#keepaliveTimer = setInterval(() => this.#tick(), tick);
+      (this.#keepaliveTimer as { unref?: () => void }).unref?.();
+    }
+  }
+
+  /** Pings a stream this side has been quiet on, and closes one the peer has been quiet on. */
+  #tick(): void {
+    if (this.#closed) return;
+    const now = Date.now();
+    const { pingIntervalMs, idleTimeoutMs } = this.#keepalive;
+    if (idleTimeoutMs > 0 && now - this.#lastReceived >= idleTimeoutMs) {
+      this.close(CLOSE_IDLE, IDLE_REASON);
+      return;
+    }
+    if (pingIntervalMs > 0 && now - this.#lastSent >= pingIntervalMs) {
+      try {
+        // Not one of `ping()`'s: the pong only counts as a frame received.
+        this.send({ type: FrameType.Ping, id: 0, header: { ts: now } });
+      } catch {
+        // The stream closed meanwhile.
+      }
+    }
   }
 
   get closed(): boolean {
@@ -239,6 +306,7 @@ export class TunnelSession {
       }
       throw error;
     }
+    this.#lastSent = Date.now();
     this.#transport.send(message);
   }
 
@@ -311,6 +379,7 @@ export class TunnelSession {
     channel.open = false;
     this.#channels.delete(channel.id);
     channel.fail(error);
+    this.#onRelease?.(channel);
   }
 
   /** Sends `error` on an id and releases it. */
@@ -368,6 +437,7 @@ export class TunnelSession {
 
   #finish(error: Error, code: number, reason: string): void {
     this.#closed = { code, reason };
+    clearInterval(this.#keepaliveTimer);
     const channels = [...this.#channels.values()];
     for (const channel of channels) {
       this.release(channel, error);
@@ -384,6 +454,7 @@ export class TunnelSession {
   /** One transport message from the peer. */
   receive(message: Uint8Array): void {
     if (this.#closed) return;
+    this.#lastReceived = Date.now();
     let plaintext: Uint8Array;
     try {
       plaintext = this.#ciphers.receive.decrypt(message);

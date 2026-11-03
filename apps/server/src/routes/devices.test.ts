@@ -560,6 +560,16 @@ describe('devices and pairing', () => {
         request(t, 'GET', '/devices', { cookie }),
       );
       expect(listed.items.find((d) => d.id === phone.device.id)?.pushRegistered).toBe(true);
+      // The push worker reads the organization's devices again on it.
+      const updated = events.filter((e) => e.type === 'device.updated');
+      expect(updated).toHaveLength(1);
+      expect(updated[0]).toMatchObject({
+        user_id: ownerId,
+        workspace_id: workspaceId,
+        payload: {
+          device: { id: phone.device.id, name: phone.device.name, pushRegistered: true },
+        },
+      });
 
       const unknown = await request(t, 'PUT', `/devices/${crypto.randomUUID()}/push`, {
         key: phone.key,

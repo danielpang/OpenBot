@@ -8132,6 +8132,16 @@ export interface components {
       /** @description A private relay is configured (OPENBOTS_RELAY_URL), so phones can pair and connect with no public URL */
       relay?: boolean;
       /**
+       * @description The server's release version (the root package.json, which the release stamps), such as `1.2.0`; `0.0.0` on a development build
+       * @example 1.2.0
+       */
+      version?: string;
+      /** @description Protocol versions this server speaks */
+      protocol?: {
+        /** @description The relay and tunnel protocol version (docs/RELAY_PROTOCOL.md) */
+        relay: number;
+      };
+      /**
        * @description `local`: the Mac app on This Mac signs its owner in itself (OPENBOTS_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in.
        * @enum {string}
        */
