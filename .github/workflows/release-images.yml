@@ -17,18 +17,25 @@
 # relay runs with the compose stack's `relay` profile or on its own; the
 # standalone image is the whole of OpenBots in one container (deploy/).
 #
-# Every run also writes each image, per architecture, as a gzipped
-# `docker load` archive, openbots-<image>-<version>-linux-<arch>.tar.gz, and
-# uploads it as the workflow artifact release-image-<image> for the GitHub
-# Release. The archives come from the same build (its cache), tagged with the
-# full version only. GitHub caps a release asset at 2 GiB, so the job fails
-# when an archive reaches that.
+# Every run writes each image, per architecture, as a gzipped `docker load`
+# archive, openbots-<image>-<version>-linux-<arch>.tar.gz, and uploads it as
+# the workflow artifact release-image-<image> for the GitHub Release. The
+# archives are built first, each architecture with a build cache of its own
+# (release-<image>-<arch>, so neither evicts the other), and checked:
+# GitHub caps a release asset at 2 GiB, so the job fails when an archive
+# reaches that, before anything is pushed. The push then reuses those caches.
+#
+# Each image job pushes the full version tag only (1.2.0). The floating tags
+# (1.2 and latest) move in the last job, `floating-tags`, once every image
+# job has succeeded, so a failed image never leaves `latest` pointing at a
+# mix of two releases.
 #
 # Without `publish` (the dry run) nothing is pushed or logged in to. To keep it
 # cheap the computer and standalone images are built for linux/amd64 only:
 # their arm64 builds compile node-pty and install Chromium under QEMU and take
-# much longer. The server, the sandbox firewall and the relay are built for
-# both architectures.
+# much longer (the standalone image's JavaScript build runs on the runner's
+# own platform, docker/standalone.Dockerfile). The server, the sandbox
+# firewall and the relay are built for both architectures.
 #
 # Permissions come from the calling job: contents: read, plus packages: write
 # to publish.
@@ -132,33 +139,17 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           flavor: latest=false
-          # major.minor and latest only for a published release, never for a prerelease.
+          # The full version only; floating-tags moves major.minor and latest.
           tags: |
             type=raw,value=${{ inputs.version }}
-            type=raw,value=${{ inputs.minor }},enable=${{ inputs.publish && !inputs.prerelease }}
-            type=raw,value=latest,enable=${{ inputs.publish && !inputs.prerelease }}
           labels: |
             org.opencontainers.image.title=openbots-${{ matrix.image }}
             org.opencontainers.image.description=${{ matrix.description }}
             org.opencontainers.image.licenses=BUSL-1.1
             org.opencontainers.image.version=${{ inputs.version }}
 
-      - name: Build and push
-        if: inputs.publish
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          platforms: ${{ env.PLATFORMS }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,scope=${{ matrix.image }},mode=max
-
-      # The archives: one platform each, in the format `docker save` writes.
-      # After the push these steps reuse the builder's cache; in a dry run
-      # they are the build.
+      # The archives: one platform each, in the format `docker save` writes,
+      # each with its own cache scope. They are the build; the push reuses it.
       - name: Write the linux/amd64 archive
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -170,7 +161,8 @@ jobs:
           outputs: type=docker,dest=${{ env.ARCHIVES }}/${{ env.ARCHIVE_BASE }}-amd64.tar
           provenance: false
           sbom: false
-          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-from: type=gha,scope=release-${{ matrix.image }}-amd64
+          cache-to: type=gha,scope=release-${{ matrix.image }}-amd64,mode=max
 
       - name: Write the linux/arm64 archive
         if: contains(env.PLATFORMS, 'linux/arm64')
@@ -184,7 +176,8 @@ jobs:
           outputs: type=docker,dest=${{ env.ARCHIVES }}/${{ env.ARCHIVE_BASE }}-arm64.tar
           provenance: false
           sbom: false
-          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-from: type=gha,scope=release-${{ matrix.image }}-arm64
+          cache-to: type=gha,scope=release-${{ matrix.image }}-arm64,mode=max
 
       - name: Compress the archives and check their size
         working-directory: ${{ env.ARCHIVES }}
@@ -209,6 +202,22 @@ jobs:
           ls -l
           exit "$status"
 
+      # Only once the archives are known to fit: the full version tag, from
+      # the caches the archive builds just wrote.
+      - name: Push the version tag
+        if: inputs.publish
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: |
+            type=gha,scope=release-${{ matrix.image }}-amd64
+            type=gha,scope=release-${{ matrix.image }}-arm64
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-image-${{ matrix.image }}
@@ -217,3 +226,32 @@ jobs:
           # Already gzipped.
           compression-level: 0
           retention-days: ${{ inputs.publish && 7 || 3 }}
+
+  # major.minor and latest, for a published release that is not a
+  # prerelease, once every image job above succeeded: each points at the
+  # manifest the version tag already names, so nothing is rebuilt.
+  floating-tags:
+    name: Floating tags
+    needs: image
+    if: inputs.publish && !inputs.prerelease
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Point ${{ inputs.minor }} and latest at ${{ inputs.version }}
+        env:
+          PREFIX: ${{ inputs.image-prefix }}
+          VERSION: ${{ inputs.version }}
+          MINOR: ${{ inputs.minor }}
+        run: |
+          for image in server computer sandbox-firewall relay standalone; do
+            docker buildx imagetools create \
+              -t "$PREFIX/$image:$MINOR" -t "$PREFIX/$image:latest" \
+              "$PREFIX/$image:$VERSION"
+            echo "$PREFIX/$image: $MINOR and latest now point at $VERSION"
+          done

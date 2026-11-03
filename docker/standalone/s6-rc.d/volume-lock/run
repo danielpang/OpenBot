@@ -1,0 +1,24 @@
+#!/bin/bash
+# shellcheck shell=bash
+# Holds an exclusive lock on the volume for as long as the container runs:
+# flock on /data/.lock, taken before anything else starts (standalone-init,
+# postgres and redis depend on this service). Two containers on one volume
+# would run two PostgreSQL servers on one data directory and corrupt it, so a
+# second container stops at once with a message instead. The lock is the
+# kernel's and goes with this process: a container that dies leaves none
+# behind. It holds between containers on one machine (one Docker host, one
+# Fly Machine), not across machines sharing a network filesystem.
+set -euo pipefail
+exec 9>>/data/.lock
+if ! flock -n 9; then
+  echo "volume-lock: another container is using this volume: /data/.lock is held. Two containers on one volume would corrupt the database, so this one stops. Stop the other container first (docker ps --filter volume=<the volume>), then start this one again." >&2
+  # Stop the container rather than let s6 run this again and again.
+  printf '75' >/run/s6-linux-init-container-results/exitcode 2>/dev/null || true
+  exec /run/s6/basedir/bin/halt
+fi
+chmod 0600 /data/.lock
+# Ready (notification-fd), then hold fd 9, and with it the lock, until the
+# container stops.
+echo >&3
+exec 3>&-
+exec sleep infinity

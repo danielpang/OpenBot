@@ -1,6 +1,8 @@
 #!/bin/bash
-# standalone-init, the oneshot every other service waits for. Runs as root
-# under with-contenv, so it sees the container's environment.
+# standalone-init, the oneshot every service but volume-lock waits for. Runs
+# as root under with-contenv, so it sees the container's environment, and
+# only once volume-lock holds /data/.lock, so no other container is using
+# this volume.
 #
 # On first boot it writes /data/.env the way install.sh writes .env (the
 # master key, the database and Redis passwords, the computer agent's token,
@@ -8,15 +10,26 @@
 # cluster. On every boot it adds a setting that is missing, fixes the owner
 # and mode of everything under /data, and makes sure the database role, the
 # database and the pgvector extension exist, with the role's password from
-# the settings. It refuses OPENBOTS_DEPLOYMENT=managed (V6), which stops the
-# container.
+# the settings.
+#
+# It refuses to start (which stops the container) when:
+#   - a database exists and the master key or a password is missing, since a
+#     new one would make the data unreadable;
+#   - /data/pgdata holds files but no complete cluster;
+#   - the cluster is of another PostgreSQL major version than the image's;
+#   - OPENBOTS_DEPLOYMENT=managed (V6).
 set -euo pipefail
 
 # shellcheck source=SCRIPTDIR/env.sh
 . /usr/local/lib/openbots/standalone/env.sh
+# shellcheck source=SCRIPTDIR/init-lib.sh
+. /usr/local/lib/openbots/standalone/init-lib.sh
 
-PGBIN=/usr/lib/postgresql/16/bin
+PGBIN="$OPENBOTS_PGBIN"
 PGDATA="$OPENBOTS_DATA/pgdata"
+# initdb writes here first, and the result moves to PGDATA only once it is
+# complete, so a boot cut short leaves no half cluster in PGDATA.
+PGDATA_NEW="$OPENBOTS_DATA/pgdata.initdb"
 
 log() { printf 'standalone-init: %s\n' "$*"; }
 die() {
@@ -31,33 +44,6 @@ hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
 # OPENBOTS_MASTER_KEY: 32 random bytes, base64, as `openbots keygen` prints.
 master_key() { head -c 32 /dev/urandom | base64 -w 0; }
 
-# Writes NAME=VALUE into /data/.env, in place of an empty NAME= or at the end.
-set_in_env_file() {
-  awk -v name="$1" -v value="$2" '
-    index($0, name "=") == 1 && !found { print name "=" value; found = 1; next }
-    { print }
-    END { if (!found) print name "=" value }
-  ' "$OPENBOTS_ENV_FILE" >"$OPENBOTS_ENV_FILE.tmp"
-  chmod 600 "$OPENBOTS_ENV_FILE.tmp"
-  mv "$OPENBOTS_ENV_FILE.tmp" "$OPENBOTS_ENV_FILE"
-}
-
-# Adds NAME to /data/.env unless the file or the container's environment
-# already gives it a value. `generate` is the command that makes one.
-ensure_setting() {
-  local name="$1"
-  shift
-  if grep -Eq "^${name}=.+" "$OPENBOTS_ENV_FILE"; then
-    return 0
-  fi
-  if [ -n "${!name:-}" ]; then
-    log "Taking $name from the container's environment"
-    return 0
-  fi
-  log "Writing $name to $OPENBOTS_ENV_FILE"
-  set_in_env_file "$name" "$("$@")"
-}
-
 # Gives everything under DIR to USER:GROUP that is not theirs already, so a
 # volume restored from elsewhere, or made by an older image, works.
 fix_owner() {
@@ -70,15 +56,20 @@ umask 077
 # Root's, and closed but for traversal: the bot user reaches /data/home (its
 # home) through it and nothing else.
 install -d -m 0711 -o root -g root "$OPENBOTS_DATA"
+
+# Before anything is written: the cluster must be one this image can open.
+check_pgdata "$PGDATA" "$OPENBOTS_PG_MAJOR"
+
 if [ ! -e "$OPENBOTS_ENV_FILE" ]; then
-  log "First boot: creating $OPENBOTS_ENV_FILE"
+  log "Creating $OPENBOTS_ENV_FILE"
   cat >"$OPENBOTS_ENV_FILE" <<'EOF'
 # OpenBots standalone settings, written on first boot (docker/standalone/README.md).
 # The container's own environment overrides anything here, so a platform's
 # secrets (`fly secrets set NAME=value`) take effect without editing this file.
 # Every name in .env.example works here, except those the image fixes:
 # DATABASE_URL, REDIS_URL, DOCKER_HOST, OPENBOTS_COMPUTER_AGENT_URL,
-# OPENBOTS_STDIO_RUNNER, OPENBOTS_FILES_DIR, OPENBOTS_ROLE and PORT.
+# OPENBOTS_STDIO_RUNNER, OPENBOTS_FILES_DIR, OPENBOTS_MCP_DIR, OPENBOTS_ROLE
+# and PORT.
 #
 # Keep a copy of OPENBOTS_MASTER_KEY somewhere safe: without it, stored
 # secrets and backups cannot be decrypted.
@@ -97,13 +88,18 @@ if [ -d /run/s6/container_environment ]; then
   find /run/s6/container_environment -type f -exec chmod 0600 {} +
 fi
 
-ensure_setting OPENBOTS_MASTER_KEY master_key
-ensure_setting POSTGRES_PASSWORD hex 24
-ensure_setting OPENBOTS_DB_APP_PASSWORD hex 24
-ensure_setting OPENBOTS_REDIS_PASSWORD hex 24
-ensure_setting OPENBOTS_COMPUTER_AGENT_TOKEN hex 32
-ensure_setting OPENBOTS_PUBLIC_URL echo http://localhost:3000
-ensure_setting OPENBOTS_TIMEZONE echo "${TZ:-UTC}"
+# A database that exists keeps the key and passwords it was made with.
+require_kept_settings "$PGDATA" "$OPENBOTS_ENV_FILE"
+
+ensure_setting "$OPENBOTS_ENV_FILE" OPENBOTS_MASTER_KEY master_key
+ensure_setting "$OPENBOTS_ENV_FILE" POSTGRES_PASSWORD hex 24
+ensure_setting "$OPENBOTS_ENV_FILE" OPENBOTS_DB_APP_PASSWORD hex 24
+ensure_setting "$OPENBOTS_ENV_FILE" OPENBOTS_REDIS_PASSWORD hex 24
+ensure_setting "$OPENBOTS_ENV_FILE" OPENBOTS_COMPUTER_AGENT_TOKEN hex 32
+ensure_setting "$OPENBOTS_ENV_FILE" OPENBOTS_PUBLIC_URL echo http://localhost:3000
+ensure_setting "$OPENBOTS_ENV_FILE" OPENBOTS_TIMEZONE echo "${TZ:-UTC}"
+
+warn_fixed_settings "$OPENBOTS_ENV_FILE" "$OPENBOTS_FIXED_SETTINGS"
 
 openbots_load_env
 
@@ -116,9 +112,12 @@ for name in POSTGRES_PASSWORD OPENBOTS_REDIS_PASSWORD; do
     die "$name must be 16 to 128 letters, digits, - or _"
 done
 
+# The phone reaches this server through the relay, or at an https address.
+if [ -z "${OPENBOTS_RELAY_URL:-}" ] && [[ "${OPENBOTS_PUBLIC_URL:-}" != https://* ]]; then
+  log "Warning: OPENBOTS_RELAY_URL is empty and OPENBOTS_PUBLIC_URL is not https, so a phone cannot reach this server from outside its network. Set OPENBOTS_RELAY_URL (fly secrets set, docker run -e or $OPENBOTS_ENV_FILE) and restart."
+fi
+
 # --- Owners and modes -----------------------------------------------------------
-install -d -m 0700 -o postgres -g postgres "$PGDATA"
-fix_owner "$PGDATA" postgres postgres
 install -d -m 0700 -o redis -g redis "$OPENBOTS_DATA/redis"
 fix_owner "$OPENBOTS_DATA/redis" redis redis
 # The server's uploads and Artifact files; only its stdio servers would write
@@ -136,15 +135,42 @@ chown bot:bot "$OPENBOTS_DATA/home"
 install -d -m 0711 -o root -g root "$OPENBOTS_DATA/agent"
 install -d -m 0700 -o root -g root "$OPENBOTS_DATA/backups"
 
+# --- The metadata address ---------------------------------------------------------
+# With NET_ADMIN (docker run --cap-add NET_ADMIN; a Fly Machine has it), the
+# Bots' users (bot 1000, cookies 1900, screen-n 2000 to 2089) cannot reach a
+# cloud VM's metadata service, which on some platforms hands out the
+# machine's credentials. Without it this is skipped, and the platform's
+# firewall is the place to block it (docker/standalone/README.md, Isolation).
+block_metadata() {
+  local tool="$1" address="$2" rule
+  command -v "$tool" >/dev/null 2>&1 || return 1
+  rule=(OUTPUT -d "$address" -m owner --uid-owner 1000-2089 -j DROP)
+  "$tool" -w -C "${rule[@]}" 2>/dev/null || "$tool" -w -I "${rule[@]}" 2>/dev/null
+}
+if block_metadata iptables 169.254.169.254; then
+  block_metadata ip6tables fd00:ec2::254 || true
+  log "Blocked the metadata address 169.254.169.254 for the Bots' users"
+else
+  log "Not blocking the metadata address 169.254.169.254: the container has no NET_ADMIN (add --cap-add NET_ADMIN to block it here)"
+fi
+
 # --- The database -------------------------------------------------------------
 install -d -m 0700 -o postgres -g postgres /run/postgresql
-if [ ! -s "$PGDATA/PG_VERSION" ]; then
-  log "First boot: initialising the database cluster in $PGDATA"
+if [ "$(pgdata_state "$PGDATA")" = none ]; then
+  log "Initialising the database cluster (PostgreSQL $OPENBOTS_PG_MAJOR)"
+  rm -rf "$PGDATA_NEW"
+  install -d -m 0700 -o postgres -g postgres "$PGDATA_NEW"
   # The superuser `postgres` signs in over the socket as the postgres user
   # only; every TCP connection needs a password.
-  as_postgres "$PGBIN/initdb" -D "$PGDATA" -U postgres --encoding=UTF8 --locale=C.UTF-8 \
+  as_postgres "$PGBIN/initdb" -D "$PGDATA_NEW" -U postgres --encoding=UTF8 --locale=C.UTF-8 \
     --auth-local=peer --auth-host=scram-sha-256 >/dev/null
+  sync
+  # An empty PGDATA (a mount point, or left by an older image) goes first.
+  if [ -d "$PGDATA" ]; then rmdir "$PGDATA"; fi
+  mv "$PGDATA_NEW" "$PGDATA"
 fi
+install -d -m 0700 -o postgres -g postgres "$PGDATA"
+fix_owner "$PGDATA" postgres postgres
 # Rewritten on each boot, so the rules below always hold: the owner and the
 # app role from loopback with a password, the superuser over the socket as
 # the postgres user. The server's settings also pass on the command line

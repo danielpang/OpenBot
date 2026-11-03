@@ -2,12 +2,14 @@
 # Backs up an OpenBots install (plan 16.3): the database, the files directory
 # and every computer's home volume, then verifies what it wrote.
 #
-#   bash scripts/backup.sh [output dir]   # default: backups/<UTC timestamp>
+#   bash scripts/backup.sh [dir]          # writes dir/<UTC timestamp>; dir defaults to backups
+#   bash scripts/backup.sh --out <dir>    # writes exactly dir, which must be new or empty
 #
-# Writes <dir>/database.dump (pg_dump custom format), <dir>/files.tar.gz,
-# <dir>/computers/<volume>.tar.gz and <dir>/MANIFEST (checksums and counts
-# that restore.sh checks before it replaces anything). Restore with
-# scripts/restore.sh.
+# So the same command runs again and again: each run makes a new timestamped
+# directory under the one named. A backup holds database.dump (pg_dump custom
+# format), files.tar.gz, computers/<volume>.tar.gz and MANIFEST (checksums
+# and counts that restore.sh checks before it replaces anything). Restore
+# with scripts/restore.sh.
 #
 # With Docker running it backs up the compose stack in this checkout (run it
 # from anywhere; the stack can be up or down). Without Docker it backs up a
@@ -15,7 +17,9 @@
 # Docker and are skipped). Inside the standalone image (OPENBOTS_STANDALONE=1,
 # `docker exec <container> openbots backup [dir]`) it backs up /data, by
 # default into /data/backups/<UTC timestamp>, with the Bots' home as
-# home.tar.gz and the computer agent's state as agent.tar.gz.
+# home.tar.gz and the computer agent's state as agent.tar.gz. There it first
+# checks the free space: a backup onto the volume that would leave it under
+# 10 percent free is refused, since PostgreSQL shares that disk.
 #
 # The backup does not contain OPENBOTS_MASTER_KEY. Keep .env (or at least the
 # key) somewhere safe as well: stored secrets cannot be decrypted without it.
@@ -31,13 +35,28 @@ die() {
   exit 1
 }
 
-case "${1:-}" in
-  -h | --help)
-    sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
-    exit 0
-    ;;
-  -*) die "unknown option '$1' (try --help)" ;;
-esac
+PARENT=""
+EXACT=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    --out)
+      [ "$#" -ge 2 ] || die "--out needs a directory"
+      EXACT="$2"
+      shift
+      ;;
+    -*) die "unknown option '$1' (try --help)" ;;
+    *)
+      [ -z "$PARENT" ] || die "one directory only (try --help)"
+      PARENT="$1"
+      ;;
+  esac
+  shift
+done
+[ -z "$PARENT" ] || [ -z "$EXACT" ] || die "give a directory or --out <dir>, not both"
 
 # The dump holds sessions and sealed secrets: keep the backup private.
 umask 077
@@ -50,8 +69,43 @@ if [ -n "$STANDALONE" ]; then
 else
   BACKUPS_DIR="$REPO_DIR/backups"
 fi
-OUT="${1:-$BACKUPS_DIR/$(date -u +%Y%m%dT%H%M%SZ)}"
+if [ -n "$EXACT" ]; then
+  OUT="$EXACT"
+else
+  OUT="${PARENT:-$BACKUPS_DIR}/$(date -u +%Y%m%dT%H%M%SZ)"
+  # Two runs in one second: the second gets a suffix rather than failing.
+  base="$OUT"
+  n=1
+  while [ -e "$OUT" ]; do
+    n=$((n + 1))
+    OUT="$base-$n"
+  done
+fi
 [ ! -e "$OUT" ] || [ -z "$(ls -A "$OUT")" ] || die "$OUT exists and is not empty"
+
+# The nearest directory of PATH that exists, for df.
+existing_dir() {
+  local dir="$1"
+  while [ ! -d "$dir" ]; do dir="$(dirname "$dir")"; done
+  printf '%s\n' "$dir"
+}
+
+if [ -n "$STANDALONE" ]; then
+  # What the backup may take at most: the data uncompressed. Onto /data it
+  # must leave 10 percent of the disk free, since PostgreSQL, Redis and the
+  # Bots write there too; elsewhere it must fit.
+  need_kib="$(du -skc /data/pgdata /data/files /data/home /data/agent 2>/dev/null | tail -n 1 | cut -f1)"
+  target="$(existing_dir "$OUT")"
+  read -r total_kib avail_kib < <(df -Pk "$target" | awk 'NR == 2 { print $2, $4 }')
+  if [ "$(stat -c %d "$target")" = "$(stat -c %d /data)" ]; then
+    if [ "$(((avail_kib - need_kib) * 10))" -lt "$total_kib" ]; then
+      die "not enough space on /data: the backup may take up to $((need_kib / 1024)) MiB and $((avail_kib / 1024)) MiB of $((total_kib / 1024)) MiB is free, which would leave under 10 percent for the database. Remove old backups from /data/backups, back up elsewhere (a mounted disk: openbots backup /mnt/backups), or grow the volume."
+    fi
+  elif [ "$avail_kib" -lt "$need_kib" ]; then
+    die "not enough space in $target: the backup may take up to $((need_kib / 1024)) MiB and $((avail_kib / 1024)) MiB is free"
+  fi
+fi
+
 mkdir -p "$OUT/computers"
 OUT="$(cd "$OUT" && pwd)"
 

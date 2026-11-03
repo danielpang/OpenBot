@@ -1,12 +1,18 @@
 #!/bin/bash
-# PostgreSQL 16 with pgvector, on /data/pgdata. It listens on loopback only
-# (postgres.js, the server's driver, takes no socket path from DATABASE_URL)
-# and on the socket in /run/postgresql, which only root and the postgres user
-# may open. pg_hba.conf (standalone-init) asks every TCP client for a password.
+# shellcheck shell=bash
+# PostgreSQL with pgvector (the image's POSTGRES_MAJOR, 16 by default), on
+# /data/pgdata. It listens on loopback only (postgres.js, the server's
+# driver, takes no socket path from DATABASE_URL) and on the socket in
+# /run/postgresql, which only root and the postgres user may open.
+# pg_hba.conf (standalone-init) asks every TCP client for a password.
 # Ready once pg_isready answers; SIGINT (down-signal) is a fast shutdown.
 set -euo pipefail
+# shellcheck source=SCRIPTDIR/../../lib/env.sh
+. /usr/local/lib/openbots/standalone/env.sh
 install -d -m 0700 -o postgres -g postgres /run/postgresql
-exec env -i PATH=/usr/lib/postgresql/16/bin:/command:/usr/bin:/bin LANG=C.UTF-8 TZ=UTC \
+# Kept from the kernel's OOM killer ahead of the Bots' programs.
+openbots_oom_score_adj -500
+exec env -i PATH="$OPENBOTS_PGBIN:/command:/usr/bin:/bin" LANG=C.UTF-8 TZ=UTC \
   s6-notifyoncheck -d -3 3 -n 0 -s 1000 -w 1000 \
   -c "s6-setuidgid postgres pg_isready -q -h /run/postgresql -d postgres" \
   s6-setuidgid postgres \

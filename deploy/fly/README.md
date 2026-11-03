@@ -21,12 +21,14 @@ fly volumes create data --size 10            # in the app's primary region
 The image writes `/data/.env` on its first boot, with a new master key and database passwords. Fly secrets reach the container as environment variables, and those override `/data/.env`:
 
 ```sh
-fly secrets set OPENBOTS_RELAY_URL=wss://<the relay>        # the relay your phone goes through
+fly secrets set OPENBOTS_RELAY_URL=wss://<the relay>        # the relay your phone goes through: without it the phone cannot reach the Machine
 fly secrets set ANTHROPIC_API_KEY=... OPENAI_API_KEY=...     # optional: you can also add providers on the phone
 fly secrets set OPENBOTS_TIMEZONE=Europe/Berlin              # when your Routines should run
 ```
 
-`fly secrets set` restarts the Machine. Any other setting from [.env.example](../../.env.example) works the same way.
+`fly secrets set` restarts the Machine. Any other setting from [.env.example](../../.env.example) works the same way, except those the image fixes (`DATABASE_URL`, `REDIS_URL`, `PORT` and the others in [docker/standalone/README.md](../../docker/standalone/README.md#settings)): a secret for one of those is ignored, and each boot logs a line naming it. Remove it with `fly secrets unset <name>`.
+
+`fly.toml` sets `TRUSTED_PROXIES` to `172.16.0.0/16`, the addresses Fly's proxy connects from, so the server reads the client's address from `X-Forwarded-For` for rate limits and webhook IP allowlists. That only matters once the Machine has a public address (below).
 
 ## Deploy and pair
 
@@ -61,22 +63,38 @@ fly secrets set OPENBOTS_PUBLIC_URL=https://<your app>.fly.dev
 fly deploy
 ```
 
-Fly gives the app its addresses and a certificate for `<your app>.fly.dev`. `auto_stop_machines = "off"` and `min_machines_running = 1` stay as they are: a stopped Machine runs no Routines and holds no relay link. To go back to no public address, comment the section out again and remove the addresses `fly ips list` shows with `fly ips release`.
+Fly gives the app its addresses and a certificate for `<your app>.fly.dev`. Add the addresses `fly ips list` shows to `TRUSTED_PROXIES` in `fly.toml` (for example `TRUSTED_PROXIES = "172.16.0.0/16,<ipv4>,<ipv6>"`) and deploy again: Fly's proxy puts the app's own address last in `X-Forwarded-For`, and the server, which reads that header from the right, needs it listed to find the client before it. `auto_stop_machines = "off"` and `min_machines_running = 1` stay as they are: a stopped Machine runs no Routines and holds no relay link. To go back to no public address, comment the section out again and remove the addresses `fly ips list` shows with `fly ips release`.
 
 ## Upgrade
 
-Change the tag in `[build] image` and run `fly deploy`. Migrations run at start, and the data on the volume stays. The Bots' computer is part of the image, so it moves to the same release.
+Change the tag in `[build] image` and run `fly deploy`. Fly stops the old Machine with `SIGTERM` and waits `kill_timeout` (60 seconds) before it kills it, which is the time PostgreSQL needs to shut down cleanly; keep it at 60 seconds or more. Migrations run at start, and the data on the volume stays. The Bots' computer is part of the image, so it moves to the same release. A release that moves PostgreSQL to a new major version says so in its notes, and the Machine refuses to start on the old data until you move it across ([docker/standalone/README.md](../../docker/standalone/README.md#upgrade)).
+
+## Resources and isolation
+
+The Machine is a VM, so its memory, its process limit and `/dev/shm` are the VM's, set by Fly from `[[vm]]`; the `docker run` flags of the standalone README have no equivalent here, and Chromium does not need a large `/dev/shm` (it runs with `--disable-dev-shm-usage`). One volume holds the database, the Bots' home and the backups in `/data/backups`: a Bot that fills its home fills the disk under the database, and `fly logs` shows a warning below 10 percent free. Grow the volume with `fly volumes extend`.
+
+The Bots' shells run in the same Machine as the server. They can reach Fly's private network: other apps in your organization (`<app>.internal`) and, when present, the Machines API socket at `/.fly/api`. Keep OpenBots in an organization of its own if others in it hold anything a Bot should not reach. The image blocks the metadata address 169.254.169.254 for the Bots' users at boot. The egress proxy setting (`OPENBOTS_SANDBOX_EGRESS_PROXY`) is advisory in this image: programs that honour `HTTP_PROXY` use it, and nothing stops one that does not.
 
 ## Backups
 
 Inside the Machine, the image's backup command writes a backup of the database, the files, the Bots' home and the computer's sign-ins:
 
 ```sh
-fly ssh console -C "openbots backup /data/backups"          # writes /data/backups/<timestamp>/
-fly ssh console -C "tar -C /data/backups -czf /data/backup.tar.gz <timestamp>"
-fly ssh sftp get /data/backup.tar.gz
+fly ssh console -C "openbots backup"                         # writes a new /data/backups/<timestamp>/
+fly ssh console -C "sh -c 'umask 077 && tar -C /data/backups -czf /data/backups/<timestamp>.tar.gz <timestamp>'"
+fly ssh sftp get /data/backups/<timestamp>.tar.gz
+fly ssh console -C "rm -rf /data/backups/<timestamp> /data/backups/<timestamp>.tar.gz"
 ```
 
-Keep the copy off the Machine, with the master key kept separately: a backup does not hold it. To restore, upload the archive with `fly ssh sftp shell` (`put`), unpack it under `/data/backups` and run `fly ssh console -C "openbots restore /data/backups/<timestamp>"`.
+The archive holds the database and the Bots' sign-ins, so it is written with `umask 077` into `/data/backups`, which only root can open (mode 0700). Each backup takes room on the volume the database uses, and `openbots backup` refuses one that would leave less than 10 percent free, so remove it from the Machine once you have the copy. Keep the copy off the Machine, with the master key kept separately: a backup does not hold it.
+
+To restore onto the same Machine, upload the archive with `fly ssh sftp shell` (`put` it into `/data/backups`), then:
+
+```sh
+fly ssh console -C "sh -c 'umask 077 && tar -C /data/backups -xzf /data/backups/<timestamp>.tar.gz'"
+fly ssh console -C "openbots restore /data/backups/<timestamp> --yes"
+```
+
+To restore onto a new app or a new volume, put the old master key in place first, since the new Machine generated a key of its own: `fly secrets set OPENBOTS_MASTER_KEY=<the old key>` (which restarts the Machine), then upload and restore as above. Stop the old Machine before the new one starts (`fly machine stop`, or `fly scale count 0` on the old app): a restored backup carries the server's identity, and two Machines running it dial the relay as one server. The restore empties Redis, so no job queued before it runs against the restored database.
 
 Fly also snapshots volumes daily (`fly volumes snapshots list <volume id>`); a new volume can be made from a snapshot. A snapshot is a coarse copy of the whole disk taken while Postgres runs, so prefer `openbots backup` for anything you mean to restore.

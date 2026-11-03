@@ -10,7 +10,13 @@
 **/coverage
 **/*.tsbuildinfo
 **/*.log
-.env
-.env.*
-!.env.example
+# Settings with secrets, anywhere in the tree (a checkout's .env holds the
+# master key), and local state that is not source: backups hold the
+# database, and the worktrees and the pnpm store are large.
+**/.env
+**/.env.*
+!**/.env.example
+backups/
+.worktrees/
+.pnpm-store/
 **/.DS_Store

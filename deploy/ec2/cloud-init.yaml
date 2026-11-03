@@ -13,7 +13,8 @@
 #
 # Set OPENBOTS_RELEASE below to a release from
 # https://github.com/danielpang/OpenBots/releases, and OPENBOTS_RELAY_URL to
-# the relay your phone goes through.
+# the relay your phone goes through. Without a relay URL the phone cannot
+# reach an instance with no inbound rule; setup warns in the console log.
 #
 # Network: with the relay, the server only dials out, so a security group with
 # no inbound rule at all is enough (add port 22 from your address, or use SSM
@@ -38,7 +39,9 @@ write_files:
       #!/usr/bin/env bash
       set -euo pipefail
 
-      # The release to install, and the relay to use.
+      # The release to install, and the relay to use. Leave the relay empty
+      # and the phone cannot reach this server: with no inbound rule, the
+      # relay is its only way in.
       OPENBOTS_RELEASE=1.0.0
       OPENBOTS_RELAY_URL=
       OPENBOTS_GITHUB_OWNER=danielpang
@@ -70,6 +73,12 @@ write_files:
       sha256sum --ignore-missing -c SHA256SUMS
       tar -xzf "$bundle"
       cd "openbots-$OPENBOTS_RELEASE"
+
+      if [ -z "$OPENBOTS_RELAY_URL" ]; then
+        # To the console log on purpose: it holds no secret, and it is where
+        # a launch that went wrong is looked at first.
+        echo "WARNING: OPENBOTS_RELAY_URL is empty in the cloud-init user data, so the phone will not reach this server (it has no public address). Set OPENBOTS_RELAY_URL in $DIR/openbots-$OPENBOTS_RELEASE/.env, run docker compose up -d there and pair again." >&2
+      fi
 
       # The relay setting goes into .env before the first start; install.sh
       # keeps an .env that exists and fills in the keys and passwords.
