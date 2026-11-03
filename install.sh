@@ -9,8 +9,8 @@
 #
 # --pair prints a QR code for pairing the OpenBots phone app once the stack is
 # ready (`openbots pair`), so a server on a VM needs no browser. Without a
-# terminal (cloud-init, a pipe) it also writes the QR code and the pairing
-# link to openbots-pair.txt beside .env, readable only by you.
+# terminal (cloud-init, a pipe) it writes the QR code and the pairing link to
+# openbots-pair.txt beside .env, readable only by you, and prints neither.
 #
 # Run from inside a checkout, or from the compose bundle a GitHub Release
 # carries (openbots-compose-<version>.tar.gz), it uses that directory instead
@@ -238,9 +238,12 @@ else
   pair_file="$PWD/openbots-pair.txt"
   rm -f "$pair_file"
   (umask 077 && : >"$pair_file")
-  docker compose run --rm -T openbots pair --link </dev/null | tee "$pair_file" || pair_status=$?
+  # Only to the file: without a terminal, standard output is often a log
+  # others can read (an instance's console log), and on a server with no
+  # owner yet whoever uses this code first becomes the owner.
+  docker compose run --rm -T openbots pair --link </dev/null >"$pair_file" || pair_status=$?
   chmod 600 "$pair_file"
-  log "The pairing output is also in $pair_file"
+  log "The pairing code is in $pair_file (readable by you only). It is not printed here."
 fi
 if [ "$pair_status" != 0 ]; then
   log "Pairing failed; try again with: cd $DIR && docker compose run --rm openbots pair"

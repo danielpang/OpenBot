@@ -87,6 +87,16 @@ fi
 chown root:root "$OPENBOTS_ENV_FILE"
 chmod 600 "$OPENBOTS_ENV_FILE"
 
+# s6 keeps the container's environment as one file per variable, and that is
+# where `fly secrets set` and `docker run -e` put provider keys and the relay
+# URL. Only root reads it (env.sh, as each service starts), so no Bot's shell
+# or other user in the container can.
+if [ -d /run/s6/container_environment ]; then
+  chown -R root:root /run/s6/container_environment
+  chmod 0700 /run/s6/container_environment
+  find /run/s6/container_environment -type f -exec chmod 0600 {} +
+fi
+
 ensure_setting OPENBOTS_MASTER_KEY master_key
 ensure_setting POSTGRES_PASSWORD hex 24
 ensure_setting OPENBOTS_DB_APP_PASSWORD hex 24

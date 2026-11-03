@@ -6,9 +6,10 @@
 #
 # It installs Docker from Docker's apt repository, downloads one pinned
 # release's compose bundle, checks it against the release's SHA256SUMS and
-# runs `install.sh --pair`. The pairing QR code and link end up in the
-# instance's console log (EC2: Actions, Monitor and troubleshoot, Get system
-# log) and in /root/openbots-pair.txt, readable by root only.
+# runs `install.sh --pair`. The pairing QR code and link end up in
+# /root/openbots-pair.txt, readable by root only, and never in the console
+# log: on a server with no owner yet, whoever uses the code first becomes the
+# owner, and the console log is readable by anyone the account lets read it.
 #
 # Set OPENBOTS_RELEASE below to a release from
 # https://github.com/danielpang/OpenBots/releases, and OPENBOTS_RELAY_URL to
@@ -78,7 +79,7 @@ write_files:
       fi
 
       # Starts the stack, waits for /readyz and pairs. With no terminal here,
-      # install.sh also writes the output to openbots-pair.txt beside .env.
+      # install.sh writes the output to openbots-pair.txt beside .env only.
       OPENBOTS_GITHUB_OWNER="$OPENBOTS_GITHUB_OWNER" bash install.sh --pair
       install -m 0600 -o root -g root openbots-pair.txt /root/openbots-pair.txt
       echo "OpenBots is in $DIR/openbots-$OPENBOTS_RELEASE. The pairing code is in /root/openbots-pair.txt."

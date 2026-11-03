@@ -13,12 +13,12 @@ The difference is isolation. In the compose stack a Bot's shell runs in a separa
 
 ## Templates
 
-| Template                                | Shape            | Notes                                                                                                                                                                           |
-| --------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [fly/](fly/README.md)                   | Standalone image | One Fly Machine with a volume, never stopped. `fly ssh console -C "openbots pair"` pairs your phone                                                                             |
-| [sprites/](sprites/README.md)           | Standalone image | A Sprite pauses when idle, and OpenBots pauses with it: good for use on demand, not for Routines around the clock                                                               |
-| [ec2/](ec2/README.md)                   | Compose stack    | `cloud-init.yaml` installs Docker and runs `install.sh --pair`; the QR code lands in the console log. Works as user data on Hetzner, DigitalOcean and others too                |
-| Railway, Render, Modal, any Docker host | Standalone image | Run the image with a persistent volume at `/data`, then `openbots pair` in the container's shell. Modal is built for shorter work; the platforms above fit a 24/7 server better |
+| Template                                | Shape            | Notes                                                                                                                                                                             |
+| --------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [fly/](fly/README.md)                   | Standalone image | One Fly Machine with a volume, never stopped. `fly ssh console -C "openbots pair"` pairs your phone                                                                               |
+| [sprites/](sprites/README.md)           | Standalone image | A Sprite pauses when idle, and OpenBots pauses with it: good for use on demand, not for Routines around the clock                                                                 |
+| [ec2/](ec2/README.md)                   | Compose stack    | `cloud-init.yaml` installs Docker and runs `install.sh --pair`; the QR code lands in a root-only file on the instance. Works as user data on Hetzner, DigitalOcean and others too |
+| Railway, Render, Modal, any Docker host | Standalone image | Run the image with a persistent volume at `/data`, then `openbots pair` in the container's shell. Modal is built for shorter work; the platforms above fit a 24/7 server better   |
 
 On any Docker host, the standalone image alone:
 

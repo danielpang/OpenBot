@@ -23,10 +23,7 @@ For what it costs, see [Amazon EC2's pricing page](https://aws.amazon.com/ec2/pr
 
 ## Pair your phone
 
-Setup takes a few minutes. When it is done, the QR code and the pairing link are in two places:
-
-- The instance's console log: Actions, Monitor and troubleshoot, Get system log (or `aws ec2 get-console-output --instance-id <id> --latest --output text`).
-- `/root/openbots-pair.txt` on the instance, readable by root only: `sudo cat /root/openbots-pair.txt`.
+Setup takes a few minutes. When it is done, the QR code and the pairing link are in `/root/openbots-pair.txt` on the instance, readable by root only: `sudo cat /root/openbots-pair.txt` over `ssh` or Session Manager. They are kept out of the console log on purpose: on a server with no owner yet, whoever uses the code first becomes the owner, and anyone the account lets read the console log could.
 
 A code works once and for 5 minutes, so the one from setup has often expired by the time you read it. Make a new one over `ssh` or Session Manager:
 
