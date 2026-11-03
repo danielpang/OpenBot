@@ -463,6 +463,21 @@ describe('devices and pairing', () => {
         ['PATCH', `/connectors/${id}`, { url: 'https://example.com/mcp' }],
         ['GET', `/connectors/${id}/oauth/start`],
         ['PATCH', `/providers/${id}`, { baseUrl: 'https://example.com/v1' }],
+        // Fields the old field-by-field list missed: anything not known harmless is refused.
+        ['PATCH', `/connectors/${id}`, { env: { TOKEN: 'x' } }],
+        ['PATCH', `/connectors/${id}`, { headers: { authorization: 'x' } }],
+        ['PATCH', `/connectors/${id}`, { params: { A: 'x' } }],
+        ['PATCH', `/connectors/${id}`, { secrets: { A: 'x' } }],
+        ['PATCH', `/providers/${id}`, { local: true }],
+        ['PATCH', `/providers/${id}`, { apiKey: 'sk-x' }],
+        ['PATCH', `/providers/${id}`, { headers: { a: 'b' } }],
+        ['PATCH', `/endpoints/${id}`, { allowedIps: ['0.0.0.0/0'] }],
+        ['PATCH', `/endpoints/${id}`, { toolPolicyOverride: {} }],
+        ['PATCH', `/event-subscriptions/${id}`, { local: true }],
+        ['PUT', `/connectors/${id}/trusted`, { trusted: true }],
+        ['PUT', `/connectors/${id}/local`, { local: true }],
+        ['PUT', '/connector-policy', { blocked: [] }],
+        ['PATCH', '/settings', {}],
       ];
       for (const [method, path, body] of refused) {
         const res = await request(t, method, path, { key: paired.key, body });
@@ -1023,6 +1038,11 @@ describe('a headless owner: a failed first pairing, then credentials for the web
     expect(limited.status).toBe(429);
 
     // The phone adds the first model provider itself (plan 8.3 step 4), and no more after.
+    const local = await request(t, 'POST', '/providers', {
+      key,
+      body: { presetId: 'nope', local: true },
+    });
+    expect(local.status).toBe(403);
     const first = await request(t, 'POST', '/providers', { key, body: { presetId: 'nope' } });
     expect(first.status).not.toBe(403);
     await t.providerId();

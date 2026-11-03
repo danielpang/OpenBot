@@ -874,9 +874,13 @@ export async function refuseDeviceKey(
  * API key, a pairing, a webhook token or signing secret, an event
  * subscription's secret, an invitation) or a path out of the server (an
  * event subscription's URL, a connector, an OAuth grant, a provider's
- * endpoint). `when` narrows an edit to the fields that do that, read from the
- * JSON body. `unless` lets the request through: a phone that set up a
- * headless install adds the first model provider itself (plan 8.3 step 4).
+ * endpoint) or widens what such a path may do (a connector marked trusted or
+ * local, the connector policy, the organization's settings). An edit is
+ * refused when it sends any field outside a short list of harmless ones
+ * (`beyond`), so a field added to a schema later is refused until it is
+ * listed. `unless` lets the request through: a phone that set up a headless
+ * install adds the first model provider itself (plan 8.3 step 4), though not
+ * one marked local.
  * `requireUser` and `requireAdmin` apply the list (middleware/auth.ts), so a
  * route the managed build mounts is covered too.
  */
@@ -884,40 +888,58 @@ export interface DeviceKeyRule {
   method: string;
   path: RegExp;
   when?(body: Record<string, unknown>): boolean;
-  unless?(db: Db, caller: { workspaceId: string; id: string }): Promise<boolean>;
+  unless?(
+    db: Db,
+    caller: { workspaceId: string; id: string },
+    body: Record<string, unknown> | null,
+  ): Promise<boolean>;
 }
 
-const sets =
-  (...fields: string[]) =>
+/** True when the body sends a field that is not one of `allowed`. */
+const beyond =
+  (...allowed: string[]) =>
   (body: Record<string, unknown>) =>
-    fields.some((field) => body[field] !== undefined);
+    Object.keys(body).some((field) => body[field] !== undefined && !allowed.includes(field));
+
+const always = () => true;
 
 export const DEVICE_KEY_RULES: readonly DeviceKeyRule[] = [
   { method: 'POST', path: /^\/api-keys$/ },
   { method: 'POST', path: /^\/devices\/pairings$/ },
   { method: 'POST', path: /^\/bots\/[^/]+\/endpoints$/ },
   { method: 'POST', path: /^\/endpoints\/[^/]+\/rotate$/ },
-  { method: 'PATCH', path: /^\/endpoints\/[^/]+$/, when: sets('signature') },
+  {
+    method: 'PATCH',
+    path: /^\/endpoints\/[^/]+$/,
+    // Not signature, allowed IPs, the rate limit, the slug or a tool policy override.
+    when: beyond('enabled', 'match', 'template', 'responseMode', 'syncTimeoutS'),
+  },
   { method: 'POST', path: /^\/event-subscriptions$/ },
   {
     method: 'PATCH',
     path: /^\/event-subscriptions\/[^/]+$/,
-    when: (body) => sets('url', 'local')(body) || body.rotateSecret === true,
+    when: (body) => beyond('events', 'enabled')(body) || body.rotateSecret === true,
   },
   { method: 'POST', path: /^\/connectors$/ },
   { method: 'POST', path: /^\/connectors\/import$/ },
   {
     method: 'PATCH',
     path: /^\/connectors\/[^/]+$/,
-    when: sets('command', 'args', 'url', 'auth', 'oauthClient'),
+    when: beyond('name'),
   },
+  { method: 'PUT', path: /^\/connectors\/[^/]+\/trusted$/ },
+  { method: 'PUT', path: /^\/connectors\/[^/]+\/local$/ },
+  { method: 'PUT', path: /^\/connector-policy$/ },
+  { method: 'PATCH', path: /^\/settings$/ },
   { method: 'GET', path: /^\/connectors\/[^/]+\/oauth\/start$/ },
   {
     method: 'POST',
     path: /^\/providers$/,
-    unless: async (db, caller) => !(await ownerHasProvider(db, caller.workspaceId, caller.id)),
+    when: always,
+    unless: async (db, caller, body) =>
+      body?.local !== true && !(await ownerHasProvider(db, caller.workspaceId, caller.id)),
   },
-  { method: 'PATCH', path: /^\/providers\/[^/]+$/, when: sets('baseUrl') },
+  { method: 'PATCH', path: /^\/providers\/[^/]+$/, when: beyond('name', 'smallModelId') },
   // The managed build's (ee/server); a self-hosted install answers 404 there anyway.
   { method: 'POST', path: /^\/organization\/invitations$/ },
 ];

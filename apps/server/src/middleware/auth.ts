@@ -69,14 +69,17 @@ async function refuseDeviceKeyRoute(c: Context<AppEnv>, user: CurrentUser): Prom
   if (!user.apiKeyId || !c.req.path.startsWith(API_PREFIX)) return;
   const rule = deviceKeyRule(c.req.method, c.req.path.slice(API_PREFIX.length));
   if (!rule) return;
+  let body: Record<string, unknown> | null = null;
   if (rule.when) {
     // Read once here; the route's validator reads the same parsed body.
-    const body: unknown = await c.req.json().catch(() => null);
-    if (!body || typeof body !== 'object' || !rule.when(body as Record<string, unknown>)) return;
+    const parsed: unknown = await c.req.json().catch(() => null);
+    if (!parsed || typeof parsed !== 'object') return;
+    body = parsed as Record<string, unknown>;
+    if (!rule.when(body)) return;
   }
   const { db } = c.var.deps;
   if (!(await isDeviceKey(db, user))) return;
-  if (rule.unless && (await rule.unless(db, user))) return;
+  if (rule.unless && (await rule.unless(db, user, body))) return;
   throw deviceKeyNotAllowed();
 }
 
