@@ -179,6 +179,12 @@ export class Valve {
     private readonly flow: FlowControl,
   ) {}
 
+  /**
+   * Counts every pause, so a keepalive can tell that the source was paused at
+   * some point since it last looked, even if it has resumed since.
+   */
+  pauses = 0;
+
   get paused(): boolean {
     return this.holds.size > 0;
   }
@@ -187,6 +193,7 @@ export class Valve {
     if (this.closed || this.holds.has(by)) return;
     this.holds.add(by);
     if (this.holds.size === 1) {
+      this.pauses += 1;
       this.flow.pausedChanged(1);
       this.source.pause();
     }

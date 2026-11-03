@@ -40,6 +40,16 @@ describe('host link', () => {
     expect((await peer.closed).code).toBe(4401);
   });
 
+  it('closes 4400 for a hello whose host id is malformed', async () => {
+    const relay = await startRelay();
+    const host = makeHost();
+    const peer = await Peer.open(wsUrl(relay, hostPath(host)));
+    const challenge = await peer.text();
+    peer.send({ ...hello(host, challenge), hostId: 'NOT-A-HOST' });
+    expect(await peer.text()).toMatchObject({ type: 'error', code: 'protocol' });
+    expect((await peer.closed).code).toBe(4400);
+  });
+
   it('refuses an upgrade without a host id, or with a malformed one, with 400', async () => {
     const relay = await startRelay();
     for (const path of ['/v1/host', '/v1/host?hostId=', '/v1/host?hostId=NOT-A-HOST']) {

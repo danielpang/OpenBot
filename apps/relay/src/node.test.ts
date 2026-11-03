@@ -129,17 +129,31 @@ describe('flow control in the relay', () => {
 });
 
 describe('the machine budget in the relay', () => {
-  it('refuses an upgrade past the socket ceiling with 503', async () => {
-    const relay = await startRelay({ budget: { maxSockets: 2 } });
+  it('past the socket ceiling refuses new hosts with 503 but admits owned ones up to the hard ceiling', async () => {
+    // A ceiling of 10 has a hard ceiling of 11.
+    const relay = await startRelay({ budget: { maxSockets: 10 } });
     const host = makeHost();
     const link = await linkHost(relay, host);
-    await connectClient(relay, host, link);
+    const other = makeHost();
+    const otherLink = await linkHost(relay, other);
+    for (let i = 0; i < 4; i += 1) await connectClient(relay, host, link);
+    for (let i = 0; i < 4; i += 1) await connectClient(relay, other, otherLink);
     expect(relay.budget.full).toBe(true);
-    expect(await upgradeStatus(wsUrl(relay, `/v1/connect/${host.hostId}`))).toBe(503);
-    expect(await upgradeStatus(wsUrl(relay, hostPath(makeHost())))).toBe(503);
     expect((await fetch(`${relay.url}/ready`)).status).toBe(503);
+    // A host this machine does not serve goes elsewhere.
+    expect(await upgradeStatus(wsUrl(relay, hostPath(makeHost())))).toBe(503);
+    expect(await upgradeStatus(wsUrl(relay, `/v1/connect/${makeHost().hostId}`))).toBe(503);
+    // An owned host still gets its link and its phone, which no other machine can serve.
+    const third = await linkHost(relay, host);
+    expect(relay.budget.sockets).toBe(11);
+    // At the hard ceiling nothing is admitted.
+    expect(await upgradeStatus(wsUrl(relay, `/v1/connect/${host.hostId}`))).toBe(503);
+    third.socket.close();
+    await third.closed;
+    await vi.waitFor(() => expect(relay.budget.sockets).toBe(10));
+    expect(await upgradeStatus(wsUrl(relay, `/v1/connect/${host.hostId}`))).toBe(101);
     expect(await relay.metrics.render()).toMatch(
-      /openbots_relay_rejections_total\{reason="sockets"\} 2/,
+      /openbots_relay_rejections_total\{reason="sockets"\} 3/,
     );
   });
 
@@ -243,7 +257,12 @@ describe('the host share of the budget in the relay', () => {
 describe('drain in a cluster', () => {
   it('on SIGTERM reports not ready, gives the host to another relay, and closes with 1012', async () => {
     const registry = new MemoryRegistry();
-    const options = { registry, cluster: CLUSTER, drain: { graceMs: 400, idlePollMs: 20 } };
+    const options = {
+      registry,
+      cluster: CLUSTER,
+      replay: 'fly' as const,
+      drain: { graceMs: 400, idlePollMs: 20 },
+    };
     const a = await startRelay(options);
     const b = await startRelay(options);
     const proxy = await FlyProxy.start([a, b]);
@@ -264,14 +283,16 @@ describe('drain in a cluster', () => {
     // A takes nothing new itself.
     expect(await upgradeStatus(wsUrl(a, hostPath(host)))).toBe(503);
 
+    // Right after the leases go, A closes the link 1012, its stream with it,
+    // so the server relinks at once rather than after the grace.
+    expect(await client.closed).toEqual({ code: 1012, reason: 'relay restarting, reconnect' });
+    expect((await link.closed).code).toBe(1012);
+
     // The server's next link lands on B, which takes the lease.
     proxy.landOn(b);
     const moved = await linkHost(proxy, host);
     expect(b.ownership.owns(host.hostId)).toBe(true);
-
-    // After the grace period A closes what is left with 1012.
-    expect(await client.closed).toEqual({ code: 1012, reason: 'relay restarting, reconnect' });
-    expect((await link.closed).code).toBe(1012);
+    await a.drain.start();
     expect(a.drain.phase).toBe('drained');
 
     // A phone that lands on the draining A is still replayed to the owner.
@@ -281,6 +302,81 @@ describe('drain in a cluster', () => {
     phone.client.send(Buffer.from('on b'));
     expect(await moved.binary()).toEqual(prefixed(phone.stream, Buffer.from('on b')));
   });
+});
+
+describe('pushes during a drain', () => {
+  it('answers the pushes in flight before the link closes, and refuses new ones', async () => {
+    let answer: (() => void) | undefined;
+    const apns = {
+      send: () =>
+        new Promise<{ ok: true }>((resolve) => {
+          answer = () => resolve({ ok: true });
+        }),
+      close: async () => {},
+    };
+    const relay = await startRelay({ apns, drain: { graceMs: 2_000, idlePollMs: 20 } });
+    const link = await linkHost(relay, makeHost());
+    const push = (id: string) => ({
+      type: 'push',
+      id,
+      platform: 'ios',
+      token: 'ab',
+      ciphertext: 'AA',
+      priority: 5,
+      expiresAt: 0,
+    });
+    link.send(push('p1'));
+    await vi.waitFor(() => expect(answer).toBeDefined());
+    const drained = relay.drain.start();
+    link.send(push('p2'));
+    expect(await link.text()).toEqual({
+      type: 'push.result',
+      id: 'p2',
+      ok: false,
+      reason: 'error',
+      status: 503,
+    });
+    // The link waits for p1's answer, then closes 1012.
+    answer!();
+    expect(await link.text()).toEqual({ type: 'push.result', id: 'p1', ok: true });
+    expect((await link.closed).code).toBe(1012);
+    await drained;
+  });
+});
+
+describe('the keepalive and flow control', () => {
+  it('does not drop a phone for a missed pong while flow control has paused it', async () => {
+    const relay = await startRelay({
+      timing: { pingIntervalMs: 40 },
+      flow: {
+        highWaterBytes: 128 * KiB,
+        lowWaterBytes: 32 * KiB,
+        sourceHighWaterBytes: 64 * KiB,
+        sourceLowWaterBytes: 16 * KiB,
+        deliveryTimeoutMs: 60_000,
+      },
+      limits: { maxBufferedBytes: 256 * 1024 * 1024 },
+    });
+    const host = makeHost();
+    const link = await linkHost(relay, host);
+    const { client } = await connectClient(relay, host, link);
+    const received = watch(link);
+
+    link.socket.pause();
+    const total = 200;
+    for (let i = 0; i < total; i += 1) client.send(Buffer.alloc(FRAME, i % 256));
+    await vi.waitFor(() => expect(relay.flow.pausedSources).toBe(1), { timeout: 5_000 });
+    // Many keepalive ticks pass while the relay reads nothing from the phone, pongs included.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(client.socket.readyState).toBe(WebSocket.OPEN);
+
+    link.socket.resume();
+    await vi.waitFor(
+      () => expect(received.filter((frame) => 'binary' in frame)).toHaveLength(total),
+      { timeout: 10_000 },
+    );
+    expect(client.socket.readyState).toBe(WebSocket.OPEN);
+  }, 20_000);
 });
 
 describe('metrics in the relay', () => {

@@ -5,6 +5,8 @@
 # It keeps a checkout's .env (the master key) out of the image.
 .git
 .github
+.worktrees
+.pnpm-store
 **/node_modules
 **/dist
 **/.turbo
@@ -15,3 +17,7 @@
 .env.*
 !.env.example
 **/.DS_Store
+backups/
+**/.env
+**/.env.*
+!**/.env.example

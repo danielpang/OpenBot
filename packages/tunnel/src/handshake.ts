@@ -149,6 +149,19 @@ export async function runInitiatorHandshake(
   }
 }
 
+/** `promise`, or a handshake error once `ms` have passed. */
+function beforeDeadline<T>(promise: Promise<T>, ms: number, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(new TunnelHandshakeError(`the handshake did not complete within ${timeoutMs} ms`)),
+      Math.max(0, ms),
+    );
+  });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+
 export interface ResponderResult<T> {
   ciphers: TransportCiphers;
   clientKey: Uint8Array;
@@ -160,7 +173,9 @@ export interface ResponderResult<T> {
 
 /**
  * The server's side: message 1 in, then `decide` (the device lookup) with
- * the client's static key, then message 2 ready to send.
+ * the client's static key, then message 2 ready to send. The time limit
+ * covers all of it, the lookup included, so a slow lookup cannot hold a
+ * stream open past it.
  */
 export async function runResponderHandshake<T>(
   transport: ByteTransport,
@@ -172,6 +187,7 @@ export async function runResponderHandshake<T>(
     decide: (clientKey: Uint8Array) => Promise<{ device: DeviceStatus; decision: T }>;
   },
 ): Promise<ResponderResult<T>> {
+  const deadline = Date.now() + options.timeoutMs;
   try {
     const handshake = new HandshakeState({
       initiator: false,
@@ -183,7 +199,11 @@ export async function runResponderHandshake<T>(
     // The route stays held during the lookup. The client may send nothing
     // before message 2; if it does anyway, those bytes reach the session and
     // fail to decrypt there, which closes the stream.
-    const { device, decision } = await options.decide(clientKey);
+    const { device, decision } = await beforeDeadline(
+      options.decide(clientKey),
+      deadline - Date.now(),
+      options.timeoutMs,
+    );
     const message = handshake.writeMessage(encoder.encode(JSON.stringify({ v: 1, device })));
     return {
       ciphers: handshake.split(),

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { pino } from 'pino';
 import type { ApnsOptions } from './apns.js';
 import { budgetOptionsFromEnv } from './budget.js';
-import { loadConfig } from './config.js';
+import { loadConfig, takeApnsKey } from './config.js';
 import { drainOptionsFromEnv, drainRequested } from './drain.js';
 import { flowOptionsFromEnv } from './flow.js';
 import { createRelay } from './relay.js';
@@ -16,6 +16,8 @@ import { RedisRegistry } from './registry.js';
 // SIGINT closes at once with 1001. `RELAY_DRAIN=true` starts draining at boot.
 
 const config = loadConfig();
+// Read once and deleted from the environment, so the raw key does not stay there.
+const inlineKey = takeApnsKey();
 // Read before anything listens, so a bad setting stops the process at boot.
 const flow = flowOptionsFromEnv();
 const budget = { ...budgetOptionsFromEnv(), hostShare: config.hostBudgetShare };
@@ -26,7 +28,7 @@ const logger = pino({ level: config.logLevel, base: { service: 'openbots-relay' 
 let apns: ApnsOptions | undefined;
 if (config.apns) {
   apns = {
-    keyPem: await readFile(config.apns.keyFile, 'utf8'),
+    keyPem: config.apns.keyFile ? await readFile(config.apns.keyFile, 'utf8') : inlineKey!,
     keyId: config.apns.keyId,
     teamId: config.apns.teamId,
     topic: config.apns.topic,
@@ -38,7 +40,9 @@ if (config.apns) {
   logger.info('no apns settings: push is unavailable');
 }
 
-const registry = config.redisUrl ? new RedisRegistry({ redis: config.redisUrl }) : undefined;
+const registry = config.redisUrl
+  ? new RedisRegistry({ redis: config.redisUrl, commandTimeoutMs: config.redisCommandTimeoutMs })
+  : undefined;
 if (!registry) logger.info('no RELAY_REDIS_URL: the registry is in memory, for this machine alone');
 
 const relay = await createRelay({
@@ -51,6 +55,8 @@ const relay = await createRelay({
   flow,
   budget,
   drain,
+  replay: config.replay,
+  ...(config.presenceToken ? { presenceToken: config.presenceToken } : {}),
   ...(config.metricsToken ? { metricsToken: config.metricsToken } : {}),
   ...(config.nodeId ? { nodeId: config.nodeId } : {}),
   ...(registry ? { registry } : {}),
@@ -63,6 +69,7 @@ logger.info(
     push: apns !== undefined,
     nodeId: relay.nodeId,
     shared: registry !== undefined,
+    replay: config.replay,
   },
   'relay listening',
 );

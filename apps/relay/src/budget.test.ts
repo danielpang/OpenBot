@@ -54,6 +54,18 @@ describe('NodeBudget', () => {
     });
   });
 
+  it('admits sockets of owned hosts past the ceiling, up to a hard ceiling 10 percent above', () => {
+    const budget = new NodeBudget({ maxSockets: 20 });
+    expect(budget.hardMaxSockets).toBe(22);
+    for (let i = 0; i < 20; i += 1) admitted(budget);
+    expect(budget.full).toBe(true);
+    expect(budget.admit('client', 'new-host').ok).toBe(false);
+    expect(budget.admit('client', 'owned', true).ok).toBe(true);
+    expect(budget.admit('host', 'owned', true).ok).toBe(true);
+    expect(budget.admit('client', 'owned', true).ok).toBe(false);
+    expect(budget.sockets).toBe(22);
+  });
+
   it('frees a slot when a ticket closes, once however often it is closed', () => {
     const budget = new NodeBudget({ maxSockets: 1 });
     const ticket = admitted(budget);

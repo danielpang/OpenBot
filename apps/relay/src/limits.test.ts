@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryRegistry, counterKey } from './registry.js';
-import { connectClient, linkHost, makeHost, Peer, startRelay, wsUrl } from './test/helpers.js';
+import {
+  connectClient,
+  linkHost,
+  makeHost,
+  prefixed,
+  startRelay,
+  type Peer,
+} from './test/helpers.js';
 
 // The per-host limits of RELAY_PROTOCOL.md 3.4 while the registry's counters
 // cannot be reached: each host falls back to a local window counter with the
@@ -24,6 +31,27 @@ class FlakyCounters extends MemoryRegistry {
   }
 }
 
+/** A stream that carries one payload, so it counts against the host's hour, and then closes. */
+async function useStream(relay: { url: string }, host: ReturnType<typeof makeHost>, link: Peer) {
+  const { client } = await connectClient(relay, host, link);
+  client.send(Buffer.from('hi'));
+  await link.binary();
+  client.socket.close();
+  await client.closed;
+  await link.text();
+}
+
+/** A stream past the hour: it opens, and its first payload closes it 4429. */
+async function refusedStream(
+  relay: { url: string },
+  host: ReturnType<typeof makeHost>,
+  link: Peer,
+) {
+  const { client } = await connectClient(relay, host, link);
+  client.send(Buffer.from('hi'));
+  return client.closed;
+}
+
 const push = (id: string) => ({
   type: 'push',
   id,
@@ -35,20 +63,38 @@ const push = (id: string) => ({
 });
 
 describe('per-host limits without the registry', () => {
+  it('falls back to the local counter when the registry is slow, freeing the stream slot', async () => {
+    const registry = new (class extends MemoryRegistry {
+      override take() {
+        return new Promise<boolean>(() => undefined);
+      }
+    })();
+    const relay = await startRelay({
+      registry,
+      registryTimeoutMs: 50,
+      limits: { streamsPerHost: 1 },
+    });
+    const host = makeHost();
+    const link = await linkHost(relay, host);
+    const { client } = await connectClient(relay, host, link);
+    client.socket.close();
+    await client.closed;
+    await link.text();
+    // The slot went back once the open's counter gave up on the registry.
+    await connectClient(relay, host, link);
+  });
+
   it('still limits stream opens per host', async () => {
     const registry = new FlakyCounters();
     registry.broken = true;
     const relay = await startRelay({ registry, limits: { opensPerHour: 2 } });
     const host = makeHost();
     const link = await linkHost(relay, host);
-    for (let i = 0; i < 2; i += 1) {
-      const { client } = await connectClient(relay, host, link);
-      client.socket.close();
-      await client.closed;
-      await link.text();
-    }
-    const third = await Peer.open(wsUrl(relay, `/v1/connect/${host.hostId}`));
-    expect(await third.closed).toEqual({ code: 4429, reason: 'too many stream opens' });
+    for (let i = 0; i < 2; i += 1) await useStream(relay, host, link);
+    expect(await refusedStream(relay, host, link)).toEqual({
+      code: 4429,
+      reason: 'too many stream opens',
+    });
     // Another host has its own counter.
     const other = makeHost();
     const otherLink = await linkHost(relay, other);
@@ -86,13 +132,13 @@ describe('per-host limits without the registry', () => {
     });
     const host = makeHost();
     const link = await linkHost(relay, host);
-    const { client } = await connectClient(relay, host, link);
-    client.send(Buffer.alloc(600));
-    await link.binary();
+    const { client, stream } = await connectClient(relay, host, link);
+    link.send(prefixed(stream, Buffer.alloc(600)));
+    await client.binary();
     // Flushes fail meanwhile; the bytes stay counted here.
     await new Promise((resolve) => setTimeout(resolve, 80));
-    client.send(Buffer.alloc(600));
-    expect((await link.closed).code).toBe(1008);
+    link.send(prefixed(stream, Buffer.alloc(600)));
+    expect((await client.closed).code).toBe(1008);
   });
 
   it('uses the shared counters again once the registry answers', async () => {
@@ -106,14 +152,13 @@ describe('per-host limits without the registry', () => {
 
     // With the registry away, this machine's own counter decides: one open passes.
     registry.broken = true;
-    const { client } = await connectClient(relay, host, link);
-    client.socket.close();
-    await client.closed;
-    await link.text();
+    await useStream(relay, host, link);
 
     // Back again: the shared total says the hour is spent.
     registry.broken = false;
-    const refused = await Peer.open(wsUrl(relay, `/v1/connect/${host.hostId}`));
-    expect(await refused.closed).toEqual({ code: 4429, reason: 'too many stream opens' });
+    expect(await refusedStream(relay, host, link)).toEqual({
+      code: 4429,
+      reason: 'too many stream opens',
+    });
   });
 });

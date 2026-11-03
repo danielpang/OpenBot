@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { STATUS_CODES, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
@@ -22,8 +22,8 @@ import {
 } from './host-link.js';
 import { DEFAULT_LIMITS, HostRegistry, type RelayLimits } from './hosts.js';
 import { isHostId } from './identity.js';
-import { DEFAULT_CLUSTER_TIMING, Ownership, type ClusterTiming } from './ownership.js';
-import { MemoryRegistry, type Registry } from './registry.js';
+import { DEFAULT_CLUSTER_TIMING, Ownership, type ClusterTiming, type Route } from './ownership.js';
+import { MemoryRegistry, RegistryClock, type Registry } from './registry.js';
 
 // The relay process (docs/RELAY_PROTOCOL.md sections 3 and 4): one HTTP
 // server with Hono for the plain routes (`/healthz`, presence) and two `ws`
@@ -37,7 +37,16 @@ import { MemoryRegistry, type Registry } from './registry.js';
 // for a host that another live machine owns is not upgraded here but answered
 // with `fly-replay: instance=<owner>`, which Fly's proxy replays on the owner.
 // A request that already carries `fly-replay-src` is never replayed again.
-// Without a registry the relay keeps one in memory and is a cluster of one.
+// Replays happen only with `replay: 'fly'` (main.ts sets it on Fly): behind
+// any other proxy nobody would act on the header, so every upgrade is served
+// here, and a self-hosted relay of several machines needs a proxy that routes
+// by host id. Without a registry the relay keeps one in memory and is a
+// cluster of one.
+//
+// When the registry cannot be reached the machine degrades rather than stops
+// (ownership.ts): links and streams it has go on, new hosts are served on
+// this machine alone, `/ready` stays ready and says so in its body, and a
+// metric counts it.
 //
 // Each machine on its own (5.8): flow control between sockets (flow.ts), one
 // byte budget and a socket ceiling (budget.ts; an upgrade past the ceiling is
@@ -84,6 +93,16 @@ export interface RelayOptions {
   drain?: Partial<DrainOptions>;
   /** The bearer token for `GET /metrics`; without one the route answers 404. */
   metricsToken?: string;
+  /** The bearer token `GET /v1/hosts/{id}` wants; without one presence is open. */
+  presenceToken?: string;
+  /**
+   * `fly`: answer an upgrade for a host another machine owns with
+   * `fly-replay`. `off` (the default): serve every upgrade here, as behind
+   * any proxy that does not act on the header.
+   */
+  replay?: 'fly' | 'off';
+  /** How long one registry call may take. Default 2 seconds. */
+  registryTimeoutMs?: number;
   /** Node's process metrics on `/metrics` as well. Default true. */
   defaultMetrics?: boolean;
   /**
@@ -122,7 +141,12 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
   const nodeId = options.nodeId ?? `relay-${randomBytes(6).toString('hex')}`;
   if (!NODE_ID_PATTERN.test(nodeId)) throw new Error(`not a usable node id: ${nodeId}`);
   const shared = options.registry ?? new MemoryRegistry();
-  const registry = new HostRegistry(limits, shared);
+  const callTimeoutMs = options.registryTimeoutMs ?? 2_000;
+  // The fixed windows of the limits follow the registry's clock, so machines
+  // whose clocks disagree still count into the same windows.
+  const clock = new RegistryClock(shared, { timeoutMs: callTimeoutMs });
+  const registry = new HostRegistry(limits, shared, () => clock.now(), callTimeoutMs);
+  const replays = options.replay === 'fly';
   const push: PushGateway =
     options.apns === undefined
       ? NO_PUSH
@@ -148,7 +172,8 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
         ...((options.checkRegistry ?? options.registry !== undefined)
           ? { registryReachable: () => ownership.registryReachable() }
           : {}),
-        clusterSize: () => shared.liveNodes(),
+        // The size last seen, so a registry outage does not also read as a small cluster.
+        clusterSize: () => ownership.clusterSize,
         minClusterSize,
         atCapacity: () => budget.full,
       }),
@@ -156,6 +181,13 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
   );
   app.get('/metrics', metricsHandler(metrics, options.metricsToken));
   app.get('/v1/hosts/:hostId', async (c) => {
+    if (
+      options.presenceToken &&
+      !bearerMatches(c.req.header('authorization'), options.presenceToken)
+    ) {
+      c.header('www-authenticate', 'Bearer');
+      return c.json({ code: 'UNAUTHORIZED', message: 'Send the presence token' }, 401);
+    }
     const hostId = c.req.param('hostId');
     if (!isHostId(hostId)) {
       return c.json({ code: 'BAD_HOST_ID', message: 'Not a host id' }, 404);
@@ -184,8 +216,10 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
     minClusterSize,
     logger,
     metrics,
+    callTimeoutMs,
     hasLinks: (hostId) => registry.hasLinks(hostId),
     hasStreams: (hostId) => registry.hasStreams(hostId),
+    isClaiming: (hostId) => [...hostLinks].some((link) => link.claiming && link.hostId === hostId),
     onLost(hostId) {
       // Clients first, as on shutdown; then the links, which reconnect through routing.
       for (const link of registry.endStreams(hostId, 1012, 'lease lost')) {
@@ -212,11 +246,20 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
         ownership.stopTaking();
       },
       releaseLeases: () => ownership.stop(true),
+      // Each link closes once its pushes are answered, its streams with it,
+      // so the server relinks to the next owner without waiting out the grace.
+      closeLinks(code, reason) {
+        for (const link of hostLinks) link.drain(code, reason);
+      },
+      settle: async () => {
+        await Promise.all([...hostLinks].map((link) => link.settled()));
+      },
       closeAll(code, reason) {
         // Clients first, as on shutdown; then the links.
         for (const stream of clientStreams) stream.end(code, reason);
         for (const link of hostLinks) link.end(code, reason);
       },
+      // A link with pushes in flight stays in `hostLinks` until they are answered.
       idle: () => hostLinks.size === 0 && clientStreams.size === 0,
       onError: (step, err) => logger.error({ err, step }, 'drain step failed'),
     },
@@ -232,6 +275,8 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
     hostsOwned: () => ownership.ownedHosts().length,
     streams: () => clientStreams.size,
     clusterSize: () => ownership.clusterSize,
+    degraded: () => ownership.degraded,
+    hostsAlone: () => ownership.aloneHosts().length,
   });
 
   /**
@@ -246,7 +291,9 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
       return undefined;
     }
     // The ticket names the host, so its bytes count against the host's share.
-    const admitted = budget.admit(kind, hostId);
+    // Past the socket ceiling a host this machine serves is still admitted,
+    // since no other machine can serve it, up to the hard ceiling.
+    const admitted = budget.admit(kind, hostId, hostId !== undefined && ownership.serves(hostId));
     if (!admitted.ok) {
       metrics.rejected('sockets');
       reject(socket, admitted.refusal.httpStatus);
@@ -263,6 +310,10 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
     else ownership.release(link.hostId);
   };
 
+  /** Where an upgrade goes; without replays, always here. */
+  const routeFor = async (hostId: string, replayed: boolean): Promise<Route> =>
+    replays ? ownership.route(hostId, replayed) : { kind: 'local' };
+
   const upgrade = async (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = new URL(req.url ?? '/', 'http://relay');
     const remote = remoteAddress(req, trustProxy);
@@ -273,7 +324,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
         metrics.rejected('malformed');
         return reject(socket, 400);
       }
-      const route = await ownership.route(hostId, replayed);
+      const route = await routeFor(hostId, replayed);
       if (route.kind === 'replay') return replay(socket, route.nodeId, 'host');
       // Served here, or (replayed once already) upgraded and closed 1012 once
       // the claim finds the other owner, so the host reconnects.
@@ -292,7 +343,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
       // close code (4400) rather than a bare HTTP status.
       const hostId = decodeSegment(url.pathname.slice(CONNECT_PREFIX.length));
       const route = isHostId(hostId)
-        ? await ownership.route(hostId, replayed)
+        ? await routeFor(hostId, replayed)
         : ({ kind: 'local' } as const);
       if (route.kind === 'replay') return replay(socket, route.nodeId, 'client');
       if (socket.destroyed) return;
@@ -441,6 +492,13 @@ function decodeSegment(segment: string): string {
   } catch {
     return segment;
   }
+}
+
+/** Whether an `Authorization` header carries `token`, compared in constant time. */
+function bearerMatches(header: string | undefined, token: string): boolean {
+  const presented = /^Bearer (.+)$/i.exec(header ?? '')?.[1] ?? '';
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(presented), digest(token)) && presented.length === token.length;
 }
 
 function reject(socket: Duplex, status: number) {

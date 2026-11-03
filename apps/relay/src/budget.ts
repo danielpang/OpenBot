@@ -13,6 +13,12 @@
 // host at its share is refused more even while the machine has room, so one
 // host with many busy or slow phones cannot starve the others on the machine.
 //
+// The socket ceiling has two steps. At `maxSockets` the machine refuses
+// sockets for hosts it does not serve yet (503, so the proxy picks another
+// machine) but still admits links and streams of the hosts it owns, which no
+// other machine can serve. At the hard ceiling, 10 percent above, it refuses
+// everything.
+//
 // A refusal says how to answer: close the socket with 1013 (try again later)
 // when it is already a WebSocket, or refuse the upgrade with 503 so Fly's
 // proxy tries another machine.
@@ -29,7 +35,11 @@ export const SOCKET_KINDS: readonly SocketKind[] = ['host', 'client'];
 export interface BudgetOptions {
   /** Bytes in flight on this machine, across every socket. Default 512 MiB. */
   maxBytes: number;
-  /** Sockets on this machine, host links and client streams together. Default 20,000. */
+  /**
+   * Sockets on this machine, host links and client streams together, past
+   * which only hosts this machine owns are admitted. Default 20,000. The hard
+   * ceiling, which refuses everything, is 10 percent above it.
+   */
   maxSockets: number;
   /** The share of `maxBytes` one host's sockets may hold together, above 0 and at most 1. Default 0.125. */
   hostShare: number;
@@ -96,6 +106,8 @@ export class NodeBudget {
   private readonly hosts = new Map<string, number>();
   /** The bytes one host may hold. */
   readonly hostMaxBytes: number;
+  /** Sockets past which nothing at all is admitted. */
+  readonly hardMaxSockets: number;
 
   constructor(options: Partial<BudgetOptions> = {}) {
     this.options = { ...DEFAULT_BUDGET, ...options };
@@ -107,6 +119,7 @@ export class NodeBudget {
       throw new Error('the host share must be above 0 and at most 1');
     }
     this.hostMaxBytes = Math.max(1, Math.floor(this.options.maxBytes * hostShare));
+    this.hardMaxSockets = Math.ceil(this.options.maxSockets * 1.1);
   }
 
   /** Bytes the host's sockets hold right now. */
@@ -135,11 +148,14 @@ export class NodeBudget {
   }
 
   /**
-   * Admits one socket of `kind`, or refuses it at the ceiling. Call it before
-   * the upgrade, so a refusal is a 503, and bind the ticket to the raw socket.
+   * Admits one socket of `kind`, or refuses it at the ceiling. `owned` says
+   * the machine owns the socket's host: such a socket is admitted past the
+   * ceiling, up to the hard ceiling. Call it before the upgrade, so a refusal
+   * is a 503, and bind the ticket to the raw socket.
    */
-  admit(kind: SocketKind, hostId?: string): Admission {
-    if (this.full) return { ok: false, refusal: this.refuse('sockets') };
+  admit(kind: SocketKind, hostId?: string, owned = false): Admission {
+    const ceiling = owned ? this.hardMaxSockets : this.options.maxSockets;
+    if (this.sockets >= ceiling) return { ok: false, refusal: this.refuse('sockets') };
     this.kinds[kind] += 1;
     return { ok: true, ticket: new Ticket(this, kind, hostId) };
   }

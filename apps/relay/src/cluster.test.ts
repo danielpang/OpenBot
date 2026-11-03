@@ -91,7 +91,7 @@ for (const kind of kinds) {
       const registry = kind.make();
       const relays: Relay[] = [];
       for (let i = 0; i < size; i += 1) {
-        relays.push(await startRelay({ registry, cluster: CLUSTER, ...extra }));
+        relays.push(await startRelay({ registry, cluster: CLUSTER, replay: 'fly', ...extra }));
       }
       const proxy = await FlyProxy.start(relays);
       return { registry, relays, proxy };
@@ -255,10 +255,9 @@ for (const kind of kinds) {
       let link = await linkHost(proxy, host);
       for (let i = 0; i < 2; i += 1) {
         const { client, stream } = await connectClient(proxy, host, link);
-        if (i === 0) {
-          client.send(Buffer.alloc(600));
-          expect(await link.binary()).toEqual(prefixed(stream, Buffer.alloc(600)));
-        }
+        // A stream counts against the hour once it carries a payload.
+        client.send(Buffer.alloc(600));
+        expect(await link.binary()).toEqual(prefixed(stream, Buffer.alloc(600)));
         client.socket.close();
         await link.text();
       }
@@ -292,11 +291,13 @@ for (const kind of kinds) {
       });
       expect(await link.text()).toMatchObject({ id: 'p2', ok: false, status: 429 });
       expect(pushes).toHaveLength(1);
-      const third = await Peer.open(wsUrl(proxy, `/v1/connect/${host.hostId}`));
-      expect(await third.closed).toEqual({ code: 4429, reason: 'too many stream opens' });
+      proxy.landOn(b);
+      const third = await connectClient(proxy, host, link);
+      third.client.send(Buffer.from('one more'));
+      expect(await third.client.closed).toEqual({ code: 4429, reason: 'too many stream opens' });
     });
 
-    it('closes a link 1008 past the bytes of the minute counted on another relay', async () => {
+    it('closes the stream 1008 past the host bytes of the minute counted on another relay', async () => {
       const { relays, proxy } = await cluster(2, {
         limits: { bytesPerMinute: 1_000 },
         bytesFlushMs: 20,
@@ -306,8 +307,8 @@ for (const kind of kinds) {
       proxy.landOn(a, a);
       let link = await linkHost(proxy, host);
       const first = await connectClient(proxy, host, link);
-      first.client.send(Buffer.alloc(600));
-      await link.binary();
+      link.send(prefixed(first.stream, Buffer.alloc(600)));
+      await first.client.binary();
       await new Promise((resolve) => setTimeout(resolve, 60));
       link.socket.close();
       await link.closed;
@@ -318,8 +319,40 @@ for (const kind of kinds) {
       // B reads A's total on its first flush.
       await new Promise((resolve) => setTimeout(resolve, 60));
       const second = await connectClient(proxy, host, link);
-      second.client.send(Buffer.alloc(600));
-      expect((await link.closed).code).toBe(1008);
+      link.send(prefixed(second.stream, Buffer.alloc(600)));
+      expect(await second.client.closed).toEqual({ code: 1008, reason: 'byte rate exceeded' });
+      expect(link.socket.readyState).toBe(WebSocket.OPEN);
+    });
+
+    it('moves the hosts of a draining relay at once: the next stream reaches the new owner, never 4404', async () => {
+      const graceMs = 5_000;
+      const { relays, proxy } = await cluster(2, { drain: { graceMs, idlePollMs: 20 } });
+      const [a, b] = relays as [Relay, Relay];
+      const host = makeHost();
+      proxy.landOn(a, a);
+      const link = await linkHost(proxy, host);
+      const { client } = await connectClient(proxy, host, link);
+
+      const started = Date.now();
+      const drained = a.drain.start();
+      // A gives up the lease and closes the link at once, the stream with it.
+      expect((await link.closed).code).toBe(1012);
+      expect((await client.closed).code).toBe(1012);
+
+      // The server relinks; a draining A refuses upgrades, so it lands on B.
+      proxy.landOn(b);
+      const { peer: moved } = await relink(proxy, host);
+      expect(b.ownership.owns(host.hostId)).toBe(true);
+
+      // The phone reconnects through either machine and reaches B, long before the grace ends.
+      for (const landing of [a, b]) {
+        proxy.landOn(landing);
+        const phone = await connectClient(proxy, host, moved);
+        phone.client.send(Buffer.from('on b'));
+        expect(await moved.binary()).toEqual(prefixed(phone.stream, Buffer.from('on b')));
+      }
+      expect(Date.now() - started).toBeLessThan(graceMs);
+      await drained;
     });
 
     it('gives the lease up when the last link goes, and on a clean close', async () => {
@@ -346,6 +379,24 @@ for (const kind of kinds) {
     });
   });
 }
+
+describe('a relay cluster off Fly', () => {
+  it('never replays without RELAY_REPLAY=fly: every upgrade is served where it lands', async () => {
+    const registry = new MemoryRegistry();
+    const a = await startRelay({ registry, cluster: CLUSTER });
+    const b = await startRelay({ registry, cluster: CLUSTER });
+    const host = makeHost();
+    await linkHost(a, host);
+    // B does not own the host and has no link for it: the phone hears 4404, not a 307.
+    const phone = await Peer.open(wsUrl(b, `/v1/connect/${host.hostId}`));
+    expect(await phone.closed).toEqual({ code: 4404, reason: 'host offline' });
+    // A link on B cannot take the lease A holds.
+    expect(await tryLink(wsUrl(b, hostPath(host)), host)).toEqual({
+      code: 1012,
+      reason: 'host owned by another machine',
+    });
+  });
+});
 
 describe('relay cluster size', () => {
   it('takes no new lease below the minimum cluster size', async () => {

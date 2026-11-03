@@ -4,13 +4,19 @@ import { positiveIntFromEnv } from './budget.js';
 // `GET /ready` (docs/MOBILE_AND_VM_PLAN.md 5.8). `/healthz` says the process
 // is up; `/ready` says this machine should get new connections. Fly's proxy
 // routes only to machines whose checks pass, so a machine that is draining,
-// cannot reach the registry, sees fewer machines than the minimum, or is at
-// its socket ceiling answers 503 and is skipped until that changes.
+// sees fewer machines than the minimum, or is at its socket ceiling answers
+// 503 and is skipped until that changes.
+//
+// A registry that cannot be reached does not make the machine unready: every
+// machine would lose it at once, and Fly would then route to none of them.
+// The machine serves on without it (ownership.ts, single-machine mode), and
+// `/ready` reports the degradation in its body.
 //
 // The relay supplies the conditions; this module asks them all, each with a
-// time limit, and answers 200 `{"status":"ready"}` or 503
-// `{"status":"unready","reasons":[...]}`. A condition that throws, rejects or
-// does not answer in time counts against readiness, under its own reason.
+// time limit, and answers 200 `{"status":"ready"}` (with `"degraded":[...]`
+// when a degradation holds) or 503 `{"status":"unready","reasons":[...]}`. A
+// condition that throws, rejects or does not answer in time counts as holding,
+// under its own reason.
 
 /** The reasons of plan 5.8. A relay may add conditions of its own with other reasons. */
 export type UnreadyReason =
@@ -19,11 +25,14 @@ export type UnreadyReason =
 /** One thing that can make the machine unready. */
 export interface ReadinessCondition {
   reason: UnreadyReason | (string & NonNullable<unknown>);
-  /** True while this condition makes the machine unready. */
+  /** True while this condition holds. */
   unready(): boolean | Promise<boolean>;
+  /** A degradation: reported in the body, but the machine stays ready. */
+  degradesOnly?: boolean;
 }
 
-export type ReadinessResult = { ready: true } | { ready: false; reasons: string[] };
+export type ReadinessResult =
+  { ready: true; degraded: string[] } | { ready: false; reasons: string[]; degraded: string[] };
 
 export interface ReadinessOptions {
   /** How long one condition may take to answer. Default 1 second. */
@@ -55,6 +64,7 @@ export function relayConditions(inputs: RelayReadinessInputs): ReadinessConditio
     conditions.push({
       reason: 'registry_unreachable',
       unready: async () => !(await registryReachable()),
+      degradesOnly: true,
     });
   }
   const minimum = inputs.minClusterSize ?? 1;
@@ -77,10 +87,10 @@ export async function checkReadiness(
   const verdicts = await Promise.all(
     conditions.map((condition) => askWithin(condition, timeoutMs)),
   );
-  const reasons = conditions
-    .filter((_, index) => verdicts[index])
-    .map((condition) => condition.reason);
-  return reasons.length === 0 ? { ready: true } : { ready: false, reasons };
+  const holding = conditions.filter((_, index) => verdicts[index]);
+  const reasons = holding.filter((c) => !c.degradesOnly).map((c) => c.reason);
+  const degraded = holding.filter((c) => c.degradesOnly).map((c) => c.reason);
+  return reasons.length === 0 ? { ready: true, degraded } : { ready: false, reasons, degraded };
 }
 
 /** The Hono handler for `GET /ready`. */
@@ -91,8 +101,9 @@ export function readyHandler(
   return async (c: Context) => {
     const result = await checkReadiness(conditions, options);
     c.header('cache-control', 'no-store');
-    if (result.ready) return c.json({ status: 'ready' as const }, 200);
-    return c.json({ status: 'unready' as const, reasons: result.reasons }, 503);
+    const degraded = result.degraded.length > 0 ? { degraded: result.degraded } : {};
+    if (result.ready) return c.json({ status: 'ready' as const, ...degraded }, 200);
+    return c.json({ status: 'unready' as const, reasons: result.reasons, ...degraded }, 503);
   };
 }
 

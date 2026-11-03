@@ -24,9 +24,14 @@ export type RejectionReason =
   | 'rate_limited'
   | 'unauthorized'
   | 'malformed'
-  | 'not_found';
+  | 'not_found'
+  | 'address_streams'
+  | 'address_rate'
+  | 'byte_rate'
+  | 'no_payload';
 
-export type LeaseLossReason = 'renewal_failed' | 'stolen' | 'newer_epoch' | 'released';
+export type LeaseLossReason =
+  'renewal_failed' | 'stolen' | 'newer_epoch' | 'released' | 'node_lapsed';
 
 /** The live state the gauges read at scrape time. Each is optional; a gauge without its source reads 0. */
 export interface MetricSources {
@@ -38,6 +43,10 @@ export interface MetricSources {
   budget?: () => BudgetSnapshot;
   draining?: () => boolean;
   clusterSize?: () => number;
+  /** True while the registry cannot be reached (the machine serves on, degraded). */
+  degraded?: () => boolean;
+  /** Hosts served on this machine alone, without a lease, while the registry is away. */
+  hostsAlone?: () => number;
 }
 
 export interface RelayMetricsOptions {
@@ -61,6 +70,10 @@ export class RelayMetrics {
   readonly leaseRenewals: Counter<'result'>;
   /** Leases this machine lost or gave up, by reason. */
   readonly leaseLosses: Counter<'reason'>;
+  /** Host links served without a lease because the registry could not be reached. */
+  readonly servedAloneLinks: Counter;
+  /** Pushes answered `error` because the gateway failed. */
+  readonly pushFailures: Counter;
 
   constructor(options: RelayMetricsOptions = {}) {
     if (options.defaultMetrics ?? true) {
@@ -138,6 +151,21 @@ export class RelayMetrics {
     });
     gauge(
       registers,
+      'openbots_relay_registry_degraded',
+      '1 while this machine cannot reach the registry and serves on without it',
+      () => {
+        const degraded = sources().degraded?.();
+        return degraded === undefined ? undefined : Number(degraded);
+      },
+    );
+    gauge(
+      registers,
+      'openbots_relay_hosts_alone',
+      'Host ids served on this machine alone, without a lease, while the registry is away',
+      () => sources().hostsAlone?.(),
+    );
+    gauge(
+      registers,
       'openbots_relay_cluster_size',
       'Live relay machines this machine can see, itself included',
       () => sources().clusterSize?.(),
@@ -179,6 +207,16 @@ export class RelayMetrics {
       labelNames: ['reason'] as const,
       registers,
     });
+    this.servedAloneLinks = new Counter({
+      name: 'openbots_relay_served_alone_total',
+      help: 'Host links served on this machine alone because the registry could not be reached',
+      registers,
+    });
+    this.pushFailures = new Counter({
+      name: 'openbots_relay_push_failures_total',
+      help: 'Pushes answered with reason error because the push gateway failed',
+      registers,
+    });
   }
 
   /** Points the gauges at the relay's live state. A later call replaces the sources it names. */
@@ -208,6 +246,14 @@ export class RelayMetrics {
 
   leaseLost(reason: LeaseLossReason): void {
     this.leaseLosses.inc({ reason });
+  }
+
+  servedAlone(): void {
+    this.servedAloneLinks.inc();
+  }
+
+  pushFailed(): void {
+    this.pushFailures.inc();
   }
 
   /** The Prometheus text exposition. */

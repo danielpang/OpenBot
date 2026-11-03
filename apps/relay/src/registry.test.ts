@@ -1,6 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
-import { counterKey, MemoryRegistry, RedisRegistry, type Registry } from './registry.js';
+import {
+  counterKey,
+  MemoryRegistry,
+  RedisRegistry,
+  RegistryClock,
+  type Registry,
+} from './registry.js';
 
 // The registry's contract (MOBILE_AND_VM_PLAN.md 5.8): leases with a fencing
 // epoch, takeover from a dead node, compare-and-renew and compare-and-release,
@@ -106,6 +112,19 @@ function contract(name: string, make: () => Registry) {
       expect(await registry.alive(node)).toBe(false);
     });
 
+    it('counts a node out of the cluster when it leaves', async () => {
+      const node = unique('node');
+      await registry.heartbeat(node, 5_000);
+      const before = await registry.liveNodes();
+      await registry.leave(node);
+      expect(await registry.alive(node)).toBe(false);
+      expect(await registry.liveNodes()).toBe(before - 1);
+    });
+
+    it('answers its own clock', async () => {
+      expect(Math.abs((await registry.time()) - Date.now())).toBeLessThan(5_000);
+    });
+
     it('counts up to a limit, and only what it counted', async () => {
       const key = counterKey('opens', unique('host'), 3_600_000, Date.now());
       expect(await registry.take(key, 1, 2, 5_000)).toBe(true);
@@ -134,6 +153,58 @@ if (redisUrl) {
     it('runs the contract on Redis', () => undefined);
   });
 }
+
+describe('RegistryClock', () => {
+  it('follows the registry clock, read again once a minute', async () => {
+    let local = 1_000_000;
+    let asked = 0;
+    const clock = new RegistryClock(
+      {
+        time: () => {
+          asked += 1;
+          return Promise.resolve(local + 7_000);
+        },
+      },
+      { refreshMs: 60_000 },
+      () => local,
+    );
+    // Until the first answer, the local clock.
+    expect(clock.now()).toBe(local);
+    await clock.sync();
+    expect(clock.now()).toBe(local + 7_000);
+    // The first `now` asked once; within the minute nothing more is asked.
+    local += 30_000;
+    expect(clock.now()).toBe(local + 7_000);
+    expect(asked).toBe(1);
+    local += 31_000;
+    clock.now();
+    expect(asked).toBe(2);
+  });
+
+  it('puts two machines whose clocks disagree into the same window', async () => {
+    const registry = { time: () => Promise.resolve(3_600_000 * 10 + 59_000) };
+    // One clock 2 seconds behind the registry's, one 30 seconds ahead, across a minute boundary.
+    const behind = new RegistryClock(registry, {}, () => 3_600_000 * 10 + 57_000);
+    const ahead = new RegistryClock(registry, {}, () => 3_600_000 * 10 + 89_000);
+    await Promise.all([behind.sync(), ahead.sync()]);
+    const key = (clock: RegistryClock) => counterKey('opens', 'h', 60_000, clock.now());
+    expect(key(behind)).toBe(key(ahead));
+  });
+
+  it('keeps the last offset while the registry is away', async () => {
+    let fail = false;
+    const clock = new RegistryClock(
+      { time: () => (fail ? Promise.reject(new Error('down')) : Promise.resolve(5_000)) },
+      {},
+      () => 1_000,
+    );
+    await clock.sync();
+    expect(clock.now()).toBe(5_000);
+    fail = true;
+    await clock.sync();
+    expect(clock.now()).toBe(5_000);
+  });
+});
 
 describe('counterKey', () => {
   it('names one fixed window', () => {

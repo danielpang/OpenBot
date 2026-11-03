@@ -40,26 +40,31 @@ describe('readiness', () => {
     expect(body).toEqual({ status: 'unready', reasons: ['draining'] });
   });
 
-  it('is unready without the registry', async () => {
+  it('stays ready without the registry, and reports the degradation', async () => {
     const result = await checkReadiness(
       relayConditions(inputs({ registryReachable: async () => false })),
     );
-    expect(result).toEqual({ ready: false, reasons: ['registry_unreachable'] });
+    expect(result).toEqual({ ready: true, degraded: ['registry_unreachable'] });
+    const { status, body } = await get(
+      relayConditions(inputs({ registryReachable: async () => false })),
+    );
+    expect(status).toBe(200);
+    expect(body).toEqual({ status: 'ready', degraded: ['registry_unreachable'] });
   });
 
   it('is unready below the minimum cluster size', async () => {
     const result = await checkReadiness(
       relayConditions(inputs({ clusterSize: async () => 1, minClusterSize: 2 })),
     );
-    expect(result).toEqual({ ready: false, reasons: ['cluster_too_small'] });
+    expect(result).toEqual({ ready: false, reasons: ['cluster_too_small'], degraded: [] });
     expect(
       await checkReadiness(relayConditions(inputs({ clusterSize: () => 2, minClusterSize: 2 }))),
-    ).toEqual({ ready: true });
+    ).toEqual({ ready: true, degraded: [] });
   });
 
   it('is unready at the socket ceiling', async () => {
     const result = await checkReadiness(relayConditions(inputs({ atCapacity: () => true })));
-    expect(result).toEqual({ ready: false, reasons: ['at_capacity'] });
+    expect(result).toEqual({ ready: false, reasons: ['at_capacity'], degraded: [] });
   });
 
   it('reports every reason at once, in a fixed order', async () => {
@@ -75,7 +80,8 @@ describe('readiness', () => {
     expect(status).toBe(503);
     expect(body).toEqual({
       status: 'unready',
-      reasons: ['draining', 'registry_unreachable', 'cluster_too_small', 'at_capacity'],
+      reasons: ['draining', 'cluster_too_small', 'at_capacity'],
+      degraded: ['registry_unreachable'],
     });
   });
 
@@ -94,14 +100,15 @@ describe('readiness', () => {
     );
     expect(result).toEqual({
       ready: false,
-      reasons: ['registry_unreachable', 'cluster_too_small', 'at_capacity'],
+      reasons: ['cluster_too_small', 'at_capacity'],
+      degraded: ['registry_unreachable'],
     });
   });
 
   it('asks only draining and capacity on a single machine without Redis', async () => {
     const conditions = relayConditions({ draining: () => false, atCapacity: () => false });
     expect(conditions.map((c) => c.reason)).toEqual(['draining', 'at_capacity']);
-    expect(await checkReadiness(conditions)).toEqual({ ready: true });
+    expect(await checkReadiness(conditions)).toEqual({ ready: true, degraded: [] });
   });
 
   it('skips the cluster size with a minimum of 1', () => {
@@ -114,7 +121,7 @@ describe('readiness', () => {
       ...relayConditions(inputs()),
       { reason: 'memory_pressure', unready: () => true },
     ]);
-    expect(result).toEqual({ ready: false, reasons: ['memory_pressure'] });
+    expect(result).toEqual({ ready: false, reasons: ['memory_pressure'], degraded: [] });
   });
 
   it('reads RELAY_MIN_CLUSTER_SIZE', () => {

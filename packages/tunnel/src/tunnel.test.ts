@@ -18,6 +18,7 @@ import {
   type TunnelHandler,
   type TunnelRequestMeta,
   type TunnelServer,
+  type TunnelServerOptions,
 } from './server.js';
 import type { KeepaliveOptions, TunnelLimits } from './session.js';
 import { memoryTransportPair, type ByteTransport } from './transport.js';
@@ -63,6 +64,7 @@ async function setup(
     serverKeepalive?: Partial<KeepaliveOptions>;
     /** Wraps the client's transport, e.g. to hold what it receives. */
     wrapClient?: (transport: ByteTransport) => ByteTransport;
+    server?: Partial<TunnelServerOptions>;
   } = {},
 ): Promise<Setup> {
   const serverKey = generateDeviceKey();
@@ -86,6 +88,7 @@ async function setup(
     handler: fullHandler,
     limits: options.serverLimits,
     keepalive: options.serverKeepalive,
+    ...options.server,
   });
   const client = await createTunnelClient({
     transport: options.wrapClient ? options.wrapClient(clientTransport) : clientTransport,
@@ -167,23 +170,31 @@ async function checkPattern(stream: ReadableStream<Uint8Array>): Promise<number>
   }
 }
 
-/** A ServerSocket double that records what the client sent. */
-function fakeSocket() {
+/** A ServerSocket double that records what the client sent, with a settable send buffer. */
+function fakeSocket(options: { buffered?: boolean } = {}) {
   const received: (string | Uint8Array)[] = [];
   let onMessage: (data: string | Uint8Array) => void = () => {};
   let onClose: (code: number, reason: string) => void = () => {};
   const closes: { code?: number; reason?: string }[] = [];
+  const buffer = { amount: 0, grows: false };
   const socket: ServerSocket = {
-    send: (data) => received.push(data),
+    send: (data) => {
+      received.push(data);
+      if (buffer.grows) buffer.amount += typeof data === 'string' ? data.length : data.length;
+    },
     close: (code, reason) => closes.push({ code, reason }),
     onMessage: (handler) => (onMessage = handler),
     onClose: (handler) => (onClose = handler),
     headers: { 'sec-websocket-protocol': 'openbots' },
   };
+  if (options.buffered) {
+    Object.defineProperty(socket, 'bufferedAmount', { get: () => buffer.amount });
+  }
   return {
     socket,
     received,
     closes,
+    buffer,
     emit: (data: string | Uint8Array) => onMessage(data),
     closeFromServer: (code: number, reason: string) => onClose(code, reason),
   };
@@ -621,15 +632,51 @@ describe('tunnel client and server', () => {
     await waitFor(() => ws2.readyState === 1);
   });
 
-  it('keeps an unknown device unknown when pairing fails', async () => {
+  it('keeps an unknown device unknown when pairing fails, and closes its stream 4400', async () => {
     const { client, server } = await setup(
       { fetch: async () => Response.json({ code: 'PAIRING_INVALID' }, { status: 401 }) },
       { known: false },
     );
+    const closed = new Promise<[number, string]>((resolve) =>
+      server.onClose((code, reason) => resolve([code, reason])),
+    );
+    expect((await client.fetch('/api/v1/bots')).status).toBe(403);
     const response = await client.fetch('/api/v1/devices/pair', { method: 'POST', body: '{}' });
     expect(response.status).toBe(401);
     expect(server.deviceId).toBeNull();
-    expect((await client.fetch('/api/v1/bots')).status).toBe(403);
+    // The pairing was answered: a pairing only stream has nothing left to serve.
+    expect(await closed).toEqual([4400, 'pairing only']);
+    await expect(client.fetch('/api/v1/bots')).rejects.toBeInstanceOf(TunnelClosedError);
+  });
+
+  it('closes a pairing only stream 4400 once its lifetime is up, but not a promoted one', async () => {
+    const quiet = await setup({}, { known: false, server: { unknownDeviceLifetimeMs: 50 } });
+    const closed = new Promise<[number, string]>((resolve) =>
+      quiet.server.onClose((code, reason) => resolve([code, reason])),
+    );
+    expect(await closed).toEqual([4400, 'pairing only']);
+
+    const later: { devices?: Map<string, string>; key?: Uint8Array } = {};
+    const paired = await setup(
+      {
+        fetch: async () => {
+          later.devices!.set(hex(later.key!), 'device-new');
+          return Response.json({ ok: true });
+        },
+      },
+      { known: false, server: { unknownDeviceLifetimeMs: 100 } },
+    );
+    later.devices = paired.devices;
+    later.key = paired.deviceKey.publicKey;
+    const pair = await paired.client.fetch('/api/v1/devices/pair', { method: 'POST', body: '{}' });
+    expect(pair.status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(paired.server.closed).toBe(false);
+    expect((await paired.client.fetch('/api/v1/bots')).status).toBe(200);
+
+    const unlimited = await setup({}, { known: false, server: { unknownDeviceLifetimeMs: 0 } });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(unlimited.server.closed).toBe(false);
   });
 
   it('answers a handler that throws with an `internal` error', async () => {
@@ -722,6 +769,32 @@ describe('handshake failures', () => {
     await expect(client).rejects.toBeInstanceOf(TunnelHandshakeError);
     await waitFor(() => closed.mock.calls.length === 1);
     expect(closed.mock.calls[0]![0]).toBe(4400);
+  });
+
+  it('counts the device lookup within the handshake time limit', async () => {
+    const serverKey = generateDeviceKey();
+    const deviceKey = generateDeviceKey();
+    const [a, b] = memoryTransportPair();
+    let closedWith: [number, string] | null = null;
+    b.onClose(() => undefined);
+    a.onClose((code, reason) => (closedWith = [code, reason]));
+    const server = createTunnelServer({
+      transport: b,
+      staticKey: serverKey.privateKey,
+      // A lookup that never answers, as a database that hangs would.
+      lookupDevice: () => new Promise<DeviceLookup>(() => undefined),
+      handler: { fetch: async () => new Response(), openSocket: async () => new Response() },
+      handshakeTimeoutMs: 50,
+    });
+    const client = createTunnelClient({
+      transport: a,
+      serverKey: serverKey.publicKey,
+      staticKey: deviceKey.privateKey,
+      handshakeTimeoutMs: 5_000,
+    });
+    await expect(server).rejects.toBeInstanceOf(TunnelHandshakeError);
+    await expect(client).rejects.toBeInstanceOf(TunnelHandshakeError);
+    expect(closedWith![0]).toBe(4400);
   });
 
   it('times out when the server never answers', async () => {
@@ -838,6 +911,52 @@ describe('bounded WebSocket queues (spec 5.3)', () => {
     ws.send(new Uint8Array(10_000).fill(8));
     await waitFor(() => fake.received.length === 1);
     expect((fake.received[0] as Uint8Array).length).toBe(10_000);
+  });
+
+  it('credits client messages only as the server socket takes them', async () => {
+    const fake = fakeSocket({ buffered: true });
+    const { client } = await setup(
+      { openSocket: async () => fake.socket },
+      {
+        clientLimits: { ...small, maxQueuedBytes: 64 * 1024 },
+        serverLimits: { ...small, maxQueuedBytes: 64 * 1024 },
+      },
+    );
+    const ws = client.createSocket('/ws');
+    await waitFor(() => ws.readyState === 1);
+    // The server's socket writes nothing out: its buffer grows with every message.
+    fake.buffer.grows = true;
+    for (let i = 0; i < 6; i++) ws.send(message(i));
+    // One window's worth reaches the socket, then credit stops and the client waits.
+    await waitFor(() => fake.received.length >= 2);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const stalled = fake.received.length;
+    expect(stalled).toBeLessThan(6);
+    expect(fake.closes).toEqual([]);
+    // Once the socket drains, the credit goes out and the rest arrives.
+    fake.buffer.grows = false;
+    fake.buffer.amount = 0;
+    await waitFor(() => fake.received.length === 6);
+    expect(fake.closes).toEqual([]);
+  });
+
+  it('closes 1008 a server socket that holds more than the bound when the next message comes', async () => {
+    const fake = fakeSocket({ buffered: true });
+    const { client } = await setup(
+      { openSocket: async () => fake.socket },
+      { clientLimits: small, serverLimits: small },
+    );
+    const ws = client.createSocket('/ws');
+    const events = socketEvents(ws);
+    await waitFor(() => ws.readyState === 1);
+    // A socket stuck past the bound, as one whose reader went away would be.
+    fake.buffer.amount = 5000;
+    ws.send(message(1));
+    await waitFor(() => fake.closes.length === 1);
+    expect(fake.closes).toEqual([{ code: 1008, reason: 'receive queue full' }]);
+    expect(fake.received).toEqual([]);
+    await waitFor(() => ws.readyState === 3);
+    expect(events.at(-1)).toMatchObject({ type: 'close', code: 1008 });
   });
 
   it('closes a client socket 1008 whose sends pass the bound behind a shut window', async () => {
@@ -1051,6 +1170,8 @@ describe('protocol errors', () => {
         },
       ],
       [{ type: FrameType.Credit, id: 1, header: { bytes: -5 } }],
+      // A credit for an id that was never opened.
+      [{ type: FrameType.Credit, id: 9, header: { bytes: 5 } }],
       [{ type: FrameType.HttpBody, id: 7, flags: FLAG_END }],
     ] as FrameInit[][]) {
       const raw = await rawClient();
@@ -1119,6 +1240,7 @@ describe('protocol errors', () => {
     await waitFor(() => raw.fetches.length === 1);
     raw.send({ type: FrameType.Error, id: 1, header: { code: 'cancelled', message: '' } });
     raw.send({ type: FrameType.HttpBody, id: 1, flags: FLAG_END, body: new Uint8Array(5) });
+    raw.send({ type: FrameType.Credit, id: 1, header: { bytes: 5 } });
     raw.send({ type: FrameType.Ping, id: 0, header: { ts: 42 } });
     await waitFor(() => raw.received.some((frame) => frame.type === FrameType.Pong));
     expect(raw.closed()).toBeNull();

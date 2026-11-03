@@ -66,6 +66,44 @@ describe('DrainController', () => {
     expect(drain.draining).toBe(true);
   });
 
+  it('closes the links right after the leases go, and waits for pushes within the grace', async () => {
+    let settled!: () => void;
+    const { hooks, calls } = recorder({
+      closeLinks: vi.fn((code: number) => {
+        calls.push(`closeLinks ${code}`);
+      }),
+      settle: () =>
+        new Promise<void>((resolve) => {
+          settled = () => {
+            calls.push('settled');
+            resolve();
+          };
+        }),
+      idle: () => true,
+    });
+    const drain = new DrainController(hooks, { graceMs: 1_000, idlePollMs: 10 });
+    const done = drain.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toEqual(['stopAccepting', 'releaseLeases', 'closeLinks 1012']);
+    // Idle at once, but a push is still in flight: closeAll waits for it.
+    await vi.advanceTimersByTimeAsync(500);
+    expect(hooks.closeAll).not.toHaveBeenCalled();
+    settled();
+    await done;
+    expect(calls.slice(3)).toEqual(['settled', 'closeAll 1012 relay restarting, reconnect']);
+  });
+
+  it('waits for pushes no longer than the grace', async () => {
+    const { hooks } = recorder({ settle: () => new Promise<void>(() => undefined) });
+    const drain = new DrainController(hooks, { graceMs: 1_000 });
+    const done = drain.start();
+    await vi.advanceTimersByTimeAsync(999);
+    expect(hooks.closeAll).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await done;
+    expect(hooks.closeAll).toHaveBeenCalledTimes(1);
+  });
+
   it('runs once however often it is started', async () => {
     const { hooks } = recorder();
     const drain = new DrainController(hooks, { graceMs: 100 });

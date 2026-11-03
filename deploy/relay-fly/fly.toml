@@ -24,9 +24,9 @@ kill_signal = "SIGTERM"
 kill_timeout = 30
 
 [build]
-  # Pin a release (:1.2 follows its fixes, :1.2.0 never moves) so a deploy
-  # never upgrades by surprise.
-  image = "ghcr.io/danielpang/openbots/relay:latest"
+  # A pinned release, never :latest, so a deploy never upgrades by surprise.
+  # Set it to the release you run (:1.2 follows its fixes, :1.2.0 never moves).
+  image = "ghcr.io/danielpang/openbots/relay:1.0.0"
 
 [deploy]
   # One Machine at a time, so the others take its hosts while it drains.
@@ -47,21 +47,18 @@ kill_timeout = 30
   # minimum of 2 would make the last Machine standing report not ready.
   RELAY_MIN_CLUSTER_SIZE = "1"
   RELAY_LOG_LEVEL = "info"
-  # Push: the key file written by [[files]] below. Remove this line and that
-  # section for a relay that carries streams only.
-  RELAY_APNS_KEY_FILE = "/run/secrets/apns.p8"
   # Set as secrets, never here (`fly secrets set`; see the README):
   #   RELAY_REDIS_URL       the registry. Required with more than one Machine
   #   RELAY_METRICS_TOKEN   bearer token for GET /metrics. Without it /metrics is 404
+  #   RELAY_PRESENCE_TOKEN  optional: bearer token GET /v1/hosts/{id} then wants
   #   RELAY_APNS_KEY_ID, RELAY_APNS_TEAM_ID, RELAY_APNS_TOPIC
-  #   RELAY_APNS_KEY        the .p8 key, base64, written to the file below
+  #   RELAY_APNS_KEY        the .p8 key, base64. The relay reads it once at
+  #                         start and deletes it from its environment, so no
+  #                         key file is written and none needs to be readable
+  #                         by the relay's user
   # RELAY_NODE_ID stays unset on Fly: the relay takes the Machine's own
-  # FLY_MACHINE_ID, which is what `fly-replay: instance=` names.
-
-# The APNs key, from the RELAY_APNS_KEY secret (base64 of the .p8 file).
-[[files]]
-  guest_path = "/run/secrets/apns.p8"
-  secret_name = "RELAY_APNS_KEY"
+  # FLY_MACHINE_ID, which is what `fly-replay: instance=` names. Replays are on
+  # because FLY_MACHINE_ID is set; RELAY_REPLAY need not be.
 
 [http_service]
   internal_port = 3200
@@ -80,8 +77,9 @@ kill_timeout = 30
     soft_limit = 16000
     hard_limit = 20000
 
-  # Not ready while draining, without Redis, or at the socket ceiling: the
-  # proxy then sends this Machine nothing new.
+  # Not ready while draining or at the socket ceiling: the proxy then sends
+  # this Machine nothing new. A Machine without Redis stays ready and serves on
+  # alone, so a Redis outage does not take every Machine out at once.
   [[http_service.checks]]
     grace_period = "10s"
     interval = "10s"

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { Logger } from 'pino';
 import { WebSocket, type RawData } from 'ws';
 import { z } from 'zod';
-import type { PushGateway, PushOutcome } from './apns.js';
+import type { PushGateway, PushOutcome, PushRequest } from './apns.js';
 import type { Ticket } from './budget.js';
 import type { FlowControl, Outlet, SendResult, Valve } from './flow.js';
 import type { RelayMetrics } from './metrics.js';
@@ -16,6 +16,7 @@ import {
 } from './hosts.js';
 import {
   fromBase64Url,
+  isHostId,
   NONCE_BYTES,
   PUBLIC_KEY_BYTES,
   SIGNATURE_BYTES,
@@ -33,6 +34,14 @@ import {
 // `linked` other than one `hello` is a protocol error. A protocol error is an
 // `error` frame and then a close with 4400; the limits of 3.4 close the link
 // without one.
+//
+// A claim that the registry does not answer within 10 seconds closes the link
+// 1012, so the host reconnects rather than wait. Host to client bytes past the
+// host's minute close the stream that would carry them (1008), not the link,
+// since the streams are what a client can drive. Every push is answered with
+// `push.result`, `reason: "error"` when the gateway fails in any way. On a
+// drain the link closes 1012 as soon as its pushes in flight are answered, so
+// the host relinks to another machine at once.
 
 /** A binary frame's stream id prefix. */
 export const STREAM_ID_BYTES = 4;
@@ -52,12 +61,15 @@ export interface HostLinkTiming {
   pingIntervalMs: number;
   /** A link with no pong for this long is closed 1001. */
   pongTimeoutMs: number;
+  /** A link whose lease is not taken this long after its hello is closed 1012. */
+  claimTimeoutMs: number;
 }
 
 export const DEFAULT_TIMING: HostLinkTiming = {
   helloTimeoutMs: 10_000,
   pingIntervalMs: 25_000,
   pongTimeoutMs: 50_000,
+  claimTimeoutMs: 10_000,
 };
 
 export interface HostLinkDeps {
@@ -116,6 +128,7 @@ const PushSchema = z.object({
   priority: z.union([z.literal(10), z.literal(5)]),
   expiresAt: z.number().int().min(0),
   threadId: z.string().max(256).optional(),
+  environment: z.enum(['production', 'sandbox']).default('production'),
 });
 
 /** Just enough of a `push` frame to answer it when the rest does not parse. */
@@ -137,7 +150,12 @@ export class HostLink implements Link {
   private readonly nonce = randomBytes(NONCE_BYTES);
   private state: 'challenged' | 'claiming' | 'linked' | 'ended' = 'challenged';
   private readonly helloTimer: NodeJS.Timeout;
+  private claimTimer: NodeJS.Timeout | undefined;
   private lastPong = Date.now();
+  /** Pushes sent to the gateway and not yet answered. */
+  private readonly pushes = new Set<Promise<void>>();
+  /** Set by a drain: the link closes with this once its pushes are answered. */
+  private draining: { code: number; reason: string } | undefined;
 
   constructor(
     private readonly socket: WebSocket,
@@ -173,6 +191,42 @@ export class HostLink implements Link {
     return this.state === 'linked';
   }
 
+  /** Between the hello and `linked`: the lease is being taken. */
+  get claiming(): boolean {
+    return this.state === 'claiming';
+  }
+
+  /** Pushes in flight on this link. */
+  get pushesInFlight(): number {
+    return this.pushes.size;
+  }
+
+  /** Settles once every push in flight has been answered. */
+  async settled(): Promise<void> {
+    while (this.pushes.size > 0) await Promise.all([...this.pushes]);
+  }
+
+  /**
+   * The machine is draining: no new push is taken, and the link closes with
+   * `code` (1012), its streams first, once the pushes in flight are answered,
+   * so the host can relink to another machine at once.
+   */
+  drain(code: number, reason: string): void {
+    if (this.state === 'ended' || this.draining) return;
+    this.draining = { code, reason };
+    this.closeIfDrained();
+  }
+
+  private closeIfDrained() {
+    if (!this.draining || this.pushes.size > 0 || this.state === 'ended') return;
+    const { code, reason } = this.draining;
+    for (const [stream, peer] of [...this.streams]) {
+      this.streams.delete(stream);
+      peer.end(code, reason);
+    }
+    this.end(code, reason);
+  }
+
   /** The keepalive tick: closes a link that missed its pongs, else pings it. */
   heartbeat(now: number): void {
     if (this.state === 'ended') return;
@@ -187,8 +241,8 @@ export class HostLink implements Link {
     this.send({ type: 'open', stream, remote });
   }
 
+  /** One client payload to the host. Its byte limits are the client stream's to count (3.4). */
   sendData(stream: number, payload: Buffer, from?: Valve): SendResult {
-    if (!this.countBytes(payload.length)) return { ok: false, reason: 'closed' };
     const frame = Buffer.allocUnsafe(STREAM_ID_BYTES + payload.length);
     frame.writeUInt32BE(stream, 0);
     payload.copy(frame, STREAM_ID_BYTES);
@@ -210,6 +264,7 @@ export class HostLink implements Link {
     const wasLinked = this.state === 'linked';
     this.state = 'ended';
     clearTimeout(this.helloTimer);
+    clearTimeout(this.claimTimer);
     this.linkOutlet.close();
     if (wasLinked) {
       this.deps.registry.removeLink(this);
@@ -241,10 +296,19 @@ export class HostLink implements Link {
     // ws refuses larger frames itself (maxPayload); this is the same limit.
     if (frame.length > MAX_HOST_BINARY_BYTES) return this.end(1009, 'frame too large');
     const payload = frame.subarray(STREAM_ID_BYTES);
-    if (!this.countBytes(payload.length)) return;
+    const stream = frame.readUInt32BE(0);
     // Data for an unknown or closed stream is dropped (3.2).
-    const peer = this.streams.get(frame.readUInt32BE(0));
+    const peer = this.streams.get(stream);
     if (!peer) return;
+    if (!this.deps.registry.countBytes(this.hostId, payload.length)) {
+      // Past the host's minute: the stream that would carry it goes, the link stays.
+      this.deps.logger.warn({ hostId: this.hostId }, 'host over its byte rate; closing a stream');
+      this.deps.metrics.rejected('byte_rate');
+      this.deps.registry.forgetStream(this, stream);
+      this.sendClose(stream, 1008, 'byte rate exceeded');
+      peer.end(1008, 'byte rate exceeded');
+      return;
+    }
     this.deps.metrics.forwarded('to_client', payload.length);
     peer.deliver(payload);
   }
@@ -278,6 +342,7 @@ export class HostLink implements Link {
       throw new ProtocolError('malformed hello');
     }
     const { hostId } = parsed.data;
+    if (!isHostId(hostId)) throw new ProtocolError('malformed hello: not a host id');
     if (!verifyHello({ hostId, publicKey, sig }, this.nonce)) {
       this.deps.logger.info({ remote: this.remote }, 'host link refused');
       return this.fail(4401, 'unauthorized', 'the signature does not prove this host id');
@@ -292,6 +357,12 @@ export class HostLink implements Link {
     );
     this.hostId = hostId;
     this.state = 'claiming';
+    this.claimTimer = setTimeout(() => {
+      if (this.state !== 'claiming') return;
+      this.deps.logger.warn({ hostId }, 'the lease was not taken in time');
+      this.end(1012, 'registry slow');
+    }, this.deps.timing.claimTimeoutMs);
+    this.claimTimer.unref();
     void this.deps.claim(hostId, this.capabilities.has('streams')).then(
       (claimed) => this.claimed(claimed),
       (error: unknown) => {
@@ -304,6 +375,7 @@ export class HostLink implements Link {
   /** The lease is this machine's, or the host is told to reconnect (1012). */
   private claimed(claimed: ClaimResult) {
     if (this.state !== 'claiming') return;
+    clearTimeout(this.claimTimer);
     const { hostId } = this;
     if (!claimed.ok) {
       this.deps.logger.info({ hostId, reason: claimed.reason }, 'host link not served here');
@@ -336,22 +408,34 @@ export class HostLink implements Link {
       return this.pushResult(withId.data.id, { ok: false, reason: 'invalid', status: null });
     }
     const { id, type: _type, platform: _platform, ...push } = parsed.data;
-    void this.deps.registry.countPush(this.hostId).then(async (counted) => {
-      if (!counted) return this.pushResult(id, { ok: false, reason: 'error', status: 429 });
-      this.pushResult(id, await this.deps.push.send(push));
+    if (this.draining) {
+      return this.pushResult(id, { ok: false, reason: 'error', status: 503 });
+    }
+    const pending: Promise<void> = this.sendPush(id, push).finally(() => {
+      this.pushes.delete(pending);
+      this.closeIfDrained();
     });
+    this.pushes.add(pending);
+  }
+
+  /** Counts and sends one push, and answers it whatever happens, `error` when anything fails. */
+  private async sendPush(id: string, push: PushRequest): Promise<void> {
+    let outcome: PushOutcome;
+    try {
+      const counted = await this.deps.registry.countPush(this.hostId);
+      outcome = counted
+        ? await this.deps.push.send(push)
+        : { ok: false, reason: 'error', status: 429 };
+    } catch (error) {
+      this.deps.logger.warn({ err: String(error), hostId: this.hostId }, 'push failed');
+      this.deps.metrics.pushFailed();
+      outcome = { ok: false, reason: 'error', status: null };
+    }
+    this.pushResult(id, outcome);
   }
 
   private pushResult(id: string, outcome: PushOutcome) {
     this.send({ type: 'push.result', id, ...outcome });
-  }
-
-  /** Counts stream bytes against the host's minute; past it the link closes 1008. */
-  private countBytes(bytes: number): boolean {
-    if (this.deps.registry.countBytes(this.hostId, bytes)) return true;
-    this.deps.logger.warn({ hostId: this.hostId }, 'host link over its byte rate');
-    this.end(1008, 'byte rate exceeded');
-    return false;
   }
 
   private fail(code: number, errorCode: string, message: string) {

@@ -9,10 +9,15 @@ import { positiveIntFromEnv } from './budget.js';
 // 2. It stops accepting new upgrades and taking new leases (`stopAccepting`).
 // 3. It gives up the leases it holds (`releaseLeases`), so another machine
 //    can take each host as soon as its server reconnects.
-// 4. After the grace period, or sooner once nothing is left (`idle`), it
-//    closes its remaining links and streams with 1012 (`closeAll`). Servers
-//    and phones reconnect through normal routing to a machine that owns, or
-//    will take, their host.
+// 4. Right after, it closes its host links with 1012 (`closeLinks`), each
+//    once the pushes in flight on it are answered, so servers relink to
+//    another machine at once instead of leaving their hosts looking offline
+//    for the grace period. A client stream goes on until its link closes.
+// 5. After the grace period, or sooner once nothing is left (`idle`), it
+//    waits (within the grace) for pushes still in flight to be answered
+//    (`settle`), then closes its remaining links and streams with 1012
+//    (`closeAll`). Servers and phones reconnect through normal routing to a
+//    machine that owns, or will take, their host.
 //
 // The controller only sequences these. The callbacks belong to the relay, and
 // a callback that throws is reported and does not stop the drain.
@@ -37,6 +42,10 @@ export interface DrainHooks {
   stopAccepting(): void | Promise<void>;
   /** Give up every lease this machine holds. */
   releaseLeases(): void | Promise<void>;
+  /** Close every host link with `code` (1012) once its pushes in flight are answered. */
+  closeLinks?(code: typeof SERVICE_RESTART, reason: string): void | Promise<void>;
+  /** Settles once the pushes in flight are answered. Awaited only within the grace. */
+  settle?(): Promise<void>;
   /** Close every link and stream still open with `code` (1012). */
   closeAll(code: typeof SERVICE_RESTART, reason: string): void | Promise<void>;
   /** True once no link or stream is left, to finish before the grace period ends. */
@@ -45,7 +54,7 @@ export interface DrainHooks {
   onError?(step: DrainStep, error: unknown): void;
 }
 
-export type DrainStep = 'stopAccepting' | 'releaseLeases' | 'closeAll';
+export type DrainStep = 'stopAccepting' | 'releaseLeases' | 'closeLinks' | 'settle' | 'closeAll';
 
 export type DrainPhase = 'serving' | 'draining' | 'closing' | 'drained';
 
@@ -107,7 +116,15 @@ export class DrainController {
   private async run(): Promise<void> {
     await this.step('stopAccepting', () => this.hooks.stopAccepting());
     await this.step('releaseLeases', () => this.hooks.releaseLeases());
+    const deadline = Date.now() + this.options.graceMs;
+    await this.step('closeLinks', () =>
+      this.hooks.closeLinks?.(SERVICE_RESTART, 'relay restarting, reconnect'),
+    );
     await this.grace();
+    const settle = this.hooks.settle;
+    if (settle) {
+      await this.step('settle', () => within(settle(), Math.max(0, deadline - Date.now())));
+    }
     this.current = 'closing';
     await this.step('closeAll', () =>
       this.hooks.closeAll(SERVICE_RESTART, 'relay restarting, reconnect'),
@@ -161,4 +178,16 @@ export function drainOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Drain
     ...DEFAULT_DRAIN,
     graceMs: positiveIntFromEnv(env, 'RELAY_DRAIN_GRACE_MS', DEFAULT_DRAIN.graceMs),
   };
+}
+
+/** Waits for `promise`, or `ms`, whichever is first. */
+function within(promise: Promise<void>, ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    promise,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
 }

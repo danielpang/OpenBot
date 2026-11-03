@@ -24,6 +24,18 @@ describe('relay', () => {
     );
   });
 
+  it('asks for the presence token when one is set', async () => {
+    const token = 'a-long-enough-presence-token';
+    const relay = await startRelay({ presenceToken: token });
+    const host = makeHost();
+    const url = `${relay.url}/v1/hosts/${host.hostId}`;
+    expect((await fetch(url)).status).toBe(401);
+    expect((await fetch(url, { headers: { authorization: 'Bearer wrong' } })).status).toBe(401);
+    const answered = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+    expect(answered.status).toBe(200);
+    expect(await answered.json()).toEqual({ hostId: host.hostId, linked: false });
+  });
+
   it('answers 404 for a malformed host id', async () => {
     const relay = await startRelay();
     expect((await fetch(`${relay.url}/v1/hosts/nope`)).status).toBe(404);

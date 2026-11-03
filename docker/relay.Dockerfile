@@ -53,7 +53,9 @@ COPY --from=prod-deps /app /app
 COPY --from=build /out /app
 WORKDIR /app/apps/relay
 # 1000 is the `node` user of the official Node images. The relay writes
-# nothing to disk; an APNs key, when there is one, is mounted read only.
+# nothing to disk. An APNs key, when there is one, comes in RELAY_APNS_KEY
+# (read once at start, then deleted from the environment) or as a file in
+# RELAY_APNS_KEY_FILE, which must then be readable by user 1000.
 USER 1000:1000
 EXPOSE 3200
 # The slim image has no curl; Node's own fetch asks the relay.
