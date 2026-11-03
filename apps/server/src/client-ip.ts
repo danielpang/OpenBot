@@ -1,3 +1,4 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { BlockList, isIP } from 'node:net';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Context } from 'hono';
@@ -108,6 +109,29 @@ export const DEVICE_KEY_HEADER = 'x-openbots-device-key';
 
 const LOOPBACK = ['127.0.0.0/8', '::1'];
 
+/**
+ * A loopback peer alone does not prove a request came from the relay
+ * adapter: a reverse proxy or another program on the same host connects from
+ * loopback too. The adapter runs in this process and sends this secret,
+ * made fresh at every start and never written anywhere, so the device headers
+ * are believed only beside it. A request through the tunnel cannot carry it:
+ * the adapter drops a client-sent copy before it adds its own.
+ */
+export const ADAPTER_SECRET_HEADER = 'x-openbots-adapter';
+const ADAPTER_SECRET = randomBytes(32).toString('base64url');
+
+/** The header the relay adapter adds to every loopback request and socket. */
+export function adapterHeaders(): Record<string, string> {
+  return { [ADAPTER_SECRET_HEADER]: ADAPTER_SECRET };
+}
+
+function fromAdapter(c: Context<AppEnv>): boolean {
+  const sent = c.req.header(ADAPTER_SECRET_HEADER);
+  if (!sent) return false;
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(sent), digest(ADAPTER_SECRET));
+}
+
 /** Whether the peer of the connection itself (never X-Forwarded-For) is loopback. */
 export function fromLoopback(c: Context<AppEnv>): boolean {
   const peer = peerAddress(c);
@@ -116,7 +140,7 @@ export function fromLoopback(c: Context<AppEnv>): boolean {
 
 /** A header the relay adapter sets, when the request came from loopback; else undefined. */
 export function tunnelHeader(c: Context<AppEnv>, name: string): string | undefined {
-  if (!fromLoopback(c)) return undefined;
+  if (!fromLoopback(c) || !fromAdapter(c)) return undefined;
   const value = c.req.header(name)?.trim();
   return value ? value : undefined;
 }

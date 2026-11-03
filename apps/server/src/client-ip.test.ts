@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import {
+  adapterHeaders,
   DEVICE_HEADER,
   DEVICE_KEY_HEADER,
   inRanges,
@@ -64,8 +65,17 @@ describe('rateLimitKey', () => {
     .get('/', (c) =>
       c.json({ key: rateLimitKey(c), deviceKey: tunnelHeader(c, DEVICE_KEY_HEADER) ?? null }),
     );
-  const from = async (remoteAddress: string, headers: Record<string, string> = {}) => {
-    const res = await app.request('/', { headers }, { incoming: { socket: { remoteAddress } } });
+  const from = async (
+    remoteAddress: string,
+    headers: Record<string, string> = {},
+    adapter = true,
+  ) => {
+    const sent = adapter ? { ...adapterHeaders(), ...headers } : headers;
+    const res = await app.request(
+      '/',
+      { headers: sent },
+      { incoming: { socket: { remoteAddress } } },
+    );
     return (await res.json()) as { key: string | null; deviceKey: string | null };
   };
 
@@ -79,6 +89,16 @@ describe('rateLimitKey', () => {
       deviceKey: 'abc',
     });
     expect((await from('::ffff:127.0.0.1', { [DEVICE_HEADER]: 'd-2' })).key).toBe('device:d-2');
+  });
+
+  it('ignores the headers from loopback without the adapter secret', async () => {
+    expect(
+      await from('127.0.0.1', { [DEVICE_HEADER]: 'd-1', [DEVICE_KEY_HEADER]: 'abc' }, false),
+    ).toEqual({ key: '127.0.0.1', deviceKey: null });
+    expect(
+      (await from('127.0.0.1', { [DEVICE_HEADER]: 'd-1', 'x-openbots-adapter': 'guess' }, false))
+        .key,
+    ).toBe('127.0.0.1');
   });
 
   it('keys loopback without the header on the address', async () => {

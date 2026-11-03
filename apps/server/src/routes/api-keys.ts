@@ -6,6 +6,7 @@ import { requireUser } from '../middleware/auth.js';
 import { recordAudit, userActor } from '../services/audit.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import { asDirectory } from '../db/scope.js';
+import { refuseDeviceKey } from '../services/devices.js';
 
 // API keys (U4): list, create (the key is returned once), revoke. Keys are
 // hashed at rest by better-auth's api-key plugin. A key belongs to the
@@ -109,6 +110,7 @@ export const apiKeyRoutes = createRouter()
     }),
     async (c) => {
       const { auth, db } = c.var.deps;
+      await refuseDeviceKey(db, c.var.user);
       const { name, expiresInDays } = c.req.valid('json');
       const created = await auth.api.createApiKey({
         body: {

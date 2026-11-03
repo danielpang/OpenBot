@@ -670,3 +670,31 @@ function isUniqueViolation(error: unknown): boolean {
   }
   return false;
 }
+
+/**
+ * A device's key cannot make more credentials: no API keys and no pairings.
+ * Otherwise a stolen phone could mint a key or pair another device that
+ * outlives its revocation. The owner makes those from a signed-in session.
+ */
+export async function refuseDeviceKey(
+  db: Db,
+  caller: { workspaceId: string; apiKeyId?: string | null },
+): Promise<void> {
+  if (!caller.apiKeyId) return;
+  const [row] = await db
+    .select({ id: schema.devices.id })
+    .from(schema.devices)
+    .where(
+      and(
+        eq(schema.devices.workspaceId, caller.workspaceId),
+        eq(schema.devices.apiKeyId, caller.apiKeyId),
+      ),
+    );
+  if (row) {
+    throw new DomainError(
+      403,
+      'DEVICE_KEY_NOT_ALLOWED',
+      'A paired device cannot make API keys or pairings. Sign in on the web or the Mac app.',
+    );
+  }
+}

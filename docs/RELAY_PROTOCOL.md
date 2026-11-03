@@ -170,7 +170,7 @@ An HTTP id is open from `http.req` until END has gone both ways or an error ends
 
 ### 5.4 What the server does with a frame
 
-A `http.req` becomes a request to the server's own HTTP port on loopback, as any caller: the frame's headers pass through, less `host`, `cookie`, `origin`, `sec-fetch-*`, `x-forwarded-*`, `connection`, `upgrade`, `content-length` and `transfer-encoding`, which the adapter sets itself. The tunnel drops a client-sent `x-openbots-device`; the adapter adds `x-openbots-device: <device id>` for a known device, or `stream:<relay stream id>` for an unknown one, which the server's rate limits key on for loopback requests, and on a `POST /api/v1/devices/pair` also `x-openbots-device-key: <the session's client static key, base64url>`, which the route compares with the body's `publicKey`. Both headers are honoured from loopback only. A `ws.open` becomes a WebSocket connection to the same port and path with the same header rules, so `/ws`, `/computer/pty` and `/bots/{id}/screen/vnc` work as they do for any client. The response's headers pass back less `set-cookie`, `connection`, `transfer-encoding` and `content-length`.
+A `http.req` becomes a request to the server's own HTTP port on loopback, as any caller: the frame's headers pass through, less `host`, `cookie`, `origin`, `sec-fetch-*`, `x-forwarded-*`, `connection`, `upgrade`, `content-length` and `transfer-encoding`, which the adapter sets itself. The tunnel drops a client-sent `x-openbots-device`; the adapter adds `x-openbots-device: <device id>` for a known device, or `stream:<relay stream id>` for an unknown one, which the server's rate limits key on for loopback requests, and on a `POST /api/v1/devices/pair` also `x-openbots-device-key: <the session's client static key, base64url>`, which the route compares with the body's `publicKey`. Both headers are honoured only from loopback and only beside `x-openbots-adapter`, a secret the adapter makes at each start and adds to every request; the adapter drops a client-sent copy, so neither a tunneled request nor another program on the host can name a device. A `ws.open` becomes a WebSocket connection to the same port and path with the same header rules, so `/ws`, `/computer/pty` and `/bots/{id}/screen/vnc` work as they do for any client. The response's headers pass back less `set-cookie`, `connection`, `transfer-encoding` and `content-length`.
 
 So the API, its authentication (the device's bearer key), its ownership checks, rate limits and audit apply unchanged. A tunneled request without a bearer key gets 401 like any other.
 
@@ -272,15 +272,16 @@ Priority 10 for `approval` and `question`, 5 for the rest; `expiresAt` one day a
 
 Problems from the API are its usual JSON problems (`{"code","message"}`). Codes added by this protocol:
 
-| Code                    | Where                         | Meaning                                                            |
-| ----------------------- | ----------------------------- | ------------------------------------------------------------------ |
-| `PAIRING_INVALID`       | `POST /devices/pair`, 401     | The code is unknown, used or expired                               |
-| `PAIRING_KEY_MISMATCH`  | `POST /devices/pair`, 400     | `publicKey` is not the handshake's static key                      |
-| `DEVICE_UNKNOWN`        | Any tunneled request, 403     | The stream's device is not paired; only pairing is served          |
-| `DEVICE_REVOKED`        | Any request, 401              | The device was revoked (its key is gone; a plain 401 from the API) |
-| `DEVICE_ALREADY_PAIRED` | `POST /devices/pair`, 409     | An unrevoked device already holds that static key                  |
-| `TOO_MANY_PAIRINGS`     | `POST /devices/pairings`, 409 | Five pairings are already open for this owner                      |
-| `NOT_THIS_DEVICE`       | `PUT /devices/{id}/push`, 403 | The caller is not that device                                      |
+| Code                     | Where                                           | Meaning                                                                                                          |
+| ------------------------ | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `PAIRING_INVALID`        | `POST /devices/pair`, 401                       | The code is unknown, used or expired                                                                             |
+| `PAIRING_KEY_MISMATCH`   | `POST /devices/pair`, 400                       | `publicKey` is not the handshake's static key                                                                    |
+| `DEVICE_UNKNOWN`         | Any tunneled request, 403                       | The stream's device is not paired; only pairing is served                                                        |
+| `DEVICE_REVOKED`         | Any request, 401                                | The device was revoked (its key is gone; a plain 401 from the API)                                               |
+| `DEVICE_ALREADY_PAIRED`  | `POST /devices/pair`, 409                       | An unrevoked device already holds that static key                                                                |
+| `TOO_MANY_PAIRINGS`      | `POST /devices/pairings`, 409                   | Five pairings are already open for this owner                                                                    |
+| `DEVICE_KEY_NOT_ALLOWED` | `POST /api-keys`, `POST /devices/pairings`, 403 | A device key cannot make API keys or pairings, so a stolen phone cannot leave a credential behind its revocation |
+| `NOT_THIS_DEVICE`        | `PUT /devices/{id}/push`, 403                   | The caller is not that device                                                                                    |
 
 Tunnel `error` frame codes: `protocol`, `too_many_requests`, `too_large`, `cancelled`, `internal`.
 

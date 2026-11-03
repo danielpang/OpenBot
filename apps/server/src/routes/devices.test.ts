@@ -3,7 +3,7 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 import { EVENTS_CHANNEL, type WsEvent } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { DEVICE_HEADER, DEVICE_KEY_HEADER } from '../client-ip.js';
+import { adapterHeaders, DEVICE_HEADER, DEVICE_KEY_HEADER } from '../client-ip.js';
 import { schema } from '../db/client.js';
 import { inWorkspace } from '../db/scope.js';
 import { decryptSecret, decryptSecretString, keyringFromConfig } from '../secrets.js';
@@ -306,7 +306,11 @@ describe('devices and pairing', () => {
         const res = await request(t, 'POST', '/devices/pair', {
           body: pairBody(pairing.qr.code),
           peer: '127.0.0.1',
-          headers: { [DEVICE_HEADER]: `stream:${i}`, [DEVICE_KEY_HEADER]: b64(randomBytes(32)) },
+          headers: {
+            ...adapterHeaders(),
+            [DEVICE_HEADER]: `stream:${i}`,
+            [DEVICE_KEY_HEADER]: b64(randomBytes(32)),
+          },
         });
         expect(res.status).toBe(400);
         expect(await res.json()).toMatchObject({ code: 'PAIRING_KEY_MISMATCH' });
@@ -316,7 +320,11 @@ describe('devices and pairing', () => {
       const res = await request(t, 'POST', '/devices/pair', {
         body: pairBody(pairing.qr.code, { publicKey: b64(publicKey) }),
         peer: '127.0.0.1',
-        headers: { [DEVICE_HEADER]: 'stream:9', [DEVICE_KEY_HEADER]: b64(publicKey) },
+        headers: {
+          ...adapterHeaders(),
+          [DEVICE_HEADER]: 'stream:9',
+          [DEVICE_KEY_HEADER]: b64(publicKey),
+        },
       });
       expect(res.status).toBe(429);
       expect(res.headers.get('retry-after')).toBeTruthy();
@@ -329,7 +337,11 @@ describe('devices and pairing', () => {
         request(t, 'POST', '/devices/pair', {
           body: pairBody(pairing.qr.code, { publicKey: b64(publicKey), name: 'Tunnel phone' }),
           peer: '127.0.0.1',
-          headers: { [DEVICE_HEADER]: 'stream:42', [DEVICE_KEY_HEADER]: b64(publicKey) },
+          headers: {
+            ...adapterHeaders(),
+            [DEVICE_HEADER]: 'stream:42',
+            [DEVICE_KEY_HEADER]: b64(publicKey),
+          },
         }),
       );
       const [audit] = await t.db
@@ -427,6 +439,27 @@ describe('devices and pairing', () => {
       const refused = await request(t, 'DELETE', `/api-keys/${device!.apiKeyId}`, { cookie });
       expect(refused.status).toBe(404);
       expect((await request(t, 'GET', '/me', { key: paired.key })).status).toBe(200);
+    });
+
+    it('refuses a device key on routes that make credentials', async () => {
+      const paired = await pair();
+      for (const [path, body] of [
+        ['/api-keys', { name: 'from-phone' }],
+        ['/devices/pairings', {}],
+      ] as const) {
+        const res = await request(t, 'POST', path, { key: paired.key, body });
+        expect(res.status, path).toBe(403);
+        expect(((await res.json()) as { code: string }).code).toBe('DEVICE_KEY_NOT_ALLOWED');
+      }
+      const script = await json<{ key: string }>(
+        request(t, 'POST', '/api-keys', { cookie, body: { name: 'script' } }),
+        201,
+      );
+      const res = await request(t, 'POST', '/api-keys', {
+        key: script.key,
+        body: { name: 'from-script' },
+      });
+      expect(res.status).toBe(201);
     });
 
     it('notes when a device was last seen', async () => {

@@ -192,11 +192,17 @@ describe('relay adapter', () => {
     const client = await open(known.privateKey);
     expect(client.device).toBe('known');
     const res = await client.fetch('/api/v1/bots?limit=2', {
-      headers: { authorization: 'Bearer obk_x', 'x-openbots-device': 'spoofed' },
+      headers: {
+        authorization: 'Bearer obk_x',
+        'x-openbots-device': 'spoofed',
+        'x-openbots-adapter': 'spoofed',
+      },
     });
     const echo = (await res.json()) as Echo;
     expect(echo.url).toBe('/api/v1/bots?limit=2');
     expect(echo.headers['x-openbots-device']).toBe(knownId);
+    expect(echo.headers['x-openbots-adapter']).not.toBe('spoofed');
+    expect(echo.headers['x-openbots-adapter']).toBeTruthy();
     expect(echo.headers.authorization).toBe('Bearer obk_x');
     expect(echo.headers['x-openbots-device-key']).toBeUndefined();
 

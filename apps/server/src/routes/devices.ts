@@ -8,6 +8,7 @@ import { requireUser } from '../middleware/auth.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import { userActor } from '../services/audit.js';
 import {
+  refuseDeviceKey,
   PAIRING_CODE_BYTES,
   completePairing,
   createPairing,
@@ -165,6 +166,7 @@ export const deviceRoutes = createRouter()
     }),
     async (c) => {
       const { db, config, relay } = c.var.deps;
+      await refuseDeviceKey(db, c.var.user);
       const body = (c.req.valid('json') as z.infer<typeof CreatePairingSchema> | undefined) ?? {};
       const pairing = await createPairing({
         db,

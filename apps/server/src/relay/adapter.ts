@@ -8,7 +8,12 @@ import {
   type TunnelServer,
 } from '@openbots/tunnel';
 import { WebSocket } from 'ws';
-import { DEVICE_HEADER, DEVICE_KEY_HEADER } from '../client-ip.js';
+import {
+  ADAPTER_SECRET_HEADER,
+  adapterHeaders,
+  DEVICE_HEADER,
+  DEVICE_KEY_HEADER,
+} from '../client-ip.js';
 import type { AppDeps } from '../context.js';
 import { findDeviceByPublicKey } from '../services/devices.js';
 import type { InstanceKey } from '../services/instance-key.js';
@@ -71,9 +76,17 @@ function requestHeaders(
     const lower = name.toLowerCase();
     // A WebSocket from a non-browser client sends no Origin (ws/gateway.ts);
     // the tunnel already drops it, and an Origin would be a browser's.
-    if (lower === 'origin' || lower === DEVICE_KEY_HEADER || lower === DEVICE_HEADER) continue;
+    if (
+      lower === 'origin' ||
+      lower === DEVICE_KEY_HEADER ||
+      lower === DEVICE_HEADER ||
+      lower === ADAPTER_SECRET_HEADER
+    ) {
+      continue;
+    }
     headers[lower] = value;
   }
+  Object.assign(headers, adapterHeaders());
   headers[DEVICE_HEADER] = deviceHeader(deviceId, stream);
   // The tunnel carries bodies as they are: a body fetch decoded must not keep its encoding.
   headers['accept-encoding'] = 'identity';
