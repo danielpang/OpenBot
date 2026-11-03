@@ -722,6 +722,7 @@ function updateTray() {
         });
       },
       quickAsk: toggleQuickAsk,
+      pairPhone: () => void openLink({ kind: 'devices' }),
       changeConnection: () => void launcher.changeConnection(),
       checkForUpdates: () => updater.checkNow(),
       quit: () => app.quit(),
@@ -758,7 +759,10 @@ function applicationMenu() {
         { role: 'quit' },
       ],
     },
-    fileMenu({ newItem: () => void openNewDialog() }),
+    fileMenu({
+      newItem: () => void openNewDialog(),
+      pairPhone: () => void openLink({ kind: 'devices' }),
+    }),
     { role: 'editMenu' },
     { role: 'viewMenu' },
     { role: 'windowMenu' },

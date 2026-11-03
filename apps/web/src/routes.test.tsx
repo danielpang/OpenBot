@@ -162,6 +162,23 @@ describe('routes', () => {
     expect((await renderPath('/settings/limits')).pathname).toBe('/settings/limits');
   });
 
+  it('puts Devices right after the first Settings tab on every deployment', async () => {
+    for (const [routes, first] of [
+      [selfHosted, 'account'],
+      [managed, 'account'],
+      [local, 'general'],
+    ] as const) {
+      server.routes = {
+        ...routes,
+        '/api/v1/me': first === 'general' ? localOwner() : me('owner'),
+      };
+      const { html, pathname } = await renderPath('/settings/devices');
+      expect(pathname).toBe('/settings/devices');
+      const tabs = [...html.matchAll(/href="\/settings\/([a-z]+)"/g)].map((m) => m[1]);
+      expect(tabs.slice(0, 2)).toEqual([first, 'devices']);
+    }
+  }, 20_000);
+
   it('says nothing about admins to a self-hosted owner in Settings', async () => {
     server.routes = { ...selfHosted, '/api/v1/me': me('owner') };
     for (const tab of ['account', 'models', 'events', 'limits']) {

@@ -32,6 +32,15 @@ describe('deep links', () => {
     expect(parseDeepLink('openbots://connectors?next=https://evil.example.com')).toBeNull();
   });
 
+  it('opens Settings > Devices, where the menus pair a phone', () => {
+    const link = parseDeepLink('openbots://devices');
+    expect(link).toEqual({ kind: 'devices' });
+    expect(deepLinkPath(link!)).toBe('/settings/devices');
+    expect(formatDeepLink(link!)).toBe('openbots://devices');
+    expect(parseDeepLink('openbots://devices/x')).toBeNull();
+    expect(parseDeepLink('openbots://devices?next=/x')).toBeNull();
+  });
+
   it('lowercases the id', () => {
     expect(parseDeepLink(`openbots://bot/${BOT.toUpperCase()}/message/1`)).toEqual({
       kind: 'bot',

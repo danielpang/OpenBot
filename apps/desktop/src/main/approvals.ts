@@ -144,6 +144,8 @@ export interface TrayActions {
   open(link?: DeepLink): void;
   decide(id: string, decision: 'approve' | 'deny'): void;
   quickAsk(): void;
+  /** Opens Settings > Devices on the active connection. */
+  pairPhone(): void;
   changeConnection(): void;
   checkForUpdates(): void;
   quit(): void;
@@ -208,6 +210,7 @@ export function trayMenu(input: {
       enabled: input.connected,
       click: () => actions.quickAsk(),
     },
+    { label: 'Pair your phone…', click: () => actions.pairPhone() },
     { label: 'Change connection…', click: () => actions.changeConnection() },
     { type: 'separator' },
     { label: 'Check for Updates…', click: () => actions.checkForUpdates() },

@@ -70,10 +70,13 @@ its files.
     for groups), with `?thread={root id}` for a reply in a thread and `?chat={chat id}` for a
     message in one of the Bot's chats with another Bot, which the web app opens under the Bot's
     transcript. Registered with `setAsDefaultProtocolClient`; notifications and the tray open them.
+    `openbots://devices` opens Settings > Devices, which both menus' "Pair your phone…" uses.
   - `approvals.ts`: the tray menu (N2): the connection's kind and host, pending approvals with
-    Approve, Deny and Open, Quick Ask, Change connection, Check for Updates.
+    Approve, Deny and Open, Quick Ask, Pair your phone, Change connection, Check for Updates.
+    Pair your phone opens the main window on Settings > Devices of the active connection.
   - `menu.ts`: the app menu's File menu, whose New (`Cmd+N`) opens the web app's New dialog
-    through `onNew` on the preload bridge.
+    through `onNew` on the preload bridge. Its Pair your phone opens Settings > Devices through
+    `onNavigate`, as a deep link does.
   - `tray-icon.ts`: the menu bar icon, a template image in `resources/tray` rendered from
     `tray.svg` by `pnpm tray-icon` (`scripts/tray-icon.mjs`), with the pending count beside it.
   - `app-icon.ts`: the app icon, a Bot avatar (seed `OpenBots-225`: round, sky, sleepy eyes,
