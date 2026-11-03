@@ -120,12 +120,14 @@ describe('flow control in the relay', () => {
     link.socket.resume();
     await vi.waitFor(
       () => expect(received.filter((frame) => 'binary' in frame)).toHaveLength(total),
-      { timeout: 10_000 },
+      // The small marks let a couple of frames through per pause, so a busy
+      // machine takes a while to move them all.
+      { timeout: 40_000 },
     );
     const first = received.find((frame) => 'binary' in frame) as { binary: Buffer };
     expect(first.binary.readUInt32BE(0)).toBe(stream);
     expect(relay.flow.pausedSources).toBe(0);
-  }, 20_000);
+  }, 60_000);
 });
 
 describe('the machine budget in the relay', () => {
@@ -194,7 +196,7 @@ describe('the machine budget in the relay', () => {
     expect(await relay.metrics.render()).toMatch(
       /openbots_relay_rejections_total\{reason="bytes"\} 1/,
     );
-  }, 20_000);
+  }, 60_000);
 });
 
 describe('the host share of the budget in the relay', () => {
@@ -347,7 +349,8 @@ describe('pushes during a drain', () => {
 describe('the keepalive and flow control', () => {
   it('does not drop a phone for a missed pong while flow control has paused it', async () => {
     const relay = await startRelay({
-      timing: { pingIntervalMs: 40 },
+      // Wide enough that a busy machine still answers each ping within one period.
+      timing: { pingIntervalMs: 150 },
       flow: {
         highWaterBytes: 128 * KiB,
         lowWaterBytes: 32 * KiB,
@@ -367,16 +370,18 @@ describe('the keepalive and flow control', () => {
     for (let i = 0; i < total; i += 1) client.send(Buffer.alloc(FRAME, i % 256));
     await vi.waitFor(() => expect(relay.flow.pausedSources).toBe(1), { timeout: 5_000 });
     // Many keepalive ticks pass while the relay reads nothing from the phone, pongs included.
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
     expect(client.socket.readyState).toBe(WebSocket.OPEN);
 
     link.socket.resume();
     await vi.waitFor(
       () => expect(received.filter((frame) => 'binary' in frame)).toHaveLength(total),
-      { timeout: 10_000 },
+      // The small marks let a couple of frames through per pause, so a busy
+      // machine takes a while to move them all.
+      { timeout: 40_000 },
     );
     expect(client.socket.readyState).toBe(WebSocket.OPEN);
-  }, 20_000);
+  }, 60_000);
 });
 
 describe('metrics in the relay', () => {

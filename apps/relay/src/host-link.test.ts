@@ -138,11 +138,11 @@ describe('host link', () => {
     let pings = 0;
     peer.socket.on('ping', () => (pings += 1));
     // ws answers pings by itself; pausing the socket stops it reading them.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(pings).toBeGreaterThan(0);
+    await vi.waitFor(() => expect(pings).toBeGreaterThan(0), { timeout: 5_000 });
     peer.socket.pause();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    // Many times the pong timeout, so a busy machine still runs a keepalive tick in it.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
     peer.socket.resume();
     expect((await peer.closed).code).toBe(1001);
-  });
+  }, 15_000);
 });

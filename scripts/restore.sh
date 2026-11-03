@@ -256,13 +256,15 @@ if [ "$MODE" = standalone ]; then
     [ "$stopped" = 1 ] || return 0
     stopped=0
     log "Starting openbots"
-    s6-rc -t 600000 -u change openbots
+    s6-rc -b -t 600000 -u change openbots
   }
   trap start_services EXIT
 
   log "Stopping openbots and the computer agent"
   stopped=1
-  s6-rc -d change openbots computer-agent
+  # -b waits for s6-rc's lock: a container that has just started holds it
+  # until s6 sees every service ready, a little after /readyz first answers.
+  s6-rc -b -d change openbots computer-agent
 
   log "Emptying Redis (the job queues)"
   REDISCLI_AUTH="$(sed -n 's/^requirepass "\(.*\)"$/\1/p' /run/redis/redis.conf)"
