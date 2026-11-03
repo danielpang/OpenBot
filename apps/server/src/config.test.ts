@@ -74,6 +74,20 @@ describe('loadConfig', () => {
     );
   });
 
+  it('refuses the managed service in the standalone image (V6)', () => {
+    const standalone = { ...base, OPENBOTS_STANDALONE: '1' };
+    expect(() => loadConfig({ ...standalone, OPENBOTS_DEPLOYMENT: 'managed' })).toThrow(
+      /OPENBOTS_DEPLOYMENT: the standalone image is a single-person install/,
+    );
+    expect(loadConfig(standalone).deployment).toBe('self_hosted');
+    expect(loadConfig({ ...standalone, OPENBOTS_DEPLOYMENT: 'self_hosted' }).deployment).toBe(
+      'self_hosted',
+    );
+    expect(
+      loadConfig({ ...base, OPENBOTS_STANDALONE: '', OPENBOTS_DEPLOYMENT: 'managed' }).deployment,
+    ).toBe('managed');
+  });
+
   it('refuses host stdio on managed unless the operator opts in', () => {
     const managed = { ...base, OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_STDIO_RUNNER: 'host' };
     expect(() => loadConfig(managed)).toThrow(

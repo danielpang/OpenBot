@@ -11,6 +11,11 @@
 # volume and each computer volume, starts the stack again and checks that the
 # files and users came back. Without Docker it restores a development install
 # from DATABASE_URL and OPENBOTS_FILES_DIR (computer volumes are skipped).
+# Inside the standalone image (OPENBOTS_STANDALONE=1, `docker exec <container>
+# openbots restore <dir> --yes`) it stops the openbots and computer-agent
+# services through s6, restores the database and /data/files, /data/home
+# and /data/agent, and starts them again. A compose backup with one computer
+# volume restores that volume as the Bots' home.
 #
 # Use the same OPENBOTS_MASTER_KEY as the install the backup came from.
 set -euo pipefail
@@ -30,7 +35,7 @@ for arg in "$@"; do
   case "$arg" in
     -y | --yes) YES=1 ;;
     -h | --help)
-      sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -*) die "unknown option '$arg' (try --help)" ;;
@@ -63,7 +68,10 @@ files_run() {
     --entrypoint "$entrypoint" openbots "$@"
 }
 
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+if [ "${OPENBOTS_STANDALONE:-}" = 1 ]; then
+  MODE=standalone
+  [ "$(id -u)" = 0 ] || die "run it as root in the container: docker exec <container> openbots restore <dir>"
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   MODE=compose
 else
   MODE=local
@@ -86,7 +94,7 @@ if [ -f "$SRC/MANIFEST" ]; then
 else
   log "No MANIFEST (a backup from before checksums were added); checking the archives only"
 fi
-for archive in "$SRC/files.tar.gz" "$SRC"/computers/*.tar.gz; do
+for archive in "$SRC/files.tar.gz" "$SRC/home.tar.gz" "$SRC/agent.tar.gz" "$SRC"/computers/*.tar.gz; do
   [ -e "$archive" ] || continue
   gzip -t "$archive" || die "$(basename "$archive") is corrupt"
 done
@@ -95,6 +103,21 @@ if [ "$MODE" = compose ]; then
   list_dump() { compose exec -T postgres pg_restore --list <"$SRC/database.dump"; }
 else
   list_dump() { pg_restore --list "$SRC/database.dump"; }
+fi
+if [ "$MODE" = standalone ]; then
+  # The Bots' home: home.tar.gz, or the one computer volume of a compose backup.
+  home_archive=""
+  if [ -f "$SRC/home.tar.gz" ]; then
+    home_archive="$SRC/home.tar.gz"
+  else
+    volumes=("$SRC"/computers/*.tar.gz)
+    if [ "${#volumes[@]}" = 1 ] && [ -f "${volumes[0]}" ]; then
+      home_archive="${volumes[0]}"
+      log "No home.tar.gz; the Bots' home comes from $(basename "$home_archive")"
+    elif [ "${#volumes[@]}" -gt 1 ]; then
+      die "the backup holds several computer volumes; the standalone image has one home"
+    fi
+  fi
 fi
 listing="$(list_dump)" || die "pg_restore cannot read database.dump"
 grep -q 'TABLE DATA public users ' <<<"$listing" || die "database.dump has no users table"
@@ -108,7 +131,55 @@ if [ "$YES" = 0 ]; then
   esac
 fi
 
-if [ "$MODE" = compose ]; then
+if [ "$MODE" = standalone ]; then
+  as_postgres() { runuser -u postgres -- "$@"; }
+  # Puts a directory back from an archive, owners and modes included.
+  refill() {
+    find "$1" -mindepth 1 -delete
+    tar --numeric-owner -xzf "$2" -C "$1"
+  }
+  # Started again however the restore ends, so a failure leaves a running
+  # server on what is there.
+  stopped=0
+  start_services() {
+    [ "$stopped" = 1 ] || return 0
+    stopped=0
+    log "Starting openbots"
+    s6-rc -t 600000 -u change openbots
+  }
+  trap start_services EXIT
+
+  log "Stopping openbots and the computer agent"
+  stopped=1
+  s6-rc -d change openbots computer-agent
+
+  log "Database"
+  as_postgres psql -h /run/postgresql -d postgres -v ON_ERROR_STOP=1 -q \
+    -c 'DROP DATABASE IF EXISTS openbots WITH (FORCE)' -c 'CREATE DATABASE openbots OWNER openbots'
+  as_postgres psql -h /run/postgresql -d openbots -v ON_ERROR_STOP=1 -q \
+    -c 'CREATE EXTENSION IF NOT EXISTS vector'
+  # As the superuser, keeping the dump's owners: the tables stay openbots's.
+  as_postgres pg_restore -h /run/postgresql -d openbots --exit-on-error <"$SRC/database.dump"
+
+  log "Files"
+  refill /data/files "$SRC/files.tar.gz"
+  # A compose backup's files are uid 1000's, the bot user here.
+  chown -R openbots:openbots /data/files
+  restored_files="$(find /data/files -type f | wc -l | tr -d '[:space:]')"
+
+  if [ -n "$home_archive" ]; then
+    log "The Bots' home"
+    refill /data/home "$home_archive"
+    chown bot:bot /data/home
+  fi
+  if [ -f "$SRC/agent.tar.gz" ]; then
+    log "The computer agent's state"
+    refill /data/agent "$SRC/agent.tar.gz"
+  fi
+
+  start_services
+  users="$(as_postgres psql -h /run/postgresql -d openbots -tA -c 'SELECT count(*) FROM users')"
+elif [ "$MODE" = compose ]; then
   log "Stopping openbots"
   compose stop openbots
 

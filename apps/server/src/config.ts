@@ -110,6 +110,8 @@ const envSchema = z.object({
   OPENBOTS_COMPUTER_AGENT_TOKEN: optional(z.string()),
   OPENBOTS_COMPUTER_AGENT_SHARED: withDefault(z.stringbool(), 'false'),
   OPENBOTS_DEPLOYMENT: withDefault(z.enum(['self_hosted', 'managed']), 'self_hosted'),
+  // Set by the standalone image (docker/standalone.Dockerfile), not by hand.
+  OPENBOTS_STANDALONE: withDefault(z.stringbool(), 'false'),
   OPENBOTS_LOCAL_TOKEN: optional(
     z.string().min(32, { message: 'must be 32 characters or more (the Mac app generates one)' }),
   ),
@@ -284,6 +286,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (e.OPENBOTS_MASTER_KEY_PREVIOUS.includes(e.OPENBOTS_MASTER_KEY.trim())) {
     throw new Error(
       'invalid configuration:\n  OPENBOTS_MASTER_KEY_PREVIOUS: holds OPENBOTS_MASTER_KEY itself; list only the keys being replaced',
+    );
+  }
+  // The standalone image runs one person's OpenBots, database and computer in
+  // one container (V6): it is never the managed service.
+  if (e.OPENBOTS_STANDALONE && e.OPENBOTS_DEPLOYMENT === 'managed') {
+    throw new Error(
+      'invalid configuration:\n  OPENBOTS_DEPLOYMENT: the standalone image is a single-person install and runs self_hosted only; unset OPENBOTS_DEPLOYMENT or set it to self_hosted',
     );
   }
   if (e.OPENBOTS_LOCAL_TOKEN && e.OPENBOTS_DEPLOYMENT !== 'self_hosted') {
