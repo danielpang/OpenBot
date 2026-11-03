@@ -39,17 +39,17 @@ A pairing is the only time a key is created; nothing here rotates one. Revoking 
 
 ## 3. Relay: the host link
 
-`GET /v1/host`, a WebSocket upgrade from the server to the relay. Text frames are JSON objects with a `type`; binary frames carry stream data. The relay never sends a binary frame before `linked` and refuses one from an unlinked host (close 4400).
+`GET /v1/host?hostId=<hostId>`, a WebSocket upgrade from the server to the relay. The `hostId` query parameter is required: an upgrade without it, or with a malformed one, is refused with HTTP 400 before any frame. It names the host the link will prove in its `hello`, so a relay of several machines can send the upgrade to the machine that owns the host before it is accepted (section 4). Text frames are JSON objects with a `type`; binary frames carry stream data. The relay never sends a binary frame before `linked` and refuses one from an unlinked host (close 4400).
 
 ### 3.1 Linking
 
-| Step | Direction    | Frame                                                                                                                                                                                                                                                              |
-| ---- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1    | relay → host | `{"type":"challenge","v":1,"nonce":"<32 random bytes>"}` at once on open                                                                                                                                                                                           |
-| 2    | host → relay | `{"type":"hello","v":1,"hostId":"...","publicKey":"<Ed25519 public key, 32 bytes>","sig":"<Ed25519 signature>","capabilities":["streams","push"]}` within 10 seconds. `sig` signs the UTF-8 bytes of `openbots-relay-host-v1\n` followed by the 32 raw nonce bytes |
-| 3    | relay → host | `{"type":"linked","v":1,"hostId":"..."}`; or a close: 4401 when the signature does not verify or `hostId` is not the hash of `publicKey`, 4400 when the frame is malformed or late                                                                                 |
+| Step | Direction    | Frame                                                                                                                                                                                                                                                                                  |
+| ---- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | relay → host | `{"type":"challenge","v":1,"nonce":"<32 random bytes>"}` at once on open                                                                                                                                                                                                               |
+| 2    | host → relay | `{"type":"hello","v":1,"hostId":"...","publicKey":"<Ed25519 public key, 32 bytes>","sig":"<Ed25519 signature>","capabilities":["streams","push"]}` within 10 seconds. `sig` signs the UTF-8 bytes of `openbots-relay-host-v1\n` followed by the 32 raw nonce bytes                     |
+| 3    | relay → host | `{"type":"linked","v":1,"hostId":"..."}`; or a close: 4401 when the signature does not verify, `hostId` is not the hash of `publicKey`, or `hostId` is not the one in the URL; 4400 when the frame is malformed or late; 1012 when this relay machine cannot take the host (section 4) |
 
-A protocol error on the link is announced with an `error` frame (3.4) before the close: code `unauthorized` before 4401. A `publicKey` that is not 32 bytes or a `sig` that is not 64 bytes is malformed (4400); a well-formed `hostId` that is not the hash of the key is 4401. Unknown capabilities are ignored.
+A protocol error on the link is announced with an `error` frame (3.4) before the close: code `unauthorized` before 4401. Between `hello` and `linked` the relay machine takes the host's lease (section 4), so the host sends nothing else until `linked`; a frame in that time is a protocol error (4400). A `publicKey` that is not 32 bytes or a `sig` that is not 64 bytes is malformed (4400); a well-formed `hostId` that is not the hash of the key is 4401. Unknown capabilities are ignored.
 
 `capabilities` says what this link serves. `streams`: the relay may open client streams on it (an API process). `push`: the host may send `push` frames (any process). A host may keep several links at once (one per API or worker process); the relay opens each new stream on one `streams` link in turn.
 
@@ -79,12 +79,13 @@ The relay sends to APNs with token-based authentication (the project's `.p8` key
 - The relay pings every 25 seconds; a link without a pong for 50 seconds is closed 1001. A host may ping too. The relay pings client sockets the same way and terminates one that misses its pong, so a phone that lost its network does not hold a stream slot.
 - `{"type":"error","code":"<string>","message":"<string>"}` precedes a close for a protocol error.
 - Frames: a binary frame of more than 65,540 bytes closes the link 1009. A text frame of more than 64 KiB closes it 1009.
-- Per host, across its links: 8 open streams (a ninth client is closed 4429), 1,000 stream opens an hour (4429), 50 MB (50,000,000 bytes of payload, the prefix not counted) a minute of stream data in either direction (the link that carried the excess is closed 1008), 600 push frames an hour (`push.result` with `reason: "error"` and `status: 429`). The counters are fixed windows kept per host, so relinking does not reset them; an open counts only when it succeeds. A link or a client socket whose send buffer passes 8 MiB is closed 1008 (the host then gets `close` for that stream).
-- An unexpected error inside the relay while handling a host frame closes that link 1011. When the relay shuts down it closes every client, then every link, with 1001.
+- Per host, across its links and across the relay's machines: 8 open streams (a ninth client is closed 4429), 1,000 stream opens an hour (4429), 50 MB (50,000,000 bytes of payload, the prefix not counted) a minute of stream data in either direction (the link that carried the excess is closed 1008), 600 push frames an hour (`push.result` with `reason: "error"` and `status: 429`). The counters are fixed windows (aligned to the clock) kept per host in the relay's shared registry, so relinking does not reset them, on the same machine or another; an open counts only when it succeeds. Stream bytes are added to the shared total about once a second, so a host moving between machines may pass the minute's limit by what it sent in the last second. A link or a client socket whose send buffer passes 8 MiB is closed 1008 (the host then gets `close` for that stream).
+- Each relay machine also guards itself. A destination socket that stays behind past the delivery deadline (30 seconds) is shed with 1013, and a client stream whose bytes would pass the machine's budget for bytes in flight is closed 1013; a link's own frames are never refused, so the host's other streams go on. Toward a host, a phone that sends faster than the link drains is paused, not closed. An upgrade the machine has no room for (its socket ceiling), or one that reaches a machine that is draining, is refused with HTTP 503 before it is accepted, so the proxy tries another machine.
+- An unexpected error inside the relay while handling a host frame closes that link 1011. When the relay shuts down at once it closes every client, then every link, with 1001. When it drains (a deploy or a restart), it takes no new upgrades and gives up its leases, and after a grace period (20 seconds) closes every client, then every link, with 1012.
 
 ### 3.5 Presence
 
-`GET /v1/hosts/{hostId}` answers `{"hostId":"...","linked":true or false}` with 200 (404 for a malformed id); `linked` is true when at least one `streams` link is up. A client uses it to say "your server is offline" before trying a stream. `GET /healthz` answers 200 when the relay is up. The relay listens on port 3200 by default (`RELAY_PORT`) and is put behind a TLS terminator.
+`GET /v1/hosts/{hostId}` answers `{"hostId":"...","linked":true or false}` with 200 (404 for a malformed id, 503 when the relay cannot reach its registry); `linked` is true when at least one `streams` link is up. Any machine of the relay answers it: the answer comes from the shared registry, where the machine that owns the host keeps a lease that says whether it holds a `streams` link. A client uses it to say "your server is offline" before trying a stream. `GET /healthz` answers 200 when the relay is up. The relay listens on port 3200 by default (`RELAY_PORT`) and is put behind a TLS terminator.
 
 ---
 
@@ -105,6 +106,20 @@ The relay sends to APNs with token-based authentication (the project's `.p8` key
 | The host link drops                   | Close 4410, reason `host gone`                                                                                                                                                                                                                   |
 
 The client never learns which link served it. Binary frames are at most 65,536 bytes.
+
+**Several relay machines.** The hosted relay runs as several machines behind one hostname (MOBILE_AND_VM_PLAN.md 5.8). One machine owns each host id at a time, through a lease in a shared registry, and every link and stream of that host terminates on it. A machine that gets an upgrade, a host link (`/v1/host?hostId=`) or a client stream, for a host that another live machine owns does not accept it: it answers the HTTP upgrade request with `307` and the header `fly-replay: instance=<machine id>`, and Fly's proxy replays the same request on the owner, where it is upgraded as usual. A request the proxy has already replayed (it carries `fly-replay-src`) is never replayed again. This is transparent to clients and hosts: they dial the one hostname and follow no redirect themselves, because the proxy does. Behind any other proxy a relay is a single machine and never replays.
+
+| Case                                                     | What happens                                                                                                                 |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| This machine owns the host, or no live machine does      | Served here. A host link takes the lease once its `hello` verifies                                                           |
+| Another live machine owns the host                       | Replayed to it, as above                                                                                                     |
+| Replayed here, and another machine owns the host by now  | Upgraded, then closed 1012; the client or host connects again and is routed afresh                                           |
+| Two machines take the same host at once                  | One gets the lease; the other's host link closes 1012 before `linked` and reconnects to the owner                            |
+| The relay has fewer live machines than its minimum       | A host link closes 1012 before `linked`; no new lease is taken                                                               |
+| The owner loses its lease (another machine took it over) | Its links and streams for that host close 1012 within one renewal (10 seconds); both ends reconnect through the proxy        |
+| The owner dies                                           | Its sockets drop; once its node key expires (15 seconds) the next host link is served and takes the lease on another machine |
+
+A host or client that sees 1012 reconnects as it does after any other drop, with its usual backoff.
 
 ---
 
@@ -307,19 +322,21 @@ Tunnel `error` frame codes: `protocol`, `too_many_requests`, `too_large`, `cance
 
 ## 9. Close codes
 
-| Code       | Where         | Meaning                                                                                  |
-| ---------- | ------------- | ---------------------------------------------------------------------------------------- |
-| 1000       | anywhere      | Normal close                                                                             |
-| 1001       | relay         | Keepalive missed                                                                         |
-| 1008       | relay         | A limit was hit (bytes, send buffer)                                                     |
-| 1009       | relay         | A frame too large                                                                        |
-| 1011       | relay         | An unexpected error inside the relay                                                     |
-| 1005, 1006 | relay         | What a host sees when a client's socket went away without a close frame                  |
-| 4400       | relay, tunnel | Malformed frame, bad `hostId`, protocol error                                            |
-| 4401       | relay         | The host's signature did not verify                                                      |
-| 4404       | relay         | The host is offline                                                                      |
-| 4410       | relay         | The host link dropped while the stream was open                                          |
-| 4403       | tunnel        | The server closed the stream because its device was revoked. See below                   |
-| 4429       | relay, tunnel | Too many streams or opens; the server also closes a ninth stream on one instance with it |
+| Code       | Where         | Meaning                                                                                                                                 |
+| ---------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1000       | anywhere      | Normal close                                                                                                                            |
+| 1001       | relay         | Keepalive missed                                                                                                                        |
+| 1008       | relay         | A limit was hit (bytes, send buffer)                                                                                                    |
+| 1009       | relay         | A frame too large                                                                                                                       |
+| 1011       | relay         | An unexpected error inside the relay                                                                                                    |
+| 1012       | relay         | The relay machine lost the host's lease, cannot take it (section 4), or is draining. Reconnect                                          |
+| 1013       | relay         | The relay machine is busy: a peer stayed behind past the deadline (shed), or a stream would pass the byte budget (3.4). Try again later |
+| 1005, 1006 | relay         | What a host sees when a client's socket went away without a close frame                                                                 |
+| 4400       | relay, tunnel | Malformed frame, bad `hostId`, protocol error                                                                                           |
+| 4401       | relay         | The host's signature did not verify                                                                                                     |
+| 4404       | relay         | The host is offline                                                                                                                     |
+| 4410       | relay         | The host link dropped while the stream was open                                                                                         |
+| 4403       | tunnel        | The server closed the stream because its device was revoked. See below                                                                  |
+| 4429       | relay, tunnel | Too many streams or opens; the server also closes a ninth stream on one instance with it                                                |
 
 On 4403: the moment the server learns a device is revoked, its streams answer every new `http.req` and `ws.open` with `http.res` 401 `{"code":"DEVICE_REVOKED"}`, and each stream closes 4403 once the HTTP responses already in flight have been sent, or after 5 seconds, whichever is first. Open WebSockets are not waited for; they end with the stream. So a device that revokes itself over its own stream gets its 204 before the close. The server learns of a revocation from the `device.revoked` event, and also by looking each open stream's device up again every 15 seconds, and before serving a request on a stream whose last look is older than that; without a shared event bus (no Redis), a revocation made by `openbots devices revoke` in another process is found that way.

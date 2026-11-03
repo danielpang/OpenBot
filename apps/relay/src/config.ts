@@ -4,6 +4,11 @@ import { z } from 'zod';
 // a relay without all four of the key file, key id, team id and topic carries
 // streams only and answers every push `unavailable`, which is what a
 // self-hosted relay does (the APNs key belongs to the App Store build).
+//
+// The cluster settings (MOBILE_AND_VM_PLAN.md 5.8): without `RELAY_REDIS_URL`
+// the relay keeps its registry in memory and is a cluster of one, as a
+// self-hosted relay is. The node id defaults to Fly's `FLY_MACHINE_ID`, and
+// to a random one where that is not set.
 
 export const RELAY_ENV_VARS = [
   'RELAY_PORT',
@@ -15,7 +20,18 @@ export const RELAY_ENV_VARS = [
   'RELAY_APNS_TOPIC',
   'RELAY_APNS_ENVIRONMENT',
   'RELAY_LOG_LEVEL',
+  'RELAY_REDIS_URL',
+  'RELAY_NODE_ID',
+  'RELAY_MIN_CLUSTER_SIZE',
+  'RELAY_LEASE_MS',
+  'RELAY_LEASE_RENEW_MS',
+  'RELAY_NODE_TTL_MS',
+  'RELAY_NODE_HEARTBEAT_MS',
+  'FLY_MACHINE_ID',
+  'RELAY_METRICS_TOKEN',
 ] as const;
+
+const milliseconds = (fallback: number) => z.coerce.number().int().min(100).default(fallback);
 
 const EnvSchema = z.object({
   RELAY_PORT: z.coerce.number().int().min(0).max(65535).default(3200),
@@ -29,6 +45,21 @@ const EnvSchema = z.object({
   RELAY_LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
+  RELAY_REDIS_URL: z
+    .string()
+    .regex(/^rediss?:\/\//, 'must be a redis:// or rediss:// URL')
+    .optional(),
+  RELAY_NODE_ID: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]{1,64}$/, 'letters, digits, dot, dash or underscore')
+    .optional(),
+  FLY_MACHINE_ID: z.string().optional(),
+  RELAY_METRICS_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
+  RELAY_MIN_CLUSTER_SIZE: z.coerce.number().int().min(1).default(1),
+  RELAY_LEASE_MS: milliseconds(30_000),
+  RELAY_LEASE_RENEW_MS: milliseconds(10_000),
+  RELAY_NODE_TTL_MS: milliseconds(15_000),
+  RELAY_NODE_HEARTBEAT_MS: milliseconds(5_000),
 });
 
 export interface RelayConfig {
@@ -46,6 +77,14 @@ export interface RelayConfig {
   };
   /** The APNs settings that are missing while others are set, to warn about. */
   apnsMissing: string[];
+  /** The shared registry; unset means one in memory, for this relay alone. */
+  redisUrl?: string;
+  /** `RELAY_NODE_ID`, else `FLY_MACHINE_ID`; unset means a random one. */
+  nodeId?: string;
+  minClusterSize: number;
+  /** The bearer token for `GET /metrics`; unset turns the route off (404). */
+  metricsToken?: string;
+  cluster: { leaseMs: number; renewMs: number; nodeTtlMs: number; heartbeatMs: number };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayConfig {
@@ -79,7 +118,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayConfig {
     trustProxy: e.RELAY_TRUST_PROXY,
     logLevel: e.RELAY_LOG_LEVEL,
     apnsMissing: missing.length === 4 ? [] : missing,
+    minClusterSize: e.RELAY_MIN_CLUSTER_SIZE,
+    cluster: {
+      leaseMs: e.RELAY_LEASE_MS,
+      renewMs: e.RELAY_LEASE_RENEW_MS,
+      nodeTtlMs: e.RELAY_NODE_TTL_MS,
+      heartbeatMs: e.RELAY_NODE_HEARTBEAT_MS,
+    },
   };
+  if (e.RELAY_REDIS_URL) config.redisUrl = e.RELAY_REDIS_URL;
+  if (e.RELAY_METRICS_TOKEN) config.metricsToken = e.RELAY_METRICS_TOKEN;
+  const nodeId = e.RELAY_NODE_ID ?? e.FLY_MACHINE_ID;
+  if (nodeId) config.nodeId = nodeId;
+  const { leaseMs, renewMs, nodeTtlMs, heartbeatMs } = config.cluster;
+  if (renewMs >= leaseMs || heartbeatMs >= nodeTtlMs) {
+    throw new Error(
+      'Invalid relay configuration:\n- RELAY_LEASE_RENEW_MS must be below RELAY_LEASE_MS, and RELAY_NODE_HEARTBEAT_MS below RELAY_NODE_TTL_MS',
+    );
+  }
   if (missing.length === 0) {
     config.apns = {
       keyFile: e.RELAY_APNS_KEY_FILE!,

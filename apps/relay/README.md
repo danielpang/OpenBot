@@ -6,12 +6,16 @@ The wire contract is [docs/RELAY_PROTOCOL.md](../../docs/RELAY_PROTOCOL.md) (sec
 
 ## Endpoints
 
-| Endpoint                   | What it is                                                                     |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| `GET /v1/host`             | WebSocket. A server's host link: challenge, signed `hello`, then streams       |
-| `GET /v1/connect/{hostId}` | WebSocket. One client stream to that host                                      |
-| `GET /v1/hosts/{hostId}`   | `{"hostId","linked"}`: whether the host is linked right now (404 for a bad id) |
-| `GET /healthz`             | 200 while the relay is up                                                      |
+| Endpoint                   | What it is                                                                  |
+| -------------------------- | --------------------------------------------------------------------------- |
+| `GET /v1/host?hostId=...`  | WebSocket. A server's host link: challenge, signed `hello`, then streams    |
+| `GET /v1/connect/{hostId}` | WebSocket. One client stream to that host                                   |
+| `GET /v1/hosts/{hostId}`   | `{"hostId","linked"}`: whether the host is linked now, on any machine       |
+| `GET /healthz`             | 200 while the process is up (liveness)                                      |
+| `GET /ready`               | 200 `{"status":"ready"}` while this machine takes new connections, else 503 |
+| `GET /metrics`             | Prometheus metrics, with `Authorization: Bearer <RELAY_METRICS_TOKEN>`      |
+
+`/ready` answers 503 `{"status":"unready","reasons":[...]}` with one or more of `draining`, `registry_unreachable` (Redis does not answer), `cluster_too_small` (fewer live machines than `RELAY_MIN_CLUSTER_SIZE`) and `at_capacity` (the socket ceiling is reached). A load balancer should route only to ready machines. `/metrics` answers 404 when no token is set, and 401 without the right one.
 
 ## Settings
 
@@ -28,6 +32,26 @@ All settings come from the environment. Push needs all four of the key file, key
 | `RELAY_APNS_TOPIC`       |              | The app's bundle id                                                                                                                           |
 | `RELAY_APNS_ENVIRONMENT` | `production` | `production` or `sandbox` (development builds of the app)                                                                                     |
 | `RELAY_LOG_LEVEL`        | `info`       | A pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`                                                                  |
+
+For several machines, draining and metrics:
+
+| Variable                      | Default                       | Meaning                                                                                                                  |
+| ----------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `RELAY_REDIS_URL`             |                               | The shared registry. Required when more than one machine serves the same hostname. Unset, the relay runs alone in memory |
+| `RELAY_NODE_ID`               | `FLY_MACHINE_ID`, else random | This machine's id in the registry. On Fly leave it unset: it must be the Machine id that `fly-replay` names              |
+| `RELAY_MIN_CLUSTER_SIZE`      | `1`                           | While fewer live machines than this are registered, `/ready` answers 503 and no new lease is taken                       |
+| `RELAY_LEASE_MS`              | `30000`                       | How long a host's lease lives in the registry without a renewal                                                          |
+| `RELAY_LEASE_RENEW_MS`        | `10000`                       | How often the owner renews each lease. Must be below `RELAY_LEASE_MS`                                                    |
+| `RELAY_NODE_TTL_MS`           | `15000`                       | How long a machine's node key lives. Once it is gone, another machine may take its hosts at once                         |
+| `RELAY_NODE_HEARTBEAT_MS`     | `5000`                        | How often a machine refreshes its node key. Must be below `RELAY_NODE_TTL_MS`                                            |
+| `RELAY_DRAIN`                 | `false`                       | `true` starts the machine draining: not ready, no new upgrades or leases                                                 |
+| `RELAY_DRAIN_GRACE_MS`        | `20000`                       | How long a draining machine lets links and streams go on before it closes them with 1012                                 |
+| `RELAY_METRICS_TOKEN`         |                               | The bearer token for `GET /metrics`, at least 16 characters. Unset, the route answers 404                                |
+| `RELAY_MAX_SOCKETS`           | `20000`                       | Sockets on this machine (host links and streams). Past it, upgrades are refused with 503                                 |
+| `RELAY_BUDGET_BYTES`          | `536870912`                   | Bytes in flight on this machine (512 MiB). A sender that would pass it is closed with 1013                               |
+| `RELAY_FLOW_HIGH_WATER_BYTES` | `1048576`                     | A receiver whose send buffer passes this (1 MiB) pauses the sockets that feed it                                         |
+| `RELAY_FLOW_LOW_WATER_BYTES`  | `262144`                      | Paused senders resume once the receiver's buffer is back at or below this (256 KiB)                                      |
+| `RELAY_DELIVERY_TIMEOUT_MS`   | `30000`                       | A receiver that stays behind this long is closed with 1013 (shed)                                                        |
 
 ## Running it
 
@@ -51,7 +75,7 @@ docker run -d --name openbots-relay -p 3200:3200 \
   ghcr.io/danielpang/openbots/relay
 ```
 
-The image runs as an unprivileged user, writes nothing to disk and answers its healthcheck on `/healthz`. It stops cleanly on SIGTERM: every client and host link is closed with 1001, and servers reconnect to whatever comes up next.
+The image runs as an unprivileged user, writes nothing to disk and answers its healthcheck on `/healthz`. On SIGTERM it drains (below): it reports not ready, takes nothing new, and closes what is left with 1012 after the grace period, so servers and phones reconnect to whatever serves next. Give the container a stop timeout longer than `RELAY_DRAIN_GRACE_MS` (`docker stop -t 30`).
 
 For development, from the repository root:
 
@@ -71,12 +95,26 @@ await relay.close();
 
 ## Limits
 
-Per host, across all its links: 8 open streams (a ninth client is closed 4429), 1,000 stream opens an hour (4429), 50 MB a minute of stream data in either direction (the link is closed 1008), and 600 push frames an hour (`push.result` error 429). A socket whose send buffer passes 8 MiB is closed 1008. A host link is pinged every 25 seconds and closed 1001 after 50 seconds without a pong. Counters are fixed windows kept in memory.
+Per host, across all its links: 8 open streams (a ninth client is closed 4429), 1,000 stream opens an hour (4429), 50 MB a minute of stream data in either direction (the link is closed 1008), and 600 push frames an hour (`push.result` error 429). A socket whose send buffer passes 8 MiB is closed 1008. A host link is pinged every 25 seconds and closed 1001 after 50 seconds without a pong. Counters are fixed windows aligned to the clock.
 
-This version is a single instance with in-memory state. Presence and counters sit behind the registry in `src/hosts.ts`, so a shared store (Redis) can replace them when several instances run.
+Without `RELAY_REDIS_URL` the counters are kept in memory by the one machine; with it they are kept in Redis, so they hold across machines. Stream bytes are added to the shared total once a second.
+
+## Each machine on its own
+
+These hold with or without Redis:
+
+- **Flow control** (`src/flow.ts`). A receiver whose send buffer passes 1 MiB pauses the sockets that feed it (`ws.pause()`), and they resume once it is back at 256 KiB, so bytes from a fast server never pile up behind a slow phone. Toward a host, each stream also has its own share of the link's buffer: a stream past its share is paused alone, and only a link that is itself past its mark pauses every stream on it. Toward a phone, the shared host link is never paused for one slow phone; the tunnel's own credit window limits what the server sends it.
+- **Shedding.** A receiver that stays behind for 30 seconds is closed with 1013 (try again later).
+- **One byte budget and a socket ceiling** (`src/budget.ts`). The machine holds at most 512 MiB in flight across all sockets; a sender that would pass it is closed with 1013. Past 20,000 sockets, upgrades are refused with 503, so a load balancer picks another machine. Each socket's share is given back when it closes, however it closes.
+- **Drain** (`src/drain.ts`). On SIGTERM, or with `RELAY_DRAIN=true`, the machine reports not ready, takes no new upgrades or leases, gives up its leases, and after 20 seconds (or once nothing is left) closes its links and streams with 1012.
+- **Readiness and metrics** (`src/readiness.ts`, `src/metrics.ts`): `/ready` and `/metrics` above. Every metric is named `openbots_relay_*`, and none carries a host id or an address.
+
+## Several machines
+
+The shared relay runs as several machines behind one hostname ([docs/MOBILE_AND_VM_PLAN.md](../../docs/MOBILE_AND_VM_PLAN.md) section 5.8). One machine owns each host id at a time, held as a lease in Redis (`relay:host:<hostId>`, with a fencing epoch from `relay:epoch:<hostId>`) and renewed every 10 seconds, and every link of that server and every phone stream for it end on that machine, so stream bytes never cross machines. A machine that gets a connection for a host another live machine owns answers the upgrade with `307` and `fly-replay: instance=<machine id>`, and Fly's proxy replays it on the owner; a request that already carries `fly-replay-src` is never replayed again. A machine is alive while its node key (`relay:node:<machine id>`) is, so the hosts of a machine that dies move within `RELAY_NODE_TTL_MS`. A renewal that cannot reach Redis keeps the host until its lease would have run out. A machine that loses a lease closes that host's links and streams with 1012, and they reconnect through normal routing. Presence (`GET /v1/hosts/{hostId}`) reads the registry, so any machine answers it. The wire protocol is unchanged: a single machine without Redis behaves as one always has. [deploy/relay-fly](../../deploy/relay-fly/README.md) runs it on Fly.
 
 ## What the relay sees, and what it does not
 
-It sees host ids, when a host links and from which address, how many streams each host has open, how many bytes they carry, and push counts. It sees APNs device tokens in transit, only long enough to send each notice. It never sees request paths, message text, keys or pairing codes: those are inside the Noise session between the phone and the server, and push notices arrive already encrypted for the device. It stores none of what it sees beyond the rate limit counters, and those live in memory. Its logs carry host ids, addresses and counts, never device tokens or payloads.
+It sees host ids, when a host links and from which address, how many streams each host has open, how many bytes they carry, and push counts. It sees APNs device tokens in transit, only long enough to send each notice. It never sees request paths, message text, keys or pairing codes: those are inside the Noise session between the phone and the server, and push notices arrive already encrypted for the device. It stores none of what it sees beyond the rate limit counters, in memory or, with several machines, in Redis beside which machine owns each host id and whether it serves streams. Its logs carry host ids, addresses and counts, never device tokens or payloads.
 
 A self-hosted relay cannot send push, since the APNs key belongs to the App Store build. It carries the tunnel only.

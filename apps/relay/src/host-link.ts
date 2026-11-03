@@ -3,6 +3,10 @@ import type { Logger } from 'pino';
 import { WebSocket, type RawData } from 'ws';
 import { z } from 'zod';
 import type { PushGateway, PushOutcome } from './apns.js';
+import type { Ticket } from './budget.js';
+import type { FlowControl, Outlet, SendResult, Valve } from './flow.js';
+import type { RelayMetrics } from './metrics.js';
+import type { ClaimResult } from './ownership.js';
 import {
   CAPABILITIES,
   type Capability,
@@ -19,9 +23,11 @@ import {
   verifyHello,
 } from './identity.js';
 
-// The host link on `/v1/host` (docs/RELAY_PROTOCOL.md section 3). The relay
-// sends a challenge as soon as the socket opens; the host has 10 seconds to
-// answer with a `hello` that proves its host id, and then the link carries
+// The host link on `/v1/host?hostId=...` (docs/RELAY_PROTOCOL.md section 3).
+// The relay sends a challenge as soon as the socket opens; the host has 10
+// seconds to answer with a `hello` that proves the host id of the URL. The
+// machine then takes the host's lease (ownership.ts) before it answers
+// `linked`, and from then on the link carries
 // client streams (`open`, `[u32 stream id][payload]` binary frames, `close`)
 // and push frames until either side goes. Everything the host sends before
 // `linked` other than one `hello` is a protocol error. A protocol error is an
@@ -59,6 +65,10 @@ export interface HostLinkDeps {
   push: PushGateway;
   logger: Logger;
   timing: HostLinkTiming;
+  /** Takes or keeps the host's lease once the hello has proved the host id. */
+  claim(hostId: string, streams: boolean): Promise<ClaimResult>;
+  flow: FlowControl;
+  metrics: RelayMetrics;
 }
 
 const HelloSchema = z.object({
@@ -121,18 +131,31 @@ export class HostLink implements Link {
   hostId = '';
   capabilities: ReadonlySet<Capability> = new Set();
   readonly streams = new Map<number, StreamPeer>();
+  /** The link socket as a destination: client streams' valves attach here (flow.ts). */
+  readonly linkOutlet: Outlet;
 
   private readonly nonce = randomBytes(NONCE_BYTES);
-  private state: 'challenged' | 'linked' | 'ended' = 'challenged';
+  private state: 'challenged' | 'claiming' | 'linked' | 'ended' = 'challenged';
   private readonly helloTimer: NodeJS.Timeout;
   private lastPong = Date.now();
 
   constructor(
     private readonly socket: WebSocket,
     readonly remote: string,
+    /** The host id of the upgrade's query string, which the hello must prove. */
+    private readonly expectedHostId: string,
     private readonly deps: HostLinkDeps,
+    ticket: Ticket,
     private readonly onEnd: (link: HostLink) => void,
   ) {
+    this.linkOutlet = deps.flow.outlet(socket, {
+      kind: 'host',
+      ticket,
+      onShed: () => {
+        deps.metrics.shed('host');
+        this.end(1013, 'too slow');
+      },
+    });
     socket.on('message', (data, isBinary) => this.receive(data, isBinary));
     socket.on('pong', () => {
       this.lastPong = Date.now();
@@ -164,12 +187,13 @@ export class HostLink implements Link {
     this.send({ type: 'open', stream, remote });
   }
 
-  sendData(stream: number, payload: Buffer): void {
-    if (!this.countBytes(payload.length)) return;
+  sendData(stream: number, payload: Buffer, from?: Valve): SendResult {
+    if (!this.countBytes(payload.length)) return { ok: false, reason: 'closed' };
     const frame = Buffer.allocUnsafe(STREAM_ID_BYTES + payload.length);
     frame.writeUInt32BE(stream, 0);
     payload.copy(frame, STREAM_ID_BYTES);
-    this.write(frame);
+    // A refusal by the budget is the stream's to answer (1013), not the link's.
+    return this.write(frame, from, false);
   }
 
   sendClose(stream: number, code: number, reason: string): void {
@@ -186,6 +210,7 @@ export class HostLink implements Link {
     const wasLinked = this.state === 'linked';
     this.state = 'ended';
     clearTimeout(this.helloTimer);
+    this.linkOutlet.close();
     if (wasLinked) {
       this.deps.registry.removeLink(this);
       this.deps.logger.info({ hostId: this.hostId, remote: this.remote, code }, 'host link closed');
@@ -218,7 +243,10 @@ export class HostLink implements Link {
     const payload = frame.subarray(STREAM_ID_BYTES);
     if (!this.countBytes(payload.length)) return;
     // Data for an unknown or closed stream is dropped (3.2).
-    this.streams.get(frame.readUInt32BE(0))?.deliver(payload);
+    const peer = this.streams.get(frame.readUInt32BE(0));
+    if (!peer) return;
+    this.deps.metrics.forwarded('to_client', payload.length);
+    peer.deliver(payload);
   }
 
   private receiveText(text: Buffer) {
@@ -234,6 +262,7 @@ export class HostLink implements Link {
       if (type !== 'hello') throw new ProtocolError('expected hello');
       return this.hello(frame);
     }
+    if (this.state === 'claiming') throw new ProtocolError('frame before linked');
     if (type === 'close') return this.close(frame);
     if (type === 'push') return this.push(frame);
     throw new ProtocolError('unexpected frame type');
@@ -253,11 +282,33 @@ export class HostLink implements Link {
       this.deps.logger.info({ remote: this.remote }, 'host link refused');
       return this.fail(4401, 'unauthorized', 'the signature does not prove this host id');
     }
+    if (hostId !== this.expectedHostId) {
+      this.deps.logger.info({ remote: this.remote }, 'host link refused: another host id');
+      return this.fail(4401, 'unauthorized', 'the hello names another host id than the URL');
+    }
     // Unknown capabilities are ignored, so a later host can offer more.
     this.capabilities = new Set(
       CAPABILITIES.filter((capability) => parsed.data.capabilities.includes(capability)),
     );
     this.hostId = hostId;
+    this.state = 'claiming';
+    void this.deps.claim(hostId, this.capabilities.has('streams')).then(
+      (claimed) => this.claimed(claimed),
+      (error: unknown) => {
+        this.deps.logger.error({ err: error, hostId }, 'host claim failed');
+        this.end(1011, 'internal error');
+      },
+    );
+  }
+
+  /** The lease is this machine's, or the host is told to reconnect (1012). */
+  private claimed(claimed: ClaimResult) {
+    if (this.state !== 'claiming') return;
+    const { hostId } = this;
+    if (!claimed.ok) {
+      this.deps.logger.info({ hostId, reason: claimed.reason }, 'host link not served here');
+      return this.end(claimed.code, claimed.reason);
+    }
     this.state = 'linked';
     this.deps.registry.addLink(this);
     this.deps.logger.info(
@@ -285,10 +336,10 @@ export class HostLink implements Link {
       return this.pushResult(withId.data.id, { ok: false, reason: 'invalid', status: null });
     }
     const { id, type: _type, platform: _platform, ...push } = parsed.data;
-    if (!this.deps.registry.countPush(this.hostId)) {
-      return this.pushResult(id, { ok: false, reason: 'error', status: 429 });
-    }
-    void this.deps.push.send(push).then((outcome) => this.pushResult(id, outcome));
+    void this.deps.registry.countPush(this.hostId).then(async (counted) => {
+      if (!counted) return this.pushResult(id, { ok: false, reason: 'error', status: 429 });
+      this.pushResult(id, await this.deps.push.send(push));
+    });
   }
 
   private pushResult(id: string, outcome: PushOutcome) {
@@ -312,14 +363,31 @@ export class HostLink implements Link {
     this.write(JSON.stringify(frame));
   }
 
-  /** Sends one frame; a host this far behind is closed 1008 (3.4). */
-  private write(data: string | Buffer) {
-    if (this.state === 'ended' || this.socket.readyState !== WebSocket.OPEN) return;
-    this.socket.send(data);
+  /**
+   * Sends one frame through the link's outlet; a host this far behind is
+   * closed 1008 (3.4). A stream's data frame that the machine's budget
+   * refuses is the stream's to answer (it closes 1013). A control frame of
+   * the link's own (`control`) is small and bounded by the streams, and the
+   * host must hear it, so one the budget refuses is sent outside the budget
+   * rather than cost every stream on the link.
+   */
+  private write(data: string | Buffer, from?: Valve, control = true): SendResult {
+    if (this.state === 'ended' || this.socket.readyState !== WebSocket.OPEN) {
+      return { ok: false, reason: 'closed' };
+    }
+    let sent = this.linkOutlet.send(data, from);
+    if (!sent.ok && sent.reason === 'budget') {
+      if (!control) return sent;
+      this.socket.send(data);
+      sent = { ok: true };
+    }
+    if (!sent.ok) return sent;
     if (this.socket.bufferedAmount > this.deps.registry.limits.maxBufferedBytes) {
       this.deps.logger.warn({ hostId: this.hostId }, 'host link send buffer full');
       this.end(1008, 'send buffer full');
+      return { ok: false, reason: 'closed' };
     }
+    return sent;
   }
 }
 

@@ -1,13 +1,15 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { WebSocket } from 'ws';
 import { fromBase64Url, helloMessage, hostIdFor, toBase64Url } from './identity.js';
-import { hello, linkHost, makeHost, Peer, startRelay, wsUrl } from './test/helpers.js';
+import { MemoryRegistry } from './registry.js';
+import { hello, hostPath, linkHost, makeHost, Peer, startRelay, wsUrl } from './test/helpers.js';
 
 describe('host link', () => {
   it('challenges on open and links a host whose hello verifies', async () => {
     const relay = await startRelay();
     const host = makeHost();
-    const peer = await Peer.open(wsUrl(relay, '/v1/host'));
+    const peer = await Peer.open(wsUrl(relay, hostPath(host)));
     const challenge = await peer.text();
     expect(challenge).toMatchObject({ type: 'challenge', v: 1 });
     expect(fromBase64Url(String(challenge.nonce))).toHaveLength(32);
@@ -18,7 +20,7 @@ describe('host link', () => {
   it('closes 4401 for a signature that does not verify', async () => {
     const relay = await startRelay();
     const host = makeHost();
-    const peer = await Peer.open(wsUrl(relay, '/v1/host'));
+    const peer = await Peer.open(wsUrl(relay, hostPath(host)));
     const challenge = await peer.text();
     // A signature over some other nonce.
     const sig = ed25519.sign(helloMessage(new Uint8Array(32)), host.secretKey);
@@ -31,16 +33,51 @@ describe('host link', () => {
     const relay = await startRelay();
     const host = makeHost();
     const other = makeHost();
-    const peer = await Peer.open(wsUrl(relay, '/v1/host'));
+    const peer = await Peer.open(wsUrl(relay, hostPath(makeHost())));
     const challenge = await peer.text();
     peer.send({ ...hello(host, challenge), hostId: other.hostId });
     expect(other.hostId).not.toBe(hostIdFor(host.publicKey));
     expect((await peer.closed).code).toBe(4401);
   });
 
+  it('refuses an upgrade without a host id, or with a malformed one, with 400', async () => {
+    const relay = await startRelay();
+    for (const path of ['/v1/host', '/v1/host?hostId=', '/v1/host?hostId=NOT-A-HOST']) {
+      const socket = new WebSocket(wsUrl(relay, path));
+      const status = await new Promise<number | undefined>((resolve) => {
+        socket.on('unexpected-response', (_req, res) => resolve(res.statusCode));
+        socket.on('error', () => resolve(undefined));
+      });
+      expect(status).toBe(400);
+    }
+  });
+
+  it('closes 4401 for a hello that proves another host id than the URL', async () => {
+    const relay = await startRelay();
+    const host = makeHost();
+    const peer = await Peer.open(wsUrl(relay, hostPath(makeHost())));
+    peer.send(hello(host, await peer.text()));
+    expect(await peer.text()).toMatchObject({ type: 'error', code: 'unauthorized' });
+    expect((await peer.closed).code).toBe(4401);
+  });
+
+  it('takes the lease once linked and gives it up when the link goes', async () => {
+    const registry = new MemoryRegistry();
+    const relay = await startRelay({ registry });
+    const host = makeHost();
+    const peer = await linkHost(relay, host);
+    expect(await registry.owner(host.hostId)).toMatchObject({
+      nodeId: relay.nodeId,
+      streams: true,
+    });
+    peer.socket.close();
+    await peer.closed;
+    await vi.waitFor(async () => expect(await registry.owner(host.hostId)).toBeNull());
+  });
+
   it('closes 4400 when no hello comes in time', async () => {
     const relay = await startRelay({ timing: { helloTimeoutMs: 50 } });
-    const peer = await Peer.open(wsUrl(relay, '/v1/host'));
+    const peer = await Peer.open(wsUrl(relay, hostPath(makeHost())));
     await peer.text();
     expect(await peer.text()).toMatchObject({ type: 'error', code: 'protocol' });
     expect((await peer.closed).code).toBe(4400);
@@ -48,7 +85,7 @@ describe('host link', () => {
 
   it('closes 4400 for a binary frame before linked', async () => {
     const relay = await startRelay();
-    const peer = await Peer.open(wsUrl(relay, '/v1/host'));
+    const peer = await Peer.open(wsUrl(relay, hostPath(makeHost())));
     await peer.text();
     peer.send(Buffer.from([0, 0, 0, 1, 42]));
     expect((await peer.closed).code).toBe(4400);
@@ -57,7 +94,7 @@ describe('host link', () => {
   it('closes 4400 for a malformed hello', async () => {
     const relay = await startRelay();
     const host = makeHost();
-    const peer = await Peer.open(wsUrl(relay, '/v1/host'));
+    const peer = await Peer.open(wsUrl(relay, hostPath(host)));
     const challenge = await peer.text();
     peer.send({ ...hello(host, challenge), publicKey: 'not base64url!' });
     expect((await peer.closed).code).toBe(4400);

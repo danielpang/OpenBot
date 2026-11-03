@@ -1,8 +1,33 @@
 // The private relay (docs/RELAY_PROTOCOL.md sections 3 and 4), as a library:
 // `createRelay` runs one in process, which is how other packages' integration
-// tests reach it. The process entry is main.ts.
+// tests reach it, and several share a registry to form a cluster
+// (MOBILE_AND_VM_PLAN.md 5.8). The process entry is main.ts.
 
-export { createRelay, remoteAddress, HOST_PATH, type Relay, type RelayOptions } from './relay.js';
+export {
+  createRelay,
+  remoteAddress,
+  HOST_PATH,
+  REPLAY_HEADER,
+  REPLAY_SOURCE_HEADER,
+  type Relay,
+  type RelayOptions,
+} from './relay.js';
+export {
+  MemoryRegistry,
+  RedisRegistry,
+  counterKey,
+  type AcquireResult,
+  type Lease,
+  type Registry,
+  type RedisRegistryOptions,
+} from './registry.js';
+export {
+  DEFAULT_CLUSTER_TIMING,
+  Ownership,
+  type ClaimResult,
+  type ClusterTiming,
+  type Route,
+} from './ownership.js';
 export {
   ApnsGateway,
   APNS_PRODUCTION,

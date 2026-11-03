@@ -1,15 +1,19 @@
-// The registry of linked hosts (docs/RELAY_PROTOCOL.md 3.1, 3.4 and 3.5). Per
-// host id it keeps the links this process holds, the round-robin cursor that
-// spreads new client streams over the links that serve `streams`, and the
-// counters for the per-host limits. It knows nothing about sockets: a link is
-// whatever can carry `open`, data and `close` frames to its host, and a stream
-// is whatever can take the host's payloads and close.
+import type { Outlet, SendResult, Valve } from './flow.js';
+import { counterKey, type Registry } from './registry.js';
+
+// The links of the hosts this machine serves (docs/RELAY_PROTOCOL.md 3.1, 3.4
+// and 3.5). Per host id it keeps the links this process holds, the
+// round-robin cursor that spreads new client streams over the links that
+// serve `streams`, and the per-host limits. It knows nothing about sockets: a
+// link is whatever can carry `open`, data and `close` frames to its host, and
+// a stream is whatever can take the host's payloads and close.
 //
-// Everything here is in memory, for a single relay instance. The links are
-// sockets and stay local to the process that holds them; what several
-// instances would share through Redis is presence (which host ids are linked
-// somewhere) and the counters, so `Presence` is the seam: the HTTP presence
-// route asks it, and a Redis-backed one can answer for every instance.
+// The links are sockets and stay on this machine, which owns the host
+// (ownership.ts). The counters of 3.4 live in the shared registry
+// (registry.ts), so they hold when a host moves to another machine: stream
+// opens and pushes are counted there one by one, and stream bytes, which pass
+// on every frame, are counted here and added to the registry's total every
+// `bytesFlushMs`, so the minute's limit holds across machines within that lag.
 
 export type Capability = 'streams' | 'push';
 
@@ -57,67 +61,53 @@ export interface Link {
   readonly streams: Map<number, StreamPeer>;
   /** Tells the host a client connected on `stream`. */
   sendOpen(stream: number, remote: string): void;
-  /** Sends one client payload to the host. */
-  sendData(stream: number, payload: Buffer): void;
+  /**
+   * Sends one client payload to the host. `from` is the client socket's
+   * valve, which the link's outlet pauses when that stream is past its share.
+   */
+  sendData(stream: number, payload: Buffer, from?: Valve): SendResult;
+  /** The link socket's outlet, which a stream's valve attaches to (flow.ts). */
+  readonly linkOutlet: Outlet;
   /** Tells the host the client closed `stream`. */
   sendClose(stream: number, code: number, reason: string): void;
+  /** Closes the link itself, with `code` toward the host. */
+  end(code?: number, reason?: string): void;
 }
 
-/** Answers whether a host is linked; the seam a shared presence store replaces. */
+/** Answers whether a host is linked; the presence route asks it (ownership.ts answers from the registry). */
 export interface Presence {
   linked(hostId: string): Promise<boolean>;
 }
 
-/**
- * A fixed window counter: at most `limit` units in each window of `windowMs`.
- * A fixed window lets a host spend up to twice its limit across a window
- * boundary, which is close enough for abuse limits and costs two numbers.
- */
-export class WindowCounter {
-  private start = 0;
-  private count = 0;
-
-  constructor(
-    readonly windowMs: number,
-    readonly limit: number,
-  ) {}
-
-  /** Counts `n` units unless they would pass the limit; answers whether they were counted. */
-  take(n: number, now: number): boolean {
-    if (now - this.start >= this.windowMs) {
-      this.start = now;
-      this.count = 0;
-    }
-    if (this.count + n > this.limit) return false;
-    this.count += n;
-    return true;
-  }
-
-  /** Whether the counter holds nothing that still matters. */
-  idle(now: number): boolean {
-    return this.count === 0 || now - this.start >= this.windowMs;
-  }
+/** The bytes of one host's current minute: the registry's total when last asked, and what is not added yet. */
+interface ByteWindow {
+  window: number;
+  shared: number;
+  pending: number;
+  /** Whether the registry's total for this window has been read at least once. */
+  loaded: boolean;
 }
 
 interface HostEntry {
   hostId: string;
   links: Link[];
   cursor: number;
-  opens: WindowCounter;
-  bytes: WindowCounter;
-  pushes: WindowCounter;
+  /** Opens waiting on the registry, counted against the open streams. */
+  reserved: number;
+  bytes: ByteWindow;
 }
 
 export type OpenResult =
   { ok: true; link: Link; stream: number } | { ok: false; code: number; reason: string };
 
-export class HostRegistry implements Presence {
+export class HostRegistry {
   private readonly hosts = new Map<string, HostEntry>();
   /** The next stream id each link hands out; ids are never reused while a link lives. */
   private readonly nextIds = new WeakMap<Link, number>();
 
   constructor(
-    readonly limits: RelayLimits = DEFAULT_LIMITS,
+    readonly limits: RelayLimits,
+    private readonly counters: Registry,
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -128,8 +118,8 @@ export class HostRegistry implements Presence {
 
   /**
    * Forgets `link` and ends every stream it served with 4410. The host's
-   * counters outlive its links, so a host cannot reset its limits by
-   * relinking; `sweep` drops them once they no longer count.
+   * counters live in the registry, so a host cannot reset its limits by
+   * relinking, here or on another machine.
    */
   removeLink(link: Link): void {
     const entry = this.hosts.get(link.hostId);
@@ -142,12 +132,28 @@ export class HostRegistry implements Presence {
     for (const stream of streams) stream.end(4410, 'host gone');
   }
 
-  isLinked(hostId: string): boolean {
+  /** Whether this machine holds any link of the host. */
+  hasLinks(hostId: string): boolean {
     return (this.hosts.get(hostId)?.links.length ?? 0) > 0;
   }
 
-  linked(hostId: string): Promise<boolean> {
-    return Promise.resolve(this.isLinked(hostId));
+  /** Whether this machine holds a `streams` link of the host: what presence means. */
+  hasStreams(hostId: string): boolean {
+    return this.hosts.get(hostId)?.links.some((link) => link.capabilities.has('streams')) ?? false;
+  }
+
+  /**
+   * Ends every stream of the host with `code` and answers its links for the
+   * caller to close: what losing the host's lease does.
+   */
+  endStreams(hostId: string, code: number, reason: string): Link[] {
+    const links = [...(this.hosts.get(hostId)?.links ?? [])];
+    for (const link of links) {
+      const streams = [...link.streams.values()];
+      link.streams.clear();
+      for (const stream of streams) stream.end(code, reason);
+    }
+    return links;
   }
 
   /** Links held in this process, for shutdown. */
@@ -165,17 +171,34 @@ export class HostRegistry implements Presence {
   /**
    * Opens a stream for a client on the host's next `streams` link in turn,
    * after the limits of 3.4, and tells the host. The caller tells the client.
+   * The hour's opens are counted in the registry; if it cannot be reached the
+   * open is let through, since these are abuse limits and not billing.
    */
-  openStream(hostId: string, peer: StreamPeer, remote: string): OpenResult {
+  async openStream(hostId: string, peer: StreamPeer, remote: string): Promise<OpenResult> {
     const entry = this.hosts.get(hostId);
-    const serving = entry?.links.filter((link) => link.capabilities.has('streams')) ?? [];
-    if (!entry || serving.length === 0) return { ok: false, code: 4404, reason: 'host offline' };
-    if (this.openStreams(hostId) >= this.limits.streamsPerHost) {
+    if (!entry || !this.hasStreams(hostId))
+      return { ok: false, code: 4404, reason: 'host offline' };
+    if (this.openStreams(hostId) + entry.reserved >= this.limits.streamsPerHost) {
       return { ok: false, code: 4429, reason: 'too many streams' };
     }
-    if (!entry.opens.take(1, this.now())) {
-      return { ok: false, code: 4429, reason: 'too many stream opens' };
+    entry.reserved += 1;
+    let counted: boolean;
+    try {
+      counted = await this.counters.take(
+        counterKey('opens', hostId, HOUR_MS, this.now()),
+        1,
+        this.limits.opensPerHour,
+        HOUR_MS,
+      );
+    } catch {
+      counted = true;
+    } finally {
+      entry.reserved -= 1;
     }
+    if (!counted) return { ok: false, code: 4429, reason: 'too many stream opens' };
+    // The links may have changed while the registry answered.
+    const serving = entry.links.filter((link) => link.capabilities.has('streams'));
+    if (serving.length === 0) return { ok: false, code: 4404, reason: 'host offline' };
     const link = serving[entry.cursor % serving.length]!;
     entry.cursor = (entry.cursor + 1) % serving.length;
     const stream = this.allocate(link);
@@ -191,27 +214,77 @@ export class HostRegistry implements Presence {
     return peer;
   }
 
-  /** Counts stream payload bytes for a host; false means the minute's limit is passed. */
+  /**
+   * Counts stream payload bytes for a host against the minute's total that
+   * the registry last reported plus what this machine has not added yet;
+   * false means the limit is passed.
+   */
   countBytes(hostId: string, bytes: number): boolean {
     const entry = this.hosts.get(hostId);
-    return entry ? entry.bytes.take(bytes, this.now()) : true;
+    if (!entry) return true;
+    const window = this.byteWindow(entry);
+    if (window.shared + window.pending + bytes > this.limits.bytesPerMinute) return false;
+    window.pending += bytes;
+    return true;
+  }
+
+  /** Adds the bytes counted here to the registry's totals and reads them back. */
+  async flushBytes(): Promise<void> {
+    const flushes: Promise<void>[] = [];
+    for (const entry of this.hosts.values()) {
+      const window = this.byteWindow(entry);
+      if (window.pending === 0 && (window.loaded || entry.links.length === 0)) continue;
+      const pending = window.pending;
+      window.pending = 0;
+      const key = counterKey('bytes', entry.hostId, MINUTE_MS, window.window * MINUTE_MS);
+      flushes.push(
+        this.counters.add(key, pending, MINUTE_MS).then(
+          (total) => {
+            if (entry.bytes !== window) return;
+            // Bytes counted while the registry answered are still pending.
+            window.shared = total;
+            window.loaded = true;
+          },
+          () => {
+            // Added again on the next flush.
+            if (entry.bytes === window) window.pending += pending;
+          },
+        ),
+      );
+    }
+    await Promise.all(flushes);
   }
 
   /** Counts one push frame for a host; false means the hour's limit is passed. */
-  countPush(hostId: string): boolean {
-    const entry = this.hosts.get(hostId);
-    return entry ? entry.pushes.take(1, this.now()) : true;
+  async countPush(hostId: string): Promise<boolean> {
+    try {
+      return await this.counters.take(
+        counterKey('pushes', hostId, HOUR_MS, this.now()),
+        1,
+        this.limits.pushesPerHour,
+        HOUR_MS,
+      );
+    } catch {
+      return true;
+    }
   }
 
-  /** Drops hosts with no links whose counters have all run out. */
+  /** Drops hosts with no links and no bytes left to add. */
   sweep(): void {
-    const now = this.now();
     for (const [hostId, entry] of this.hosts) {
-      if (entry.links.length > 0) continue;
-      if (entry.opens.idle(now) && entry.bytes.idle(now) && entry.pushes.idle(now)) {
+      if (entry.links.length === 0 && entry.reserved === 0 && entry.bytes.pending === 0) {
         this.hosts.delete(hostId);
       }
     }
+  }
+
+  private byteWindow(entry: HostEntry): ByteWindow {
+    const window = Math.floor(this.now() / MINUTE_MS);
+    if (entry.bytes.window !== window) {
+      // A new minute: bytes still pending belong to the old one and no longer count.
+      entry.bytes = { window, shared: 0, pending: 0, loaded: false };
+    }
+    return entry.bytes;
   }
 
   private entry(hostId: string): HostEntry {
@@ -221,9 +294,8 @@ export class HostRegistry implements Presence {
         hostId,
         links: [],
         cursor: 0,
-        opens: new WindowCounter(HOUR_MS, this.limits.opensPerHour),
-        bytes: new WindowCounter(MINUTE_MS, this.limits.bytesPerMinute),
-        pushes: new WindowCounter(HOUR_MS, this.limits.pushesPerHour),
+        reserved: 0,
+        bytes: { window: Math.floor(this.now() / MINUTE_MS), shared: 0, pending: 0, loaded: false },
       };
       this.hosts.set(hostId, entry);
     }

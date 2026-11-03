@@ -23,7 +23,10 @@ import { anyDevicesOrPairings } from '../services/devices.js';
 import type { InstanceKey } from '../services/instance-key.js';
 
 // The host link (docs/RELAY_PROTOCOL.md section 3; MOBILE_AND_VM_PLAN.md
-// 5.2): one outbound WebSocket from this process to the relay's `/v1/host`.
+// 5.2): one outbound WebSocket from this process to the relay's
+// `/v1/host?hostId=<hostId>`. The host id in the URL lets a relay of several
+// machines send the upgrade to the machine that owns the host before any
+// frame (5.8); Fly's proxy follows that replay, so the link never sees it.
 // The relay sends a challenge, the link answers `hello` signed with the
 // instance key, and once `linked` the socket carries client streams (each
 // handed to whoever listens with `onStream`, the adapter in an API process)
@@ -98,6 +101,11 @@ export interface RelayLinkOptions {
 
 export function capabilitiesFor(role: AppDeps['config']['role']): LinkCapability[] {
   return role === 'worker' ? ['push'] : ['streams', 'push'];
+}
+
+/** The host link's URL: the relay's `/v1/host` with the host id in the query (spec 3.1). */
+export function hostLinkUrl(relayUrl: string, hostId: string): string {
+  return `${relayUrl.replace(/\/+$/, '')}${HOST_PATH}?hostId=${encodeURIComponent(hostId)}`;
 }
 
 /** A close code the relay passes on (spec 3.2): 1000 or 4000 to 4999; anything else reads as 1000. */
@@ -510,7 +518,7 @@ export async function createRelayLink(
   function dial() {
     if (connection || stopped) return;
     setStatus('connecting');
-    const url = `${relayUrl!.replace(/\/+$/, '')}${HOST_PATH}`;
+    const url = hostLinkUrl(relayUrl!, instance.hostId);
     // No Origin and no credentials: the hello is the proof.
     const socket = new WebSocket(url, { maxPayload: 65_540 + 1024 });
     connection = new Connection(socket, core);
