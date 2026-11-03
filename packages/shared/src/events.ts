@@ -95,6 +95,15 @@ export const WidgetStateSchema = z.looseObject({
 });
 
 /** Payload schema per event type. */
+/** A device in `device.paired` and `device.revoked`. */
+export const DeviceEventSchema = z.looseObject({
+  id,
+  name: z.string(),
+  platform: z.enum(['ios', 'android', 'desktop']),
+  createdAt: timestamp,
+  revokedAt: timestamp.nullable().optional(),
+});
+
 export const EVENT_PAYLOADS = {
   'message.created': z.looseObject({ message: MessageSchema }),
   /**
@@ -191,6 +200,16 @@ export const EVENT_PAYLOADS = {
     /** Why the sign-in failed, for the owner; never a secret. */
     error: z.string().nullable().optional(),
   }),
+  /**
+   * Sent to the owner (`user_id`, in `workspace_id`) when a phone pairs with
+   * their account (docs/RELAY_PROTOCOL.md 6.4), so Settings > Devices updates.
+   */
+  'device.paired': z.looseObject({ device: DeviceEventSchema }),
+  /**
+   * Sent to the owner when a device is revoked. The relay adapter on every
+   * API instance closes that device's streams on it.
+   */
+  'device.revoked': z.looseObject({ device: DeviceEventSchema }),
   /** Who controls a Bot's screen: the Bot, or the owner after a takeover. */
   'screen.control': z.looseObject({
     screenId: id,
@@ -227,7 +246,7 @@ const envelope = <T extends WsEventType>(type: T) =>
     chat_id: id.optional(),
     bot_id: id.optional(),
     /**
-     * Account-level events (`computer.status`, `connector.updated`) go to every
+     * Account-level events (`computer.status`, `connector.updated`, `device.*`) go to every
      * socket of this user in the organization `workspace_id`, which they carry.
      */
     user_id: id.optional(),

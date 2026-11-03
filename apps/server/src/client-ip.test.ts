@@ -1,5 +1,15 @@
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { inRanges, isCidr, resolveClientIp } from './client-ip.js';
+import {
+  DEVICE_HEADER,
+  DEVICE_KEY_HEADER,
+  inRanges,
+  isCidr,
+  rateLimitKey,
+  resolveClientIp,
+  tunnelHeader,
+} from './client-ip.js';
+import type { AppDeps, AppEnv } from './context.js';
 
 const TUNNEL = ['172.16.0.0/12', 'fd00::/8'];
 
@@ -41,5 +51,44 @@ describe('CIDR helpers', () => {
     expect(inRanges('172.32.0.1', TUNNEL)).toBe(false);
     expect(inRanges('fd12::1', TUNNEL)).toBe(true);
     expect(inRanges('172.18.0.1', [])).toBe(false);
+  });
+});
+
+describe('rateLimitKey', () => {
+  // A route that answers the key its rate limits would use.
+  const app = new Hono<AppEnv>()
+    .use(async (c, next) => {
+      c.set('deps', { config: { trustedProxies: [] } } as unknown as AppDeps);
+      await next();
+    })
+    .get('/', (c) =>
+      c.json({ key: rateLimitKey(c), deviceKey: tunnelHeader(c, DEVICE_KEY_HEADER) ?? null }),
+    );
+  const from = async (remoteAddress: string, headers: Record<string, string> = {}) => {
+    const res = await app.request('/', { headers }, { incoming: { socket: { remoteAddress } } });
+    return (await res.json()) as { key: string | null; deviceKey: string | null };
+  };
+
+  it('keys a tunneled request from loopback on its device', async () => {
+    expect(await from('127.0.0.1', { [DEVICE_HEADER]: 'd-1' })).toEqual({
+      key: 'device:d-1',
+      deviceKey: null,
+    });
+    expect(await from('::1', { [DEVICE_HEADER]: 'stream:7', [DEVICE_KEY_HEADER]: 'abc' })).toEqual({
+      key: 'device:stream:7',
+      deviceKey: 'abc',
+    });
+    expect((await from('::ffff:127.0.0.1', { [DEVICE_HEADER]: 'd-2' })).key).toBe('device:d-2');
+  });
+
+  it('keys loopback without the header on the address', async () => {
+    expect((await from('127.0.0.1')).key).toBe('127.0.0.1');
+  });
+
+  it('ignores the headers from any other address', async () => {
+    expect(
+      await from('198.51.100.9', { [DEVICE_HEADER]: 'd-1', [DEVICE_KEY_HEADER]: 'abc' }),
+    ).toEqual({ key: '198.51.100.9', deviceKey: null });
+    expect((await from('10.0.0.2', { [DEVICE_HEADER]: 'd-1' })).key).toBe('10.0.0.2');
   });
 });

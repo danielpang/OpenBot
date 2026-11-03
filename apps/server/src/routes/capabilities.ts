@@ -29,6 +29,10 @@ const CapabilitiesSchema = z
       description:
         'Admins may mark endpoints as on their own network (OPENBOTS_LOCAL_ENDPOINTS; off by default on the managed service)',
     }),
+    relay: z.boolean().optional().openapi({
+      description:
+        'A private relay is configured (OPENBOTS_RELAY_URL), so phones can pair and connect with no public URL',
+    }),
     auth: z.enum(['password', 'local']).optional().openapi({
       description:
         '`local`: the Mac app on This Mac signs its owner in itself (OPENBOTS_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in.',
@@ -58,6 +62,7 @@ export const capabilityRoutes = createRouter().openapi(
         deployment,
         customStdio,
         localEndpoints,
+        relay: !!c.var.deps.config.relayUrl,
         auth: localToken ? ('local' as const) : ('password' as const),
       },
       200,

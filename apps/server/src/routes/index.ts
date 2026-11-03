@@ -9,6 +9,7 @@ import { capabilityRoutes } from './capabilities.js';
 import { chatRoutes } from './chats.js';
 import { computerRoutes } from './computer.js';
 import { connectorRoutes } from './connectors.js';
+import { deviceRoutes } from './devices.js';
 import { fileRoutes } from './files.js';
 import { healthRoutes } from './health.js';
 import { localRoutes } from './local.js';
@@ -51,5 +52,6 @@ export function mountRoutes(app: OpenAPIHono<AppEnv>) {
   app.route('/api/v1', webhookRoutes);
   app.route('/api/v1', setupRoutes);
   app.route('/api/v1', localRoutes);
+  app.route('/api/v1', deviceRoutes);
   app.route('/', hookIngressRoutes);
 }

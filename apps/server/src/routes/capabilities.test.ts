@@ -19,6 +19,7 @@ describe('capabilities route', () => {
       deployment: 'self_hosted',
       customStdio: true,
       localEndpoints: true,
+      relay: false,
       auth: 'password',
     });
   });
@@ -37,8 +38,20 @@ describe('capabilities route', () => {
       deployment: 'self_hosted',
       customStdio: true,
       localEndpoints: true,
+      relay: false,
       auth: 'password',
     });
+  });
+
+  it('reports the relay when OPENBOTS_RELAY_URL is set', async () => {
+    const relayed = await createTestApp({ OPENBOTS_RELAY_URL: 'wss://relay.example.com' });
+    try {
+      const res = await relayed.app.request('/api/v1/capabilities');
+      expect(((await res.json()) as { relay: boolean }).relay).toBe(true);
+      expect(relayed.deps.config.relayUrl).toBe('wss://relay.example.com');
+    } finally {
+      await relayed.close();
+    }
   });
 
   it('reports local sign-in when the Mac app set a local token', async () => {

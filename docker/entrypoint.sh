@@ -5,6 +5,9 @@
 #   migrate          apply migrations and exit
 #   keygen           print a fresh OPENBOTS_MASTER_KEY
 #   rotate-key       re-encrypt every stored secret under OPENBOTS_MASTER_KEY (plan 4.9)
+#   pair             print a QR code for pairing a phone (--name, --direct <url>, --link)
+#   devices          list paired devices, or `devices revoke <id>`
+#   relay            this server's relay host id and whether the relay sees it linked
 #   docker-guard     run the docker guard in front of the socket proxy (compose service docker-guard)
 #   anything else    run it as a command, e.g. `sh`
 #
@@ -84,6 +87,10 @@ case "$command" in
   rotate-key)
     secrets_to_files
     exec node dist/rotate-key.js "$@"
+    ;;
+  pair | devices | relay)
+    secrets_to_files
+    exec node dist/cli/main.js "$command" "$@"
     ;;
   docker-guard)
     exec node /app/packages/computer/dist/docker-guard-main.js

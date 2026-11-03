@@ -39,10 +39,14 @@ const SECTION_4_TABLES = [
   'audit_log',
   'providers',
   'provider_models',
+  'devices',
+  'device_pairings',
 ];
 
 const AUTH_TABLES = ['users', 'sessions', 'accounts', 'verifications', 'apikeys'];
 const WORKSPACE_TABLES = ['workspaces', 'workspace_members', 'invites'];
+/** The install's own, no organization's (the relay identity, MOBILE_AND_VM_PLAN.md 4.1). */
+const INSTALL_TABLES = ['instance_keys'];
 
 // postgres.js returns rows as an array; PGlite wraps them in `{ rows }`.
 function rowsOf<T>(result: unknown): T[] {
@@ -56,12 +60,15 @@ const schemaTables = Object.values(schema as Record<string, unknown>).filter(
 describe('schema', () => {
   it('declares every plan section 4 table', () => {
     const names = schemaTables.map((table) => getTableName(table)).sort();
-    expect(names).toEqual([...SECTION_4_TABLES, ...AUTH_TABLES, ...WORKSPACE_TABLES].sort());
+    expect(names).toEqual(
+      [...SECTION_4_TABLES, ...AUTH_TABLES, ...WORKSPACE_TABLES, ...INSTALL_TABLES].sort(),
+    );
   });
 
   it('puts workspace_id on every section 4 table', () => {
     for (const table of schemaTables) {
-      if (AUTH_TABLES.includes(getTableName(table)) || getTableName(table) === 'workspaces')
+      const name = getTableName(table);
+      if (AUTH_TABLES.includes(name) || INSTALL_TABLES.includes(name) || name === 'workspaces')
         continue;
       expect(table, getTableName(table)).toHaveProperty('workspaceId');
     }

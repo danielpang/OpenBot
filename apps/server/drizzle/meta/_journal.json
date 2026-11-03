@@ -176,6 +176,13 @@
       "when": 1793637279538,
       "tag": "0024_message_deletions",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793664957588,
+      "tag": "0025_devices",
+      "breakpoints": true
     }
   ]
 }

@@ -25,6 +25,59 @@ export interface AppDeps {
   githubFetch?: GithubFetch;
   /** What the managed build (ee/server) adds; none for self-hosted (plan 21.5). */
   extensions?: ServerExtensions;
+  /**
+   * The relay link (src/relay, docs/RELAY_PROTOCOL.md section 3), in a
+   * process that keeps one. `GET /relay` answers from it; without it the
+   * relay reads as `off`.
+   */
+  relay?: RelayLink;
+}
+
+/** The relay link (src/relay/link.ts) as the rest of the server uses it. */
+export interface RelayLink {
+  /** What `GET /relay` answers. */
+  status(): RelayStatus;
+  /** Checks at once whether to dial: a pairing was just made (services/devices.ts). */
+  wake(): void;
+  /**
+   * Sends one `push` frame (spec 3.3) and resolves its `push.result`.
+   * Rejects at once when the link is not linked, and after 15 seconds
+   * without an answer.
+   */
+  push(request: RelayPushRequest): Promise<RelayPushOutcome>;
+  /** Closes the link for good. */
+  stop(): Promise<void>;
+}
+
+/** A `push` frame less its `type` and `id` (RELAY_PROTOCOL.md 3.3). */
+export interface RelayPushRequest {
+  platform: 'ios';
+  /** The APNs device token, lower case hex. */
+  token: string;
+  /** base64url(nonce || ciphertext || tag), section 7. */
+  ciphertext: string;
+  collapseId?: string;
+  priority: 10 | 5;
+  /** Unix seconds. */
+  expiresAt: number;
+  threadId?: string;
+}
+
+/** A `push.result` less its `type` and `id`. */
+export type RelayPushOutcome =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: 'unregistered' | 'unavailable' | 'invalid' | 'error';
+      status: number | null;
+    };
+
+export interface RelayStatus {
+  hostId: string;
+  relayUrl: string | null;
+  status: 'off' | 'connecting' | 'linked';
+  /** When the status last changed, ISO 8601; null when it never has. */
+  since: string | null;
 }
 
 /** A signed-in caller, with or without an organization; set by `requireAccount`. */
@@ -39,6 +92,8 @@ export interface Account {
   via: 'session' | 'api_key';
   /** The session's id, for a session; null for an API key. */
   sessionId: string | null;
+  /** The API key's id, for an API key (a device's included); null for a session. */
+  apiKeyId: string | null;
   /**
    * Their membership in the active organization (plan 21.2): the implicit
    * one on a self-hosted install, else the session's active organization

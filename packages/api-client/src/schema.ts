@@ -7466,6 +7466,374 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/devices/pairings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Make a pairing link for a phone (good for 5 minutes, once) */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          'application/json': components['schemas']['CreatePairing'];
+        };
+      };
+      responses: {
+        /** @description The pairing, its link and the QR payload */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Pairing'];
+          };
+        };
+        /** @description Invalid request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Too many open pairings (TOO_MANY_PAIRINGS) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/devices/pair': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Pair a device with a code from a pairing link (the phone’s side)
+     * @description No authentication: the code is the credential. Rate-limited per client (10 an hour) and per code (5 tries). Answers the device’s API key once.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['PairRequest'];
+        };
+      };
+      responses: {
+        /** @description The device, its API key and the owner */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PairResult'];
+          };
+        };
+        /** @description Invalid request, or the key is not the tunnel’s (PAIRING_KEY_MISMATCH) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The code is unknown, used or expired (PAIRING_INVALID) */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The device is paired already */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Too many attempts */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/devices': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The caller's paired devices */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Devices, newest first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              items: components['schemas']['Device'][];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/devices/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Revoke a device: its key stops working at once and its streams close */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Revoked */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such device */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/devices/{id}/push': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Register or refresh the device's push token (the device itself only) */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['DevicePush'];
+        };
+      };
+      responses: {
+        /** @description Registered */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Invalid request */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The caller is not this device (NOT_THIS_DEVICE) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such device */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/relay': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The relay link's status and this server's host id */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Relay status */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['RelayStatus'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -7761,6 +8129,8 @@ export interface components {
       customStdio?: boolean;
       /** @description Admins may mark endpoints as on their own network (OPENBOTS_LOCAL_ENDPOINTS; off by default on the managed service) */
       localEndpoints?: boolean;
+      /** @description A private relay is configured (OPENBOTS_RELAY_URL), so phones can pair and connect with no public URL */
+      relay?: boolean;
       /**
        * @description `local`: the Mac app on This Mac signs its owner in itself (OPENBOTS_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in.
        * @enum {string}
@@ -9856,6 +10226,97 @@ export interface components {
     LocalSessionRequest: {
       /** @description The owner’s name, used only when this call creates the owner */
       name?: string;
+    };
+    Pairing: {
+      /** Format: uuid */
+      id: string;
+      /** Format: date-time */
+      expiresAt: string;
+      /** @description The `openbots://pair#...` link the QR code shows */
+      link: string;
+      qr: components['schemas']['PairingQr'];
+    };
+    PairingQr: {
+      /** @enum {number} */
+      v: 1;
+      /** @description The server's relay host id */
+      host: string;
+      /** @description The server's Noise static key, base64url */
+      key: string;
+      /** @description The 32 byte pairing code, base64url */
+      code: string;
+      /** @description The relay URL; null with no relay */
+      relay: string | null;
+      direct: string[];
+      name: string;
+      /** @description The server has no owner yet */
+      setup: boolean;
+    };
+    CreatePairing: {
+      /** @description The server's name in the phone's hosts list; the organization's by default */
+      name?: string;
+      /** @description Direct addresses; OPENBOTS_PUBLIC_URL when it is https, by default */
+      direct?: string[];
+    };
+    PairResult: {
+      device: {
+        /** Format: uuid */
+        id: string;
+        name: string;
+        /** @enum {string} */
+        platform: 'ios' | 'android' | 'desktop';
+        /** Format: date-time */
+        createdAt: string;
+      };
+      /** @description The device's API key; shown only once */
+      key: string;
+      owner: {
+        /** Format: uuid */
+        id: string;
+        name: string;
+      };
+      /** @description The owner has no model provider or no Bot yet: run the first-run steps */
+      setupNeeded: boolean;
+    };
+    PairRequest: {
+      /** @description From the link, base64url */
+      code: string;
+      name: string;
+      /** @enum {string} */
+      platform: 'ios' | 'android' | 'desktop';
+      /** @description The device's X25519 static key, base64url */
+      publicKey: string;
+      /** @description 32 random bytes, base64url */
+      pushKey: string;
+      /** @description The new owner’s name, used only on a server with no owner yet */
+      ownerName?: string;
+    };
+    Device: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      /** @enum {string} */
+      platform: 'ios' | 'android' | 'desktop';
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      lastSeenAt: string | null;
+      /** @description The device has sent its push token */
+      pushRegistered: boolean;
+    };
+    DevicePush: {
+      /** @description The APNs device token, hex */
+      token: string;
+      /** @enum {string} */
+      environment: 'production' | 'sandbox';
+    };
+    RelayStatus: {
+      hostId: string;
+      relayUrl: string | null;
+      /** @enum {string} */
+      status: 'off' | 'connecting' | 'linked';
+      /** Format: date-time */
+      since: string | null;
     };
   };
   responses: never;

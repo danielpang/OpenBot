@@ -5,6 +5,7 @@ import type { Account, AppDeps, AppEnv, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { asDirectory, inWorkspace } from '../db/scope.js';
 import { DomainError, forbidden, notFound, unauthorized } from '../errors.js';
+import { touchDevice } from '../services/devices.js';
 import { ensureWorkspace, isOrgAdmin, type Role } from '../workspace.js';
 
 // Every route that needs a caller uses one of these. A request authenticates
@@ -109,12 +110,14 @@ export async function authenticateAccount(deps: AuthDeps, headers: Headers): Pro
   let userId: string | undefined;
   let via: Account['via'];
   let sessionId: string | null = null;
+  let apiKeyId: string | null = null;
   let organizationId: string | null = null;
   if (key) {
     const result = await auth.api.verifyApiKey({ body: { key } });
     if (!result.valid || !result.key) throw unauthorized('Invalid API key');
     userId = result.key.referenceId;
     via = 'api_key';
+    apiKeyId = result.key.id;
     // The key's organization is the directory's to say.
     const [row] = await asDirectory(() =>
       db
@@ -144,6 +147,10 @@ export async function authenticateAccount(deps: AuthDeps, headers: Headers): Pro
   if (deps.extensions?.requireVerifiedEmail && !user.emailVerified) throw emailNotVerified();
   if (config.deployment === 'self_hosted') organizationId = (await implicitId(db)) ?? null;
   const membership = organizationId ? await membershipOf(db, user.id, organizationId) : null;
+  // A paired device's key: when it was last seen (services/devices.ts).
+  if (apiKeyId && organizationId) {
+    await touchDevice(db, { workspaceId: organizationId, apiKeyId }).catch(() => undefined);
+  }
   return {
     id: user.id,
     email: user.email,
@@ -153,6 +160,7 @@ export async function authenticateAccount(deps: AuthDeps, headers: Headers): Pro
     createdAt: user.createdAt,
     via,
     sessionId,
+    apiKeyId,
     membership,
   };
 }

@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { and, desc, eq } from 'drizzle-orm';
-import { schema } from '../db/client.js';
+import { and, desc, eq, notExists } from 'drizzle-orm';
+import { schema, type Db } from '../db/client.js';
 import { notFound } from '../errors.js';
 import { requireUser } from '../middleware/auth.js';
 import { recordAudit, userActor } from '../services/audit.js';
@@ -10,7 +10,17 @@ import { asDirectory } from '../db/scope.js';
 // API keys (U4): list, create (the key is returned once), revoke. Keys are
 // hashed at rest by better-auth's api-key plugin. A key belongs to the
 // organization it was made in and opens only that one (plan 21.2), so each
-// organization lists and revokes its own.
+// organization lists and revokes its own. A paired device's key is not
+// listed here, and only `DELETE /devices/{id}` removes it (routes/devices.ts).
+
+/** Not a paired device's key (devices.api_key_id). */
+const notADevicesKey = (db: Db) =>
+  notExists(
+    db
+      .select({ id: schema.devices.id })
+      .from(schema.devices)
+      .where(eq(schema.devices.apiKeyId, schema.apikeys.id)),
+  );
 
 const ApiKeySchema = z
   .object({
@@ -62,6 +72,7 @@ export const apiKeyRoutes = createRouter()
           and(
             eq(schema.apikeys.referenceId, c.var.user.id),
             eq(schema.apikeys.workspaceId, c.var.user.workspaceId),
+            notADevicesKey(db),
           ),
         )
         .orderBy(desc(schema.apikeys.createdAt));
@@ -163,6 +174,7 @@ export const apiKeyRoutes = createRouter()
             eq(schema.apikeys.id, id),
             eq(schema.apikeys.referenceId, c.var.user.id),
             eq(schema.apikeys.workspaceId, c.var.user.workspaceId),
+            notADevicesKey(db),
           ),
         )
         .returning({ id: schema.apikeys.id, name: schema.apikeys.name });

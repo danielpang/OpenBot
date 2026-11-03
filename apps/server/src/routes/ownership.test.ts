@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { nextSeq, schema } from '../db/client.js';
@@ -346,5 +346,42 @@ describe('ownership', () => {
       .from(schema.reactions)
       .where(eq(schema.reactions.messageId, message.id));
     expect(rows).toEqual([{ emoji: '👍', reactorId: aliceId }]);
+  });
+
+  it("keeps one member's devices from another in the same organization", async () => {
+    const pairing = (await (await call(alice, 'POST', '/devices/pairings', {})).json()) as {
+      qr: { code: string };
+    };
+    const pairRes = await call(alice, 'POST', '/devices/pair', {
+      code: pairing.qr.code,
+      name: 'Alice phone',
+      platform: 'ios',
+      publicKey: randomBytes(32).toString('base64url'),
+      pushKey: randomBytes(32).toString('base64url'),
+    });
+    expect(pairRes.status).toBe(200);
+    const paired = (await pairRes.json()) as { device: { id: string }; key: string };
+    const id = paired.device.id;
+
+    // Bob sees none of it and can change none of it.
+    const listed = (await (await call(bob, 'GET', '/devices')).json()) as { items: unknown[] };
+    expect(listed.items).toEqual([]);
+    expect((await call(bob, 'DELETE', `/devices/${id}`)).status).toBe(404);
+    const push = { token: 'ab'.repeat(32), environment: 'production' };
+    expect((await call(bob, 'PUT', `/devices/${id}/push`, push)).status).toBe(404);
+    // Bob's own key is not Alice's device's either.
+    const bobKey = (await (await call(bob, 'POST', '/api-keys', { name: 'bob' })).json()) as {
+      key: string;
+    };
+    const asBobKey = await t.app.request(`/api/v1/devices/${id}/push`, {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${bobKey.key}`, 'content-type': 'application/json' },
+      body: JSON.stringify(push),
+    });
+    expect(asBobKey.status).toBe(404);
+
+    const [row] = await t.db.select().from(schema.devices).where(eq(schema.devices.id, id));
+    expect(row).toMatchObject({ ownerId: aliceId, revokedAt: null, pushToken: null });
+    expect(bobId).not.toBe(aliceId);
   });
 });

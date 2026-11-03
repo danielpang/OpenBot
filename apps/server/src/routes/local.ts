@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createRoute, z } from '@hono/zod-openapi';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { CLIENT_IP_HEADER, clientIp } from '../client-ip.js';
+import { CLIENT_IP_HEADER, clientIp, rateLimitKey } from '../client-ip.js';
 import { DomainError, notFound } from '../errors.js';
 import { createRouter, problemResponse } from '../openapi.js';
 
@@ -76,7 +76,10 @@ export const localRoutes = createRouter().openapi(
       throw new DomainError(403, 'ORIGIN_NOT_ALLOWED', 'Only the OpenBots Mac app signs in here');
     }
     const ip = clientIp(c);
-    const limit = await infra.limiter.consume(`local-session:${ip ?? 'unknown'}`, RATE_LIMIT);
+    const limit = await infra.limiter.consume(
+      `local-session:${rateLimitKey(c) ?? 'unknown'}`,
+      RATE_LIMIT,
+    );
     if (!limit.allowed) {
       c.header('retry-after', String(limit.retryAfter ?? RATE_LIMIT.window));
       throw new DomainError(429, 'RATE_LIMITED', 'Too many attempts; retry in a few seconds');

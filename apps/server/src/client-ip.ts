@@ -90,3 +90,45 @@ export function clientIp(c: Context<AppEnv>): string | null {
     c.var.deps.config.trustedProxies,
   );
 }
+
+/**
+ * Set by the relay adapter (src/relay) on each request it forwards from a
+ * tunnel to this server's own port on loopback: the device's id, or
+ * `stream:<id>` for a stream whose device is not paired yet
+ * (RELAY_PROTOCOL.md 5.4). Believed only from loopback.
+ */
+export const DEVICE_HEADER = 'x-openbots-device';
+
+/**
+ * Set by the relay adapter beside DEVICE_HEADER: the tunnel's device static
+ * key from the Noise handshake, base64url. `POST /devices/pair` checks the
+ * body's `publicKey` against it (PAIRING_KEY_MISMATCH). Believed only from loopback.
+ */
+export const DEVICE_KEY_HEADER = 'x-openbots-device-key';
+
+const LOOPBACK = ['127.0.0.0/8', '::1'];
+
+/** Whether the peer of the connection itself (never X-Forwarded-For) is loopback. */
+export function fromLoopback(c: Context<AppEnv>): boolean {
+  const peer = peerAddress(c);
+  return peer !== undefined && inRanges(peer, LOOPBACK);
+}
+
+/** A header the relay adapter sets, when the request came from loopback; else undefined. */
+export function tunnelHeader(c: Context<AppEnv>, name: string): string | undefined {
+  if (!fromLoopback(c)) return undefined;
+  const value = c.req.header(name)?.trim();
+  return value ? value : undefined;
+}
+
+/**
+ * The key the server's own rate limits count a request under: the client's
+ * address, or `device:<id>` for a tunneled request (DEVICE_HEADER from
+ * loopback), so every phone behind the relay adapter gets its own bucket.
+ * From any other peer the header is ignored. Null when neither is known.
+ */
+export function rateLimitKey(c: Context<AppEnv>): string | null {
+  const device = tunnelHeader(c, DEVICE_HEADER);
+  if (device) return `device:${device.slice(0, 128)}`;
+  return clientIp(c);
+}

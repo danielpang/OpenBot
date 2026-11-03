@@ -865,6 +865,10 @@
             "type": "boolean",
             "description": "Admins may mark endpoints as on their own network (OPENBOTS_LOCAL_ENDPOINTS; off by default on the managed service)"
           },
+          "relay": {
+            "type": "boolean",
+            "description": "A private relay is configured (OPENBOTS_RELAY_URL), so phones can pair and connect with no public URL"
+          },
           "auth": {
             "type": "string",
             "enum": ["password", "local"],
@@ -6338,6 +6342,242 @@
           }
         },
         "additionalProperties": false
+      },
+      "Pairing": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "link": {
+            "type": "string",
+            "description": "The `openbots://pair#...` link the QR code shows"
+          },
+          "qr": {
+            "$ref": "#/components/schemas/PairingQr"
+          }
+        },
+        "required": ["id", "expiresAt", "link", "qr"]
+      },
+      "PairingQr": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "type": "number",
+            "enum": [1]
+          },
+          "host": {
+            "type": "string",
+            "description": "The server's relay host id"
+          },
+          "key": {
+            "type": "string",
+            "description": "The server's Noise static key, base64url"
+          },
+          "code": {
+            "type": "string",
+            "description": "The 32 byte pairing code, base64url"
+          },
+          "relay": {
+            "type": ["string", "null"],
+            "description": "The relay URL; null with no relay"
+          },
+          "direct": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "setup": {
+            "type": "boolean",
+            "description": "The server has no owner yet"
+          }
+        },
+        "required": ["v", "host", "key", "code", "relay", "direct", "name", "setup"]
+      },
+      "CreatePairing": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The server's name in the phone's hosts list; the organization's by default"
+          },
+          "direct": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2048,
+              "format": "uri",
+              "description": "An address the phone tries before the relay"
+            },
+            "maxItems": 8,
+            "description": "Direct addresses; OPENBOTS_PUBLIC_URL when it is https, by default"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PairResult": {
+        "type": "object",
+        "properties": {
+          "device": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string",
+                "enum": ["ios", "android", "desktop"]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": ["id", "name", "platform", "createdAt"]
+          },
+          "key": {
+            "type": "string",
+            "description": "The device's API key; shown only once"
+          },
+          "owner": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "name"]
+          },
+          "setupNeeded": {
+            "type": "boolean",
+            "description": "The owner has no model provider or no Bot yet: run the first-run steps"
+          }
+        },
+        "required": ["device", "key", "owner", "setupNeeded"]
+      },
+      "PairRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "From the link, base64url"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android", "desktop"]
+          },
+          "publicKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "The device's X25519 static key, base64url"
+          },
+          "pushKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "32 random bytes, base64url"
+          },
+          "ownerName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The new owner’s name, used only on a server with no owner yet"
+          }
+        },
+        "required": ["code", "name", "platform", "publicKey", "pushKey"],
+        "additionalProperties": false
+      },
+      "Device": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android", "desktop"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "pushRegistered": {
+            "type": "boolean",
+            "description": "The device has sent its push token"
+          }
+        },
+        "required": ["id", "name", "platform", "createdAt", "lastSeenAt", "pushRegistered"]
+      },
+      "DevicePush": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{16,512}$",
+            "description": "The APNs device token, hex"
+          },
+          "environment": {
+            "type": "string",
+            "enum": ["production", "sandbox"]
+          }
+        },
+        "required": ["token", "environment"],
+        "additionalProperties": false
+      },
+      "RelayStatus": {
+        "type": "object",
+        "properties": {
+          "hostId": {
+            "type": "string"
+          },
+          "relayUrl": {
+            "type": ["string", "null"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["off", "connecting", "linked"]
+          },
+          "since": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "required": ["hostId", "relayUrl", "status", "since"]
       }
     },
     "parameters": {}
@@ -14663,6 +14903,352 @@
           },
           "429": {
             "description": "Too many attempts",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/pairings": {
+      "post": {
+        "tags": ["devices"],
+        "summary": "Make a pairing link for a phone (good for 5 minutes, once)",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePairing"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The pairing, its link and the QR payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pairing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Too many open pairings (TOO_MANY_PAIRINGS)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/pair": {
+      "post": {
+        "tags": ["devices"],
+        "summary": "Pair a device with a code from a pairing link (the phone’s side)",
+        "description": "No authentication: the code is the credential. Rate-limited per client (10 an hour) and per code (5 tries). Answers the device’s API key once.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The device, its API key and the owner",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, or the key is not the tunnel’s (PAIRING_KEY_MISMATCH)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The code is unknown, used or expired (PAIRING_INVALID)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The device is paired already",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "tags": ["devices"],
+        "summary": "The caller's paired devices",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Devices, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Device"
+                      }
+                    }
+                  },
+                  "required": ["items"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{id}": {
+      "delete": {
+        "tags": ["devices"],
+        "summary": "Revoke a device: its key stops working at once and its streams close",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such device",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{id}/push": {
+      "put": {
+        "tags": ["devices"],
+        "summary": "Register or refresh the device's push token (the device itself only)",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevicePush"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Registered"
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller is not this device (NOT_THIS_DEVICE)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such device",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/relay": {
+      "get": {
+        "tags": ["devices"],
+        "summary": "The relay link's status and this server's host id",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Relay status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelayStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
             "content": {
               "application/problem+json": {
                 "schema": {

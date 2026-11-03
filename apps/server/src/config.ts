@@ -85,6 +85,7 @@ const limitsShape = Object.fromEntries(
 
 const envSchema = z.object({
   OPENBOTS_PUBLIC_URL: withDefault(z.url(), 'http://localhost:3000'),
+  OPENBOTS_RELAY_URL: optional(z.url({ protocol: /^wss?$/ })),
   OPENBOTS_MASTER_KEY: masterKey,
   OPENBOTS_MASTER_KEY_PREVIOUS: withDefault(masterKeyList, ''),
   DATABASE_URL: z.string().min(1),
@@ -148,6 +149,13 @@ export interface OAuthClient {
 
 export interface Config {
   publicUrl: string;
+  /**
+   * The private relay phones reach this server through (OPENBOTS_RELAY_URL,
+   * a wss:// or ws:// URL; docs/RELAY_PROTOCOL.md). The server dials it only
+   * once a device is paired or a pairing is open. Unset: no relay, and a
+   * pairing link lists only direct addresses.
+   */
+  relayUrl?: string;
   /** Base64; seals every new secret. Open secrets with `keyringFromConfig`. */
   masterKey: string;
   /**
@@ -314,6 +322,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   return {
     publicUrl: e.OPENBOTS_PUBLIC_URL,
+    ...(e.OPENBOTS_RELAY_URL ? { relayUrl: e.OPENBOTS_RELAY_URL.replace(/\/+$/, '') } : {}),
     masterKey: e.OPENBOTS_MASTER_KEY,
     previousMasterKeys: e.OPENBOTS_MASTER_KEY_PREVIOUS,
     secretsFromEnvironment: secrets.fromEnvironment,

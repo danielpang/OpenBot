@@ -46,6 +46,20 @@ describe('loadConfig', () => {
     );
   });
 
+  it('takes a ws or wss relay URL, and none when empty', () => {
+    expect(loadConfig(base).relayUrl).toBeUndefined();
+    expect(loadConfig({ ...base, OPENBOTS_RELAY_URL: '' }).relayUrl).toBeUndefined();
+    expect(loadConfig({ ...base, OPENBOTS_RELAY_URL: 'wss://relay.example.com/' }).relayUrl).toBe(
+      'wss://relay.example.com',
+    );
+    expect(loadConfig({ ...base, OPENBOTS_RELAY_URL: 'ws://127.0.0.1:8787' }).relayUrl).toBe(
+      'ws://127.0.0.1:8787',
+    );
+    expect(() => loadConfig({ ...base, OPENBOTS_RELAY_URL: 'https://relay.example.com' })).toThrow(
+      /OPENBOTS_RELAY_URL/,
+    );
+  });
+
   it('runs stdio connectors on the host when self-hosted and in the computer on managed', () => {
     const managed = { ...base, OPENBOTS_DEPLOYMENT: 'managed' };
     expect(loadConfig(base).stdioRunner).toBe('host');
