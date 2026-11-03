@@ -8,8 +8,8 @@ import { requireUser } from '../middleware/auth.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import { userActor } from '../services/audit.js';
 import {
-  refuseDeviceKey,
   PAIRING_CODE_BYTES,
+  cancelPairing,
   completePairing,
   createPairing,
   fromBase64url,
@@ -166,7 +166,6 @@ export const deviceRoutes = createRouter()
     }),
     async (c) => {
       const { db, config, relay } = c.var.deps;
-      await refuseDeviceKey(db, c.var.user);
       const body = (c.req.valid('json') as z.infer<typeof CreatePairingSchema> | undefined) ?? {};
       const pairing = await createPairing({
         db,
@@ -180,6 +179,32 @@ export const deviceRoutes = createRouter()
         relay,
       });
       return c.json(pairing, 201);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: 'delete',
+      path: '/devices/pairings/{id}',
+      tags: ['devices'],
+      summary: 'Cancel an open pairing: its code stops working at once',
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: { params: z.object({ id: z.uuid() }) },
+      responses: {
+        204: { description: 'Cancelled' },
+        404: problemResponse('No such open pairing'),
+        ...authProblems,
+      },
+    }),
+    async (c) => {
+      const { user } = c.var;
+      await cancelPairing(
+        c.var.deps.db,
+        { workspaceId: user.workspaceId, ownerId: user.id },
+        c.req.valid('param').id,
+        userActor(user),
+      );
+      return c.body(null, 204);
     },
   )
   .openapi(

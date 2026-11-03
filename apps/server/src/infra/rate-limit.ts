@@ -23,6 +23,8 @@ export interface RateLimitResult {
 export interface RateLimiter {
   /** Takes one token from the bucket at `key`. */
   consume(key: string, rule: RateLimitRule): Promise<RateLimitResult>;
+  /** Forgets the bucket at `key`, so it is full again: a claim given back. */
+  reset(key: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -64,6 +66,10 @@ export class MemoryRateLimiter implements RateLimiter {
     // A full bucket is the same as no bucket, so it can go once refilled.
     this.buckets.set(key, { ...bucket, expiresAt: now + rule.window * 1000 });
     return result;
+  }
+
+  async reset(key: string): Promise<void> {
+    this.buckets.delete(key);
   }
 
   private prune(now: number) {
@@ -127,6 +133,10 @@ export class RedisRateLimiter implements RateLimiter {
     return allowed === 1
       ? { allowed: true, retryAfter: null }
       : { allowed: false, retryAfter: Math.max(1, Math.ceil(retryMs / 1000)) };
+  }
+
+  async reset(key: string): Promise<void> {
+    await this.redis.del(KEY_PREFIX + key);
   }
 
   async close(): Promise<void> {

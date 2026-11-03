@@ -142,6 +142,89 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/me/credentials': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set an email and a password for the web app (an owner made by pairing, once) */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['SetCredentials'];
+        };
+      };
+      responses: {
+        /** @description Set: sign in on the web with them */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Invalid email or password */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description A server that signs in from the Mac app only (LOCAL_ONLY) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The account has credentials already (CREDENTIALS_SET), or EMAIL_TAKEN */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Too many tries */
+        429: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/me': {
     parameters: {
       query?: never;
@@ -7240,7 +7323,7 @@ export interface paths {
             'application/problem+json': components['schemas']['Problem'];
           };
         };
-        /** @description The request came from another origin, or the Mac app signs the owner in (LOCAL_ONLY) */
+        /** @description The request came from another origin, the Mac app signs the owner in (LOCAL_ONLY), or a pairing makes the owner (SETUP_PAIRING_ONLY) */
         403: {
           headers: {
             [name: string]: unknown;
@@ -7528,6 +7611,60 @@ export interface paths {
       };
     };
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/devices/pairings/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Cancel an open pairing: its code stops working at once */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Cancelled */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such open pairing */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
     options?: never;
     head?: never;
     patch?: never;
@@ -7847,6 +7984,11 @@ export interface components {
         /** @enum {string} */
         redis?: 'ok' | 'error';
       };
+      /**
+       * @description The data disk is nearly full (the standalone image reports it). Still ready: a full disk never takes the server out of rotation
+       * @enum {string}
+       */
+      disk?: 'low';
     };
     Problem: {
       type: string;
@@ -7858,6 +8000,12 @@ export interface components {
         path: (string | number)[];
         message: string;
       }[];
+    };
+    SetCredentials: {
+      /** Format: email */
+      email: string;
+      /** @description At least 8 characters (better-auth's rule) */
+      password: string;
     };
     Me: {
       user: {
@@ -8141,6 +8289,8 @@ export interface components {
         /** @description The relay and tunnel protocol version (docs/RELAY_PROTOCOL.md) */
         relay: number;
       };
+      /** @description The first owner is made by pairing a phone (`openbots pair`), not the web wizard (OPENBOTS_SETUP_PAIRING_ONLY) */
+      setupPairingOnly?: boolean;
       /**
        * @description `local`: the Mac app on This Mac signs its owner in itself (OPENBOTS_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in.
        * @enum {string}
@@ -10204,6 +10354,8 @@ export interface components {
     SetupStatus: {
       /** @description Show the first-run wizard: no user exists yet, or (Mac app local mode) its owner has no Bot yet */
       setupRequired: boolean;
+      /** @description The owner is made by pairing a phone only (OPENBOTS_SETUP_PAIRING_ONLY): show `openbots pair` instead of the account form */
+      pairingOnly: boolean;
     };
     SetupAdmin: {
       user: {

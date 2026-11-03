@@ -116,7 +116,14 @@ describe('relay link', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(await hostPresence({ relayUrl: relay.url, hostId: instance.hostId })).toBe(false);
     await expect(
-      l.push({ platform: 'ios', token: 'ab', ciphertext: 'x', priority: 5, expiresAt: 1 }),
+      l.push({
+        platform: 'ios',
+        token: 'ab',
+        environment: 'production',
+        ciphertext: 'x',
+        priority: 5,
+        expiresAt: 1,
+      }),
     ).rejects.toThrow(/not linked/);
   });
 
@@ -246,6 +253,7 @@ describe('relay link', () => {
     const request = {
       platform: 'ios' as const,
       token: 'abcdef0123',
+      environment: 'sandbox' as const,
       ciphertext: 'c2VhbGVk',
       collapseId: 'approval:1',
       priority: 10 as const,
@@ -256,6 +264,7 @@ describe('relay link', () => {
     expect(pushes).toEqual([
       {
         token: request.token,
+        environment: 'sandbox',
         ciphertext: request.ciphertext,
         collapseId: request.collapseId,
         priority: 10,

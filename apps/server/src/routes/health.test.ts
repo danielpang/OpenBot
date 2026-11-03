@@ -1,7 +1,16 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
 import type { Db } from '../db/client.js';
 import { observeProviderStep, observeRun, observeWebhook } from '../metrics.js';
+import {
+  DISK_STATUS_FILE,
+  DISK_STATUS_TTL_MS,
+  diskState,
+  setDiskStatusFile,
+} from '../readiness.js';
 import { createTestApp, type TestApp } from '../test-app.js';
 
 const METRICS_TOKEN = 'metrics-token-for-tests';
@@ -26,6 +35,34 @@ describe('health routes', () => {
     const res = await t.app.request('/readyz');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'ready', checks: { database: 'ok' } });
+  });
+
+  it('reports a low disk while staying ready, read at most every 30 seconds', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'openbots-disk-'));
+    const file = path.join(dir, 'disk');
+    try {
+      await writeFile(file, 'low\n');
+      setDiskStatusFile(file);
+      const res = await t.app.request('/readyz');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        status: 'ready',
+        checks: { database: 'ok' },
+        disk: 'low',
+      });
+      expect(await (await metrics()).text()).toMatch(/^openbots_disk_low 1$/m);
+      // The file says ok now, but the last read holds for 30 seconds.
+      await writeFile(file, 'ok\n');
+      expect(await diskState()).toBe('low');
+      expect(await diskState(Date.now() + DISK_STATUS_TTL_MS + 1)).toBe('ok');
+      expect(await (await t.app.request('/readyz')).json()).toEqual({
+        status: 'ready',
+        checks: { database: 'ok' },
+      });
+    } finally {
+      setDiskStatusFile(DISK_STATUS_FILE);
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('reports not ready when the database is unreachable', async () => {

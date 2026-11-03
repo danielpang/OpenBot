@@ -5,9 +5,10 @@ import { findInstallOwner, type Auth } from '../auth.js';
 import type { Config } from '../config.js';
 import type { AppDeps, RelayLink } from '../context.js';
 import { schema, type Db } from '../db/client.js';
+import { announceApiKeyRevoked } from '../api-key-events.js';
 import {
   asDirectory,
-  deviceWorkspace,
+  deviceWorkspaces,
   devicesExist,
   inWorkspace,
   pairingWorkspace,
@@ -15,6 +16,7 @@ import {
 import type { DevicePlatform, PairingCreator } from '../db/schema/devices.js';
 import { DomainError, notFound } from '../errors.js';
 import { publishEvent, type Infra } from '../infra/index.js';
+import { ownerActive } from '../membership.js';
 import { encryptSecret, keyringFromConfig } from '../secrets.js';
 import { recordAudit, type AuditActor } from './audit.js';
 import { ensureInstanceKey } from './instance-key.js';
@@ -30,8 +32,19 @@ import { ensureInstanceKey } from './instance-key.js';
 // organization is found through openbots_pairing_workspace() (db/scope.ts),
 // the code is compared there in constant time, and it is spent with a
 // conditional update so two phones racing for one code cannot both win.
-// Every refusal is the same 401 PAIRING_INVALID. The route rate-limits by
-// client and by code (routes/devices.ts).
+// Every refusal is the same 401 PAIRING_INVALID, a pairing whose owner is no
+// longer an active member of its organization included. Expiry is judged by
+// the database's clock, as the code is spent by it. Every check that can
+// refuse runs before the code is spent; when a later step fails (the key, the
+// device row, a race for the same static key) whatever was made is undone,
+// the owner too when this pairing made them, and the code is given back. The
+// route rate-limits by client and by code (routes/devices.ts).
+//
+// A device's static key is unique in its organization, not across them: one
+// phone may pair with several organizations of one server (the managed
+// service), each pairing its own device row and key. The relay adapter finds
+// every device of a static key and serves each request as the one whose key
+// it carries (relay/adapter.ts).
 //
 // On a self-hosted install with no owner yet (headless first run, plan
 // 8.3) the pairing makes the owner, the way the Mac app's local sign-in
@@ -315,28 +328,28 @@ export async function completePairing(input: CompletePairingInput): Promise<Pair
   const workspaceId = await pairingWorkspace(db, hash);
   if (!workspaceId) throw pairingInvalid();
 
-  // Spend the code first, so whatever happens next it works once.
+  // Every check that can refuse, then the code is spent, so whatever happens next it works once.
   const pairing = await inWorkspace(workspaceId, () =>
     db.transaction(async (tx) => {
-      const [row] = await tx
-        .select()
+      const [found] = await tx
+        .select({
+          row: schema.devicePairings,
+          live: sql<boolean>`${schema.devicePairings.expiresAt} > now()`,
+        })
         .from(schema.devicePairings)
         .where(eq(schema.devicePairings.codeHash, hash));
-      const now = new Date();
-      if (
-        !row ||
-        !sameBytes(row.codeHash, hash) ||
-        row.usedAt !== null ||
-        new Date(row.expiresAt) <= now
-      ) {
+      const row = found?.row;
+      if (!row || !sameBytes(row.codeHash, hash) || row.usedAt !== null || !found.live) {
         throw pairingInvalid();
       }
-      if (await deviceWorkspace(tx, publicKey)) {
-        throw new DomainError(409, 'DEVICE_ALREADY_PAIRED', 'This device is paired already');
+      // An owner suspended or removed since the link was made pairs nothing.
+      if (row.ownerId && !(await ownerActive(tx, { ownerId: row.ownerId, workspaceId }))) {
+        throw pairingInvalid();
       }
+      if (await deviceKeyTaken(tx, workspaceId, publicKey)) throw devicePaired();
       const [spent] = await tx
         .update(schema.devicePairings)
-        .set({ usedAt: now })
+        .set({ usedAt: sql`now()` })
         .where(and(eq(schema.devicePairings.id, row.id), isNull(schema.devicePairings.usedAt)))
         .returning();
       if (!spent) throw pairingInvalid();
@@ -344,49 +357,56 @@ export async function completePairing(input: CompletePairingInput): Promise<Pair
     }),
   );
 
-  // The account: the pairing's, the install's owner made meanwhile, or a new owner.
-  let ownerId = pairing.ownerId ?? (await installOwnerFor(db, config));
+  let ownerId: string | null = null;
   let createdOwner = false;
-  if (!ownerId && pairing.createsOwner && config.deployment === 'self_hosted') {
-    const made = await auth.api.createPairingOwner({
-      body: { name: body.ownerName?.trim() || DEFAULT_PAIRED_OWNER_NAME },
-    });
-    ownerId = made.user.id;
-    createdOwner = made.created;
-  }
-  if (!ownerId) throw pairingInvalid();
-
-  const created = await auth.api.createApiKey({
-    body: { name: body.name.slice(0, API_KEY_NAME_MAX), userId: ownerId, expiresIn: null },
-  });
-  // better-auth made it with no organization, so it is the directory's until it has one.
-  await asDirectory(() =>
-    db
-      .update(schema.apikeys)
-      .set({ workspaceId })
-      .where(and(eq(schema.apikeys.id, created.id), eq(schema.apikeys.referenceId, ownerId))),
-  );
-
+  let created: { id: string; key: string } | null = null;
   let device: DeviceRow;
   try {
+    // The account: the pairing's, the install's owner made meanwhile, or a new owner.
+    ownerId = pairing.ownerId ?? (await installOwnerFor(db, config));
+    if (!ownerId && pairing.createsOwner && config.deployment === 'self_hosted') {
+      const made = await auth.api.createPairingOwner({
+        body: { name: body.ownerName?.trim() || DEFAULT_PAIRED_OWNER_NAME },
+      });
+      ownerId = made.user.id;
+      createdOwner = made.created;
+    }
+    if (!ownerId) throw pairingInvalid();
+    const owner = ownerId;
+    if (!(await inWorkspace(workspaceId, () => ownerActive(db, { ownerId: owner, workspaceId })))) {
+      throw pairingInvalid();
+    }
+
+    const key = await auth.api.createApiKey({
+      body: { name: body.name.slice(0, API_KEY_NAME_MAX), userId: owner, expiresIn: null },
+    });
+    created = key;
+    // better-auth made it with no organization, so it is the directory's until it has one.
+    await asDirectory(() =>
+      db
+        .update(schema.apikeys)
+        .set({ workspaceId })
+        .where(and(eq(schema.apikeys.id, key.id), eq(schema.apikeys.referenceId, owner))),
+    );
+
     device = await inWorkspace(workspaceId, () =>
       db.transaction(async (tx) => {
         const [row] = await tx
           .insert(schema.devices)
           .values({
             workspaceId,
-            ownerId,
+            ownerId: owner,
             name: body.name,
             platform: body.platform,
             publicKey,
-            apiKeyId: created.id,
+            apiKeyId: key.id,
             pushKey: encryptSecret(pushKey, keyringFromConfig(config)),
           })
           .returning();
         if (!pairing.ownerId) {
           await tx
             .update(schema.devicePairings)
-            .set({ ownerId })
+            .set({ ownerId: owner })
             .where(eq(schema.devicePairings.id, pairing.id));
         }
         return row!;
@@ -394,21 +414,28 @@ export async function completePairing(input: CompletePairingInput): Promise<Pair
     );
   } catch (error) {
     // No device, no key: the key would open the account with nothing to revoke it by.
-    await asDirectory(() => db.delete(schema.apikeys).where(eq(schema.apikeys.id, created.id)));
-    if (isUniqueViolation(error)) {
-      throw new DomainError(409, 'DEVICE_ALREADY_PAIRED', 'This device is paired already');
-    }
+    await undoPairing(db, {
+      workspaceId,
+      pairing,
+      apiKeyId: created?.id ?? null,
+      createdOwner,
+      ownerId,
+    });
+    // The other insert of a race for this static key won (checked above, before the spend).
+    if (isUniqueViolation(error)) throw devicePaired();
     throw error;
   }
+  const key = created!;
+  const owner = ownerId!;
 
-  const [owner] = await db
+  const [ownerRow] = await db
     .select({ id: schema.users.id, name: schema.users.name })
     .from(schema.users)
-    .where(eq(schema.users.id, ownerId));
+    .where(eq(schema.users.id, owner));
   await inWorkspace(workspaceId, async () => {
     await recordAudit(db, {
       workspaceId,
-      actor: { type: 'user', id: ownerId },
+      actor: { type: 'user', id: owner },
       action: 'device.paired',
       targetType: 'device',
       targetId: device.id,
@@ -425,7 +452,7 @@ export async function completePairing(input: CompletePairingInput): Promise<Pair
       wsEvent(
         'device.paired',
         { device: eventDevice(device) },
-        { user_id: ownerId, workspace_id: workspaceId },
+        { user_id: owner, workspace_id: workspaceId },
       ),
     );
   });
@@ -436,10 +463,65 @@ export async function completePairing(input: CompletePairingInput): Promise<Pair
       platform: device.platform,
       createdAt: iso(device.createdAt)!,
     },
-    key: created.key,
-    owner: { id: ownerId, name: owner?.name ?? DEFAULT_PAIRED_OWNER_NAME },
-    setupNeeded: await setupNeeded(db, workspaceId, ownerId),
+    key: key.key,
+    owner: { id: owner, name: ownerRow?.name ?? DEFAULT_PAIRED_OWNER_NAME },
+    setupNeeded: await setupNeeded(db, workspaceId, owner),
   };
+}
+
+const devicePaired = () =>
+  new DomainError(409, 'DEVICE_ALREADY_PAIRED', 'This device is paired already');
+
+/** Whether an unrevoked device of the organization (in scope) holds this static key. */
+async function deviceKeyTaken(db: Db, workspaceId: string, publicKey: Uint8Array) {
+  const [row] = await db
+    .select({ id: schema.devices.id })
+    .from(schema.devices)
+    .where(
+      and(
+        eq(schema.devices.workspaceId, workspaceId),
+        eq(schema.devices.publicKey, Buffer.from(publicKey)),
+        isNull(schema.devices.revokedAt),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * A pairing that failed after its code was spent: the key and the owner it
+ * made go, and the code is given back as it was, so the phone can try again
+ * and the documented "the code is not spent" holds for a refusal. Each step
+ * is tried whatever the others do.
+ */
+async function undoPairing(
+  db: Db,
+  undo: {
+    workspaceId: string;
+    pairing: PairingRow;
+    apiKeyId: string | null;
+    createdOwner: boolean;
+    ownerId: string | null;
+  },
+): Promise<void> {
+  const { workspaceId, pairing, apiKeyId, createdOwner, ownerId } = undo;
+  if (apiKeyId) {
+    await asDirectory(() => db.delete(schema.apikeys).where(eq(schema.apikeys.id, apiKeyId))).catch(
+      () => undefined,
+    );
+  }
+  // A placeholder owner this pairing made would be left with no way in.
+  if (createdOwner && ownerId) {
+    await asDirectory(() => db.delete(schema.users).where(eq(schema.users.id, ownerId))).catch(
+      () => undefined,
+    );
+  }
+  await inWorkspace(workspaceId, () =>
+    db
+      .update(schema.devicePairings)
+      .set({ usedAt: null, ownerId: pairing.ownerId })
+      .where(eq(schema.devicePairings.id, pairing.id)),
+  ).catch(() => undefined);
 }
 
 async function installOwnerFor(db: Db, config: Config): Promise<string | null> {
@@ -450,22 +532,12 @@ async function installOwnerFor(db: Db, config: Config): Promise<string | null> {
 /** Whether the owner still has no model provider they may use, or no Bot (RELAY_PROTOCOL.md 6.3). */
 export async function setupNeeded(db: Db, workspaceId: string, ownerId: string): Promise<boolean> {
   return inWorkspace(workspaceId, async () => {
-    const [provider] = await db
-      .select({ id: schema.providers.id })
-      .from(schema.providers)
-      .where(
-        and(
-          eq(schema.providers.workspaceId, workspaceId),
-          or(isNull(schema.providers.ownerId), eq(schema.providers.ownerId, ownerId)),
-        ),
-      )
-      .limit(1);
     const [bot] = await db
       .select({ id: schema.bots.id })
       .from(schema.bots)
       .where(and(eq(schema.bots.workspaceId, workspaceId), eq(schema.bots.ownerId, ownerId)))
       .limit(1);
-    return !provider || !bot;
+    return !bot || !(await ownerHasProvider(db, workspaceId, ownerId));
   });
 }
 
@@ -507,9 +579,14 @@ async function ownDevice(db: Db, { workspaceId, ownerId }: DeviceOwner, deviceId
 }
 
 /**
- * Revokes a device (RELAY_PROTOCOL.md 6.4): deletes its API key first, so it
- * stops working at once, then forgets its static key and push key and token,
- * and publishes `device.revoked` for the relay adapters to close its streams.
+ * Revokes a device (RELAY_PROTOCOL.md 6.4). The device row goes first: it is
+ * marked revoked and forgets its static key, push key and push token in one
+ * update, so whatever fails after, nothing can push to it or open a tunnel
+ * as it. `device.revoked` goes out then, for the relay adapters to close its
+ * streams. Its API key is deleted next, and the API instances are told to
+ * close the sockets it opened (api-key-events.ts). Should that delete fail,
+ * the row keeps the key's id, and a second `DELETE /devices/{id}` (or
+ * `openbots devices revoke`) finishes it rather than answering 404.
  */
 export async function revokeDevice(
   deps: Pick<AppDeps, 'db'> & { infra: Pick<Infra, 'bus'> },
@@ -519,7 +596,38 @@ export async function revokeDevice(
 ): Promise<void> {
   const { db, infra } = deps;
   await inWorkspace(owner.workspaceId, async () => {
-    const device = await ownDevice(db, owner, deviceId);
+    const device = await revocableDevice(db, owner, deviceId);
+    if (device.revokedAt === null) {
+      const [revoked] = await db
+        .update(schema.devices)
+        .set({
+          revokedAt: new Date(),
+          publicKey: null,
+          pushKey: null,
+          pushToken: null,
+          pushEnvironment: null,
+        })
+        .where(and(eq(schema.devices.id, device.id), isNull(schema.devices.revokedAt)))
+        .returning();
+      if (revoked) {
+        await recordAudit(db, {
+          workspaceId: owner.workspaceId,
+          actor,
+          action: 'device.revoked',
+          targetType: 'device',
+          targetId: device.id,
+          metadata: { name: device.name, platform: device.platform },
+        });
+        await publishEvent(
+          infra.bus,
+          wsEvent(
+            'device.revoked',
+            { device: eventDevice(revoked) },
+            { user_id: owner.ownerId, workspace_id: owner.workspaceId },
+          ),
+        );
+      }
+    }
     if (device.apiKeyId) {
       const keyId = device.apiKeyId;
       // API keys are the directory's (db/scope.ts).
@@ -528,36 +636,62 @@ export async function revokeDevice(
           .delete(schema.apikeys)
           .where(and(eq(schema.apikeys.id, keyId), eq(schema.apikeys.referenceId, owner.ownerId))),
       );
+      // The foreign key clears it already; said here for a key another owner held.
+      await db
+        .update(schema.devices)
+        .set({ apiKeyId: null })
+        .where(eq(schema.devices.id, device.id));
+      await announceApiKeyRevoked(infra.bus, keyId);
     }
-    const [revoked] = await db
-      .update(schema.devices)
-      .set({
-        revokedAt: new Date(),
-        apiKeyId: null,
-        publicKey: null,
-        pushKey: null,
-        pushToken: null,
-        pushEnvironment: null,
-      })
-      .where(and(eq(schema.devices.id, device.id), isNull(schema.devices.revokedAt)))
-      .returning();
-    if (!revoked) return;
-    await recordAudit(db, {
-      workspaceId: owner.workspaceId,
-      actor,
-      action: 'device.revoked',
-      targetType: 'device',
-      targetId: device.id,
-      metadata: { name: device.name, platform: device.platform },
-    });
-    await publishEvent(
-      infra.bus,
-      wsEvent(
-        'device.revoked',
-        { device: eventDevice(revoked) },
-        { user_id: owner.ownerId, workspace_id: owner.workspaceId },
+  });
+}
+
+/** The owner's device to revoke: an unrevoked one, or one whose revocation did not delete its key. */
+async function revocableDevice(db: Db, { workspaceId, ownerId }: DeviceOwner, deviceId: string) {
+  const [row] = await db
+    .select()
+    .from(schema.devices)
+    .where(
+      and(
+        eq(schema.devices.id, deviceId),
+        eq(schema.devices.workspaceId, workspaceId),
+        eq(schema.devices.ownerId, ownerId),
+        or(isNull(schema.devices.revokedAt), isNotNull(schema.devices.apiKeyId)),
       ),
     );
+  if (!row) throw notFound('No such device');
+  return row;
+}
+
+/**
+ * Cancels an open pairing of the owner's (`DELETE /devices/pairings/{id}`):
+ * its code stops working at once. 404 for one that is used, expired and
+ * swept, or another owner's.
+ */
+export async function cancelPairing(
+  db: Db,
+  { workspaceId, ownerId }: DeviceOwner,
+  pairingId: string,
+  actor: AuditActor,
+): Promise<void> {
+  const [row] = await db
+    .delete(schema.devicePairings)
+    .where(
+      and(
+        eq(schema.devicePairings.id, pairingId),
+        eq(schema.devicePairings.workspaceId, workspaceId),
+        eq(schema.devicePairings.ownerId, ownerId),
+        isNull(schema.devicePairings.usedAt),
+      ),
+    )
+    .returning({ id: schema.devicePairings.id });
+  if (!row) throw notFound('No such pairing');
+  await recordAudit(db, {
+    workspaceId,
+    actor,
+    action: 'device.pairing_cancelled',
+    targetType: 'device_pairing',
+    targetId: row.id,
   });
 }
 
@@ -639,21 +773,33 @@ export async function touchDevice(
 }
 
 /**
- * The unrevoked device with this static key, in any organization, or null:
- * the relay adapter's lookup after the handshake.
+ * Every unrevoked device with this static key, one per organization it is
+ * paired with, the oldest pairing first: the relay adapter's lookup after
+ * the handshake. Empty when no organization has it.
  */
+export async function findDevicesByPublicKey(db: Db, publicKey: Uint8Array): Promise<DeviceRow[]> {
+  const devices: DeviceRow[] = [];
+  for (const workspaceId of await deviceWorkspaces(db, publicKey)) {
+    const [row] = await inWorkspace(workspaceId, () =>
+      db
+        .select()
+        .from(schema.devices)
+        .where(
+          and(
+            eq(schema.devices.workspaceId, workspaceId),
+            eq(schema.devices.publicKey, Buffer.from(publicKey)),
+            isNull(schema.devices.revokedAt),
+          ),
+        ),
+    );
+    if (row) devices.push(row);
+  }
+  return devices;
+}
+
+/** The first of `findDevicesByPublicKey`, or null. */
 export async function findDeviceByPublicKey(db: Db, publicKey: Uint8Array) {
-  const workspaceId = await deviceWorkspace(db, publicKey);
-  if (!workspaceId) return null;
-  const [row] = await inWorkspace(workspaceId, () =>
-    db
-      .select()
-      .from(schema.devices)
-      .where(
-        and(eq(schema.devices.publicKey, Buffer.from(publicKey)), isNull(schema.devices.revokedAt)),
-      ),
-  );
-  return row ? { ...row, workspaceId } : null;
+  return (await findDevicesByPublicKey(db, publicKey))[0] ?? null;
 }
 
 /** Whether any organization has an unrevoked device or an open pairing: the relay link dials only then. */
@@ -685,16 +831,19 @@ function isUniqueViolation(error: unknown): boolean {
   return false;
 }
 
-/**
- * A device's key cannot make more credentials: no API keys and no pairings.
- * Otherwise a stolen phone could mint a key or pair another device that
- * outlives its revocation. The owner makes those from a signed-in session.
- */
-export async function refuseDeviceKey(
+export const deviceKeyNotAllowed = () =>
+  new DomainError(
+    403,
+    'DEVICE_KEY_NOT_ALLOWED',
+    'A paired device cannot make keys, pairings, webhooks or other ways in or out. Sign in on the web or the Mac app.',
+  );
+
+/** Whether this API key is a device's (revoked or not). Call in the organization's scope. */
+export async function isDeviceKey(
   db: Db,
   caller: { workspaceId: string; apiKeyId?: string | null },
-): Promise<void> {
-  if (!caller.apiKeyId) return;
+): Promise<boolean> {
+  if (!caller.apiKeyId) return false;
   const [row] = await db
     .select({ id: schema.devices.id })
     .from(schema.devices)
@@ -704,11 +853,92 @@ export async function refuseDeviceKey(
         eq(schema.devices.apiKeyId, caller.apiKeyId),
       ),
     );
-  if (row) {
-    throw new DomainError(
-      403,
-      'DEVICE_KEY_NOT_ALLOWED',
-      'A paired device cannot make API keys or pairings. Sign in on the web or the Mac app.',
-    );
-  }
+  return row !== undefined;
+}
+
+/**
+ * A device's key cannot make more credentials or open new paths out of the
+ * server: a stolen phone could otherwise leave something behind that
+ * outlives its revocation. The owner does those from a signed-in session.
+ */
+export async function refuseDeviceKey(
+  db: Db,
+  caller: { workspaceId: string; apiKeyId?: string | null },
+): Promise<void> {
+  if (await isDeviceKey(db, caller)) throw deviceKeyNotAllowed();
+}
+
+/**
+ * The routes a device's key may not call (403 DEVICE_KEY_NOT_ALLOWED), by
+ * method and path under `/api/v1`: each makes a long-lived credential (an
+ * API key, a pairing, a webhook token or signing secret, an event
+ * subscription's secret, an invitation) or a path out of the server (an
+ * event subscription's URL, a connector, an OAuth grant, a provider's
+ * endpoint). `when` narrows an edit to the fields that do that, read from the
+ * JSON body. `unless` lets the request through: a phone that set up a
+ * headless install adds the first model provider itself (plan 8.3 step 4).
+ * `requireUser` and `requireAdmin` apply the list (middleware/auth.ts), so a
+ * route the managed build mounts is covered too.
+ */
+export interface DeviceKeyRule {
+  method: string;
+  path: RegExp;
+  when?(body: Record<string, unknown>): boolean;
+  unless?(db: Db, caller: { workspaceId: string; id: string }): Promise<boolean>;
+}
+
+const sets =
+  (...fields: string[]) =>
+  (body: Record<string, unknown>) =>
+    fields.some((field) => body[field] !== undefined);
+
+export const DEVICE_KEY_RULES: readonly DeviceKeyRule[] = [
+  { method: 'POST', path: /^\/api-keys$/ },
+  { method: 'POST', path: /^\/devices\/pairings$/ },
+  { method: 'POST', path: /^\/bots\/[^/]+\/endpoints$/ },
+  { method: 'POST', path: /^\/endpoints\/[^/]+\/rotate$/ },
+  { method: 'PATCH', path: /^\/endpoints\/[^/]+$/, when: sets('signature') },
+  { method: 'POST', path: /^\/event-subscriptions$/ },
+  {
+    method: 'PATCH',
+    path: /^\/event-subscriptions\/[^/]+$/,
+    when: (body) => sets('url', 'local')(body) || body.rotateSecret === true,
+  },
+  { method: 'POST', path: /^\/connectors$/ },
+  { method: 'POST', path: /^\/connectors\/import$/ },
+  {
+    method: 'PATCH',
+    path: /^\/connectors\/[^/]+$/,
+    when: sets('command', 'args', 'url', 'auth', 'oauthClient'),
+  },
+  { method: 'GET', path: /^\/connectors\/[^/]+\/oauth\/start$/ },
+  {
+    method: 'POST',
+    path: /^\/providers$/,
+    unless: async (db, caller) => !(await ownerHasProvider(db, caller.workspaceId, caller.id)),
+  },
+  { method: 'PATCH', path: /^\/providers\/[^/]+$/, when: sets('baseUrl') },
+  // The managed build's (ee/server); a self-hosted install answers 404 there anyway.
+  { method: 'POST', path: /^\/organization\/invitations$/ },
+];
+
+/** The rule for a request, by method and its path under `/api/v1`, if any. */
+export function deviceKeyRule(method: string, path: string): DeviceKeyRule | undefined {
+  const upper = method.toUpperCase();
+  return DEVICE_KEY_RULES.find((rule) => rule.method === upper && rule.path.test(path));
+}
+
+/** Whether the owner has a model provider they may use (the organization's or their own). */
+async function ownerHasProvider(db: Db, workspaceId: string, ownerId: string): Promise<boolean> {
+  const [provider] = await db
+    .select({ id: schema.providers.id })
+    .from(schema.providers)
+    .where(
+      and(
+        eq(schema.providers.workspaceId, workspaceId),
+        or(isNull(schema.providers.ownerId), eq(schema.providers.ownerId, ownerId)),
+      ),
+    )
+    .limit(1);
+  return provider !== undefined;
 }

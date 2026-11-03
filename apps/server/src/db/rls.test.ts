@@ -7,7 +7,7 @@ import {
   APP_ROLE,
   DIRECTORY_ROLE,
   asDirectory,
-  deviceWorkspace,
+  deviceWorkspaces,
   devicesExist,
   dueRoutineWorkspaces,
   forEachWorkspace,
@@ -253,9 +253,9 @@ describe('row-level security between organizations', () => {
     expect(await t.deps.db.select().from(schema.devices)).toEqual([]);
     expect(await t.deps.db.select().from(schema.devicePairings)).toEqual([]);
     // ...and the functions answer an id, or no.
-    expect(await deviceWorkspace(t.deps.db, key)).toBe(orgB);
-    expect(await deviceWorkspace(t.deps.db, revokedKey)).toBeNull();
-    expect(await deviceWorkspace(t.deps.db, Buffer.alloc(32, 9))).toBeNull();
+    expect(await deviceWorkspaces(t.deps.db, key)).toEqual([orgB]);
+    expect(await deviceWorkspaces(t.deps.db, revokedKey)).toEqual([]);
+    expect(await deviceWorkspaces(t.deps.db, Buffer.alloc(32, 9))).toEqual([]);
     expect(await pairingWorkspace(t.deps.db, hash)).toBe(orgA);
     expect(await pairingWorkspace(t.deps.db, Buffer.alloc(32, 9))).toBeNull();
     expect(await devicesExist(t.deps.db)).toBe(true);
@@ -265,8 +265,18 @@ describe('row-level security between organizations', () => {
     );
     expect(inA).toEqual([{ name: 'Old phone' }]);
 
+    // One phone in two organizations: both answer, the older pairing first.
+    await t.db.insert(schema.devices).values({
+      workspaceId: orgA,
+      ownerId: owner,
+      name: 'Same phone',
+      platform: 'ios',
+      publicKey: key,
+    });
+    expect(await deviceWorkspaces(t.deps.db, key)).toEqual([orgB, orgA]);
+
     const lookups = [
-      'openbots_device_workspace',
+      'openbots_device_workspaces',
       'openbots_devices_exist',
       'openbots_pairing_workspace',
     ];

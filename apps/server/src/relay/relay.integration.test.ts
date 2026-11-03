@@ -16,7 +16,12 @@ import { createPairing } from '../services/devices.js';
 import { ensureInstanceKey, type InstanceKey } from '../services/instance-key.js';
 import { createTestApp, serveTestApp, type TestApp } from '../test-app.js';
 import { decryptPush, startPushWorker, type PushWorker } from '../workers/push.js';
-import { CLOSE_REVOKED, startRelayAdapter, type RelayAdapter } from './adapter.js';
+import {
+  CLOSE_PAIRING_DONE,
+  CLOSE_REVOKED,
+  startRelayAdapter,
+  type RelayAdapter,
+} from './adapter.js';
 import { createRelayLink, type HostRelayLink } from './link.js';
 
 // Phase 1's acceptance check (MOBILE_AND_VM_PLAN.md section 11), end to end
@@ -137,7 +142,7 @@ describe('relay end to end', { timeout: 60_000 }, () => {
     await waitFor(() => link.status().status === 'linked');
   });
 
-  it('pairs a new device through the tunnel and promotes the stream', async () => {
+  it('pairs a new device through the tunnel, then serves it on a stream of its own', async () => {
     tunnel = await connect();
     expect(tunnel.device).toBe('unknown');
     const refused = await tunnel.fetch('/api/v1/bots');
@@ -145,6 +150,7 @@ describe('relay end to end', { timeout: 60_000 }, () => {
     expect(await refused.json()).toMatchObject({ code: 'DEVICE_UNKNOWN' });
 
     const { qr } = await pairing();
+    const over = new Promise<number>((resolve) => tunnel.onClose((code) => resolve(code)));
     const paired = await tunnel.fetch(
       '/api/v1/devices/pair',
       json({
@@ -160,6 +166,9 @@ describe('relay end to end', { timeout: 60_000 }, () => {
     expect(body.key).toMatch(/^obk_/);
     apiKey = body.key;
     deviceId = body.device.id;
+    // An unknown session serves one pairing; the phone comes back as the device.
+    expect(await over).toBe(CLOSE_PAIRING_DONE);
+    tunnel = await connect();
     expect(tunnel.device).toBe('known');
   });
 

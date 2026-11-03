@@ -48,6 +48,10 @@ const CapabilitiesSchema = z
       })
       .optional()
       .openapi({ description: 'Protocol versions this server speaks' }),
+    setupPairingOnly: z.boolean().optional().openapi({
+      description:
+        'The first owner is made by pairing a phone (`openbots pair`), not the web wizard (OPENBOTS_SETUP_PAIRING_ONLY)',
+    }),
     auth: z.enum(['password', 'local']).optional().openapi({
       description:
         '`local`: the Mac app on This Mac signs its owner in itself (OPENBOTS_LOCAL_TOKEN), so there is no sign-in, sign-up or sign-out. `password`: the usual sign-in.',
@@ -80,6 +84,7 @@ export const capabilityRoutes = createRouter().openapi(
         relay: !!c.var.deps.config.relayUrl,
         version: serverVersion(),
         protocol: { relay: RELAY_PROTOCOL_VERSION },
+        setupPairingOnly: c.var.deps.config.setupPairingOnly,
         auth: localToken ? ('local' as const) : ('password' as const),
       },
       200,

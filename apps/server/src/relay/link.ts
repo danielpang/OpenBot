@@ -41,6 +41,10 @@ import type { InstanceKey } from '../services/instance-key.js';
 // openbots_devices_exist(). Any close while it should be up is retried with
 // backoff from 1 second, doubling to a minute, and reset once linked.
 //
+// Each push frame names the APNs environment of its token, and `onLinked`
+// tells the push worker each time the link comes up, so it can send what
+// waited while it was down.
+//
 // A link that serves streams publishes `relay.status` (the `GET /relay`
 // answer) whenever its status changes, to every owner with a device or an
 // open pairing, and to those it told last time, so an owner whose last
@@ -430,6 +434,8 @@ export async function createRelayLink(
   /** Whether the database last said to dial. */
   let wanted = false;
   let streamHandler: ((stream: RelayStreamTransport) => void) | null = null;
+  /** Called each time the link becomes `linked` (the push worker's catch-up). */
+  const linkedHandlers = new Set<() => void>();
   let checking: Promise<void> | null = null;
   let recheck = false;
   /** Owners told of the last status, as `workspace:user`. */
@@ -479,6 +485,13 @@ export async function createRelayLink(
       if (c !== connection) return;
       backoffMs = timing.initialBackoffMs;
       setStatus('linked');
+      for (const handler of [...linkedHandlers]) {
+        try {
+          outsideScope(handler);
+        } catch (err) {
+          logger.warn({ err }, 'a relay link listener failed');
+        }
+      }
     },
     connectionEnded(c, code, reason) {
       if (c !== connection) return;
@@ -610,6 +623,10 @@ export async function createRelayLink(
     },
     onStream(handler) {
       streamHandler = handler;
+    },
+    onLinked(handler) {
+      linkedHandlers.add(handler);
+      return () => linkedHandlers.delete(handler);
     },
     async stop() {
       if (stopped) return;

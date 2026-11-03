@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { sql } from 'drizzle-orm';
 import type { Db } from './db/client.js';
@@ -6,6 +7,41 @@ import type { Db } from './db/client.js';
 // its timeout and never throws.
 
 const TIMEOUT_MS = 2000;
+
+/**
+ * Where the standalone image's disk watcher writes `low` when the data
+ * volume is nearly full (`ok` otherwise). Absent elsewhere.
+ */
+export const DISK_STATUS_FILE = '/run/openbots-status/disk';
+/** How long one read of the disk status file is trusted. */
+export const DISK_STATUS_TTL_MS = 30_000;
+
+let diskFile = DISK_STATUS_FILE;
+let diskCache: { at: number; state: 'ok' | 'low' } | null = null;
+
+/** Points `diskState` at another file, and forgets what it read: for tests. */
+export function setDiskStatusFile(file: string): void {
+  diskFile = file;
+  diskCache = null;
+}
+
+/**
+ * `low` while the disk status file says so, else `ok` (no file included).
+ * Read at most once every DISK_STATUS_TTL_MS. A full disk is reported, never
+ * a reason to be not ready: the server stays in rotation and says why it
+ * struggles.
+ */
+export async function diskState(now = Date.now()): Promise<'ok' | 'low'> {
+  if (diskCache && now - diskCache.at < DISK_STATUS_TTL_MS) return diskCache.state;
+  let state: 'ok' | 'low' = 'ok';
+  try {
+    state = (await readFile(diskFile, 'utf8')).trim() === 'low' ? 'low' : 'ok';
+  } catch {
+    // No file: no watcher, nothing to report.
+  }
+  diskCache = { at: now, state };
+  return state;
+}
 
 export async function databaseReady(db: Db, timeoutMs = TIMEOUT_MS): Promise<boolean> {
   try {

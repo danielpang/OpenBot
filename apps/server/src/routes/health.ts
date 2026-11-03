@@ -1,9 +1,9 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { notFound, unauthorized } from '../errors.js';
 import { safeEqual } from '../hooks/verify.js';
-import { collectRunGauges, registry } from '../metrics.js';
+import { collectRunGauges, registry, setDiskLow } from '../metrics.js';
 import { createRouter, problemResponse } from '../openapi.js';
-import { databaseReady, redisReady } from '../readiness.js';
+import { databaseReady, diskState, redisReady } from '../readiness.js';
 
 // Liveness, readiness, and Prometheus metrics (plan 16.3). Liveness and
 // readiness are unauthenticated. Metrics are off unless OPENBOTS_METRICS_TOKEN
@@ -15,6 +15,10 @@ const ReadinessSchema = z
   .object({
     status: z.enum(['ready', 'not_ready']),
     checks: z.object({ database: CheckSchema, redis: CheckSchema.optional() }),
+    disk: z.literal('low').optional().openapi({
+      description:
+        'The data disk is nearly full (the standalone image reports it). Still ready: a full disk never takes the server out of rotation',
+    }),
   })
   .openapi('Readiness');
 
@@ -50,16 +54,21 @@ export const healthRoutes = createRouter()
     }),
     async (c) => {
       const { db, config } = c.var.deps;
-      const [database, redis] = await Promise.all([
+      const [database, redis, disk] = await Promise.all([
         databaseReady(db),
         config.redisUrl ? redisReady(config.redisUrl) : undefined,
+        diskState(),
       ]);
+      setDiskLow(disk === 'low');
       const checks = {
         database: database ? ('ok' as const) : ('error' as const),
         ...(redis !== undefined && { redis: redis ? ('ok' as const) : ('error' as const) }),
       };
-      if (database && redis !== false) return c.json({ status: 'ready' as const, checks }, 200);
-      return c.json({ status: 'not_ready' as const, checks }, 503);
+      const extra = disk === 'low' ? { disk: 'low' as const } : {};
+      if (database && redis !== false) {
+        return c.json({ status: 'ready' as const, checks, ...extra }, 200);
+      }
+      return c.json({ status: 'not_ready' as const, checks, ...extra }, 503);
     },
   )
   .openapi(
@@ -81,6 +90,7 @@ export const healthRoutes = createRouter()
       if (!safeEqual(presented, token)) {
         throw unauthorized('Send OPENBOTS_METRICS_TOKEN as a bearer token');
       }
+      setDiskLow((await diskState()) === 'low');
       // A database outage leaves the run gauges at their last value rather than failing the scrape.
       await collectRunGauges(c.var.deps.db).catch((err: unknown) =>
         c.var.deps.logger.warn({ err }, 'run gauges not collected'),

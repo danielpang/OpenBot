@@ -225,6 +225,15 @@ describe('routes', () => {
     }
   });
 
+  it('shows how to pair instead of the account form when the owner is made by pairing', async () => {
+    server.routes = { '/api/v1/setup': { setupRequired: true, pairingOnly: true } };
+    const { pathname, html } = await renderPath('/');
+    expect(pathname).toBe('/setup');
+    expect(html).toContain('Set up OpenBots from your phone');
+    expect(html).toContain('openbots pair');
+    expect(html).not.toContain('Create your account');
+  });
+
   it('hides the setup wizard once a user exists', async () => {
     server.routes = { '/api/v1/setup': { setupRequired: false } };
     const signedOut = await renderPath('/setup');

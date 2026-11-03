@@ -1,12 +1,12 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, desc, eq, notExists } from 'drizzle-orm';
+import { announceApiKeyRevoked } from '../api-key-events.js';
 import { schema, type Db } from '../db/client.js';
 import { notFound } from '../errors.js';
 import { requireUser } from '../middleware/auth.js';
 import { recordAudit, userActor } from '../services/audit.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import { asDirectory } from '../db/scope.js';
-import { refuseDeviceKey } from '../services/devices.js';
 
 // API keys (U4): list, create (the key is returned once), revoke. Keys are
 // hashed at rest by better-auth's api-key plugin. A key belongs to the
@@ -110,7 +110,6 @@ export const apiKeyRoutes = createRouter()
     }),
     async (c) => {
       const { auth, db } = c.var.deps;
-      await refuseDeviceKey(db, c.var.user);
       const { name, expiresInDays } = c.req.valid('json');
       const created = await auth.api.createApiKey({
         body: {
@@ -181,6 +180,8 @@ export const apiKeyRoutes = createRouter()
         )
         .returning({ id: schema.apikeys.id, name: schema.apikeys.name });
       if (!deleted.length) throw notFound('No such API key');
+      // Its realtime, terminal and screen sockets close too (api-key-events.ts).
+      await announceApiKeyRevoked(c.var.deps.infra.bus, id);
       await recordAudit(db, {
         workspaceId: c.var.user.workspaceId,
         actor: userActor(c.var.user),

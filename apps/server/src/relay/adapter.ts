@@ -1,3 +1,4 @@
+import { defaultKeyHasher } from '@better-auth/api-key';
 import { EVENTS_CHANNEL, type Unsubscribe, type WsEvent } from '@openbots/shared';
 import {
   PAIR_PATH,
@@ -7,16 +8,20 @@ import {
   type TunnelHandler,
   type TunnelServer,
 } from '@openbots/tunnel';
+import { eq } from 'drizzle-orm';
 import { WebSocket } from 'ws';
 import {
   ADAPTER_SECRET_HEADER,
   adapterHeaders,
   DEVICE_HEADER,
   DEVICE_KEY_HEADER,
+  remoteDeviceHeader,
 } from '../client-ip.js';
 import type { AppDeps } from '../context.js';
-import { outsideScope } from '../db/scope.js';
-import { findDeviceByPublicKey } from '../services/devices.js';
+import { schema } from '../db/client.js';
+import { asDirectory, outsideScope } from '../db/scope.js';
+import { apiKeyFrom } from '../middleware/auth.js';
+import { findDevicesByPublicKey, type DeviceRow } from '../services/devices.js';
 import type { InstanceKey } from '../services/instance-key.js';
 import type { HostRelayLink, RelayStreamTransport } from './link.js';
 
@@ -29,17 +34,32 @@ import type { HostRelayLink, RelayStreamTransport } from './link.js';
 // authentication, ownership checks, rate limits and audit apply unchanged.
 //
 // The adapter adds two headers the tunnel never lets a client send:
-// `x-openbots-device` (the device id, or `stream:<relay stream id>` while the
-// stream is unpaired), which client-ip.ts turns into the rate-limit key for
-// loopback requests, and on the pairing request `x-openbots-device-key`, the
-// handshake's static key, which the pairing route compares with the body's.
+// `x-openbots-device` (the device id, or `remote:<address>` while the stream
+// is unpaired, the client's address as the relay reported it in `open`),
+// which client-ip.ts turns into the rate-limit key for loopback requests, and
+// on the pairing request `x-openbots-device-key`, the handshake's static
+// key, which the pairing route compares with the body's. Relay stream ids
+// start again at 1 on every link, so a limit keyed on them would reset.
+//
+// A known device's stream carries that device's key and no other: a request
+// whose bearer key is not the key of a device with the session's static key
+// is refused 401 DEVICE_KEY_MISMATCH before it reaches the server, so a
+// paired session cannot carry a key lifted from another phone. One phone may
+// be paired with several organizations (each its own device with the same
+// static key, services/devices.ts); a request is served as the device whose
+// key it carries, and the key's id is remembered per session so the lookup
+// runs once per key.
 //
 // Sessions are kept so a `device.revoked` event closes that device's streams
-// on every API process, and at most MAX_SESSIONS run at a time. A revoked
-// device's stream refuses new requests at once (401 DEVICE_REVOKED) and is
-// closed 4403 once the responses already in flight are sent, or after
-// REVOKE_DRAIN_MS: a device that revokes itself over its own stream still
-// gets its 204.
+// on every API process. Known and unknown devices are counted apart: at most
+// MAX_SESSIONS of known devices and MAX_UNKNOWN_SESSIONS of unknown ones at a
+// time, so strangers cannot take a paired phone's place (a stream past
+// either cap is closed 4429). An unknown session serves one pairing request
+// and closes once its answer is sent, or after UNKNOWN_SESSION_MS; the phone
+// then opens a stream as the device it now is. A revoked device's stream
+// refuses new requests at once (401 DEVICE_REVOKED) and is closed 4403 once
+// the responses already in flight are sent, or after REVOKE_DRAIN_MS: a
+// device that revokes itself over its own stream still gets its 204.
 //
 // The event needs a shared bus. With no REDIS_URL, `openbots devices revoke`
 // in another process deletes the key but publishes on a bus of its own, so
@@ -48,8 +68,18 @@ import type { HostRelayLink, RelayStreamTransport } from './link.js';
 // whose last check is older than that. A device the database no longer has
 // (revoked, or its key gone) is closed the same way.
 
-/** Open tunnel sessions per process; the next stream is closed 4429. */
+/** Open tunnel sessions of known devices per process; the next is closed 4429. */
 export const MAX_SESSIONS = 8;
+/** Open tunnel sessions of unknown devices (pairing only) per process, counted apart. */
+export const MAX_UNKNOWN_SESSIONS = 2;
+/** How long an unknown device's session may stay open, if it does not pair first. */
+export const UNKNOWN_SESSION_MS = 30_000;
+/**
+ * The close code of an unknown session once it paired or its time ran out:
+ * the tunnel's own for a pairing only stream (packages/tunnel), which closes
+ * one that is still unknown after its pairing; the adapter closes the rest.
+ */
+export const CLOSE_PAIRING_DONE = 4400;
 /** How long one forwarded request may take, its streamed body included. */
 export const FETCH_TIMEOUT_MS = 10 * 60_000;
 /** The close code of a revoked device's streams. */
@@ -58,7 +88,9 @@ export const CLOSE_REVOKED = 4403;
 export const REVOKE_DRAIN_MS = 5_000;
 /** How old a session's last look at its device may get before it is looked up again. */
 export const RECHECK_MS = 15_000;
-const CLOSE_TOO_MANY = 4429;
+export const CLOSE_TOO_MANY = 4429;
+/** Keys remembered per session, matched or not. */
+const MAX_KEYS_PER_SESSION = 8;
 const CLOSE_GOING_AWAY = 4410;
 
 export interface RelayAdapterOptions {
@@ -67,6 +99,9 @@ export interface RelayAdapterOptions {
   /** This server's own HTTP port on 127.0.0.1. */
   port: number;
   maxSessions?: number;
+  maxUnknownSessions?: number;
+  /** How long an unknown session lives. Default UNKNOWN_SESSION_MS. */
+  unknownSessionMs?: number;
   fetchTimeoutMs?: number;
   /** How old a session's device check may be before a request looks again. Default RECHECK_MS. */
   recheckMs?: number;
@@ -79,13 +114,33 @@ export interface RelayAdapterOptions {
 interface SessionState {
   readonly stream: RelayStreamTransport;
   server: TunnelServer | null;
+  /** Known or unknown, as the handshake found it; null before. Counts against that cap. */
+  kind: 'known' | 'unknown' | null;
+  /** The devices of the session's static key, one per organization it is paired with. */
+  devices: Pick<DeviceRow, 'id' | 'apiKeyId'>[];
+  /** Bearer keys seen on the session, by their hash: the device each is, or null for none. */
+  keys: Map<string, string | null>;
   checkedAt: number;
   checking: Promise<boolean> | null;
+  timer: NodeJS.Timeout | null;
 }
+
+/** Thrown from the handshake's lookup when the session's cap is full. */
+class SessionsFull extends Error {}
 
 function revokedResponse(): Response {
   return Response.json(
     { code: 'DEVICE_REVOKED', message: 'This device was revoked. Pair it again.' },
+    { status: 401 },
+  );
+}
+
+function keyMismatchResponse(): Response {
+  return Response.json(
+    {
+      code: 'DEVICE_KEY_MISMATCH',
+      message: 'This key is not the key of the device this connection was opened by.',
+    },
     { status: 401 },
   );
 }
@@ -96,9 +151,9 @@ export interface RelayAdapter {
   stop(): Promise<void>;
 }
 
-/** A device id or `stream:<id>`: who the server's rate limits count a tunneled request as. */
+/** A device id or `remote:<address>`: who the server's rate limits count a tunneled request as. */
 function deviceHeader(deviceId: string | null, stream: RelayStreamTransport): string {
-  return deviceId ?? `stream:${stream.id}`;
+  return deviceId ?? remoteDeviceHeader(stream.remote);
 }
 
 function requestHeaders(
@@ -136,15 +191,23 @@ export function startRelayAdapter(
   const { db, infra } = deps;
   const logger = deps.logger.child({ component: 'relay-adapter' });
   const maxSessions = options.maxSessions ?? MAX_SESSIONS;
+  const maxUnknown = options.maxUnknownSessions ?? MAX_UNKNOWN_SESSIONS;
+  const unknownSessionMs = options.unknownSessionMs ?? UNKNOWN_SESSION_MS;
   const fetchTimeoutMs = options.fetchTimeoutMs ?? FETCH_TIMEOUT_MS;
   const recheckMs = options.recheckMs ?? RECHECK_MS;
   const recheckIntervalMs = options.recheckIntervalMs ?? recheckMs;
   const revokeDrainMs = options.revokeDrainMs ?? REVOKE_DRAIN_MS;
   const origin = `http://127.0.0.1:${options.port}`;
   const wsOrigin = `ws://127.0.0.1:${options.port}`;
-  /** Streams in their handshake, which count against the cap before they are sessions. */
-  const handshaking = new Set<RelayStreamTransport>();
+  /** Streams in their handshake: each counts against its cap once its device is looked up. */
+  const handshaking = new Map<RelayStreamTransport, SessionState>();
   const sessions = new Map<TunnelServer, SessionState>();
+  const counted = (kind: 'known' | 'unknown') => {
+    let n = 0;
+    for (const state of handshaking.values()) if (state.kind === kind) n++;
+    for (const state of sessions.values()) if (state.kind === kind) n++;
+    return n;
+  };
   const sockets = new Set<WebSocket>();
   let stopped = false;
 
@@ -165,9 +228,14 @@ export function startRelayAdapter(
     if (session.draining) return Promise.resolve(false);
     state.checking ??= (async () => {
       try {
-        const device = await outsideScope(() => findDeviceByPublicKey(db, session.clientKey));
+        const devices = await outsideScope(() => findDevicesByPublicKey(db, session.clientKey));
         state.checkedAt = Date.now();
-        if (device?.id === session.deviceId) return true;
+        state.devices = devices;
+        // A key whose device went is looked up again, and refused.
+        const ids = new Set(devices.map((d) => d.id));
+        for (const [hash, id] of state.keys)
+          if (id !== null && !ids.has(id)) state.keys.delete(hash);
+        if (session.deviceId !== null && ids.has(session.deviceId)) return true;
         revoke(session, 'not in the database');
         return false;
       } catch (err) {
@@ -201,8 +269,10 @@ export function startRelayAdapter(
       if (event.type !== 'device.revoked') return;
       const id = (event.payload as { device?: { id?: string } }).device?.id;
       if (!id) return;
-      for (const session of sessions.keys()) {
-        if (session.deviceId === id) revoke(session, 'device.revoked');
+      for (const [session, state] of sessions) {
+        if (session.deviceId === id || state.devices.some((d) => d.id === id)) {
+          revoke(session, 'device.revoked');
+        }
       }
     })
     .then(
@@ -212,6 +282,44 @@ export function startRelayAdapter(
       (err: unknown) => logger.warn({ err }, 'relay adapter could not subscribe to device events'),
     );
 
+  /**
+   * The device a request of a known session is served as: the one whose API
+   * key it carries, or the handshake's when it carries none (the server
+   * then answers 401 itself). Null when the key is no device's of this
+   * static key.
+   */
+  async function servedAs(
+    state: SessionState,
+    headers: Headers,
+    deviceId: string,
+  ): Promise<string | null> {
+    const bearer = apiKeyFrom(headers);
+    if (!bearer) return deviceId;
+    const hash = await defaultKeyHasher(bearer);
+    if (state.keys.has(hash)) return state.keys.get(hash) ?? null;
+    // API keys are the directory's (db/scope.ts).
+    const [key] = await outsideScope(() =>
+      asDirectory(() =>
+        db
+          .select({ id: schema.apikeys.id })
+          .from(schema.apikeys)
+          .where(eq(schema.apikeys.key, hash)),
+      ),
+    );
+    const device = key ? state.devices.find((d) => d.apiKeyId === key.id) : undefined;
+    if (state.keys.size >= MAX_KEYS_PER_SESSION) state.keys.clear();
+    state.keys.set(hash, device?.id ?? null);
+    return device?.id ?? null;
+  }
+
+  /** An unknown session is over: it paired, or its time ran out. */
+  function endUnknown(state: SessionState, why: string): void {
+    const session = state.server;
+    if (!session || session.closed || session.draining) return;
+    logger.info({ stream: state.stream.id, why }, 'closing an unknown device’s stream');
+    session.drain(CLOSE_PAIRING_DONE, why, { timeoutMs: revokeDrainMs });
+  }
+
   function handlerFor(state: SessionState, clientKey: () => Uint8Array): TunnelHandler {
     const { stream } = state;
     return {
@@ -220,26 +328,44 @@ export function startRelayAdapter(
           request.body?.cancel().catch(() => {});
           return revokedResponse();
         }
-        const url = new URL(request.url);
-        const headers = requestHeaders(request.headers, deviceId, stream);
-        if (request.method === 'POST' && url.pathname === PAIR_PATH) {
-          headers[DEVICE_KEY_HEADER] = base64urlEncode(clientKey());
+        let served = deviceId;
+        if (state.kind === 'known' && deviceId !== null) {
+          served = await servedAs(state, request.headers, deviceId);
+          if (served === null) {
+            request.body?.cancel().catch(() => {});
+            return keyMismatchResponse();
+          }
         }
+        const url = new URL(request.url);
+        const headers = requestHeaders(request.headers, served, stream);
+        const pairing = request.method === 'POST' && url.pathname === PAIR_PATH;
+        if (pairing) headers[DEVICE_KEY_HEADER] = base64urlEncode(clientKey());
         const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
-        return fetch(origin + url.pathname + url.search, {
-          method: request.method,
-          headers,
-          body: hasBody ? request.body : null,
-          redirect: 'manual',
-          signal: AbortSignal.any([request.signal, AbortSignal.timeout(fetchTimeoutMs)]),
-          ...(hasBody && request.body ? { duplex: 'half' } : {}),
-        } as RequestInit);
+        try {
+          return await fetch(origin + url.pathname + url.search, {
+            method: request.method,
+            headers,
+            body: hasBody ? request.body : null,
+            redirect: 'manual',
+            signal: AbortSignal.any([request.signal, AbortSignal.timeout(fetchTimeoutMs)]),
+            ...(hasBody && request.body ? { duplex: 'half' } : {}),
+          } as RequestInit);
+        } finally {
+          // One pairing request per unknown session: it closes once the answer is sent.
+          if (pairing && state.kind === 'unknown')
+            queueMicrotask(() => endUnknown(state, 'pairing only'));
+        }
       },
       async openSocket(path, sent, { deviceId }) {
         if (!(await current(state))) return revokedResponse();
+        let served = deviceId;
+        if (state.kind === 'known' && deviceId !== null) {
+          served = await servedAs(state, new Headers(sent), deviceId);
+          if (served === null) return keyMismatchResponse();
+        }
         const target = loopbackTarget(wsOrigin, path);
         if (target === null) return new Response(null, { status: 400 });
-        return openLoopbackSocket(target, requestHeaders(sent, deviceId, stream));
+        return openLoopbackSocket(target, requestHeaders(sent, served, stream));
       },
     };
   }
@@ -322,6 +448,10 @@ export function startRelayAdapter(
     const protocol = socket.protocol;
     return {
       headers: protocol ? { 'sec-websocket-protocol': protocol } : {},
+      // The tunnel holds the client's credit back while this is above one window.
+      get bufferedAmount() {
+        return socket.bufferedAmount;
+      },
       send(data) {
         if (socket.readyState === WebSocket.OPEN) socket.send(data);
       },
@@ -348,14 +478,24 @@ export function startRelayAdapter(
       stream.close(CLOSE_GOING_AWAY, 'shutting down');
       return;
     }
-    if (handshaking.size + sessions.size >= maxSessions) {
+    // Handshakes in flight are bounded too, by both caps together.
+    if (handshaking.size + sessions.size >= maxSessions + maxUnknown) {
       logger.warn({ stream: stream.id }, 'too many tunnel sessions; refusing a stream');
       stream.close(CLOSE_TOO_MANY, 'too many streams');
       return;
     }
-    handshaking.add(stream);
     let clientKey: Uint8Array | null = null;
-    const state: SessionState = { stream, server: null, checkedAt: Date.now(), checking: null };
+    const state: SessionState = {
+      stream,
+      server: null,
+      kind: null,
+      devices: [],
+      keys: new Map(),
+      checkedAt: Date.now(),
+      checking: null,
+      timer: null,
+    };
+    handshaking.set(stream, state);
     let session: TunnelServer;
     try {
       session = await createTunnelServer({
@@ -363,14 +503,37 @@ export function startRelayAdapter(
         staticKey: options.instance.tunnelPrivateKey,
         lookupDevice: async (publicKey) => {
           clientKey = publicKey;
-          const device = await findDeviceByPublicKey(db, publicKey);
+          const devices = await findDevicesByPublicKey(db, publicKey);
           state.checkedAt = Date.now();
-          return device ? { known: true, id: device.id } : { known: false };
+          state.devices = devices;
+          const first = devices[0];
+          // Asked again after a pairing on the stream: it stays counted as it began.
+          if (state.kind === null) {
+            const kind = first ? 'known' : 'unknown';
+            if (counted(kind) >= (kind === 'known' ? maxSessions : maxUnknown)) {
+              // Closed here, before the failed handshake closes it 4400.
+              stream.close(CLOSE_TOO_MANY, 'too many streams');
+              throw new SessionsFull(kind);
+            }
+            state.kind = kind;
+          }
+          return first ? { known: true, id: first.id } : { known: false };
         },
         handler: handlerFor(state, () => clientKey!),
       });
     } catch (err) {
-      logger.info({ stream: stream.id, error: (err as Error).message }, 'tunnel handshake failed');
+      if (err instanceof SessionsFull) {
+        logger.warn(
+          { stream: stream.id, device: err.message },
+          'too many tunnel sessions; refusing a stream',
+        );
+        stream.close(CLOSE_TOO_MANY, 'too many streams');
+      } else {
+        logger.info(
+          { stream: stream.id, error: (err as Error).message },
+          'tunnel handshake failed',
+        );
+      }
       return;
     } finally {
       handshaking.delete(stream);
@@ -381,12 +544,17 @@ export function startRelayAdapter(
     }
     state.server = session;
     sessions.set(session, state);
+    if (state.kind === 'unknown') {
+      state.timer = setTimeout(() => endUnknown(state, 'pairing only'), unknownSessionMs);
+      state.timer.unref();
+    }
     logger.info(
       { stream: stream.id, device: session.device, deviceId: session.deviceId },
       'tunnel session opened',
     );
     session.onClose((code, reason) => {
       sessions.delete(session);
+      if (state.timer) clearTimeout(state.timer);
       logger.info(
         { stream: stream.id, deviceId: session.deviceId, code, reason },
         'tunnel session closed',
@@ -408,8 +576,11 @@ export function startRelayAdapter(
       clearInterval(recheck);
       await subscribed;
       await (unsubscribe as Unsubscribe | null)?.().catch(() => {});
-      for (const stream of handshaking) stream.close(1000, 'shutting down');
-      for (const session of sessions.keys()) session.close(1000, 'shutting down');
+      for (const stream of handshaking.keys()) stream.close(1000, 'shutting down');
+      for (const [session, state] of sessions) {
+        if (state.timer) clearTimeout(state.timer);
+        session.close(1000, 'shutting down');
+      }
       for (const socket of sockets) socket.terminate();
       sessions.clear();
       handshaking.clear();

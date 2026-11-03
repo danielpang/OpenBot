@@ -21,6 +21,7 @@ import {
 import { MEMBERSHIP_ENDED_CHANNEL, type MembershipEnded } from '../membership.js';
 import { reject, toHeaders, type UpgradeSource } from './gateway.js';
 import { inWorkspace } from '../db/scope.js';
+import { KEY_RECHECK_MS, watchApiKeys } from './key-watch.js';
 
 // WebSocket proxies to the computer's control agent (plan 9.3, 9.4, 14.1):
 // `/api/v1/computer/pty` is the Computer page's terminal (xterm.js to the
@@ -39,7 +40,9 @@ import { inWorkspace } from '../db/scope.js';
 // the owner for a Bot closes (a closed tab, a crash) and none comes back
 // within `takeoverGraceMs`, the screen is handed back as Hand back would, so
 // the Bot goes on (K3). Disabling a member closes their sockets here as on
-// `/ws`, and hands back any screen they hold (U3).
+// `/ws`, and hands back any screen they hold (U3). A socket opened with an API
+// key closes 1008 when the key stops working (a revoked phone's shell and
+// screen included), at once on the bus or within a minute (ws/key-watch.ts).
 
 export const PTY_PATH = '/api/v1/computer/pty';
 const VNC_PATH =
@@ -50,12 +53,16 @@ export function isComputerSocketPath(pathname: string) {
 }
 
 export interface ComputerProxies {
+  /** Looks the API keys of open sockets up again now, as the minute's timer does: for tests. */
+  checkKeys(): Promise<void>;
   close(): Promise<void>;
 }
 
 export interface ComputerProxyOptions {
   /** How long a takeover's closed screen waits for its tab to come back; `TAKEOVER_GRACE_MS`. */
   takeoverGraceMs?: number;
+  /** How often the API keys of open sockets are looked up again; KEY_RECHECK_MS. */
+  keyRecheckMs?: number;
 }
 
 /** How often frames on an open socket mark the computer used. */
@@ -274,10 +281,25 @@ export async function attachComputerProxies(
     },
   );
 
+  const keys = await watchApiKeys(
+    deps,
+    function* () {
+      for (const [client, target] of open) {
+        yield {
+          apiKeyId: target.user.apiKeyId,
+          close: (code: number, reason: string) => client.close(code, reason),
+        };
+      }
+    },
+    options.keyRecheckMs ?? KEY_RECHECK_MS,
+  );
+
   server.on('upgrade', onUpgrade);
   return {
+    checkKeys: () => keys.check(),
     async close() {
       server.off('upgrade', onUpgrade);
+      await keys.stop();
       await unsubscribeDisabled();
       for (const timer of graces) clearTimeout(timer);
       graces.clear();
