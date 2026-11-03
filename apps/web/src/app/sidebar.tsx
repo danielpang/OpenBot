@@ -29,7 +29,9 @@ export function Sidebar() {
 
   return (
     <nav className="flex w-60 shrink-0 flex-col border-r bg-sidebar">
-      <TitleBarInset />
+      <TitleBarInset>
+        <ConnectionIndicator />
+      </TitleBarInset>
       {SidebarHeader && <SidebarHeader />}
       <div className="p-3">
         <TooltipProvider delayDuration={300}>
@@ -59,7 +61,6 @@ export function Sidebar() {
             {link.label}
           </Link>
         ))}
-        <ConnectionIndicator />
       </div>
       <NewDialog open={newOpen} onOpenChange={setNewOpen} />
     </nav>
@@ -68,13 +69,22 @@ export function Sidebar() {
 
 /**
  * In the Mac app, room above New for the traffic lights, which the window
- * draws over the page's top left, and a handle to drag the window by. Nothing
- * in a browser.
+ * draws over the page's top left, and a handle to drag the window by, with
+ * `children` (the connection indicator) just right of the traffic lights.
+ * Without the inset title bar the children get a row of their own, which
+ * collapses when they render nothing (in a browser).
  */
-export function TitleBarInset() {
-  if (!hasInsetTitleBar()) return null;
+export function TitleBarInset({ children }: { children?: ReactNode }) {
+  if (!hasInsetTitleBar()) {
+    return children ? <div className="flex px-3 pt-2 empty:hidden">{children}</div> : null;
+  }
   return (
-    <div aria-hidden data-slot="title-bar-inset" className={cn('h-8 shrink-0', WINDOW_DRAG)} />
+    <div
+      data-slot="title-bar-inset"
+      className={cn('flex h-8 shrink-0 items-center pr-2 pl-[76px]', WINDOW_DRAG)}
+    >
+      {children}
+    </div>
   );
 }
 
