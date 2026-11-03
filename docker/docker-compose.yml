@@ -5,7 +5,8 @@
 # there supplies both the container environment and the ${...} values.
 #
 # Optional profiles: `s3` (MinIO, below), `egress` (the computers' allowlisting
-# proxy, below), `ngrok` and `cloudflare` (docker-compose.tunnels.yml).
+# proxy, below), `ngrok` and `cloudflare` (docker-compose.tunnels.yml) and
+# `relay` (a private relay of your own, docker-compose.relay.yml).
 name: openbots
 
 services:

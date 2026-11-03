@@ -10,7 +10,7 @@
 # Asks the registry anonymously, as `docker pull` does without a login: an
 # anonymous token, then the manifest. Prints one line per image, "public" or
 # "private", and exits 1 when any image is private. The images default to
-# server, computer and sandbox-firewall.
+# server, computer, sandbox-firewall, relay and standalone.
 set -euo pipefail
 
 [ "$#" -ge 2 ] || {
@@ -20,7 +20,7 @@ set -euo pipefail
 prefix="$1"
 tag="$2"
 shift 2
-[ "$#" -gt 0 ] || set -- server computer sandbox-firewall
+[ "$#" -gt 0 ] || set -- server computer sandbox-firewall relay standalone
 
 registry="${prefix%%/*}"
 namespace="${prefix#*/}"

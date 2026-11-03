@@ -1,0 +1,69 @@
+# OpenBots on one Fly Machine, from the standalone image (deploy/fly/README.md,
+# docs/MOBILE_AND_VM_PLAN.md 8.4). Server, Postgres, Redis and the Bots'
+# computer run in one container, on one volume at /data.
+#
+#   fly launch --copy-config --no-deploy --name <your app>
+#   fly volumes create data --size 10
+#   fly deploy
+#   fly ssh console -C "openbots pair"
+#
+# `fly launch` replaces `app` and `primary_region` with yours.
+
+app = "openbots"
+primary_region = "iad"
+
+# Postgres and Redis get time to shut down cleanly on a deploy or a restart.
+kill_signal = "SIGTERM"
+kill_timeout = "60s"
+
+[build]
+  # Pin a release (:1.2 follows its fixes, :1.2.0 never moves) so a deploy
+  # never upgrades by surprise. Upgrade by changing it and running `fly deploy`.
+  image = "ghcr.io/danielpang/openbots/standalone:latest"
+
+[env]
+  # Everything else comes from /data/.env, which the image writes on first
+  # boot, and from `fly secrets set` (provider keys, OPENBOTS_RELAY_URL), which
+  # override it.
+  OPENBOTS_DEPLOYMENT = "self_hosted"
+
+# The database, Redis's append-only file, the Bots' home and files, and the
+# generated .env with the master key. One Machine per volume.
+[mounts]
+  source = "data"
+  destination = "/data"
+  initial_size = "10gb"
+
+# About 2 GB is in use with Chromium, Postgres and Node together; 4 GB leaves
+# room for a busy Bot.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "4gb"
+
+# Reported by `fly checks list` and in the dashboard. A check outside a
+# service never routes or stops anything.
+[checks]
+  [checks.ready]
+    type = "http"
+    port = 3000
+    path = "/readyz"
+    method = "get"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "2m"
+
+# Optional: a public https address at <your app>.fly.dev, for webhooks and
+# connector sign-in (OAuth). Without it the Machine has no public address and
+# the phone reaches it through the relay only, which is the safer start.
+# Before you turn it on, pair your phone first: on a server with no owner yet,
+# whoever opens the address first can create the owner. Then uncomment this
+# section, run `fly secrets set OPENBOTS_PUBLIC_URL=https://<your app>.fly.dev`
+# and `fly deploy`. The Machine must never stop on its own, or Routines and
+# the relay link stop with it, hence the two settings below.
+#
+# [http_service]
+#   internal_port = 3000
+#   force_https = true
+#   auto_stop_machines = "off"
+#   auto_start_machines = true
+#   min_machines_running = 1

@@ -68,6 +68,8 @@ cd openbots-$version
 bash install.sh
 ${fence}
 
+On a VM, \`bash install.sh --pair\` also prints a QR code that pairs the OpenBots phone app.
+
 The bundle holds the compose files, \`.env.example\`, \`install.sh\`, the egress proxy settings and
 the backup and restore scripts. Its \`.env.example\` runs this release's images
 (\`OPENBOTS_VERSION=$version\`).
@@ -78,7 +80,7 @@ For linux/amd64 and linux/arm64:
 
 EOF
 
-for image in server computer sandbox-firewall; do
+for image in server computer sandbox-firewall relay standalone; do
   if [ "$PRERELEASE" = true ]; then
     echo "- \`$IMAGE_PREFIX/$image:$version\`"
   else
@@ -86,6 +88,12 @@ for image in server computer sandbox-firewall; do
   fi
 done
 echo
+cat <<EOF
+\`relay\` is the private relay, for running your own beside the compose stack (its \`relay\` profile).
+\`standalone\` is the whole of OpenBots in one container, for a platform that runs one container
+and no Docker inside it; \`deploy/\` in the repository has templates for Fly.io, Sprites and EC2.
+
+EOF
 
 if [ "$PRERELEASE" = true ]; then
   cat <<EOF

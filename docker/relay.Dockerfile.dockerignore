@@ -1,0 +1,17 @@
+# Build context exclusions for docker/relay.Dockerfile. BuildKit reads
+# <Dockerfile>.dockerignore next to the Dockerfile in preference to a
+# .dockerignore at the context root, so this applies to `docker build -f
+# docker/relay.Dockerfile .` and to the compose build of the relay profile.
+# It keeps a checkout's .env (the master key) out of the image.
+.git
+.github
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/*.log
+.env
+.env.*
+!.env.example
+**/.DS_Store

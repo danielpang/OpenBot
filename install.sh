@@ -5,7 +5,12 @@
 # wizard creates the admin.
 #
 #   curl -fsSL https://raw.githubusercontent.com/danielpang/OpenBots/main/install.sh | bash
-#   bash install.sh [--dir <path>] [--ref <branch or tag>] [--no-start]
+#   bash install.sh [--dir <path>] [--ref <branch or tag>] [--no-start] [--pair]
+#
+# --pair prints a QR code for pairing the OpenBots phone app once the stack is
+# ready (`openbots pair`), so a server on a VM needs no browser. Without a
+# terminal (cloud-init, a pipe) it also writes the QR code and the pairing
+# link to openbots-pair.txt beside .env, readable only by you.
 #
 # Run from inside a checkout, or from the compose bundle a GitHub Release
 # carries (openbots-compose-<version>.tar.gz), it uses that directory instead
@@ -21,6 +26,7 @@ REPO_URL="${OPENBOTS_REPO:-https://github.com/$GITHUB_OWNER/OpenBots.git}"
 DIR="${OPENBOTS_DIR:-OpenBots}"
 REF=""
 START=1
+PAIR=0
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() {
@@ -41,14 +47,17 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --no-start) START=0 ;;
+    --pair) PAIR=1 ;;
     -h | --help)
-      sed -n '2,16p' "${BASH_SOURCE[0]:-$0}" | sed 's/^# \{0,1\}//'
+      sed -n '2,21p' "${BASH_SOURCE[0]:-$0}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) die "unknown option '$1' (try --help)" ;;
   esac
   shift
 done
+
+[ "$START" = 1 ] || [ "$PAIR" = 0 ] || die "--pair needs the stack started; drop --no-start"
 
 if [ "$START" = 1 ]; then
   command -v docker >/dev/null 2>&1 || die "Docker is not installed (https://docs.docker.com/get-docker/)"
@@ -208,3 +217,33 @@ account, asks for a model provider key and creates your first Bot.
 Your master key is in $DIR/.env (OPENBOTS_MASTER_KEY). Keep a copy somewhere
 safe: without it, stored secrets and backups cannot be decrypted.
 EOF
+
+[ "$PAIR" = 1 ] || exit 0
+
+# Last, so the QR code is what stays on screen. On a server with no owner yet,
+# the phone that pairs becomes the owner instead of the wizard.
+if [ "$ready" = 0 ]; then
+  log "Not pairing yet: once OpenBots answers, run: cd $DIR && docker compose run --rm openbots pair"
+  exit 1
+fi
+log "Making a pairing code for the OpenBots phone app"
+pair_status=0
+# stdin is /dev/null and no TTY is asked for: under `curl | bash` the script
+# itself arrives on stdin, and the container must not read it.
+if [ -t 1 ]; then
+  docker compose run --rm -T openbots pair </dev/null || pair_status=$?
+else
+  # No terminal to scan from: keep the output, with the link, in a file only
+  # this user can read. The code in it works once, for 5 minutes.
+  pair_file="$PWD/openbots-pair.txt"
+  rm -f "$pair_file"
+  (umask 077 && : >"$pair_file")
+  docker compose run --rm -T openbots pair --link </dev/null | tee "$pair_file" || pair_status=$?
+  chmod 600 "$pair_file"
+  log "The pairing output is also in $pair_file"
+fi
+if [ "$pair_status" != 0 ]; then
+  log "Pairing failed; try again with: cd $DIR && docker compose run --rm openbots pair"
+  exit "$pair_status"
+fi
+log "The code works once and for 5 minutes. For a new one: cd $DIR && docker compose run --rm openbots pair"

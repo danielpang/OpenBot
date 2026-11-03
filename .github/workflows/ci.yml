@@ -22,6 +22,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit
       - run: node scripts/check-licenses.mjs
+      # The install script and the release, backup and image scripts.
+      - name: Lint the shell scripts
+        run: shellcheck install.sh scripts/*.sh docker/*.sh
       - run: pnpm lint
       - run: pnpm typecheck
       # The committed OpenAPI document and the client generated from it must
@@ -88,12 +91,14 @@ jobs:
         run: >-
           docker run --rm -v "$PWD:/repo:ro" -w /repo hadolint/hadolint:v2.12.0
           hadolint docker/server.Dockerfile docker/computer.Dockerfile
-          docker/sandbox-firewall.Dockerfile ee/server/Dockerfile
+          docker/sandbox-firewall.Dockerfile docker/relay.Dockerfile
+          docker/standalone.Dockerfile ee/server/Dockerfile
       - name: Validate the compose files
         run: |
           cp .env.example .env
           docker compose config --quiet
           docker compose --profile s3 --profile ngrok --profile cloudflare config --quiet
+          docker compose --profile relay config --quiet
           docker compose --project-directory . -f docker/docker-compose.yml -f docker/docker-compose.dev.yml config --quiet
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
@@ -105,6 +110,25 @@ jobs:
           tags: openbots-ci/server:ci
           cache-from: type=gha,scope=server
           cache-to: type=gha,scope=server,mode=max
+      # The relay and the standalone image: built, not published here
+      # (release-images.yml publishes them).
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/relay.Dockerfile
+          push: false
+          load: true
+          tags: openbots-ci/relay:ci
+          cache-from: type=gha,scope=relay
+          cache-to: type=gha,scope=relay,mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/standalone.Dockerfile
+          push: false
+          tags: openbots-ci/standalone:ci
+          cache-from: type=gha,scope=standalone
+          cache-to: type=gha,scope=standalone,mode=max
       # The managed image (ee/server): built, not published here.
       - uses: docker/build-push-action@v6
         with:
@@ -123,6 +147,10 @@ jobs:
           docker compose up -d --wait
           curl -fsS http://localhost:3000/readyz
           curl -fsS http://localhost:3000/ | grep -q "<title>OpenBots</title>"
+      - name: Smoke-test the relay profile
+        run: |
+          docker compose --profile relay up -d --wait relay
+          curl -fsS http://127.0.0.1:3200/healthz
       - if: failure()
         run: docker compose logs
 

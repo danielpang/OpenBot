@@ -18,7 +18,9 @@ services:
 
   # `docker compose --profile cloudflare up -d` with CLOUDFLARE_TUNNEL_TOKEN in
   # .env. Create the tunnel in the Cloudflare Zero Trust dashboard and point its
-  # public hostname at the service http://openbots:3000.
+  # public hostname at the service http://openbots:3000. With the `relay`
+  # profile (docker-compose.relay.yml), add a second public hostname for the
+  # service http://relay:3200 and set OPENBOTS_RELAY_URL to wss://<that host>.
   cloudflared:
     image: cloudflare/cloudflared:latest
     profiles: [cloudflare]

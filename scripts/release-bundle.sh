@@ -8,7 +8,8 @@
 # directory, openbots-<version>, holding compose.yaml, .env.example (its
 # OPENBOTS_VERSION and OPENBOTS_IMAGE_PREFIX set to this release), install.sh,
 # docker/docker-compose.yml, docker/docker-compose.tunnels.yml,
-# docker/egress-proxy/ and scripts/backup.sh and restore.sh.
+# docker/docker-compose.relay.yml, docker/egress-proxy/ and scripts/backup.sh
+# and restore.sh.
 # docker/docker-compose.dev.yml is left out: it builds from a checkout.
 set -euo pipefail
 
@@ -28,7 +29,8 @@ stage="$work/$name"
 
 mkdir -p "$stage/docker/egress-proxy" "$stage/scripts"
 cp "$repo/compose.yaml" "$repo/install.sh" "$stage/"
-cp "$repo/docker/docker-compose.yml" "$repo/docker/docker-compose.tunnels.yml" "$stage/docker/"
+cp "$repo/docker/docker-compose.yml" "$repo/docker/docker-compose.tunnels.yml" \
+  "$repo/docker/docker-compose.relay.yml" "$stage/docker/"
 cp "$repo/docker/egress-proxy/"* "$stage/docker/egress-proxy/"
 cp "$repo/scripts/backup.sh" "$repo/scripts/restore.sh" "$stage/scripts/"
 chmod 755 "$stage/install.sh" "$stage/scripts/backup.sh" "$stage/scripts/restore.sh"

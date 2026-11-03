@@ -1,0 +1,87 @@
+#cloud-config
+# OpenBots on an EC2 instance (or any Ubuntu VM that takes cloud-init user
+# data: Hetzner, DigitalOcean and others), as the compose stack: the hardened
+# shape, with every Bot's computer in its own container behind the sandbox
+# firewall. See deploy/ec2/README.md.
+#
+# It installs Docker from Docker's apt repository, downloads one pinned
+# release's compose bundle, checks it against the release's SHA256SUMS and
+# runs `install.sh --pair`. The pairing QR code and link end up in the
+# instance's console log (EC2: Actions, Monitor and troubleshoot, Get system
+# log) and in /root/openbots-pair.txt, readable by root only.
+#
+# Set OPENBOTS_RELEASE below to a release from
+# https://github.com/danielpang/OpenBots/releases, and OPENBOTS_RELAY_URL to
+# the relay your phone goes through.
+#
+# Network: with the relay, the server only dials out, so a security group with
+# no inbound rule at all is enough (add port 22 from your address, or use SSM
+# Session Manager, to reach a shell). Open nothing for port 3000 unless you put
+# TLS in front of it.
+#
+# Metadata: launch with IMDSv2 required and a hop limit of 1
+# (--metadata-options HttpTokens=required,HttpPutResponseHopLimit=1). Docker
+# containers sit one network hop behind the instance, so with a hop limit of 1
+# the server and the Bots' computers cannot read the instance's metadata
+# service or its role credentials. The sandbox firewall also drops link-local
+# addresses for the computers.
+#
+# Ubuntu 24.04 LTS, amd64 or arm64. Give it 2 vCPUs, 4 GB of memory or more
+# (t3.medium, t4g.medium) and a 30 GB disk.
+
+write_files:
+  - path: /usr/local/sbin/openbots-setup
+    owner: root:root
+    permissions: '0700'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      # The release to install, and the relay to use.
+      OPENBOTS_RELEASE=1.0.0
+      OPENBOTS_RELAY_URL=
+      OPENBOTS_GITHUB_OWNER=danielpang
+      DIR=/opt/openbots
+
+      # Docker Engine and Compose from Docker's apt repository
+      # (https://docs.docker.com/engine/install/ubuntu/).
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y ca-certificates curl
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+      # shellcheck source=/dev/null
+      codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")"
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $codename stable" \
+        >/etc/apt/sources.list.d/docker.list
+      apt-get update
+      apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      systemctl enable --now docker
+
+      # The release's compose bundle, checked against its SHA256SUMS.
+      download="https://github.com/$OPENBOTS_GITHUB_OWNER/OpenBots/releases/download/v$OPENBOTS_RELEASE"
+      bundle="openbots-compose-$OPENBOTS_RELEASE.tar.gz"
+      mkdir -p "$DIR"
+      cd "$DIR"
+      curl -fsSLO "$download/$bundle"
+      curl -fsSLO "$download/SHA256SUMS"
+      sha256sum --ignore-missing -c SHA256SUMS
+      tar -xzf "$bundle"
+      cd "openbots-$OPENBOTS_RELEASE"
+
+      # The relay setting goes into .env before the first start; install.sh
+      # keeps an .env that exists and fills in the keys and passwords.
+      if [ ! -f .env ] && [ -n "$OPENBOTS_RELAY_URL" ]; then
+        (umask 077 && cp .env.example .env)
+        sed -i "s#^OPENBOTS_RELAY_URL=.*#OPENBOTS_RELAY_URL=$OPENBOTS_RELAY_URL#" .env
+      fi
+
+      # Starts the stack, waits for /readyz and pairs. With no terminal here,
+      # install.sh also writes the output to openbots-pair.txt beside .env.
+      OPENBOTS_GITHUB_OWNER="$OPENBOTS_GITHUB_OWNER" bash install.sh --pair
+      install -m 0600 -o root -g root openbots-pair.txt /root/openbots-pair.txt
+      echo "OpenBots is in $DIR/openbots-$OPENBOTS_RELEASE. The pairing code is in /root/openbots-pair.txt."
+
+runcmd:
+  - [/usr/local/sbin/openbots-setup]

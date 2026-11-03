@@ -1,16 +1,21 @@
-# Builds the server, computer and sandbox-firewall images for a release
-# (plan 3, 16.1), called by release.yml. See apps/desktop/RELEASING.md.
+# Builds the server, computer, sandbox-firewall, relay and standalone images
+# for a release (plan 3, 16.1; MOBILE_AND_VM_PLAN.md 5.2, 8.2), called by
+# release.yml. See apps/desktop/RELEASING.md.
 #
 # With `publish`, each image is built for linux/amd64 and linux/arm64 and
 # pushed as
 #   <prefix>/server:1.2.0, :1.2 and :latest
 #   <prefix>/computer:1.2.0, :1.2 and :latest
 #   <prefix>/sandbox-firewall:1.2.0, :1.2 and :latest
+#   <prefix>/relay:1.2.0, :1.2 and :latest
+#   <prefix>/standalone:1.2.0, :1.2 and :latest
 # where <prefix> is ghcr.io/<repository owner in lower case>/openbots, so a
 # fork publishes to its own namespace. A prerelease (1.3.0-rc.1) gets only its
 # own tag. Compose pulls from OPENBOTS_IMAGE_PREFIX (.env.example), and the Mac
 # app's local stack runs these images with `compose up --no-build`, so every
-# image docker/docker-compose.yml names under OPENBOTS_IMAGE_PREFIX is built here.
+# image the compose files name under OPENBOTS_IMAGE_PREFIX is built here. The
+# relay runs with the compose stack's `relay` profile or on its own; the
+# standalone image is the whole of OpenBots in one container (deploy/).
 #
 # Every run also writes each image, per architecture, as a gzipped
 # `docker load` archive, openbots-<image>-<version>-linux-<arch>.tar.gz, and
@@ -20,9 +25,10 @@
 # when an archive reaches that.
 #
 # Without `publish` (the dry run) nothing is pushed or logged in to. To keep it
-# cheap the computer image is built for linux/amd64 only: its arm64 build
-# compiles node-pty and installs Chromium under QEMU and takes much longer. The
-# server and the sandbox firewall are built for both architectures.
+# cheap the computer and standalone images are built for linux/amd64 only:
+# their arm64 builds compile node-pty and install Chromium under QEMU and take
+# much longer. The server, the sandbox firewall and the relay are built for
+# both architectures.
 #
 # Permissions come from the calling job: contents: read, plus packages: write
 # to publish.
@@ -56,8 +62,8 @@ jobs:
   image:
     name: ${{ matrix.image }}
     runs-on: ubuntu-24.04
-    # The computer image compiles node-pty and installs Chromium's
-    # dependencies for arm64 under QEMU.
+    # The computer and standalone images compile node-pty and install
+    # Chromium's dependencies for arm64 under QEMU.
     timeout-minutes: 150
     strategy:
       fail-fast: false
@@ -78,6 +84,16 @@ jobs:
             dockerfile: docker/sandbox-firewall.Dockerfile
             description: OpenBots sandbox firewall, the computers' network rules on the Docker host
             dry-run-platforms: linux/amd64,linux/arm64
+          - image: relay
+            context: .
+            dockerfile: docker/relay.Dockerfile
+            description: OpenBots private relay, the phone app's end-to-end encrypted path to a server
+            dry-run-platforms: linux/amd64,linux/arm64
+          - image: standalone
+            context: .
+            dockerfile: docker/standalone.Dockerfile
+            description: OpenBots in one container, server, Postgres, Redis and the Bots' computer, for a VM
+            dry-run-platforms: linux/amd64
     env:
       IMAGE: ${{ inputs.image-prefix }}/${{ matrix.image }}
       PLATFORMS: ${{ inputs.publish && 'linux/amd64,linux/arm64' || matrix.dry-run-platforms }}
@@ -87,10 +103,10 @@ jobs:
         with:
           persist-credentials: false
 
-      # Two architectures of the computer image, their build cache and the
-      # uncompressed archives outgrow the runner's free disk.
+      # Two architectures of the computer or standalone image, their build
+      # cache and the uncompressed archives outgrow the runner's free disk.
       - name: Free disk space
-        if: matrix.image == 'computer'
+        if: matrix.image == 'computer' || matrix.image == 'standalone'
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
