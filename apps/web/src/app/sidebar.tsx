@@ -70,7 +70,8 @@ export function Sidebar() {
 /**
  * In the Mac app, room above New for the traffic lights, which the window
  * draws over the page's top left, and a handle to drag the window by, with
- * `children` (the connection indicator) just right of the traffic lights.
+ * `children` (the connection indicator) at its right edge, across from the
+ * traffic lights.
  * Without the inset title bar the children get a row of their own, which
  * collapses when they render nothing (in a browser).
  */
@@ -81,7 +82,7 @@ export function TitleBarInset({ children }: { children?: ReactNode }) {
   return (
     <div
       data-slot="title-bar-inset"
-      className={cn('flex h-8 shrink-0 items-center pr-2 pl-[76px]', WINDOW_DRAG)}
+      className={cn('flex h-8 shrink-0 items-center justify-end pr-2 pl-[76px]', WINDOW_DRAG)}
     >
       {children}
     </div>

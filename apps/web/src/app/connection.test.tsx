@@ -40,6 +40,7 @@ describe('indicatorState', () => {
   it('names each kind of connection, with the host for a server elsewhere', () => {
     expect(indicatorState(cloud, open)).toEqual({
       title: 'OpenBots account',
+      label: 'OpenBots account',
       status: 'Connected',
       tone: 'normal',
       tooltip: 'OpenBots account (app.openbots.example): Connected',
@@ -48,6 +49,7 @@ describe('indicatorState', () => {
       'Self-hosted (openbots.example.com): Connected',
     );
     expect(indicatorState(local('running'), open).tooltip).toBe('This Mac (Docker): Connected');
+    expect(indicatorState(local('running'), open).label).toBe('This Mac');
   });
 
   it('says connecting at first and reconnecting once a connection was lost', () => {
@@ -152,6 +154,14 @@ describe('the connection indicator', () => {
       expect(connection.change).toHaveBeenCalled();
       act(() => root.render(null));
     }
+  });
+
+  it("shows the connection's short name beside the icon", async () => {
+    await render(local('running'));
+    expect(trigger()?.textContent).toBe('This Mac');
+    act(() => root.render(null));
+    await render(remote);
+    expect(trigger()?.textContent).toBe('Self-hosted');
   });
 
   it('is coloured only for a problem', async () => {
