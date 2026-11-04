@@ -396,7 +396,7 @@ describe('release workflow', () => {
     );
   });
 
-  it('builds unsigned without the secrets, and never publishes from electron-builder', () => {
+  it('builds the dry run ad-hoc signed, and never publishes from electron-builder', () => {
     const unsigned = step('Package unsigned');
     expect(unsigned.if).toBe("steps.signing.outputs.signed != 'true'");
     // Ad-hoc signed even in a pull request, where electron-builder otherwise skips signing.
@@ -408,6 +408,63 @@ describe('release workflow', () => {
     expect(unsigned.run).toContain('--publish never');
     expect(JSON.stringify(unsigned)).not.toContain('secrets.');
     expect(mac.on.workflow_call).toMatchObject({ outputs: { signed: {} } });
+  });
+
+  it('refuses to release an unsigned Mac app, which electron-updater could never update', () => {
+    const decide = step('Decide whether to sign').run!;
+    expect(decide).toContain('A release must be signed and notarized');
+    expect(decide).not.toContain('::warning::');
+    const releaseSteps = release.jobs.release!.steps!;
+    const refuse = releaseSteps.find((s) => s.name === 'Refuse an unsigned Mac app')!;
+    expect(refuse.if).toBe("env.SIGNED != 'true'");
+    expect(refuse.run).toContain('exit 1');
+    // The update manifest is always part of a release.
+    const check = releaseSteps.find((s) => s.name === 'Check the assets and write SHA256SUMS')!;
+    expect(check.run).toMatch(/expected=\([^)]*latest-mac\.yml/);
+  });
+
+  it('retries an existing tag by hand, building that tag’s commit in every job', () => {
+    const dispatch = release.on.workflow_dispatch as { inputs: Record<string, { type: string }> };
+    expect(dispatch.inputs.tag!.type).toBe('string');
+    const version = release.jobs.version!;
+    expect(version.outputs!.ref).toBe('${{ steps.version.outputs.ref }}');
+    const versionRun = version.steps!.find((s) => s.name === 'Check the release version')!.run!;
+    expect(versionRun).toContain('Only the newest tag');
+    expect(versionRun).toContain('echo "ref=$(git rev-parse HEAD)"');
+    // The tag comes in through the environment, never into the script's text.
+    expect(versionRun).not.toContain('inputs.tag');
+    for (const name of ['images', 'mac']) {
+      expect(release.jobs[name]!.with!.ref, name).toBe('${{ needs.version.outputs.ref }}');
+    }
+    for (const name of ['bundle', 'release']) {
+      const checkout = release.jobs[name]!.steps!.find((s) =>
+        s.uses?.startsWith('actions/checkout'),
+      );
+      expect(checkout!.with!.ref, name).toBe('${{ needs.version.outputs.ref }}');
+    }
+    for (const file of ['release-images.yml', 'release-mac.yml']) {
+      const called = workflowFile(file);
+      for (const job of Object.values(called.jobs)) {
+        for (const s of job.steps ?? []) {
+          if (s.uses?.startsWith('actions/checkout')) {
+            expect(s.with!.ref, file).toBe('${{ inputs.ref }}');
+          }
+        }
+      }
+    }
+  });
+
+  it('publishes the GitHub Release only once every file is on it, the update manifest last', () => {
+    const publish = release.jobs.release!.steps!.find(
+      (s) => s.name === 'Publish the GitHub Release',
+    )!.run!;
+    expect(publish).toContain('gh release create "$TAG" --draft --verify-tag');
+    const others = publish.indexOf('! -name latest-mac.yml');
+    const manifest = publish.indexOf('"$assets/latest-mac.yml"');
+    const live = publish.indexOf('--draft=false');
+    expect(others).toBeGreaterThan(-1);
+    expect(manifest).toBeGreaterThan(others);
+    expect(live).toBeGreaterThan(manifest);
   });
 
   it('renders the cask from the template and the DMG name electron-builder produces', () => {
