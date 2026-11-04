@@ -3,6 +3,7 @@ import { Button, cn, XIcon } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -85,6 +86,16 @@ export function Composer({
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const pickerId = useId();
+  // Where a pick leaves the caret, placed as soon as the new text commits. A
+  // frame later is too late: keys typed in between land before it, and the
+  // caret then jumps back into the middle of them.
+  const placeCaret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (placeCaret.current === null) return;
+    textarea.current?.focus();
+    textarea.current?.setSelectionRange(placeCaret.current, placeCaret.current);
+    placeCaret.current = null;
+  });
 
   const found = activeTrigger(text, caret);
   const trigger = found && found.start !== dismissed ? found : null;
@@ -131,10 +142,7 @@ export function Composer({
     const next = insert ? replaceTrigger(text, at, caret, insert) : removeTrigger(text, at, caret);
     setText(next.text);
     setCaret(next.caret);
-    requestAnimationFrame(() => {
-      textarea.current?.focus();
-      textarea.current?.setSelectionRange(next.caret, next.caret);
-    });
+    placeCaret.current = next.caret;
   }
 
   async function send() {
