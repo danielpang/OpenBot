@@ -7,7 +7,9 @@ import {
   inRanges,
   isCidr,
   rateLimitKey,
+  remoteDeviceHeader,
   resolveClientIp,
+  resolveClientIpFrom,
   tunnelHeader,
 } from './client-ip.js';
 import type { AppDeps, AppEnv } from './context.js';
@@ -84,11 +86,23 @@ describe('rateLimitKey', () => {
       key: 'device:d-1',
       deviceKey: null,
     });
-    expect(await from('::1', { [DEVICE_HEADER]: 'stream:7', [DEVICE_KEY_HEADER]: 'abc' })).toEqual({
-      key: 'device:stream:7',
-      deviceKey: 'abc',
-    });
     expect((await from('::ffff:127.0.0.1', { [DEVICE_HEADER]: 'd-2' })).key).toBe('device:d-2');
+  });
+
+  it('keys an unpaired stream on the address the relay reported, not on the stream', async () => {
+    expect(
+      await from('::1', {
+        [DEVICE_HEADER]: remoteDeviceHeader('::ffff:203.0.113.5'),
+        [DEVICE_KEY_HEADER]: 'abc',
+      }),
+    ).toEqual({ key: 'remote:203.0.113.5', deviceKey: 'abc' });
+    // Two streams of one client, on links whose ids both start at 1, share the bucket.
+    expect(remoteDeviceHeader('203.0.113.5')).toBe(remoteDeviceHeader('::ffff:203.0.113.5'));
+    expect(remoteDeviceHeader('')).toBe('remote:unknown');
+    // Only beside the adapter's secret.
+    expect((await from('127.0.0.1', { [DEVICE_HEADER]: 'remote:203.0.113.5' }, false)).key).toBe(
+      '127.0.0.1',
+    );
   });
 
   it('ignores the headers from loopback without the adapter secret', async () => {
@@ -110,5 +124,59 @@ describe('rateLimitKey', () => {
       await from('198.51.100.9', { [DEVICE_HEADER]: 'd-1', [DEVICE_KEY_HEADER]: 'abc' }),
     ).toEqual({ key: '198.51.100.9', deviceKey: null });
     expect((await from('10.0.0.2', { [DEVICE_HEADER]: 'd-1' })).key).toBe('10.0.0.2');
+  });
+});
+
+describe('OPENBOTS_CLIENT_IP_HEADER', () => {
+  const trusted = ['10.0.0.0/8'];
+  it("takes the proxy's client header from a trusted peer", () => {
+    expect(
+      resolveClientIpFrom(
+        '10.1.2.3',
+        { clientHeader: '203.0.113.9', forwardedFor: '198.51.100.1' },
+        trusted,
+      ),
+    ).toBe('203.0.113.9');
+    expect(resolveClientIpFrom('10.1.2.3', { clientHeader: '::ffff:203.0.113.9' }, trusted)).toBe(
+      '203.0.113.9',
+    );
+    // Not an address: X-Forwarded-For as usual.
+    expect(
+      resolveClientIpFrom(
+        '10.1.2.3',
+        { clientHeader: 'nope', forwardedFor: '198.51.100.1' },
+        trusted,
+      ),
+    ).toBe('198.51.100.1');
+  });
+
+  it('ignores it from any other peer', () => {
+    expect(resolveClientIpFrom('198.51.100.7', { clientHeader: '203.0.113.9' }, trusted)).toBe(
+      '198.51.100.7',
+    );
+    expect(resolveClientIpFrom('10.1.2.3', { clientHeader: '203.0.113.9' }, [])).toBe('10.1.2.3');
+  });
+
+  it('is read from the request through the config', async () => {
+    const app = new Hono<AppEnv>()
+      .use(async (c, next) => {
+        c.set('deps', {
+          config: { trustedProxies: trusted, clientIpHeader: 'fly-client-ip' },
+        } as unknown as AppDeps);
+        await next();
+      })
+      .get('/', (c) => c.json({ key: rateLimitKey(c) }));
+    const from = async (remoteAddress: string) =>
+      (
+        (await (
+          await app.request(
+            '/',
+            { headers: { 'fly-client-ip': '203.0.113.9' } },
+            { incoming: { socket: { remoteAddress } } },
+          )
+        ).json()) as { key: string }
+      ).key;
+    expect(await from('10.0.0.5')).toBe('203.0.113.9');
+    expect(await from('198.51.100.7')).toBe('198.51.100.7');
   });
 });

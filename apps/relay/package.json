@@ -25,7 +25,9 @@
     "@noble/curves": "catalog:",
     "@noble/hashes": "catalog:",
     "hono": "catalog:",
+    "ioredis": "catalog:",
     "pino": "catalog:",
+    "prom-client": "catalog:",
     "ws": "catalog:",
     "zod": "catalog:"
   },

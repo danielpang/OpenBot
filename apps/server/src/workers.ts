@@ -109,8 +109,9 @@ export async function startWorkers(deps: AppDeps): Promise<{ stop(): Promise<voi
   const stopScheduler = startRoutineScheduler(deps);
   // Bus events an owner subscribed to become signed outbound deliveries (H6).
   const stopFanOut = await startEventFanOut(deps);
-  // Notices become encrypted pushes through the relay (RELAY_PROTOCOL.md 7), when there is one.
-  const push = deps.config.relayUrl ? await startPushWorker(deps) : null;
+  // Notices become encrypted pushes through the relay (RELAY_PROTOCOL.md 7), when there is one
+  // and its link runs (it does not when the instance key could not be opened, server.ts).
+  const push = deps.config.relayUrl && deps.relay ? await startPushWorker(deps) : null;
   logger.info({ queues: Object.keys(JOB_HANDLERS), infra: infra.kind }, 'workers started');
   // The queues themselves are closed with the infra in main.ts.
   return {

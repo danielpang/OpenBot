@@ -485,7 +485,11 @@ export class TunnelSession {
       if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes <= 0) {
         throw new ProtocolViolation('credit needs a positive integer `bytes`');
       }
-      channel?.credit(bytes);
+      if (channel) channel.credit(bytes);
+      // A credit after the id closed is late and dropped; one for an id never opened is an error.
+      else if (!this.#retired(frame.id)) {
+        throw new ProtocolViolation(`credit for id ${frame.id}, which was never opened`);
+      }
       return;
     }
     if (!channel) {
@@ -507,6 +511,11 @@ export class TunnelSession {
     if (channel.received > this.limits.windowBytes) {
       throw new ProtocolViolation(`id ${channel.id} sent past its flow control window`);
     }
+  }
+
+  /** Whether `id` was opened on this stream once (and has closed, when no channel holds it). */
+  #retired(id: number): boolean {
+    return this.role === 'server' ? id <= this.#highestPeerId : id < this.#nextLocalId;
   }
 
   /** A frame for an id with no open channel. */
@@ -533,9 +542,7 @@ export class TunnelSession {
       channel.handler = this.#accept!(frame, channel);
       return;
     }
-    const retired =
-      this.role === 'server' ? frame.id <= this.#highestPeerId : frame.id < this.#nextLocalId;
-    if (retired || frame.type === FrameType.Error) return;
+    if (this.#retired(frame.id) || frame.type === FrameType.Error) return;
     throw new ProtocolViolation(
       `${frameTypeName(frame.type)} for id ${frame.id}, which was never opened`,
     );

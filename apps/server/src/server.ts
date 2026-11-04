@@ -15,7 +15,7 @@ import { createInfra } from './infra/index.js';
 import { createLogger } from './logger.js';
 import { rotateMasterKey } from './rotation.js';
 import { closeMcpManager, sealPlaintextConnectorValues } from './services/connectors.js';
-import { ensureInstanceKey } from './services/instance-key.js';
+import { openInstanceKey } from './services/instance-key.js';
 import { startRelayAdapter } from './relay/adapter.js';
 import { createRelayLink } from './relay/link.js';
 import { registerLoginHooks } from './services/logins.js';
@@ -79,7 +79,8 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
   });
   await encryptStoredOAuthTokens({ db, config });
   // The relay identity, made on the first start (services/instance-key.ts).
-  await ensureInstanceKey({ db, config });
+  // One the master key does not open leaves the relay off rather than the server down.
+  const instance = await openInstanceKey({ db, config, logger });
   logger.info({ role: config.role }, 'migrations applied');
 
   const infra = createInfra(config, (err) => logger.error({ err }, 'redis error'));
@@ -110,8 +111,7 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
    * in a worker. `GET /relay` and the push worker find it on `deps.relay`.
    */
   async function startRelay(port: number | null) {
-    if (!config.relayUrl) return;
-    const instance = await ensureInstanceKey({ db, config });
+    if (!config.relayUrl || !instance) return;
     const link = await createRelayLink(deps, { instance });
     deps.relay = link;
     stops.push(link.stop);

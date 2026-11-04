@@ -5,7 +5,8 @@ import { schema } from '../db/client.js';
 import { scopedDb } from '../db/scope.js';
 import { createTestDb, type TestDb } from '../db/test-db.js';
 import { decodeEnvelope, generateMasterKey, keyringFromConfig } from '../secrets.js';
-import { base32, ensureInstanceKey, hostIdOf } from './instance-key.js';
+import { ensureWorkspace } from '../workspace.js';
+import { base32, ensureInstanceKey, hostIdOf, openInstanceKey } from './instance-key.js';
 
 // The relay identity (RELAY_PROTOCOL.md sections 1 and 2).
 
@@ -63,5 +64,54 @@ describe('ensureInstanceKey', () => {
     const again = await ensureInstanceKey({ db: scopedDb(t.db), config });
     expect(again.hostId).toBe(key.hostId);
     expect(await t.db.select().from(schema.instanceKeys)).toHaveLength(1);
+  });
+});
+
+describe('openInstanceKey at start', () => {
+  let t: TestDb;
+  const config = { masterKey: generateMasterKey(), previousMasterKeys: [] };
+  const logger = () => {
+    const errors: unknown[][] = [];
+    return { errors, error: (...args: unknown[]) => void errors.push(args) };
+  };
+
+  beforeAll(async () => {
+    t = await createTestDb();
+  }, 60_000);
+  afterAll(() => t?.close());
+
+  it('says loudly that phones must pair again when the key is gone but devices are paired', async () => {
+    const workspace = await ensureWorkspace(scopedDb(t.db));
+    await t.db.insert(schema.devicePairings).values({
+      workspaceId: workspace.id,
+      codeHash: Buffer.alloc(32, 1),
+      name: 'Home',
+      expiresAt: new Date(Date.now() + 60_000),
+      createdBy: 'cli',
+    });
+    const log = logger();
+    const key = await openInstanceKey({ db: scopedDb(t.db), config, logger: log });
+    expect(key).not.toBeNull();
+    expect(log.errors).toHaveLength(1);
+    expect(String(log.errors[0]![0])).toMatch(/every paired phone must pair again/);
+    // Once it is there, nothing more is said.
+    const quiet = logger();
+    expect((await openInstanceKey({ db: scopedDb(t.db), config, logger: quiet }))?.hostId).toBe(
+      key!.hostId,
+    );
+    expect(quiet.errors).toEqual([]);
+  });
+
+  it('runs with the relay off, saying why, when the master key does not open it', async () => {
+    const log = logger();
+    const wrong = { masterKey: generateMasterKey(), previousMasterKeys: [] };
+    expect(await openInstanceKey({ db: scopedDb(t.db), config: wrong, logger: log })).toBeNull();
+    expect(log.errors).toHaveLength(1);
+    expect(String(log.errors[0]![1])).toMatch(/the relay is off/);
+    // A route that needs it answers 503, not a crash.
+    await expect(ensureInstanceKey({ db: scopedDb(t.db), config: wrong })).rejects.toMatchObject({
+      status: 503,
+      code: 'INSTANCE_KEY_UNAVAILABLE',
+    });
   });
 });

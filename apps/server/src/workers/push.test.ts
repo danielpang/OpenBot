@@ -53,6 +53,10 @@ describe('push worker', () => {
   const token = 'a1b2c3d4e5f6';
   const sent: RelayPushRequest[] = [];
   let outcome: RelayPushOutcome = { ok: true };
+  /** Answers each push in turn, before `outcome`; a thrown error is a timeout. */
+  let answers: (RelayPushOutcome | Error)[] = [];
+  /** The link's `onLinked` listeners: every worker started here. */
+  const linked = new Set<() => void>();
 
   const approval = (id = randomUUID()) =>
     wsEvent(
@@ -69,6 +73,23 @@ describe('push worker', () => {
         },
       },
       { bot_id: botId, chat_id: randomUUID(), seq: 412, workspace_id: workspaceId },
+    ) as WsEvent;
+
+  /** What `PUT /devices/{id}/push` publishes: the worker reads the organization again. */
+  const deviceUpdated = (org: string) =>
+    wsEvent(
+      'device.updated',
+      {
+        device: {
+          id: deviceId,
+          name: 'Phone',
+          platform: 'ios',
+          createdAt: new Date().toISOString(),
+          revokedAt: null,
+          pushRegistered: true,
+        },
+      },
+      { user_id: ownerId, workspace_id: org },
     ) as WsEvent;
 
   async function publish(event: WsEvent) {
@@ -113,16 +134,32 @@ describe('push worker', () => {
         stop: async () => {},
         push: async (request) => {
           sent.push(request);
-          return outcome;
+          const answer = answers.shift() ?? outcome;
+          if (answer instanceof Error) throw answer;
+          return answer;
+        },
+        onLinked: (handler) => {
+          linked.add(handler);
+          return () => linked.delete(handler);
         },
       },
     };
-    worker = await startPushWorker(deps);
+    worker = await startPushWorker(deps, { retryDelaysMs: [5, 5] });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // The phone's token as it registered it, whatever a test did to it.
+    await t.db
+      .update(schema.devices)
+      .set({
+        pushToken: encryptSecret(token, keyringFromConfig(t.deps.config)),
+        pushEnvironment: 'production',
+      })
+      .where(eq(schema.devices.id, deviceId));
+    await publish(deviceUpdated(workspaceId));
     sent.length = 0;
     outcome = { ok: true };
+    answers = [];
   });
 
   afterAll(async () => {
@@ -140,6 +177,7 @@ describe('push worker', () => {
     expect(push).toMatchObject({
       platform: 'ios',
       token,
+      environment: 'production',
       collapseId: `approval:${approvalId}`,
       priority: 10,
       threadId: botId,
@@ -216,6 +254,7 @@ describe('push worker', () => {
     const cached = await startPushWorker(deps, { cacheMs: 3_600_000 });
     try {
       const org = await t.createOrganization('Fresh pairing');
+      await t.addMember(ownerId, org, 'owner');
       const [bot] = await t.db
         .insert(schema.bots)
         .values({ workspaceId: org, ownerId, handle: 'fresh', name: 'Fresh' })
@@ -281,5 +320,184 @@ describe('push worker', () => {
     // With no token left, nothing more goes out.
     await publish(approval());
     expect(sent).toHaveLength(1);
+  });
+
+  it('tries an error, an unavailable relay and a timeout again, and spends the dedupe only on ok', async () => {
+    answers = [
+      // A relay that drains answers 503.
+      { ok: false, reason: 'error', status: 503 },
+      new Error('the relay did not answer the push in time'),
+      { ok: true },
+    ];
+    const event = approval();
+    await publish(event);
+    expect(sent).toHaveLength(3);
+    // Sent: a second worker, or the same event again, does not send it twice.
+    const other = await startPushWorker(deps, { retryDelaysMs: [5, 5] });
+    try {
+      await publish({ ...event, ts: Date.now() } as WsEvent);
+      await other.idle();
+      expect(sent).toHaveLength(3);
+    } finally {
+      await other.stop();
+    }
+  });
+
+  it('gives up after three tries, and gives the dedupe back so the notice can go later', async () => {
+    outcome = { ok: false, reason: 'unavailable', status: null };
+    const id = randomUUID();
+    await publish(approval(id));
+    expect(sent).toHaveLength(3);
+    // Not spent: another worker that sees it sends it.
+    outcome = { ok: true };
+    const other = await startPushWorker(deps, { retryDelaysMs: [5, 5] });
+    try {
+      await publish(approval(id));
+      await other.idle();
+      expect(sent.filter((p) => p.collapseId === `approval:${id}`)).toHaveLength(4);
+    } finally {
+      await other.stop();
+    }
+  });
+
+  it('does not try an invalid push again, and forgets a token APNs calls bad (400)', async () => {
+    outcome = { ok: false, reason: 'invalid', status: null };
+    await publish(approval());
+    expect(sent).toHaveLength(1);
+    let [row] = await t.db.select().from(schema.devices).where(eq(schema.devices.id, deviceId));
+    expect(row!.pushToken).not.toBeNull();
+
+    outcome = { ok: false, reason: 'invalid', status: 400 };
+    await publish(approval());
+    expect(sent).toHaveLength(2);
+    [row] = await t.db.select().from(schema.devices).where(eq(schema.devices.id, deviceId));
+    expect(row!.pushToken).toBeNull();
+    expect(row!.revokedAt).toBeNull();
+    // The phone registers again, sandbox this time: each push names its environment.
+    const keyring = keyringFromConfig(t.deps.config);
+    await t.db
+      .update(schema.devices)
+      .set({ pushToken: encryptSecret(token, keyring), pushEnvironment: 'sandbox' })
+      .where(eq(schema.devices.id, deviceId));
+    outcome = { ok: true };
+    await publish(deviceUpdated(workspaceId));
+    await publish(approval());
+    expect(sent).toHaveLength(3);
+    expect(sent[2]!.environment).toBe('sandbox');
+    await t.db
+      .update(schema.devices)
+      .set({ pushEnvironment: null })
+      .where(eq(schema.devices.id, deviceId));
+    await publish(deviceUpdated(workspaceId));
+    await publish(approval());
+    expect(sent[3]!.environment).toBe('production');
+  });
+
+  it('catches up on approvals, questions and sign-in requests still waiting, once each', async () => {
+    const [chat] = await t.db
+      .insert(schema.chats)
+      .values({ workspaceId, ownerId, type: 'bot_dm', botId })
+      .returning();
+    const [run] = await t.db
+      .insert(schema.runs)
+      .values({ workspaceId, botId, chatId: chat!.id, trigger: 'message', status: 'waiting' })
+      .returning();
+    const message = async (seq: number, part: object) =>
+      (
+        await t.db
+          .insert(schema.messages)
+          .values({
+            workspaceId,
+            chatId: chat!.id,
+            seq,
+            authorType: 'bot',
+            authorId: botId,
+            parts: [{ type: 'text', text: 'one moment' }, part],
+          })
+          .returning()
+      )[0]!;
+    const approvalMessage = await message(1, {
+      type: 'widget',
+      kind: 'approval',
+      props: { toolName: 'bash' },
+    });
+    const [pending] = await t.db
+      .insert(schema.approvals)
+      .values({
+        workspaceId,
+        runId: run!.id,
+        messageId: approvalMessage.id,
+        toolName: 'bash',
+        args: { command: 'rm -rf build' },
+        expiresAt: new Date(Date.now() + 60_000),
+      })
+      .returning();
+    const question = await message(2, {
+      type: 'widget',
+      kind: 'question',
+      props: { question: 'Which branch?' },
+    });
+    const login = await message(3, {
+      type: 'widget',
+      kind: 'login_request',
+      props: { site: 'github.com', reason: 'To open the PR' },
+    });
+    const answered = await message(4, {
+      type: 'widget',
+      kind: 'question',
+      props: { question: 'Answered already' },
+    });
+    await t.db.insert(schema.widgetStates).values([
+      { workspaceId, messageId: question.id, partIndex: 1, pendingRunId: run!.id },
+      { workspaceId, messageId: login.id, partIndex: 1, state: { status: 'pending' } },
+      { workspaceId, messageId: answered.id, partIndex: 1, state: { answer: 'main' } },
+    ]);
+    // A decided approval is not waiting.
+    await t.db.insert(schema.approvals).values({
+      workspaceId,
+      runId: run!.id,
+      toolName: 'bash',
+      status: 'approved',
+    });
+
+    // The link comes up: what waited goes out.
+    expect(linked.size).toBe(1);
+    for (const handler of linked) handler();
+    await worker.idle();
+    const tags = sent.map((p) => p.collapseId);
+    expect(tags).toEqual([
+      `approval:${pending!.id}`,
+      `question:${question.id}`,
+      `question:${login.id}`,
+    ]);
+    expect(JSON.parse(decryptPush(pushKey, sent[1]!.ciphertext))).toMatchObject({
+      kind: 'question',
+      title: 'Researcher has a question',
+      body: 'Which branch?',
+      target: { botId, chatId: chat!.id, seq: 2 },
+    });
+    // Again (a relink, or a worker starting): nothing goes twice.
+    await worker.catchUp();
+    await worker.idle();
+    expect(sent).toHaveLength(3);
+    await t.db.delete(schema.chats).where(eq(schema.chats.id, chat!.id));
+  });
+
+  it('sends nothing for an owner suspended in the organization', async () => {
+    await t.db
+      .update(schema.workspaceMembers)
+      .set({ suspendedAt: new Date() })
+      .where(eq(schema.workspaceMembers.userId, ownerId));
+    try {
+      await publish(deviceUpdated(workspaceId));
+      await publish(approval());
+      expect(sent).toEqual([]);
+    } finally {
+      await t.db
+        .update(schema.workspaceMembers)
+        .set({ suspendedAt: null })
+        .where(eq(schema.workspaceMembers.userId, ownerId));
+      await publish(deviceUpdated(workspaceId));
+    }
   });
 });

@@ -45,6 +45,11 @@ export interface RelayLink {
    * without an answer.
    */
   push(request: RelayPushRequest): Promise<RelayPushOutcome>;
+  /**
+   * Calls `handler` each time the link becomes `linked`; returns the way to
+   * stop. The push worker catches up on what waits for the owner then.
+   */
+  onLinked?(handler: () => void): () => void;
   /** Closes the link for good. */
   stop(): Promise<void>;
 }
@@ -54,6 +59,11 @@ export interface RelayPushRequest {
   platform: 'ios';
   /** The APNs device token, lower case hex. */
   token: string;
+  /**
+   * The APNs environment the token belongs to (`devices.push_environment`,
+   * `production` when unset): the relay picks the APNs host by it.
+   */
+  environment: 'production' | 'sandbox';
   /** base64url(nonce || ciphertext || tag), section 7. */
   ciphertext: string;
   collapseId?: string;

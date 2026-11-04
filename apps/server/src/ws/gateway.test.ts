@@ -1,6 +1,7 @@
 import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
 import { wsEvent, type ServerFrame } from '@openbots/shared';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import { schema } from '../db/client.js';
@@ -174,6 +175,66 @@ describe('WS gateway', () => {
       expect(await client.next()).toMatchObject({ type: 'pong' });
       client.close();
     }
+  });
+
+  it('closes a socket 1008 when its API key is deleted or its device revoked', async () => {
+    const makeKey = async (name: string) => {
+      const res = await t.app.request('/api/v1/api-keys', {
+        method: 'POST',
+        headers: { cookie: alice, origin: ORIGIN, 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      return (await res.json()) as { id: string; key: string };
+    };
+    const closedWith = (client: TestClient) =>
+      new Promise<number>((resolve) => client.raw.once('close', (code) => resolve(code)));
+
+    // A deleted key: at once, on the bus.
+    const script = await makeKey('script');
+    const scripted = await connect(url, { authorization: `Bearer ${script.key}` });
+    const bystander = await connect(url, { cookie: alice, origin: ORIGIN });
+    const scriptClosed = closedWith(scripted);
+    await t.app.request(`/api/v1/api-keys/${script.id}`, {
+      method: 'DELETE',
+      headers: { cookie: alice, origin: ORIGIN },
+    });
+    expect(await scriptClosed).toBe(1008);
+
+    // A revoked phone on the direct path: its key goes with the device.
+    const phoneKey = await makeKey('phone');
+    const [device] = await t.db
+      .insert(schema.devices)
+      .values({
+        workspaceId: await t.defaultOrganization(),
+        ownerId: await t.userId('alice@example.com'),
+        name: 'Phone',
+        platform: 'ios',
+        publicKey: Buffer.alloc(32, 7),
+        apiKeyId: phoneKey.id,
+      })
+      .returning();
+    const phone = await connect(url, { authorization: `Bearer ${phoneKey.key}` });
+    const phoneClosed = closedWith(phone);
+    const revoked = await t.app.request(`/api/v1/devices/${device!.id}`, {
+      method: 'DELETE',
+      headers: { cookie: alice, origin: ORIGIN },
+    });
+    expect(revoked.status).toBe(204);
+    expect(await phoneClosed).toBe(1008);
+
+    // A key gone with no message on the bus (another process, no Redis): the minute's check.
+    const quiet = await makeKey('quiet');
+    const unheard = await connect(url, { authorization: `Bearer ${quiet.key}` });
+    const unheardClosed = closedWith(unheard);
+    await t.db.delete(schema.apikeys).where(eq(schema.apikeys.id, quiet.id));
+    await gateway.checkKeys();
+    expect(await unheardClosed).toBe(1008);
+
+    // A session's socket stays; it heard of the revocation.
+    expect(await bystander.next()).toMatchObject({ type: 'device.revoked' });
+    bystander.send({ type: 'ping' });
+    expect(await bystander.next()).toMatchObject({ type: 'pong' });
+    bystander.close();
   });
 
   it("delivers a user's account events only to their sockets in that organization (plan 21.3)", async () => {

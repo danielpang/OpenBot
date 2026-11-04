@@ -3,7 +3,10 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 import { eq } from 'drizzle-orm';
 import type { Config } from '../config.js';
 import { schema, type Db } from '../db/client.js';
-import { decryptSecret, encryptSecret, keyringFromConfig } from '../secrets.js';
+import { devicesExist } from '../db/scope.js';
+import { DomainError } from '../errors.js';
+import type { Logger } from '../logger.js';
+import { decryptSecret, encryptSecret, keyringFromConfig, type Keyring } from '../secrets.js';
 
 // The install's relay identity (RELAY_PROTOCOL.md sections 1 and 2; plan
 // MOBILE_AND_VM_PLAN.md 4.1): an Ed25519 key pair made at first start, its
@@ -11,6 +14,13 @@ import { decryptSecret, encryptSecret, keyringFromConfig } from '../secrets.js';
 // `rotateMasterKey` re-seals it). Its public key hashes to the host id the
 // relay knows this server by, and the X25519 pair derived from it is the
 // Noise static key phones pin from the pairing link.
+//
+// A key that no configured master key opens (OPENBOTS_MASTER_KEY changed
+// without OPENBOTS_MASTER_KEY_PREVIOUS) does not stop the server: it starts
+// with the relay off and says why (`openInstanceKey`), and the routes that
+// need the key answer 503 INSTANCE_KEY_UNAVAILABLE. A row that is gone while
+// devices are paired means a new identity: every phone has to pair again, and
+// the server says so loudly.
 
 export interface InstanceKey {
   /** The first 26 characters of base32(SHA-256(publicKey)), lower case. */
@@ -87,13 +97,28 @@ export function ensureInstanceKey({
   return pending;
 }
 
+export const instanceKeyUnavailable = () =>
+  new DomainError(
+    503,
+    'INSTANCE_KEY_UNAVAILABLE',
+    'The server cannot open its relay identity with its master key. Check OPENBOTS_MASTER_KEY and OPENBOTS_MASTER_KEY_PREVIOUS.',
+  );
+
+function open(sealed: Uint8Array, keyring: Keyring): InstanceKey {
+  try {
+    return instanceKeyFrom(decryptSecret(sealed, keyring));
+  } catch {
+    throw instanceKeyUnavailable();
+  }
+}
+
 async function loadOrCreate(
   db: Db,
   config: Pick<Config, 'masterKey' | 'previousMasterKeys'>,
 ): Promise<InstanceKey> {
   const keyring = keyringFromConfig(config);
   const existing = await read(db);
-  if (existing) return instanceKeyFrom(decryptSecret(existing.signingKey, keyring));
+  if (existing) return open(existing.signingKey, keyring);
   const signingKey = ed25519.utils.randomSecretKey();
   await db
     .insert(schema.instanceKeys)
@@ -105,7 +130,38 @@ async function loadOrCreate(
     .onConflictDoNothing();
   const stored = await read(db);
   if (!stored) throw new Error('the instance key could not be stored');
-  return instanceKeyFrom(decryptSecret(stored.signingKey, keyring));
+  return open(stored.signingKey, keyring);
+}
+
+/**
+ * The instance key at start (server.ts), or null when no configured master
+ * key opens it: the error is logged and the server runs with the relay off.
+ * When there is no key yet but devices are paired (or pairings are open), a
+ * new key is made and the log says every phone has to pair again.
+ */
+export async function openInstanceKey({
+  db,
+  config,
+  logger,
+}: {
+  db: Db;
+  config: Pick<Config, 'masterKey' | 'previousMasterKeys'>;
+  logger: Pick<Logger, 'error'>;
+}): Promise<InstanceKey | null> {
+  if (!(await read(db)) && (await devicesExist(db))) {
+    logger.error(
+      'the instance key is missing but devices are paired: a new relay identity is made, and every paired phone must pair again (Settings > Devices, or `openbots pair`). Restore the instance_keys row from a backup to keep them',
+    );
+  }
+  try {
+    return await ensureInstanceKey({ db, config });
+  } catch (err) {
+    logger.error(
+      { err: { message: (err as Error).message } },
+      'the instance key does not open with OPENBOTS_MASTER_KEY (nor any OPENBOTS_MASTER_KEY_PREVIOUS): the relay is off, and phones cannot pair or connect through it. Set the master key it was sealed with',
+    );
+    return null;
+  }
 }
 
 async function read(db: Db) {

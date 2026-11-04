@@ -220,6 +220,20 @@ EOF
 
 [ "$PAIR" = 1 ] || exit 0
 
+# Without the relay or an https address the phone has no way in from outside
+# this machine's network, which on a VM with no inbound rule is every phone.
+relay_url="$(sed -n 's/^OPENBOTS_RELAY_URL=//p' .env | tail -n 1)"
+if [ -z "$relay_url" ] && [[ "$url" != https://* ]]; then
+  cat >&2 <<EOF
+
+WARNING: OPENBOTS_RELAY_URL is empty and OPENBOTS_PUBLIC_URL is not an https
+address, so the phone will not reach this server unless it is on the same
+network. Set OPENBOTS_RELAY_URL in $DIR/.env to your relay's wss:// address,
+run: cd $DIR && docker compose up -d, and pair again.
+
+EOF
+fi
+
 # Last, so the QR code is what stays on screen. On a server with no owner yet,
 # the phone that pairs becomes the owner instead of the wizard.
 if [ "$ready" = 0 ]; then

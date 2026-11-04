@@ -19,7 +19,13 @@ import { schema } from '../db/client.js';
 import { publishEvent } from '../infra/index.js';
 import { ensureInstanceKey, type InstanceKey } from '../services/instance-key.js';
 import { createTestApp, type TestApp } from '../test-app.js';
-import { CLOSE_REVOKED, startRelayAdapter, type RelayAdapter } from './adapter.js';
+import {
+  CLOSE_PAIRING_DONE,
+  CLOSE_REVOKED,
+  CLOSE_TOO_MANY,
+  startRelayAdapter,
+  type RelayAdapter,
+} from './adapter.js';
 import { createRelayLink, type HostRelayLink } from './link.js';
 
 // The adapter between a real relay and a fake loopback target: an HTTP server
@@ -53,6 +59,8 @@ describe('relay adapter', () => {
   let ownerId: string;
   let known: KeyPair;
   let knownId: string;
+  /** The known device's API key. */
+  let knownKey: string;
   const clients: TunnelClient[] = [];
   const transports: ByteTransport[] = [];
 
@@ -65,20 +73,48 @@ describe('relay adapter', () => {
     adapter = startRelayAdapter(deps, { link, instance, port: targetPort(), ...extra });
   }
 
-  /** A paired device of the owner's, made in the database. */
-  async function addDevice() {
-    const key = generateDeviceKey();
+  /** An API key of the owner's, as a pairing makes one. */
+  const apiKey = (name: string) =>
+    t.deps.auth.api.createApiKey({ body: { name, userId: ownerId, expiresIn: null } });
+
+  /** A paired device of the owner's, made in the database, in `workspace` (the default one). */
+  async function addDevice(key = generateDeviceKey(), workspace = workspaceId) {
+    const credential = await apiKey('Spare');
     const [row] = await t.db
       .insert(schema.devices)
       .values({
-        workspaceId,
+        workspaceId: workspace,
         ownerId,
         name: 'Spare',
         platform: 'ios',
         publicKey: Buffer.from(key.publicKey),
+        apiKeyId: credential.id,
       })
       .returning();
-    return { key, id: row!.id };
+    return { key, id: row!.id, apiKey: credential.key };
+  }
+
+  /** The close code of a stream the adapter refuses during its handshake. */
+  async function refusedWith(staticKey: Uint8Array): Promise<number> {
+    const transport = await connectThroughRelay({
+      relayUrl: relayUrl(),
+      hostId: instance.hostId,
+      createSocket: (url) => new WebSocket(url),
+    });
+    transports.push(transport);
+    const closed = new Promise<number>((resolve) => transport.onClose((c) => resolve(c)));
+    await createTunnelClient({
+      transport,
+      serverKey: instance.tunnelPublicKey,
+      staticKey,
+    }).then(
+      (client) => {
+        clients.push(client);
+        throw new Error('the handshake was accepted');
+      },
+      () => undefined,
+    );
+    return closed;
   }
 
   /** Revokes a device as `openbots devices revoke` in another process would: no event reaches this one. */
@@ -105,7 +141,16 @@ describe('relay adapter', () => {
   }
 
   beforeAll(async () => {
-    relay = await createRelay({ port: 0, host: '127.0.0.1', limits: { streamsPerHost: 20 } });
+    // Every client here is one address; the relay's own per-address limits are not under test.
+    relay = await createRelay({
+      port: 0,
+      host: '127.0.0.1',
+      limits: {
+        streamsPerHost: 20,
+        addressStreamsPerHost: 20,
+        addressOpensPerHostPerMinute: 1_000,
+      },
+    });
     t = await createTestApp();
     await t.signUp('owner@example.com');
     ownerId = await t.userId('owner@example.com');
@@ -113,6 +158,8 @@ describe('relay adapter', () => {
     deps = { ...t.deps, config: { ...t.deps.config, relayUrl: relayUrl() } };
     instance = await ensureInstanceKey({ db: t.deps.db, config: t.deps.config });
     known = generateDeviceKey();
+    const credential = await apiKey('Phone');
+    knownKey = credential.key;
     const [device] = await t.db
       .insert(schema.devices)
       .values({
@@ -121,6 +168,7 @@ describe('relay adapter', () => {
         name: 'Phone',
         platform: 'ios',
         publicKey: Buffer.from(known.publicKey),
+        apiKeyId: credential.id,
       })
       .returning();
     knownId = device!.id;
@@ -190,10 +238,11 @@ describe('relay adapter', () => {
     await t.close();
   });
 
-  it('serves an unknown device pairing only, keyed on its stream', async () => {
+  it('serves an unknown device one pairing only, keyed on its address, then closes', async () => {
     const stranger = generateDeviceKey();
     const client = await open(stranger.privateKey);
     expect(client.device).toBe('unknown');
+    const closed = new Promise<number>((resolve) => client.onClose((code) => resolve(code)));
     const refused = await client.fetch('/api/v1/bots');
     expect(refused.status).toBe(403);
     expect(await refused.json()).toMatchObject({ code: 'DEVICE_UNKNOWN' });
@@ -212,11 +261,25 @@ describe('relay adapter', () => {
     expect(echo.method).toBe('POST');
     expect(echo.url).toBe('/api/v1/devices/pair?x=1');
     expect(echo.body).toBe('{"hello":true}');
-    expect(echo.headers['x-openbots-device']).toMatch(/^stream:\d+$/);
+    // The relay's address for the client, not the stream id, which restarts on every link.
+    expect(echo.headers['x-openbots-device']).toBe('remote:127.0.0.1');
     expect(echo.headers['x-openbots-device-key']).toBe(base64urlEncode(stranger.publicKey));
     expect(echo.headers.origin).toBeUndefined();
     expect(echo.headers.cookie).toBeUndefined();
     expect(res.headers.get('set-cookie')).toBeNull();
+    // Paired or not, the session is over; the phone comes back as a device.
+    expect(await closed).toBe(CLOSE_PAIRING_DONE);
+  });
+
+  it('closes an unknown session that does not pair in time', async () => {
+    await restartAdapter({ unknownSessionMs: 150 });
+    try {
+      const client = await open(generateDeviceKey().privateKey);
+      const closed = new Promise<number>((resolve) => client.onClose((code) => resolve(code)));
+      expect(await closed).toBe(CLOSE_PAIRING_DONE);
+    } finally {
+      await restartAdapter();
+    }
   });
 
   it('forwards a known device’s requests with its id, and never follows a redirect', async () => {
@@ -224,7 +287,7 @@ describe('relay adapter', () => {
     expect(client.device).toBe('known');
     const res = await client.fetch('/api/v1/bots?limit=2', {
       headers: {
-        authorization: 'Bearer obk_x',
+        authorization: `Bearer ${knownKey}`,
         'x-openbots-device': 'spoofed',
         'x-openbots-adapter': 'spoofed',
       },
@@ -234,12 +297,55 @@ describe('relay adapter', () => {
     expect(echo.headers['x-openbots-device']).toBe(knownId);
     expect(echo.headers['x-openbots-adapter']).not.toBe('spoofed');
     expect(echo.headers['x-openbots-adapter']).toBeTruthy();
-    expect(echo.headers.authorization).toBe('Bearer obk_x');
+    expect(echo.headers.authorization).toBe(`Bearer ${knownKey}`);
     expect(echo.headers['x-openbots-device-key']).toBeUndefined();
 
     const redirect = await client.fetch('/redirect', { redirect: 'manual' });
     expect(redirect.status).toBe(302);
     expect(redirect.headers.get('location')).toBe('https://elsewhere.example/');
+  });
+
+  it('refuses a key that is not the device’s, so a session cannot carry another phone’s', async () => {
+    const other = await addDevice();
+    const script = await apiKey('script');
+    const client = await open(known.privateKey);
+    for (const key of [other.apiKey, script.key, 'obk_made_up']) {
+      for (const headers of [{ authorization: `Bearer ${key}` }, { 'x-api-key': key }] as Record<
+        string,
+        string
+      >[]) {
+        const res = await client.fetch('/api/v1/bots', { headers });
+        expect(res.status).toBe(401);
+        expect(await res.json()).toMatchObject({ code: 'DEVICE_KEY_MISMATCH' });
+      }
+    }
+    const socket = client.createSocket('/echo', {
+      headers: { authorization: `Bearer ${other.apiKey}` },
+    });
+    const response = await new Promise<Response>((resolve) => {
+      socket.onerror = (event) => resolve((event as unknown as { response: Response }).response);
+    });
+    expect(response.status).toBe(401);
+    // Its own key still goes through on the same session.
+    const ok = await client.fetch('/api/v1/bots', {
+      headers: { authorization: `Bearer ${knownKey}` },
+    });
+    expect(((await ok.json()) as Echo).headers['x-openbots-device']).toBe(knownId);
+  });
+
+  it('serves a phone paired with two organizations as the device whose key it sends', async () => {
+    const phone = generateDeviceKey();
+    const home = await addDevice(phone);
+    const elsewhere = await addDevice(phone, await t.createOrganization('Elsewhere'));
+    const client = await open(phone.privateKey);
+    expect(client.device).toBe('known');
+    const as = async (key: string) => {
+      const res = await client.fetch('/api/v1/me', { headers: { authorization: `Bearer ${key}` } });
+      return ((await res.json()) as Echo).headers['x-openbots-device'];
+    };
+    expect(await as(elsewhere.apiKey)).toBe(elsewhere.id);
+    expect(await as(home.apiKey)).toBe(home.id);
+    expect(await as(elsewhere.apiKey)).toBe(elsewhere.id);
   });
 
   it('pipes a WebSocket both ways with no Origin, and answers a refused upgrade', async () => {
@@ -333,22 +439,23 @@ describe('relay adapter', () => {
     }
   });
 
-  it('caps open sessions at 8 and closes a ninth 4429', async () => {
-    for (let i = 0; i < 8; i++) await open(generateDeviceKey().privateKey);
+  it('caps known devices at 8 and unknown ones at 2, each apart, closing the next 4429', async () => {
+    const phones = [];
+    for (let i = 0; i < 9; i++) phones.push(await addDevice());
+    for (const phone of phones.slice(0, 8)) await open(phone.key.privateKey);
     expect(adapter.sessions()).toBe(8);
-    const transport = await connectThroughRelay({
-      relayUrl: relayUrl(),
-      hostId: instance.hostId,
-      createSocket: (url) => new WebSocket(url),
-    });
-    transports.push(transport);
-    const code = await new Promise<number>((resolve) => transport.onClose((c) => resolve(c)));
-    expect(code).toBe(4429);
-    // A slot frees when a session closes.
+    expect(await refusedWith(phones[8]!.key.privateKey)).toBe(CLOSE_TOO_MANY);
+    // Strangers have their own two places, and never a paired phone's.
+    const first = await open(generateDeviceKey().privateKey);
+    await open(generateDeviceKey().privateKey);
+    expect(first.device).toBe('unknown');
+    expect(await refusedWith(generateDeviceKey().privateKey)).toBe(CLOSE_TOO_MANY);
+    expect(adapter.sessions()).toBe(10);
+    // A known place frees when its session closes.
     clients.shift()!.close();
-    await waitFor(() => adapter.sessions() === 7);
-    const again = await open(generateDeviceKey().privateKey);
-    expect(again.device).toBe('unknown');
+    await waitFor(() => adapter.sessions() === 9);
+    const again = await open(phones[8]!.key.privateKey);
+    expect(again.device).toBe('known');
   });
 
   it('closes a stream whose handshake is not the tunnel’s', async () => {

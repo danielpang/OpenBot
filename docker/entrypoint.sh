@@ -65,7 +65,7 @@ secrets_to_files() {
   for name in $SECRET_VARS; do
     eval "value=\${$name:-}"
     eval "file=\${${name}_FILE:-}"
-    [ -n "$value" ] && [ -z "$file" ] || continue
+    if [ -z "$value" ] || [ -n "$file" ]; then continue; fi
     printf '%s' "$value" >"$SECRETS_DIR/$name"
     unset "$name"
     export "${name}_FILE=$SECRETS_DIR/$name"

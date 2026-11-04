@@ -17,6 +17,7 @@ function setup(trusted = true, serverPage = false) {
   const ipcMain: IpcMainLike = {
     handle: (channel, listener) => void handlers.set(channel, listener),
   };
+  const relay = { local: true, sharedUrl: 'wss://relay.example', current: null };
   const desktop: DesktopHandlers = {
     listProfiles: vi.fn(async () => ({ activeId: 'local', profiles: [], chosen: true })),
     addProfile: vi.fn(async (input) => ({
@@ -42,6 +43,10 @@ function setup(trusted = true, serverPage = false) {
     quickAskBots: vi.fn(async () => []),
     quickAsk: vi.fn(async (botId) => ({ botId, seq: 1 })),
     closeQuickAsk: vi.fn(),
+    pairRelay: vi.fn(async () => relay),
+    pairSetRelay: vi.fn(async () => relay),
+    pairCode: vi.fn(async () => ({ link: 'openbots://pair#x', expiresAt: '', skewMs: 0 })),
+    closePair: vi.fn(),
   };
   registerDesktopIpc(
     ipcMain,
@@ -58,8 +63,12 @@ function setup(trusted = true, serverPage = false) {
 describe('registerDesktopIpc', () => {
   it('registers every channel the app bridge invokes', () => {
     const { handlers } = setup();
-    // navigate and newItem go from main to the page; nothing invokes them.
-    const sent: string[] = [DESKTOP_CHANNELS.navigate, DESKTOP_CHANNELS.newItem];
+    // navigate, newItem and pairPaired go from main to the page; nothing invokes them.
+    const sent: string[] = [
+      DESKTOP_CHANNELS.navigate,
+      DESKTOP_CHANNELS.newItem,
+      DESKTOP_CHANNELS.pairPaired,
+    ];
     for (const channel of Object.values(DESKTOP_CHANNELS)) {
       if (sent.includes(channel)) continue;
       expect(handlers.has(channel)).toBe(true);
@@ -147,5 +156,15 @@ describe('registerDesktopIpc', () => {
       seq: 1,
     });
     expect(desktop.quickAsk).toHaveBeenCalledWith('b1', 'hello');
+  });
+
+  it('passes the Relay setting a relay address, and nothing else', async () => {
+    const { desktop, invoke } = setup();
+    await invoke(DESKTOP_CHANNELS.pairSetRelay, 'wss://mine.example');
+    expect(desktop.pairSetRelay).toHaveBeenCalledWith('wss://mine.example');
+    await expect(invoke(DESKTOP_CHANNELS.pairSetRelay, null)).rejects.toThrow(/text/);
+    await expect(invoke(DESKTOP_CHANNELS.pairSetRelay, { url: 'x' })).rejects.toThrow(/text/);
+    await invoke(DESKTOP_CHANNELS.pairCode);
+    expect(desktop.pairCode).toHaveBeenCalledTimes(1);
   });
 });

@@ -43,7 +43,11 @@ import type { ByteTransport } from './transport.js';
 // A stream from an unknown device serves pairing only: every request but
 // `POST /api/v1/devices/pair` gets 403 `DEVICE_UNKNOWN` without reaching the
 // handler. When that pairing answers 200, the session looks the client's key
-// up again and, now that it is known, serves anything from then on.
+// up again and, now that it is known, serves anything from then on. Such a
+// stream has a short life, since anyone who knows the server's key can open
+// one: it closes 4400 once its first pairing request has been answered (if
+// that did not make the device known), or 30 seconds after the handshake,
+// whichever is first (`unknownDeviceLifetimeMs`).
 //
 // Headers cross in both directions less the names spec 5.4 lists (and less
 // `x-openbots-device` from the client, which only the adapter may set), so the
@@ -58,6 +62,12 @@ import type { ByteTransport } from './transport.js';
 // A WebSocket the handler opened may queue at most `maxQueuedBytes` behind a
 // shut window (beyond the message being sent). Past that the tunnel socket is
 // closed 1008 and so is the handler's socket.
+//
+// The other way, messages from the client are credited only once the
+// handler's socket has taken them: while its `bufferedAmount` (when it has
+// one) is above one window, credit is held back, so the client stops, and a
+// socket that still holds more than `maxQueuedBytes` when the next message is
+// handed to it is closed 1008, as is the tunnel socket.
 
 /** The origin of the Requests handed to `handler.fetch`. Only the path and query mean anything. */
 export const TUNNEL_ORIGIN = 'http://openbots.tunnel';
@@ -77,6 +87,12 @@ export interface ServerSocket {
   onClose(handler: (code: number, reason: string) => void): void;
   /** Headers for `ws.opened`, e.g. the negotiated `sec-websocket-protocol`. */
   headers?: Record<string, string>;
+  /**
+   * Bytes sent to the socket and not yet written out, as a `ws` WebSocket's
+   * `bufferedAmount`. With it the tunnel credits the client only as the
+   * socket drains; without it, bytes count as taken once `send` returns.
+   */
+  readonly bufferedAmount?: number;
 }
 
 export interface TunnelHandler {
@@ -100,7 +116,21 @@ export interface TunnelServerOptions {
   handshakeTimeoutMs?: number;
   /** The ping and idle close of spec 5.3; 25 and 60 seconds by default. */
   keepalive?: Partial<KeepaliveOptions>;
+  /**
+   * How long a stream from an unknown device lives after its handshake: it
+   * closes 4400 then, or once its first pairing request has been answered
+   * without making the device known, whichever is first. Default 30 seconds;
+   * 0 turns the limit off.
+   */
+  unknownDeviceLifetimeMs?: number;
 }
+
+/** How long a pairing only stream lives by default (spec 5.1). */
+export const DEFAULT_UNKNOWN_DEVICE_LIFETIME_MS = 30_000;
+/** The close code of a pairing only stream whose time is up. */
+const CLOSE_PAIRING_OVER = 4400;
+/** How often credit held back for a busy handler socket is looked at again. */
+const DRAIN_POLL_MS = 20;
 
 export interface DrainOptions {
   /** Close anyway after this long. Default 5 seconds. */
@@ -239,6 +269,8 @@ interface ServerContext {
   promote(): Promise<boolean>;
   /** The answer to a new request while the stream drains, or null when it does not. */
   refusal(): Response | null;
+  /** A pairing request on this stream has been answered. */
+  pairingAnswered(): void;
 }
 
 export async function createTunnelServer(options: TunnelServerOptions): Promise<TunnelServer> {
@@ -283,10 +315,17 @@ export async function createTunnelServer(options: TunnelServerOptions): Promise<
     async promote() {
       if (deviceId !== null) return true;
       const decision = await lookupDevice(clientKey);
-      if (decision.known) deviceId = decision.id;
+      if (decision.known) {
+        deviceId = decision.id;
+        clearTimeout(unknownTimer);
+      }
       return decision.known;
     },
     refusal: () => (draining ? draining.refuse() : null),
+    pairingAnswered() {
+      // Still unknown after its pairing: the stream has served its purpose.
+      if (deviceId === null && unknownTimer) session.close(CLOSE_PAIRING_OVER, 'pairing only');
+    },
   };
   const session = new TunnelSession({
     role: 'server',
@@ -306,6 +345,15 @@ export async function createTunnelServer(options: TunnelServerOptions): Promise<
     },
   });
   ctx.session = session;
+  const lifetimeMs = options.unknownDeviceLifetimeMs ?? DEFAULT_UNKNOWN_DEVICE_LIFETIME_MS;
+  let unknownTimer: ReturnType<typeof setTimeout> | undefined;
+  if (deviceId === null && lifetimeMs > 0) {
+    unknownTimer = setTimeout(() => {
+      if (deviceId === null) session.close(CLOSE_PAIRING_OVER, 'pairing only');
+    }, lifetimeMs);
+    (unknownTimer as { unref?: () => void }).unref?.();
+    session.onClose(() => clearTimeout(unknownTimer));
+  }
   route.take(
     (bytes) => session.receive(bytes),
     (code, reason) => session.transportClosed(code, reason),
@@ -505,6 +553,7 @@ class ServerExchange {
             (error as Error)?.message ?? 'the handler failed',
           );
         this.#onError(error as Error);
+        if (isPairing) ctx.pairingAnswered();
         return;
       }
     }
@@ -512,7 +561,9 @@ class ServerExchange {
       response.body?.cancel().catch(() => {});
       return;
     }
-    if (!(await sendResponse(ctx.session, channel, response))) return;
+    const sent = await sendResponse(ctx.session, channel, response);
+    if (isPairing && !refused) ctx.pairingAnswered();
+    if (!sent) return;
     this.#responseEnded = true;
     // The answer is complete; whatever of the request body is still to come is not wanted.
     if (!this.#requestEnded) this.#body?.discard();
@@ -535,6 +586,9 @@ class ServerSocketChannel {
   #receivedClose = false;
   /** Bytes of messages handed to `#forward` and not sent yet. */
   #queued = 0;
+  /** Client bytes received and not credited yet, held while the handler's socket is behind. */
+  #uncredited = 0;
+  #creditTimer: ReturnType<typeof setTimeout> | undefined;
   readonly #assembler: MessageAssembler;
 
   constructor(ctx: ServerContext, channel: Channel, frame: Frame) {
@@ -619,15 +673,17 @@ class ServerSocketChannel {
   }
 
   /**
-   * The client's window stayed shut while the server's socket kept talking:
-   * drop what is queued, close the tunnel socket 1008 ahead of it, and tell
-   * the server's socket. The client's echo frees the id.
+   * The client's window stayed shut while the server's socket kept talking
+   * (`send queue full`), or the server's socket stopped taking what the
+   * client sends (`receive queue full`): drop what is queued, close the
+   * tunnel socket 1008 ahead of it, and tell the server's socket. The
+   * client's echo frees the id.
    */
-  #overflow(): void {
+  #overflow(reason = 'send queue full'): void {
     const ctx = this.#ctx;
     const channel = this.#channel;
+    clearTimeout(this.#creditTimer);
     this.#sentClose = true;
-    const reason = 'send queue full';
     channel.fail(new TunnelError('cancelled', reason));
     try {
       ctx.session.sendIfOpen(channel, {
@@ -677,11 +733,17 @@ class ServerSocketChannel {
           this.#state = 'closed';
           return;
         }
-        // Credited per fragment, as the client does, so a message larger than the window completes.
-        ctx.session.consumed(channel, frame.body.length);
-        if (!message) return;
-        if (!this.#sentClose)
+        // Credited per fragment, so a message larger than the window
+        // completes, but only while the handler's socket keeps up.
+        this.#uncredited += frame.body.length;
+        if (message && !this.#sentClose) {
+          if (this.#backlog() > ctx.limits.maxQueuedBytes) {
+            this.#overflow('receive queue full');
+            return;
+          }
           this.#socket!.send(message.text ? textDecoder.decode(message.data) : message.data);
+        }
+        this.#credit();
         return;
       }
       case FrameType.WsClose: {
@@ -714,8 +776,35 @@ class ServerSocketChannel {
     }
   }
 
+  /** Bytes the handler's socket holds and has not written out, or 0 when it does not say. */
+  #backlog(): number {
+    const buffered = this.#socket?.bufferedAmount;
+    return typeof buffered === 'number' && Number.isFinite(buffered) ? buffered : 0;
+  }
+
+  /**
+   * Credits what the client sent once the handler's socket is at most one
+   * window behind; until then the credit waits and the client's window
+   * shuts, so the bytes held for the socket stay bounded.
+   */
+  #credit(): void {
+    clearTimeout(this.#creditTimer);
+    this.#creditTimer = undefined;
+    const channel = this.#channel;
+    if (!channel.open || this.#uncredited === 0 || this.#state !== 'open') return;
+    if (this.#backlog() > this.#ctx.limits.windowBytes) {
+      this.#creditTimer = setTimeout(() => this.#credit(), DRAIN_POLL_MS);
+      (this.#creditTimer as { unref?: () => void }).unref?.();
+      return;
+    }
+    const bytes = this.#uncredited;
+    this.#uncredited = 0;
+    this.#ctx.session.consumed(channel, bytes);
+  }
+
   /** The client cancelled the id, or the stream went away. */
   #teardown(): void {
+    clearTimeout(this.#creditTimer);
     const wasOpen = this.#state === 'open';
     this.#state = 'closed';
     if (wasOpen && !this.#sentClose) {

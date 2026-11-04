@@ -70,13 +70,24 @@ its files.
     for groups), with `?thread={root id}` for a reply in a thread and `?chat={chat id}` for a
     message in one of the Bot's chats with another Bot, which the web app opens under the Bot's
     transcript. Registered with `setAsDefaultProtocolClient`; notifications and the tray open them.
-    `openbots://devices` opens Settings > Devices, which both menus' "Pair your phone…" uses.
+    `openbots://devices` opens Settings > Devices.
   - `approvals.ts`: the tray menu (N2): the connection's kind and host, pending approvals with
     Approve, Deny and Open, Quick Ask, Pair your phone, Change connection, Check for Updates.
-    Pair your phone opens the main window on Settings > Devices of the active connection.
+    Pair your phone opens the pairing window (below).
   - `menu.ts`: the app menu's File menu, whose New (`Cmd+N`) opens the web app's New dialog
-    through `onNew` on the preload bridge. Its Pair your phone opens Settings > Devices through
-    `onNavigate`, as a deep link does.
+    through `onNew` on the preload bridge. Its Pair your phone opens the pairing window.
+  - `pairing.ts` and `renderer/pair*.ts(x)`: the pairing window. This Mac's stack runs with
+    the OpenBots relay by default: a `.env` without `OPENBOTS_RELAY_URL` gets
+    `wss://openbots-relay.fly.dev` (or the build's `openbots.relayUrl`, or
+    `OPENBOTS_SHARED_RELAY_URL` in development) on its next start. Pair your phone shows the QR
+    code from `POST /api/v1/devices/pairings` straight away, with its countdown and the phone's
+    name once it pairs (`device.paired` on the main process's socket); closing the window
+    cancels a code nobody used. Before the app is signed in, the menu opens Settings > Devices
+    instead. The app menu's "Relay…" (or "Change relay" under the code) is the setting for a
+    relay of the owner's own: it shows the address in use, warns that a change signs out every
+    paired phone and asks once more, then writes `OPENBOTS_RELAY_URL`, runs `compose up` and
+    revokes the paired devices, since they reached the Mac through the old relay. On any other
+    connection the relay is the server's, and the setting only shows it.
   - `tray-icon.ts`: the menu bar icon, a template image in `resources/tray` rendered from
     `tray.svg` by `pnpm tray-icon` (`scripts/tray-icon.mjs`), with the pending count beside it.
   - `app-icon.ts`: the app icon, a Bot avatar (seed `OpenBots-225`: round, sky, sleepy eyes,

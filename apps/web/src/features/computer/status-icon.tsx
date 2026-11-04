@@ -2,7 +2,7 @@ import { isComputerTool } from '@openbots/shared';
 import type { SVGProps } from 'react';
 import type { Bot } from '../bots/queries.js';
 
-// Status (I5, K3, plan 9.4): a green dot on the title bar's Preview button
+// Status (I5, K3, plan 9.4): a green dot on the title bar's Computer button
 // while the Bot's current tool is a computer tool, and the computer glyph.
 
 export function ComputerIcon(props: SVGProps<SVGSVGElement>) {
@@ -19,7 +19,7 @@ export const computerActive = (state: Bot['state']) =>
   state.state === 'working' && isComputerTool(state.currentTool);
 
 /**
- * The green dot on the title bar's Preview button while the Bot is using its
+ * The green dot on the title bar's Computer button while the Bot is using its
  * computer, with the current action as its tooltip; nothing otherwise.
  */
 export function ComputerActiveDot({ bot }: { bot: Bot }) {

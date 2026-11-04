@@ -57,14 +57,21 @@ and 19):
    published when they are all there, so electron-updater never sees a release without its files.
 4. The first time only, make the images public (below). The `GitHub Release` job's summary says
    whether each package is public and warns when one is not.
-5. Check the release page: the notes, the DMG, the bundle, six image archives, `SHA256SUMS` and,
-   for a signed build, `latest-mac.yml`. Install the DMG on a clean Mac.
+5. Check the release page: the notes, the DMG, the bundle, the image archives, `SHA256SUMS` and
+   `latest-mac.yml`. Install the DMG on a clean Mac.
 6. For Homebrew, copy `openbots.rb` from the release into the tap's `Casks/` directory and open a
    pull request there.
 
-A failed job can be rerun from the Actions tab. Rerunning `GitHub Release` updates the release
-that exists instead of failing. To redo a release from a new commit, delete the release and the
-tag (`git push --delete origin v1.2.0`), fix, and tag again.
+A failed job can be rerun from the Actions tab. Rerunning `GitHub Release` finishes the release
+that exists instead of failing: a draft gets its files and is published, and a published release
+gets its files again with `latest-mac.yml` last.
+
+To release a tag again from the start (say a secret was missing when it was pushed), run the
+workflow by hand: Actions, Release, Run workflow, with the tag (`v1.2.0`) in **tag**. Every job
+builds the tag's commit, whichever branch the run starts from, and publishes as the tag's push
+would. Only the newest tag can be released again, since a release moves the `latest` image tags
+and the Mac app's update. To release a new commit instead, delete the release and the tag
+(`git push --delete origin v1.2.0`), fix, and tag again.
 
 The release goes to the repository the workflow runs in, and the images to
 `ghcr.io/<that repository's owner in lower case>/openbots`, so a fork releases to itself. The
@@ -95,7 +102,8 @@ The packages stay public for later releases.
 
 A pull request that changes the release files (`.github/workflows/release*.yml`, `docker/**`,
 `apps/desktop/electron-builder*`, `apps/desktop/packaging/**` or `scripts/release-*`) runs the
-same workflow as a dry run, and so does a manual run (Actions, Release, Run workflow). It uses the
+same workflow as a dry run, and so does a manual run with **tag** left empty (Actions, Release,
+Run workflow). It uses the
 version in the package.json files, builds every artifact without pushing, logging in to a registry
 or reading a secret, and uploads them as workflow artifacts for three days: `release-image-*`
 (the image archives), `release-mac` (the unsigned DMG, zip, `latest-mac.yml` and cask) and
@@ -108,17 +116,15 @@ Chromium under QEMU. That build first runs for a real tag.
 
 ## Signing the Mac app
 
-Signing is optional. With all five secrets below set, the tag build signs with the Developer ID
-certificate, notarizes and staples in the `afterSign` hook, and verifies with `codesign`, `spctl`
-and `stapler`; it fails rather than ship a signed app that is not notarized
-(`OPENBOTS_REQUIRE_NOTARIZATION=1`).
+A release must be signed. The tag build signs with the Developer ID certificate, notarizes and
+staples in the `afterSign` hook, and verifies with `codesign`, `spctl` and `stapler`; it fails
+rather than ship a signed app that is not notarized (`OPENBOTS_REQUIRE_NOTARIZATION=1`).
 
-With none of them set, the release still goes out with an unsigned (ad-hoc signed) app, and the
-notes say "Unsigned build: right-click Open on first launch". Squirrel.Mac only installs updates
-signed by the same Developer ID, so electron-updater cannot update an unsigned build, and the
-release leaves out `latest-mac.yml`: copies installed from an earlier signed release then do not
-download an update they cannot install. Some but not all of the secrets set fails the Mac job, as
-a broken setup rather than a choice. The dry run never signs and never sees the secrets.
+Without all five secrets below, the Mac job fails and nothing is published. Squirrel.Mac only
+installs updates signed by the same Developer ID, so electron-updater cannot update an unsigned
+app: an unsigned release would leave everyone who installs it on that version until they replace
+it by hand. Set the secrets, then release the tag again (Cutting a release, above). The dry run
+never signs and never sees the secrets; its app is ad-hoc signed.
 
 | Secret                    | Value                                                                |
 | ------------------------- | -------------------------------------------------------------------- |

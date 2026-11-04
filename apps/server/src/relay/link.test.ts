@@ -1,5 +1,6 @@
 import {
   createRelay,
+  MemoryRegistry,
   type PushGateway,
   type PushOutcome,
   type PushRequest,
@@ -8,7 +9,7 @@ import {
 import { EVENTS_CHANNEL, wsEvent, type WsEvent } from '@openbots/shared';
 import { connectThroughRelay, hostPresence, RelayConnectError } from '@openbots/tunnel';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { WebSocket } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
 import { publishEvent } from '../infra/index.js';
@@ -19,6 +20,7 @@ import { createTestApp, type TestApp } from '../test-app.js';
 import {
   createRelayLink,
   DEFAULT_LINK_TIMING,
+  hostLinkUrl,
   relayCloseCode,
   type HostRelayLink,
 } from './link.js';
@@ -114,7 +116,14 @@ describe('relay link', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(await hostPresence({ relayUrl: relay.url, hostId: instance.hostId })).toBe(false);
     await expect(
-      l.push({ platform: 'ios', token: 'ab', ciphertext: 'x', priority: 5, expiresAt: 1 }),
+      l.push({
+        platform: 'ios',
+        token: 'ab',
+        environment: 'production',
+        ciphertext: 'x',
+        priority: 5,
+        expiresAt: 1,
+      }),
     ).rejects.toThrow(/not linked/);
   });
 
@@ -244,6 +253,7 @@ describe('relay link', () => {
     const request = {
       platform: 'ios' as const,
       token: 'abcdef0123',
+      environment: 'sandbox' as const,
       ciphertext: 'c2VhbGVk',
       collapseId: 'approval:1',
       priority: 10 as const,
@@ -254,6 +264,7 @@ describe('relay link', () => {
     expect(pushes).toEqual([
       {
         token: request.token,
+        environment: 'sandbox',
         ciphertext: request.ciphertext,
         collapseId: request.collapseId,
         priority: 10,
@@ -314,6 +325,56 @@ describe('relay link', () => {
     await waitFor(
       async () => !(await hostPresence({ relayUrl: relay.url, hostId: instance.hostId })),
     );
+  });
+
+  it('dials /v1/host with its host id in the query', async () => {
+    const urls: string[] = [];
+    const fake = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    fake.on('connection', (_socket, req) => urls.push(req.url ?? ''));
+    await new Promise((resolve) => fake.once('listening', resolve));
+    const { port } = fake.address() as { port: number };
+    try {
+      await pair();
+      const l = await createRelayLink(
+        { ...deps, config: { ...deps.config, relayUrl: `ws://127.0.0.1:${port}/` } },
+        { instance, timing: FAST },
+      );
+      links.push(l);
+      await waitFor(() => urls.length > 0);
+      expect(urls[0]).toBe(`/v1/host?hostId=${instance.hostId}`);
+    } finally {
+      for (const client of fake.clients) client.terminate();
+      await new Promise((resolve) => fake.close(resolve));
+    }
+    expect(hostLinkUrl('wss://relay.example/', 'abc')).toBe(
+      'wss://relay.example/v1/host?hostId=abc',
+    );
+  });
+
+  it('reconnects when the relay closes it 1012 because the lease moved', async () => {
+    const shared = new MemoryRegistry();
+    const own = await createRelay({ port: 0, host: '127.0.0.1', registry: shared });
+    try {
+      await pair();
+      const l = await createRelayLink(
+        { ...deps, config: { ...deps.config, relayUrl: wsUrl(own) } },
+        { instance, timing: FAST },
+      );
+      links.push(l);
+      await waitFor(() => l.status().status === 'linked');
+      const since = l.status().since;
+      // Another machine took the host over with a newer epoch, then let it go.
+      const lease = await shared.owner(instance.hostId);
+      await shared.release(instance.hostId, own.nodeId, lease!.epoch);
+      await shared.acquire(instance.hostId, 'elsewhere', 5_000, true);
+      await own.ownership.renewAll();
+      await waitFor(() => l.status().status === 'connecting');
+      await shared.release(instance.hostId, 'elsewhere', lease!.epoch + 1);
+      await waitFor(() => l.status().status === 'linked', 5_000);
+      expect(l.status().since).not.toBe(since);
+    } finally {
+      await own.close();
+    }
   });
 
   it('passes on only the close codes the relay accepts', () => {

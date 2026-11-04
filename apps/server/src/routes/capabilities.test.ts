@@ -31,6 +31,7 @@ describe('capabilities route', () => {
       relay: false,
       version: ROOT_VERSION,
       protocol: { relay: 1 },
+      setupPairingOnly: false,
       auth: 'password',
     });
   });
@@ -52,6 +53,7 @@ describe('capabilities route', () => {
       relay: false,
       version: ROOT_VERSION,
       protocol: { relay: 1 },
+      setupPairingOnly: false,
       auth: 'password',
     });
   });

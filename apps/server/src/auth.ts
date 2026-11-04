@@ -57,7 +57,10 @@ import { ensureWorkspace, lockWorkspace } from './workspace.js';
 // MOBILE_AND_VM_PLAN.md 8.3) makes the owner the same way, through
 // `createPairingOwner`, another server-only endpoint: the same placeholder
 // email, no password, and no session (the phone gets an API key instead,
-// services/devices.ts).
+// services/devices.ts). Such an owner sets an email and a password for the
+// web app later from the phone (`POST /api/v1/me/credentials`, plan 8.3
+// step 5) through `setOwnerCredentials`, a third server-only endpoint: only
+// while they still have the placeholder email and no password.
 //
 // Sign-in providers' access and refresh tokens are encrypted at rest with the
 // better-auth secret (`encryptOAuthTokens`, S-9); rows from before are
@@ -77,6 +80,9 @@ const LOCAL_SESSION_PATH = '/openbots/local-session';
 /** better-auth's path for `createPairingOwner`, which no HTTP request reaches either. */
 const PAIRING_OWNER_PATH = '/openbots/pairing-owner';
 
+/** better-auth's path for `setOwnerCredentials`, which no HTTP request reaches. */
+const OWNER_CREDENTIALS_PATH = '/openbots/owner-credentials';
+
 /** The server-only endpoints that may make the owner in local mode. */
 const OWNER_PATHS = new Set([LOCAL_SESSION_PATH, PAIRING_OWNER_PATH]);
 
@@ -87,6 +93,12 @@ export const LOCAL_ONLY_MESSAGE = 'This OpenBots server signs in from the Mac ap
 
 const localOnly = () =>
   new APIError('FORBIDDEN', { code: 'LOCAL_ONLY', message: LOCAL_ONLY_MESSAGE });
+
+export const SETUP_PAIRING_ONLY_MESSAGE =
+  'This server makes its owner by pairing a phone. Run `openbots pair` on the server and scan the code with the OpenBots app.';
+
+const setupPairingOnly = () =>
+  new APIError('FORBIDDEN', { code: 'SETUP_PAIRING_ONLY', message: SETUP_PAIRING_ONLY_MESSAGE });
 
 /**
  * The part of the better-auth instance the server uses. Spelled out because the
@@ -127,6 +139,15 @@ export interface Auth {
     createPairingOwner(input: {
       body: { name: string };
     }): Promise<{ user: { id: string; name: string }; created: boolean }>;
+    /**
+     * Gives an owner made with the placeholder email and no password (a
+     * pairing's or the Mac app's) an email and a password. Refuses (409
+     * CREDENTIALS_SET) once they have either, and an email another account
+     * has (409 EMAIL_TAKEN).
+     */
+    setOwnerCredentials(input: {
+      body: { userId: string; email: string; password: string };
+    }): Promise<{ user: { id: string; email: string } }>;
   };
 }
 
@@ -216,6 +237,10 @@ export function createAuth({
             await ensureWorkspace(db);
             const [anyUser] = await db.select({ id: schema.users.id }).from(schema.users).limit(1);
             if (anyUser) throw signupClosed();
+            // The first owner comes from a pairing only (OPENBOTS_SETUP_PAIRING_ONLY).
+            if (config.setupPairingOnly && !OWNER_PATHS.has(ctx?.path ?? '')) {
+              throw setupPairingOnly();
+            }
           },
           after: async (user) => {
             if (!selfHosted()) return;
@@ -395,9 +420,19 @@ async function ensureOwner(
   }
 }
 
-/** `createLocalSession` and `createPairingOwner` (see the top of this file). */
+/** `createLocalSession`, `createPairingOwner` and `setOwnerCredentials` (see the top of this file). */
 function ownerPlugin(db: Db) {
   const body = z.object({ name: z.string().min(1).max(100) });
+  const credentials = z.object({
+    userId: z.string().min(1),
+    email: z.email().max(254),
+    password: z.string().min(1).max(1024),
+  });
+  const credentialsSet = () =>
+    new APIError('CONFLICT', {
+      code: 'CREDENTIALS_SET',
+      message: 'This account has an email and a password already. Change them on the web.',
+    });
   return {
     id: 'openbots-owner',
     endpoints: {
@@ -433,6 +468,52 @@ function ownerPlugin(db: Db) {
           const user = await adapter.findUserById(owner.id);
           if (!user) throw new APIError('NOT_FOUND', { message: 'The owner is gone' });
           return ctx.json({ user: { id: user.id, name: user.name }, created: owner.created });
+        },
+      ),
+      setOwnerCredentials: createAuthEndpoint(
+        OWNER_CREDENTIALS_PATH,
+        {
+          method: 'POST',
+          body: credentials,
+          // Called from routes/me.ts only, never routed.
+          metadata: { SERVER_ONLY: true },
+        },
+        async (ctx) => {
+          const adapter = ctx.context.internalAdapter;
+          const { userId, password } = ctx.body;
+          const email = ctx.body.email.toLowerCase();
+          const user = await adapter.findUserById(userId);
+          if (!user) throw new APIError('NOT_FOUND', { message: 'No such account' });
+          if (user.email !== LOCAL_OWNER_EMAIL) throw credentialsSet();
+          if (await adapter.findCredentialAccount(userId)) throw credentialsSet();
+          const { minPasswordLength, maxPasswordLength } = ctx.context.password.config;
+          if (password.length < minPasswordLength || password.length > maxPasswordLength) {
+            throw new APIError('BAD_REQUEST', {
+              code: 'INVALID_PASSWORD',
+              message: `A password has ${minPasswordLength} to ${maxPasswordLength} characters.`,
+            });
+          }
+          if (email === LOCAL_OWNER_EMAIL) {
+            throw new APIError('BAD_REQUEST', {
+              code: 'INVALID_EMAIL',
+              message: 'Give your own email address.',
+            });
+          }
+          const taken = await adapter.findUserByEmail(email);
+          if (taken && taken.user.id !== userId) {
+            throw new APIError('CONFLICT', {
+              code: 'EMAIL_TAKEN',
+              message: 'Another account has this email.',
+            });
+          }
+          await adapter.createAccount({
+            userId,
+            providerId: 'credential',
+            accountId: userId,
+            password: await ctx.context.password.hash(password),
+          });
+          await adapter.updateUser(userId, { email, emailVerified: false });
+          return ctx.json({ user: { id: userId, email } });
         },
       ),
     },

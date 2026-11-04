@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { WebSocket } from 'ws';
 import {
   connectClient,
   linkHost,
@@ -104,7 +105,7 @@ describe('client stream', () => {
   });
 
   it('closes the ninth stream 4429', async () => {
-    const relay = await startRelay();
+    const relay = await startRelay({ limits: { addressStreamsPerHost: 8 } });
     const host = makeHost();
     const link = await linkHost(relay, host);
     for (let i = 0; i < 8; i += 1) await connectClient(relay, host, link);
@@ -112,18 +113,88 @@ describe('client stream', () => {
     expect((await ninth.closed).code).toBe(4429);
   });
 
-  it('closes 4429 past the opens of the hour', async () => {
+  it('closes 4429 past the opens of the hour, counting only streams that carried a payload', async () => {
     const relay = await startRelay({ limits: { opensPerHour: 2 } });
     const host = makeHost();
     const link = await linkHost(relay, host);
-    for (let i = 0; i < 2; i += 1) {
+    // A stream that sends nothing spends none of the host's hour.
+    for (let i = 0; i < 3; i += 1) {
       const { client } = await connectClient(relay, host, link);
       client.socket.close();
       await client.closed;
       await link.text();
     }
-    const third = await Peer.open(wsUrl(relay, `/v1/connect/${host.hostId}`));
-    expect((await third.closed).code).toBe(4429);
+    for (let i = 0; i < 2; i += 1) {
+      const { client, stream } = await connectClient(relay, host, link);
+      client.send(Buffer.from('hello'));
+      expect(await link.binary()).toEqual(prefixed(stream, Buffer.from('hello')));
+      client.socket.close();
+      await client.closed;
+      await link.text();
+    }
+    const { client, stream } = await connectClient(relay, host, link);
+    client.send(Buffer.from('one too many'));
+    expect(await client.closed).toEqual({ code: 4429, reason: 'too many stream opens' });
+    // The host hears the close, never the payload.
+    expect(await link.text()).toMatchObject({ type: 'close', stream, code: 4429 });
+  });
+
+  it('closes a stream that carries no payload in time 4400', async () => {
+    const relay = await startRelay({ limits: { firstPayloadMs: 100 } });
+    const host = makeHost();
+    const link = await linkHost(relay, host);
+    const { client, stream } = await connectClient(relay, host, link);
+    expect(await client.closed).toEqual({ code: 4400, reason: 'no data in time' });
+    expect(await link.text()).toMatchObject({ type: 'close', stream, code: 4400 });
+    // One that sends in time stays.
+    const second = await connectClient(relay, host, link);
+    second.client.send(Buffer.from('x'));
+    await link.binary();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(second.client.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it('holds one address to 4 streams of a host and 60 opens a minute', async () => {
+    const relay = await startRelay({ limits: { addressOpensPerHostPerMinute: 6 } });
+    const host = makeHost();
+    const link = await linkHost(relay, host);
+    const open = [];
+    for (let i = 0; i < 4; i += 1) open.push(await connectClient(relay, host, link));
+    const fifth = await Peer.open(wsUrl(relay, `/v1/connect/${host.hostId}`));
+    expect(await fifth.closed).toEqual({
+      code: 4429,
+      reason: 'too many streams from this address',
+    });
+    // Another host is not affected by this one's slots.
+    const other = makeHost();
+    const otherLink = await linkHost(relay, other);
+    await connectClient(relay, other, otherLink);
+    for (const { client } of open.splice(0, 3)) {
+      client.socket.close();
+      await client.closed;
+      await link.text();
+    }
+    // The refusal at the slots counted nothing: 4 opens so far, 2 more this minute, then 4429.
+    for (let i = 0; i < 2; i += 1) await connectClient(relay, host, link);
+    const late = await Peer.open(wsUrl(relay, `/v1/connect/${host.hostId}`));
+    expect(await late.closed).toEqual({
+      code: 4429,
+      reason: 'too many stream opens from this address',
+    });
+  });
+
+  it('holds one address to its opens a minute across hosts', async () => {
+    const relay = await startRelay({ limits: { addressOpensPerMinute: 2 } });
+    const hosts = [makeHost(), makeHost(), makeHost()];
+    const links = [];
+    for (const host of hosts) links.push(await linkHost(relay, host));
+    await connectClient(relay, hosts[0]!, links[0]!);
+    await connectClient(relay, hosts[1]!, links[1]!);
+    const third = await Peer.open(wsUrl(relay, `/v1/connect/${hosts[2]!.hostId}`));
+    expect(await third.closed).toEqual({
+      code: 4429,
+      reason: 'too many stream opens from this address',
+    });
   });
 
   it('closes 4404 when the host is not linked', async () => {
@@ -148,15 +219,45 @@ describe('client stream', () => {
     expect(await link.text()).toMatchObject({ type: 'close', stream });
   });
 
-  it('closes the link 1008 past the bytes of the minute', async () => {
-    const relay = await startRelay({ limits: { bytesPerMinute: 1_000 } });
+  it('closes only the stream, never the link, past the client bytes of the minute', async () => {
+    const relay = await startRelay({ limits: { streamBytesPerMinute: 1_000 } });
     const host = makeHost();
     const link = await linkHost(relay, host);
-    const { client } = await connectClient(relay, host, link);
+    const { client, stream } = await connectClient(relay, host, link);
     client.send(Buffer.alloc(600));
     await link.binary();
     client.send(Buffer.alloc(600));
-    expect((await link.closed).code).toBe(1008);
-    expect((await client.closed).code).toBe(4410);
+    expect(await client.closed).toEqual({ code: 1008, reason: 'byte rate exceeded' });
+    expect(await link.text()).toMatchObject({ type: 'close', stream, code: 1008 });
+    // The link stays and serves the next phone.
+    const next = await connectClient(relay, host, link);
+    next.client.send(Buffer.alloc(600));
+    expect(await link.binary()).toEqual(prefixed(next.stream, Buffer.alloc(600)));
+  });
+
+  it('counts client bytes per address across its streams', async () => {
+    const relay = await startRelay({ limits: { addressBytesPerMinute: 1_000 } });
+    const host = makeHost();
+    const link = await linkHost(relay, host);
+    const one = await connectClient(relay, host, link);
+    const two = await connectClient(relay, host, link);
+    one.client.send(Buffer.alloc(600));
+    await link.binary();
+    two.client.send(Buffer.alloc(600));
+    expect(await two.client.closed).toEqual({ code: 1008, reason: 'byte rate exceeded' });
+    expect(link.socket.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it('closes the stream that carries host bytes past the host minute, and keeps the link', async () => {
+    const relay = await startRelay({ limits: { bytesPerMinute: 1_000 } });
+    const host = makeHost();
+    const link = await linkHost(relay, host);
+    const { client, stream } = await connectClient(relay, host, link);
+    link.send(prefixed(stream, Buffer.alloc(600)));
+    expect(await client.binary()).toEqual(Buffer.alloc(600));
+    link.send(prefixed(stream, Buffer.alloc(600)));
+    expect(await client.closed).toEqual({ code: 1008, reason: 'byte rate exceeded' });
+    expect(await link.text()).toMatchObject({ type: 'close', stream, code: 1008 });
+    expect(link.socket.readyState).toBe(WebSocket.OPEN);
   });
 });

@@ -57,7 +57,11 @@ describe('secrets', () => {
       tampered[offset]! ^= 0x01;
       expect(() => decryptSecret(tampered, keyring)).toThrow();
     }
-    const twoKeys = keyringFromKeys(generateMasterKey(), [keyring.current.key.toString('base64')]);
+    // Key ids are one byte: draw until the new key's differs, or the relabel changes nothing.
+    let twoKeys = keyringFromKeys(generateMasterKey(), [keyring.current.key.toString('base64')]);
+    while (twoKeys.current.id === keyring.current.id) {
+      twoKeys = keyringFromKeys(generateMasterKey(), [keyring.current.key.toString('base64')]);
+    }
     const relabelled = Buffer.from(sealed);
     relabelled[1] = twoKeys.current.id;
     expect(() => decryptSecret(relabelled, twoKeys)).toThrow(/no configured master key/);

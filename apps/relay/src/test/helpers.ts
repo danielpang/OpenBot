@@ -100,8 +100,14 @@ export class Peer {
   }
 }
 
-export function wsUrl(relay: Relay, path: string): string {
+/** Anything with an http origin: a relay, or the test proxy in front of several. */
+export function wsUrl(relay: { url: string }, path: string): string {
   return relay.url.replace(/^http/, 'ws') + path;
+}
+
+/** The host link's path for a host: `/v1/host?hostId=...`. */
+export function hostPath(host: HostIdentity | string): string {
+  return `/v1/host?hostId=${typeof host === 'string' ? host : host.hostId}`;
 }
 
 /** Signs the challenge as `host` would. */
@@ -123,11 +129,11 @@ export function hello(
 
 /** A host link through to `linked`. */
 export async function linkHost(
-  relay: Relay,
+  relay: { url: string },
   host: HostIdentity,
   capabilities?: string[],
 ): Promise<Peer> {
-  const peer = await Peer.open(wsUrl(relay, '/v1/host'));
+  const peer = await Peer.open(wsUrl(relay, hostPath(host)));
   const challenge = await peer.text();
   peer.send(hello(host, challenge, capabilities));
   const linked = await peer.text();
@@ -137,7 +143,7 @@ export async function linkHost(
 
 /** A client stream through to `open`, and the host's matching `open`. */
 export async function connectClient(
-  relay: Relay,
+  relay: { url: string },
   host: HostIdentity,
   hostLink: Peer,
 ): Promise<{ client: Peer; stream: number }> {

@@ -1395,3 +1395,68 @@ describe('the sandbox network', () => {
     });
   });
 });
+
+describe('the relay (OPENBOTS_RELAY_URL)', () => {
+  const running = { code: 0, stdout: '{"Service":"openbots","State":"running"}', stderr: '' };
+
+  it('writes the relay into `.env` and restarts a running stack on it', async () => {
+    const existing = `${RECORDED}OPENBOTS_RELAY_URL=\n# mine\n`;
+    const { manager, files, exec } = makeManager({
+      files: memoryFiles({ [paths.envTemplate]: TEMPLATE, [paths.envFile]: existing }),
+      exec: composeExec({ ...IMAGES_HERE, ps: running }),
+    });
+    expect(await manager.relayUrl()).toBeNull();
+    await manager.setRelay('wss://relay.example.com');
+    const env = files.data.get(paths.envFile)!;
+    expect(envValue(env, 'OPENBOTS_RELAY_URL')).toBe('wss://relay.example.com');
+    expect(env).toContain('# mine\n');
+    expect(await manager.relayUrl()).toBe('wss://relay.example.com');
+    expect(verbs(exec)).toContain('up');
+  });
+
+  it('only writes `.env` while the stack is stopped, and does nothing for the same value', async () => {
+    const { manager, files, exec } = makeManager({
+      files: memoryFiles({
+        [paths.envTemplate]: TEMPLATE,
+        [paths.envFile]: `${RECORDED}OPENBOTS_RELAY_URL=wss://a.example\n`,
+      }),
+    });
+    await manager.setRelay('wss://a.example');
+    expect(verbs(exec)).not.toContain('up');
+    await manager.setRelay('wss://b.example');
+    expect(envValue(files.data.get(paths.envFile)!, 'OPENBOTS_RELAY_URL')).toBe('wss://b.example');
+    expect(verbs(exec)).not.toContain('up');
+  });
+
+  it('gives a new `.env`, and one without a relay, the default relay, and keeps the owner’s', async () => {
+    const defaultRelayUrl = 'wss://shared.example';
+    const fresh = makeManager({ defaultRelayUrl });
+    await fresh.manager.start();
+    expect(await fresh.manager.relayUrl()).toBe(defaultRelayUrl);
+
+    const empty = makeManager({
+      defaultRelayUrl,
+      files: memoryFiles({
+        [paths.envTemplate]: TEMPLATE,
+        [paths.envFile]: `${RECORDED}OPENBOTS_RELAY_URL=\n`,
+      }),
+    });
+    await empty.manager.start();
+    expect(await empty.manager.relayUrl()).toBe(defaultRelayUrl);
+
+    const own = makeManager({
+      defaultRelayUrl,
+      files: memoryFiles({
+        [paths.envTemplate]: TEMPLATE,
+        [paths.envFile]: `${RECORDED}OPENBOTS_RELAY_URL=wss://mine.example\n`,
+      }),
+    });
+    await own.manager.start();
+    expect(await own.manager.relayUrl()).toBe('wss://mine.example');
+  });
+
+  it('refuses before the first start wrote `.env`', async () => {
+    const { manager } = makeManager();
+    await expect(manager.setRelay('wss://a.example')).rejects.toThrow(/Start OpenBots/);
+  });
+});

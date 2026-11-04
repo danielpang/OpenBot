@@ -2,6 +2,8 @@ import {
   DESKTOP_CHANNELS,
   type ConnectionInfo,
   type ConnectOptions,
+  type PairCode,
+  type PairRelayView,
   type PlatformInfo,
   type ProfilesView,
   type QuickAskBot,
@@ -16,8 +18,8 @@ import { createStackBridge, type IpcRendererLike, type StackBridge } from '../st
 // app's connection indicator) and `oauth` (a connector's sign-in in the
 // default browser); the server's pages (the web app, possibly a
 // remote server's) get nothing more. The app's own pages (the start page and
-// the quick-ask window, loaded from the app bundle) also get the profiles, the
-// three ways to connect, the local stack and quick ask; the main process
+// the quick-ask and pairing windows, loaded from the app bundle) also get the
+// profiles, the three ways to connect, the local stack, quick ask and pairing; the main process
 // checks the sender again, so a page that reaches these channels some other
 // way is refused. `connection` answers only the active server's page in the
 // main window, and its Start, Stop and Show logs only for This Mac; `oauth`
@@ -71,6 +73,16 @@ export interface AppBridge extends WebBridge {
   quickAsk: {
     bots(): Promise<QuickAskBot[]>;
     send(botId: string, text: string): Promise<QuickAskResult>;
+    close(): void;
+  };
+  pair: {
+    relay(): Promise<PairRelayView>;
+    /** This Mac only: writes the relay, restarts the stack on it and signs out paired phones. */
+    setRelay(url: string): Promise<PairRelayView>;
+    /** A new code; the main process cancels the window's last unused one. */
+    code(): Promise<PairCode>;
+    /** Hears the phone that used the window's code; returns the unsubscribe. */
+    onPaired(listener: (name: string) => void): () => void;
     close(): void;
   };
 }
@@ -136,6 +148,20 @@ export function createAppBridge(ipcRenderer: IpcRendererLike, platform: Platform
       bots: () => invoke<QuickAskBot[]>(DESKTOP_CHANNELS.quickAskBots),
       send: (botId, text) => invoke<QuickAskResult>(DESKTOP_CHANNELS.quickAskSend, botId, text),
       close: () => void invoke(DESKTOP_CHANNELS.quickAskClose),
+    },
+    pair: {
+      relay: () => invoke<PairRelayView>(DESKTOP_CHANNELS.pairRelay),
+      setRelay: (url) => invoke<PairRelayView>(DESKTOP_CHANNELS.pairSetRelay, String(url)),
+      code: () => invoke<PairCode>(DESKTOP_CHANNELS.pairCode),
+      onPaired(listener) {
+        const handler = (_event: unknown, ...args: unknown[]) => {
+          const [name] = args;
+          if (typeof name === 'string') listener(name);
+        };
+        ipcRenderer.on(DESKTOP_CHANNELS.pairPaired, handler);
+        return () => void ipcRenderer.removeListener(DESKTOP_CHANNELS.pairPaired, handler);
+      },
+      close: () => void invoke(DESKTOP_CHANNELS.pairClose),
     },
   };
 }

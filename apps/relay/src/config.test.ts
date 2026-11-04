@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadConfig } from './config.js';
+import { loadConfig, takeApnsKey } from './config.js';
 
 describe('config', () => {
   it('defaults to port 3200 on every interface with no push', () => {
@@ -9,7 +9,92 @@ describe('config', () => {
       trustProxy: false,
       logLevel: 'info',
       apnsMissing: [],
+      minClusterSize: 1,
+      hostBudgetShare: 0.125,
+      replay: 'off',
+      redisCommandTimeoutMs: 2_000,
+      cluster: { leaseMs: 30_000, renewMs: 10_000, nodeTtlMs: 15_000, heartbeatMs: 5_000 },
     });
+  });
+
+  it('replays only on Fly or when asked', () => {
+    expect(loadConfig({}).replay).toBe('off');
+    expect(loadConfig({ FLY_MACHINE_ID: '3d8d9e1c2a5e78' }).replay).toBe('fly');
+    expect(loadConfig({ RELAY_REPLAY: 'fly' }).replay).toBe('fly');
+    expect(loadConfig({ FLY_MACHINE_ID: '3d8d9e1c2a5e78', RELAY_REPLAY: 'off' }).replay).toBe(
+      'off',
+    );
+    expect(() => loadConfig({ RELAY_REPLAY: 'nginx' })).toThrow(/RELAY_REPLAY/);
+  });
+
+  it('reads the presence token and the Redis call limit', () => {
+    const config = loadConfig({
+      RELAY_PRESENCE_TOKEN: 'a-long-enough-presence-token',
+      RELAY_REDIS_COMMAND_TIMEOUT_MS: '500',
+    });
+    expect(config.presenceToken).toBe('a-long-enough-presence-token');
+    expect(config.redisCommandTimeoutMs).toBe(500);
+    expect(() => loadConfig({ RELAY_PRESENCE_TOKEN: 'short' })).toThrow(/RELAY_PRESENCE_TOKEN/);
+  });
+
+  it('takes the APNs key from RELAY_APNS_KEY once, and deletes it from the environment', () => {
+    const pem = '-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----';
+    const settings = {
+      RELAY_APNS_KEY_ID: 'ABC123DEFG',
+      RELAY_APNS_TEAM_ID: 'TEAM123456',
+      RELAY_APNS_TOPIC: 'dev.openbots.app',
+    };
+    const env: NodeJS.ProcessEnv = {
+      ...settings,
+      RELAY_APNS_KEY: Buffer.from(pem).toString('base64'),
+    };
+    const config = loadConfig(env);
+    expect(config.apns).toMatchObject({ keyId: 'ABC123DEFG' });
+    expect(config.apns?.keyFile).toBeUndefined();
+    expect(takeApnsKey(env)).toBe(pem);
+    expect(env.RELAY_APNS_KEY).toBeUndefined();
+    expect(takeApnsKey({ RELAY_APNS_KEY: pem })).toBe(pem);
+    expect(takeApnsKey({})).toBeUndefined();
+    expect(() => takeApnsKey({ RELAY_APNS_KEY: 'bm90IGEga2V5' })).toThrow(/RELAY_APNS_KEY/);
+  });
+
+  it('reads the cluster settings, with the node id from FLY_MACHINE_ID by default', () => {
+    expect(
+      loadConfig({
+        RELAY_REDIS_URL: 'redis://redis.internal:6379',
+        FLY_MACHINE_ID: '3d8d9e1c2a5e78',
+        RELAY_MIN_CLUSTER_SIZE: '2',
+        RELAY_LEASE_MS: '9000',
+        RELAY_LEASE_RENEW_MS: '3000',
+        RELAY_NODE_TTL_MS: '6000',
+        RELAY_NODE_HEARTBEAT_MS: '2000',
+      }),
+    ).toMatchObject({
+      redisUrl: 'redis://redis.internal:6379',
+      nodeId: '3d8d9e1c2a5e78',
+      minClusterSize: 2,
+      cluster: { leaseMs: 9000, renewMs: 3000, nodeTtlMs: 6000, heartbeatMs: 2000 },
+    });
+    expect(loadConfig({ RELAY_NODE_ID: 'relay-a', FLY_MACHINE_ID: 'other' }).nodeId).toBe(
+      'relay-a',
+    );
+    expect(loadConfig({ RELAY_REDIS_URL: '' }).redisUrl).toBeUndefined();
+    expect(loadConfig({ RELAY_METRICS_TOKEN: 'a-long-enough-token' }).metricsToken).toBe(
+      'a-long-enough-token',
+    );
+    expect(() => loadConfig({ RELAY_METRICS_TOKEN: 'short' })).toThrow(/RELAY_METRICS_TOKEN/);
+    expect(loadConfig({ RELAY_HOST_BUDGET_SHARE: '0.25' }).hostBudgetShare).toBe(0.25);
+    for (const bad of ['0', '-0.1', '1.5', 'half']) {
+      expect(() => loadConfig({ RELAY_HOST_BUDGET_SHARE: bad })).toThrow(/RELAY_HOST_BUDGET_SHARE/);
+    }
+  });
+
+  it('refuses cluster timings that could not keep a lease', () => {
+    expect(() => loadConfig({ RELAY_LEASE_MS: '5000', RELAY_LEASE_RENEW_MS: '5000' })).toThrow(
+      /RELAY_LEASE_RENEW_MS/,
+    );
+    expect(() => loadConfig({ RELAY_REDIS_URL: 'http://redis' })).toThrow(/RELAY_REDIS_URL/);
+    expect(() => loadConfig({ RELAY_NODE_ID: 'has space' })).toThrow(/RELAY_NODE_ID/);
   });
 
   it('reads every setting', () => {

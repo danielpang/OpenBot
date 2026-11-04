@@ -2,7 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { EVENTS_CHANNEL, type WsEvent } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { sql } from 'drizzle-orm';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Auth } from '../auth.js';
 import { adapterHeaders, DEVICE_HEADER, DEVICE_KEY_HEADER } from '../client-ip.js';
 import { schema } from '../db/client.js';
 import { inWorkspace } from '../db/scope.js';
@@ -12,9 +14,12 @@ import {
   MAX_OPEN_PAIRINGS,
   PAIRING_TTL_MS,
   anyDevicesOrPairings,
+  completePairing,
   createPairing,
+  deviceKeyRule,
   expireDuePairings,
   findDeviceByPublicKey,
+  findDevicesByPublicKey,
 } from '../services/devices.js';
 import { ensureInstanceKey } from '../services/instance-key.js';
 import { ORIGIN, createTestApp, type TestApp } from '../test-app.js';
@@ -308,7 +313,7 @@ describe('devices and pairing', () => {
           peer: '127.0.0.1',
           headers: {
             ...adapterHeaders(),
-            [DEVICE_HEADER]: `stream:${i}`,
+            [DEVICE_HEADER]: `remote:192.0.2.${i}`,
             [DEVICE_KEY_HEADER]: b64(randomBytes(32)),
           },
         });
@@ -322,7 +327,7 @@ describe('devices and pairing', () => {
         peer: '127.0.0.1',
         headers: {
           ...adapterHeaders(),
-          [DEVICE_HEADER]: 'stream:9',
+          [DEVICE_HEADER]: 'remote:192.0.2.9',
           [DEVICE_KEY_HEADER]: b64(publicKey),
         },
       });
@@ -339,7 +344,7 @@ describe('devices and pairing', () => {
           peer: '127.0.0.1',
           headers: {
             ...adapterHeaders(),
-            [DEVICE_HEADER]: 'stream:42',
+            [DEVICE_HEADER]: 'remote:192.0.2.42',
             [DEVICE_KEY_HEADER]: b64(publicKey),
           },
         }),
@@ -441,16 +446,56 @@ describe('devices and pairing', () => {
       expect((await request(t, 'GET', '/me', { key: paired.key })).status).toBe(200);
     });
 
-    it('refuses a device key on routes that make credentials', async () => {
+    it('refuses a device key on every route that makes a credential or a way out', async () => {
       const paired = await pair();
-      for (const [path, body] of [
-        ['/api-keys', { name: 'from-phone' }],
-        ['/devices/pairings', {}],
-      ] as const) {
-        const res = await request(t, 'POST', path, { key: paired.key, body });
-        expect(res.status, path).toBe(403);
+      const id = crypto.randomUUID();
+      const refused: [string, string, unknown?][] = [
+        ['POST', '/api-keys', { name: 'from-phone' }],
+        ['POST', '/devices/pairings', {}],
+        ['POST', `/bots/${id}/endpoints`, {}],
+        ['POST', `/endpoints/${id}/rotate`],
+        ['PATCH', `/endpoints/${id}`, { signature: { kind: 'generic' } }],
+        ['POST', '/event-subscriptions', { url: 'https://example.com/hook', events: [] }],
+        ['PATCH', `/event-subscriptions/${id}`, { url: 'https://example.com/other' }],
+        ['PATCH', `/event-subscriptions/${id}`, { rotateSecret: true }],
+        ['POST', '/connectors', { name: 'x' }],
+        ['POST', '/connectors/import', { mcpServers: {} }],
+        ['PATCH', `/connectors/${id}`, { url: 'https://example.com/mcp' }],
+        ['GET', `/connectors/${id}/oauth/start`],
+        ['PATCH', `/providers/${id}`, { baseUrl: 'https://example.com/v1' }],
+        // Fields the old field-by-field list missed: anything not known harmless is refused.
+        ['PATCH', `/connectors/${id}`, { env: { TOKEN: 'x' } }],
+        ['PATCH', `/connectors/${id}`, { headers: { authorization: 'x' } }],
+        ['PATCH', `/connectors/${id}`, { params: { A: 'x' } }],
+        ['PATCH', `/connectors/${id}`, { secrets: { A: 'x' } }],
+        ['PATCH', `/providers/${id}`, { local: true }],
+        ['PATCH', `/providers/${id}`, { apiKey: 'sk-x' }],
+        ['PATCH', `/providers/${id}`, { headers: { a: 'b' } }],
+        ['PATCH', `/endpoints/${id}`, { allowedIps: ['0.0.0.0/0'] }],
+        ['PATCH', `/endpoints/${id}`, { toolPolicyOverride: {} }],
+        ['PATCH', `/event-subscriptions/${id}`, { local: true }],
+        ['PUT', `/connectors/${id}/trusted`, { trusted: true }],
+        ['PUT', `/connectors/${id}/local`, { local: true }],
+        ['PUT', '/connector-policy', { blocked: [] }],
+        ['PATCH', '/settings', {}],
+      ];
+      for (const [method, path, body] of refused) {
+        const res = await request(t, method, path, { key: paired.key, body });
+        expect(res.status, `${method} ${path}`).toBe(403);
         expect(((await res.json()) as { code: string }).code).toBe('DEVICE_KEY_NOT_ALLOWED');
       }
+      // The same routes for edits that open nothing go on to the route (here, 404).
+      for (const [method, path, body] of [
+        ['PATCH', `/endpoints/${id}`, { enabled: false }],
+        ['PATCH', `/event-subscriptions/${id}`, { enabled: false }],
+        ['PATCH', `/connectors/${id}`, { name: 'Renamed' }],
+        ['PATCH', `/providers/${id}`, { name: 'Renamed' }],
+      ] as const) {
+        const res = await request(t, method, path, { key: paired.key, body });
+        expect(res.status, `${method} ${path}`).not.toBe(403);
+      }
+      // The managed build's invitations are on the list too.
+      expect(deviceKeyRule('POST', '/organization/invitations')).toBeDefined();
       const script = await json<{ key: string }>(
         request(t, 'POST', '/api-keys', { cookie, body: { name: 'script' } }),
         201,
@@ -470,6 +515,151 @@ describe('devices and pairing', () => {
         .from(schema.devices)
         .where(eq(schema.devices.id, paired.device.id));
       expect(row!.lastSeenAt).not.toBeNull();
+    });
+  });
+
+  describe('pairing refusals', () => {
+    it('refuses a pairing whose owner is suspended, without spending the code', async () => {
+      const pairing = await newPairing();
+      await t.db
+        .update(schema.workspaceMembers)
+        .set({ suspendedAt: new Date() })
+        .where(eq(schema.workspaceMembers.userId, ownerId));
+      try {
+        const res = await request(t, 'POST', '/devices/pair', { body: pairBody(pairing.qr.code) });
+        expect(res.status).toBe(401);
+        expect(await res.json()).toMatchObject({ code: 'PAIRING_INVALID' });
+      } finally {
+        await t.db
+          .update(schema.workspaceMembers)
+          .set({ suspendedAt: null })
+          .where(eq(schema.workspaceMembers.userId, ownerId));
+      }
+      const [row] = await t.db
+        .select()
+        .from(schema.devicePairings)
+        .where(eq(schema.devicePairings.id, pairing.id));
+      expect(row!.usedAt).toBeNull();
+    });
+
+    // PGlite's clock is this process's, so only a real Postgres can tell the two apart.
+    it.skipIf(!process.env.DATABASE_URL)(
+      'judges expiry by the database clock, not the process clock',
+      async () => {
+        const pairing = await newPairing();
+        await t.db
+          .update(schema.devicePairings)
+          .set({ expiresAt: sql`now() - interval '1 second'` })
+          .where(eq(schema.devicePairings.id, pairing.id));
+        // This process's clock runs an hour behind: by it the code is still good.
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(Date.now() - 3_600_000);
+        try {
+          const res = await request(t, 'POST', '/devices/pair', {
+            body: pairBody(pairing.qr.code),
+          });
+          expect(res.status).toBe(401);
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    );
+
+    it('gives the code back when another pairing takes the static key first', async () => {
+      const pairing = await newPairing();
+      const publicKey = randomBytes(32);
+      // Between the check and the insert, a racing pairing of the same phone lands.
+      const racing: Auth = {
+        ...t.deps.auth,
+        api: {
+          ...t.deps.auth.api,
+          createApiKey: async (input) => {
+            const key = await t.deps.auth.api.createApiKey(input);
+            await t.db.insert(schema.devices).values({
+              workspaceId,
+              ownerId,
+              name: 'Racer',
+              platform: 'ios',
+              publicKey,
+            });
+            return key;
+          },
+        },
+      };
+      const attempt = completePairing({
+        db: t.deps.db,
+        auth: racing,
+        config: t.deps.config,
+        infra: t.deps.infra,
+        body: pairBody(pairing.qr.code, { publicKey: b64(publicKey) }) as never,
+      });
+      await expect(attempt).rejects.toMatchObject({ status: 409, code: 'DEVICE_ALREADY_PAIRED' });
+      const [row] = await t.db
+        .select()
+        .from(schema.devicePairings)
+        .where(eq(schema.devicePairings.id, pairing.id));
+      expect(row!.usedAt).toBeNull();
+      // No key left behind for the failed one.
+      const keys = await t.db
+        .select()
+        .from(schema.apikeys)
+        .where(eq(schema.apikeys.name, "Ada's iPhone"));
+      const devices = await t.db.select({ apiKeyId: schema.devices.apiKeyId }).from(schema.devices);
+      const held = new Set(devices.map((d) => d.apiKeyId));
+      expect(keys.filter((k) => !held.has(k.id))).toEqual([]);
+    });
+
+    it('pairs one phone with a second organization as a device of its own', async () => {
+      const publicKey = randomBytes(32);
+      const first = await newPairing();
+      await json(
+        request(t, 'POST', '/devices/pair', {
+          body: pairBody(first.qr.code, { publicKey: b64(publicKey) }),
+        }),
+      );
+      const other = await t.createOrganization('Second');
+      await t.addMember(ownerId, other, 'owner');
+      const second = await createPairing({
+        db: t.deps.db,
+        config: t.deps.config,
+        workspaceId: other,
+        ownerId,
+        createdBy: 'user',
+        actor: { type: 'user', id: ownerId },
+      });
+      const paired = await json<Paired>(
+        request(t, 'POST', '/devices/pair', {
+          body: pairBody(second.qr.code, { publicKey: b64(publicKey) }),
+        }),
+      );
+      const found = await findDevicesByPublicKey(t.deps.db, publicKey);
+      expect(found.map((d) => d.workspaceId)).toEqual([workspaceId, other]);
+      expect(found[1]!.id).toBe(paired.device.id);
+      // Twice in one organization is still refused.
+      const third = await newPairing();
+      const again = await request(t, 'POST', '/devices/pair', {
+        body: pairBody(third.qr.code, { publicKey: b64(publicKey) }),
+      });
+      expect(again.status).toBe(409);
+    });
+  });
+
+  describe('DELETE /devices/pairings/{id}', () => {
+    it('cancels an open pairing: its code stops working', async () => {
+      const pairing = await newPairing();
+      expect(
+        (await request(t, 'DELETE', `/devices/pairings/${pairing.id}`, { cookie })).status,
+      ).toBe(204);
+      const res = await request(t, 'POST', '/devices/pair', { body: pairBody(pairing.qr.code) });
+      expect(res.status).toBe(401);
+      expect(
+        (await request(t, 'DELETE', `/devices/pairings/${pairing.id}`, { cookie })).status,
+      ).toBe(404);
+      const [audit] = await t.db
+        .select()
+        .from(schema.auditLog)
+        .where(eq(schema.auditLog.action, 'device.pairing_cancelled'));
+      expect(audit).toMatchObject({ targetId: pairing.id, actorId: ownerId });
     });
   });
 
@@ -516,6 +706,42 @@ describe('devices and pairing', () => {
         request(t, 'GET', '/devices', { cookie }),
       );
       expect(listed.items.map((d) => d.id)).not.toContain(paired.device.id);
+      expect((await request(t, 'DELETE', `/devices/${paired.device.id}`, { cookie })).status).toBe(
+        404,
+      );
+    });
+
+    it('forgets the push token and static key even when the key delete fails, and finishes on a retry', async () => {
+      const paired = await pair();
+      await t.db.execute(sql`
+        create function refuse_key_delete() returns trigger language plpgsql as $$
+        begin raise exception 'no deletes today'; end $$`);
+      await t.db.execute(
+        sql`create trigger refuse_key_delete before delete on apikeys for each row execute function refuse_key_delete()`,
+      );
+      await t.db
+        .update(schema.devices)
+        .set({ pushToken: Buffer.from('sealed token') })
+        .where(eq(schema.devices.id, paired.device.id));
+      try {
+        const failed = await request(t, 'DELETE', `/devices/${paired.device.id}`, { cookie });
+        expect(failed.status).toBe(500);
+        const [row] = await t.db
+          .select()
+          .from(schema.devices)
+          .where(eq(schema.devices.id, paired.device.id));
+        expect(row).toMatchObject({ publicKey: null, pushKey: null, pushToken: null });
+        expect(row!.revokedAt).not.toBeNull();
+        expect(row!.apiKeyId).not.toBeNull();
+      } finally {
+        await t.db.execute(sql`drop trigger refuse_key_delete on apikeys`);
+        await t.db.execute(sql`drop function refuse_key_delete()`);
+      }
+      // The retry finishes the half-done revocation rather than answering 404.
+      expect((await request(t, 'DELETE', `/devices/${paired.device.id}`, { cookie })).status).toBe(
+        204,
+      );
+      expect((await request(t, 'GET', '/me', { key: paired.key })).status).toBe(401);
       expect((await request(t, 'DELETE', `/devices/${paired.device.id}`, { cookie })).status).toBe(
         404,
       );
@@ -700,6 +926,137 @@ describe('pairing on a server with no owner yet (headless first run)', () => {
     );
     expect(second.owner).toEqual({ id: paired.owner.id, name: 'Daniel' });
     expect(await t.db.select().from(schema.users)).toHaveLength(1);
+  });
+});
+
+describe('a headless owner: a failed first pairing, then credentials for the web', () => {
+  let t: TestApp;
+  let workspaceId: string;
+
+  beforeAll(async () => {
+    t = await createTestApp();
+    workspaceId = (await ensureWorkspace(t.db)).id;
+  });
+  afterAll(() => t.close());
+
+  const cliPairing = () =>
+    createPairing({
+      db: t.deps.db,
+      config: t.deps.config,
+      workspaceId,
+      ownerId: null,
+      createdBy: 'cli',
+      actor: SYSTEM_ACTOR,
+    });
+
+  it('leaves no placeholder owner behind when the key cannot be made, and keeps the code', async () => {
+    const pairing = await cliPairing();
+    const broken: Auth = {
+      ...t.deps.auth,
+      api: {
+        ...t.deps.auth.api,
+        createApiKey: async () => {
+          throw new Error('the key store is down');
+        },
+      },
+    };
+    await expect(
+      completePairing({
+        db: t.deps.db,
+        auth: broken,
+        config: t.deps.config,
+        infra: t.deps.infra,
+        body: pairBody(pairing.qr.code, { ownerName: 'Daniel' }) as never,
+      }),
+    ).rejects.toThrow('the key store is down');
+    expect(await t.db.select().from(schema.users)).toEqual([]);
+    const [row] = await t.db.select().from(schema.devicePairings);
+    expect(row).toMatchObject({ usedAt: null, ownerId: null, createsOwner: true });
+    // The phone tries again and it works, making the owner then.
+    const paired = await json<Paired>(
+      request(t, 'POST', '/devices/pair', {
+        body: pairBody(pairing.qr.code, { ownerName: 'Daniel' }),
+      }),
+    );
+    expect(paired.owner.name).toBe('Daniel');
+    expect(await t.db.select().from(schema.users)).toHaveLength(1);
+  });
+
+  it('sets an email and a password once, from the phone, and the web sign-in works', async () => {
+    const [owner] = await t.db.select().from(schema.users);
+    const [device] = await t.db.select().from(schema.devices);
+    // The pairing's key: the device the last test paired.
+    const keyRow = await t.deps.auth.api.createApiKey({
+      body: { name: 'phone', userId: owner!.id, expiresIn: null },
+    });
+    await t.db
+      .update(schema.devices)
+      .set({ apiKeyId: keyRow.id })
+      .where(eq(schema.devices.id, device!.id));
+    const key = keyRow.key;
+    const short = await request(t, 'POST', '/me/credentials', {
+      key,
+      body: { email: 'daniel@example.com', password: 'short' },
+    });
+    expect(short.status).toBe(400);
+    const ok = await request(t, 'POST', '/me/credentials', {
+      key,
+      body: { email: 'Daniel@Example.com', password: 'correct horse battery' },
+    });
+    expect(ok.status, await ok.clone().text()).toBe(204);
+    const [after] = await t.db.select().from(schema.users);
+    expect(after!.email).toBe('daniel@example.com');
+    const signIn = await t.app.request('/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: ORIGIN },
+      body: JSON.stringify({ email: 'daniel@example.com', password: 'correct horse battery' }),
+    });
+    expect(signIn.status).toBe(200);
+    // Once only.
+    const again = await request(t, 'POST', '/me/credentials', {
+      key,
+      body: { email: 'other@example.com', password: 'correct horse battery' },
+    });
+    expect(again.status).toBe(409);
+    expect(await again.json()).toMatchObject({ code: 'CREDENTIALS_SET' });
+    const [audit] = await t.db
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.action, 'auth.credentials_set'));
+    expect(audit).toMatchObject({ actorId: owner!.id, targetId: owner!.id });
+    // Rate-limited per account: three tries so far, two left this hour.
+    for (let i = 0; i < 2; i++) {
+      await request(t, 'POST', '/me/credentials', {
+        key,
+        body: { email: 'x@example.com', password: 'correct horse battery' },
+      });
+    }
+    const limited = await request(t, 'POST', '/me/credentials', {
+      key,
+      body: { email: 'x@example.com', password: 'correct horse battery' },
+    });
+    expect(limited.status).toBe(429);
+
+    // The phone adds the first model provider itself (plan 8.3 step 4), and no more after.
+    const local = await request(t, 'POST', '/providers', {
+      key,
+      body: { presetId: 'nope', local: true },
+    });
+    expect(local.status).toBe(403);
+    for (const body of [
+      { presetId: 'nope', baseUrl: 'https://attacker.example/v1' },
+      { presetId: 'nope', headers: { 'x-a': 'b' } },
+      { name: 'No preset', apiKey: 'sk-x' },
+    ]) {
+      const refused = await request(t, 'POST', '/providers', { key, body });
+      expect(refused.status).toBe(403);
+    }
+    const first = await request(t, 'POST', '/providers', { key, body: { presetId: 'nope' } });
+    expect(first.status).not.toBe(403);
+    await t.providerId();
+    const second = await request(t, 'POST', '/providers', { key, body: { presetId: 'nope' } });
+    expect(second.status).toBe(403);
+    expect(await second.json()).toMatchObject({ code: 'DEVICE_KEY_NOT_ALLOWED' });
   });
 });
 

@@ -6,7 +6,7 @@ For what it costs, see [Amazon EC2's pricing page](https://aws.amazon.com/ec2/pr
 
 ## Launch
 
-1. In `cloud-init.yaml`, set `OPENBOTS_RELEASE` to a release from the [Releases page](https://github.com/danielpang/OpenBots/releases) and `OPENBOTS_RELAY_URL` to the relay your phone goes through.
+1. In `cloud-init.yaml`, set `OPENBOTS_RELEASE` to a release from the [Releases page](https://github.com/danielpang/OpenBots/releases) and `OPENBOTS_RELAY_URL` to the relay your phone goes through. With no inbound rule (step 2) the relay is the phone's only way to the server: leave it empty and the phone cannot reach it. Setup then prints a warning to the console log.
 2. Make a security group with **no inbound rule**. With the relay, the server only dials out. Add port 22 from your own address only if you want `ssh`; Session Manager needs no inbound rule either.
 3. Launch with IMDSv2 required and a hop limit of 1, so no container can read the instance's metadata service or its role credentials:
 

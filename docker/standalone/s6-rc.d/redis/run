@@ -22,6 +22,8 @@ requirepass "${OPENBOTS_REDIS_PASSWORD}"
 CONF
 )
 chown redis:redis /run/redis/redis.conf
+# Kept from the kernel's OOM killer ahead of the Bots' programs.
+openbots_oom_score_adj -500
 exec env -i PATH=/command:/usr/bin:/bin LANG=C.UTF-8 \
   s6-notifyoncheck -d -3 3 -n 0 -s 500 -w 500 -c /usr/local/lib/openbots/standalone/check-redis \
   s6-setuidgid redis redis-server /run/redis/redis.conf

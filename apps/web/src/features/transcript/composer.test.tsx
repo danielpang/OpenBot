@@ -90,11 +90,11 @@ afterEach(() => {
 });
 
 const textarea = () => host.querySelector('textarea')!;
-function type(value: string) {
+function type(value: string, caret = value.length) {
   act(() => {
     const el = textarea();
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(el, value);
-    el.setSelectionRange(value.length, value.length);
+    el.setSelectionRange(caret, caret);
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
@@ -289,5 +289,15 @@ describe('<Composer> in a group', () => {
         body: { text: '@everyone and @linus please look' },
       },
     ]);
+  });
+
+  it('leaves the caret after the mention as the pick commits, before the next key', () => {
+    type('@ad look', 3);
+    // Synchronously, so no frame passes before the check.
+    act(() => {
+      textarea().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(textarea().value).toBe('@ada look');
+    expect(textarea().selectionStart).toBe('@ada '.length);
   });
 });

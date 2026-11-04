@@ -21,9 +21,40 @@ import { RealtimeStatusContext, useRealtime } from '../transcript/realtime.js';
 // carries the relay's status as it changes, and it is read again each time the
 // socket (re)connects, since an event sent while it was down is lost; a slow
 // poll covers anything else.
+//
+// The pairing dialog says "Paired" only for a device made after its own
+// pairing (another tab's pairing is no reason), cancels its pairing when it
+// closes unused, and counts down by the server's clock: `expiresAt` less the
+// server time in the response's `Date` header, so a browser whose clock is
+// off still shows the right time left.
 
 export type Device = components['schemas']['Device'];
 type Pairing = components['schemas']['Pairing'];
+
+/** How long a pairing is good for (RELAY_PROTOCOL.md 6.1). */
+export const PAIRING_TTL_MS = 5 * 60_000;
+
+/** A pairing as the dialog keeps it: with how far the server's clock is ahead of this one. */
+interface OpenPairing {
+  pairing: Pairing;
+  /** The server's time less this browser's, from the response's `Date` header; 0 without one. */
+  skewMs: number;
+}
+
+/** The server's time less the local one, from a response's `Date` header (second precision). */
+export function clockSkew(dateHeader: string | null, now = Date.now()): number {
+  const server = dateHeader ? Date.parse(dateHeader) : NaN;
+  return Number.isFinite(server) ? server - now : 0;
+}
+
+/** Whether a `device.paired` device was made by this pairing's time, not an older one's. */
+export function pairedByThis(
+  deviceCreatedAt: string,
+  pairing: Pick<Pairing, 'expiresAt'>,
+): boolean {
+  const madeAt = new Date(pairing.expiresAt).getTime() - PAIRING_TTL_MS;
+  return new Date(deviceCreatedAt).getTime() >= madeAt;
+}
 
 export const devicesQuery = queryOptions({
   queryKey: ['devices'],
@@ -198,13 +229,18 @@ function pairingError(error: Error): string {
 
 /**
  * Makes one pairing when it opens and another on "New code"; the dialog is
- * mounted only while open, so closing it discards the code (`gcTime: 0`).
+ * mounted only while open, so closing it discards the code (`gcTime: 0`) and
+ * cancels the pairing on the server unless a phone used it.
  */
 function PairDialog({ onClose }: { onClose(): void }) {
   const [attempt, setAttempt] = useState(0);
   const pairing = useQuery({
     queryKey: ['device-pairing', attempt],
-    queryFn: () => unwrap(api.POST('/api/v1/devices/pairings', { body: {} })),
+    queryFn: async (): Promise<OpenPairing> => {
+      const result = await api.POST('/api/v1/devices/pairings', { body: {} });
+      const data = await unwrap(Promise.resolve(result));
+      return { pairing: data, skewMs: clockSkew(result.response.headers.get('date')) };
+    },
     staleTime: Infinity,
     gcTime: 0,
     retry: false,
@@ -214,11 +250,30 @@ function PairDialog({ onClose }: { onClose(): void }) {
   });
   const [paired, setPaired] = useState<string | null>(null);
   const { client } = useRealtime();
+  const current = pairing.data?.pairing;
 
   useEffect(
-    () => client?.on('device.paired', (event) => setPaired(event.payload.device.name)),
-    [client],
+    () =>
+      client?.on('device.paired', (event) => {
+        const { device } = event.payload;
+        if (current && pairedByThis(device.createdAt, current)) setPaired(device.name);
+      }),
+    [client, current],
   );
+
+  // A code nobody used stops working when the dialog closes, or when a new one replaces it.
+  const pairedRef = useRef(paired);
+  pairedRef.current = paired;
+  useEffect(() => {
+    if (!current) return;
+    const id = current.id;
+    return () => {
+      if (pairedRef.current) return;
+      void api
+        .DELETE('/api/v1/devices/pairings/{id}', { params: { path: { id } } })
+        .catch(() => {});
+    };
+  }, [current]);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -234,7 +289,11 @@ function PairDialog({ onClose }: { onClose(): void }) {
         {paired ? null : pairing.error ? (
           <p className="text-sm text-destructive">{pairingError(pairing.error)}</p>
         ) : pairing.data ? (
-          <PairingCode pairing={pairing.data} onRenew={() => setAttempt((n) => n + 1)} />
+          <PairingCode
+            pairing={pairing.data.pairing}
+            skewMs={pairing.data.skewMs}
+            onRenew={() => setAttempt((n) => n + 1)}
+          />
         ) : (
           <p className="text-sm text-muted-foreground">Making a code…</p>
         )}
@@ -248,16 +307,26 @@ function PairDialog({ onClose }: { onClose(): void }) {
   );
 }
 
-function PairingCode({ pairing, onRenew }: { pairing: Pairing; onRenew(): void }) {
-  const [now, setNow] = useState(() => Date.now());
+function PairingCode({
+  pairing,
+  skewMs,
+  onRenew,
+}: {
+  pairing: Pairing;
+  skewMs: number;
+  onRenew(): void;
+}) {
+  // The server's clock, as near as its Date header tells.
+  const serverNow = () => Date.now() + skewMs;
+  const [now, setNow] = useState(serverNow);
   const [svg, setSvg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const expired = new Date(pairing.expiresAt).getTime() <= now;
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    const timer = setInterval(() => setNow(Date.now() + skewMs), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [skewMs]);
 
   useEffect(() => {
     let current = true;
@@ -354,11 +423,17 @@ function RelayStatus() {
                   ? `Relay: linked since ${new Date(data.since).toLocaleString()}`
                   : 'Relay: linked'}
           </p>
-          {data.status === 'off' && (
+          {data.relayUrl === null ? (
             <p className="text-sm text-muted-foreground">
               For a phone to reach this server without a public address, set OPENBOTS_RELAY_URL on
               the server.
             </p>
+          ) : (
+            data.status === 'off' && (
+              <p className="text-sm text-muted-foreground">
+                The relay connects once a phone is paired.
+              </p>
+            )
           )}
           <p className="text-xs text-muted-foreground">
             Host <span className="font-mono">{data.hostId}</span>

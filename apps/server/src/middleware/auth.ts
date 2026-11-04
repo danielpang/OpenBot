@@ -5,7 +5,12 @@ import type { Account, AppDeps, AppEnv, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { asDirectory, inWorkspace } from '../db/scope.js';
 import { DomainError, forbidden, notFound, unauthorized } from '../errors.js';
-import { touchDevice } from '../services/devices.js';
+import {
+  deviceKeyNotAllowed,
+  deviceKeyRule,
+  isDeviceKey,
+  touchDevice,
+} from '../services/devices.js';
 import { ensureWorkspace, isOrgAdmin, type Role } from '../workspace.js';
 
 // Every route that needs a caller uses one of these. A request authenticates
@@ -36,7 +41,10 @@ export const requireAccount = createMiddleware<AppEnv>(async (c, next) => {
 export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
   const user = await authenticate(c);
   c.set('user', user);
-  await inWorkspace(user.workspaceId, next);
+  await inWorkspace(user.workspaceId, async () => {
+    await refuseDeviceKeyRoute(c, user);
+    await next();
+  });
 });
 
 /** Owners and admins of the active organization. */
@@ -44,8 +52,36 @@ export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
   const user = await authenticate(c);
   if (!isOrgAdmin(user.role)) throw forbidden('Only an admin can do this');
   c.set('user', user);
-  await inWorkspace(user.workspaceId, next);
+  await inWorkspace(user.workspaceId, async () => {
+    await refuseDeviceKeyRoute(c, user);
+    await next();
+  });
 });
+
+const API_PREFIX = '/api/v1';
+
+/**
+ * A paired device's key on a route that makes a credential or a path out of
+ * the server (`DEVICE_KEY_RULES`, services/devices.ts): 403
+ * DEVICE_KEY_NOT_ALLOWED. Only an API key on a listed route costs a lookup.
+ */
+async function refuseDeviceKeyRoute(c: Context<AppEnv>, user: CurrentUser): Promise<void> {
+  if (!user.apiKeyId || !c.req.path.startsWith(API_PREFIX)) return;
+  const rule = deviceKeyRule(c.req.method, c.req.path.slice(API_PREFIX.length));
+  if (!rule) return;
+  let body: Record<string, unknown> | null = null;
+  if (rule.when) {
+    // Read once here; the route's validator reads the same parsed body.
+    const parsed: unknown = await c.req.json().catch(() => null);
+    if (!parsed || typeof parsed !== 'object') return;
+    body = parsed as Record<string, unknown>;
+    if (!rule.when(body)) return;
+  }
+  const { db } = c.var.deps;
+  if (!(await isDeviceKey(db, user))) return;
+  if (rule.unless && (await rule.unless(db, user, body))) return;
+  throw deviceKeyNotAllowed();
+}
 
 /**
  * Organization administration and the audit log belong to the managed

@@ -13,6 +13,8 @@ app = "openbots"
 primary_region = "iad"
 
 # Postgres and Redis get time to shut down cleanly on a deploy or a restart.
+# The image's s6 gives its services 45 seconds in all (docker/standalone.Dockerfile),
+# so keep this at 60 seconds or more.
 kill_signal = "SIGTERM"
 kill_timeout = "60s"
 
@@ -24,8 +26,19 @@ kill_timeout = "60s"
 [env]
   # Everything else comes from /data/.env, which the image writes on first
   # boot, and from `fly secrets set` (provider keys, OPENBOTS_RELAY_URL), which
-  # override it.
+  # override it. Set OPENBOTS_RELAY_URL: without it, and without the public
+  # address below, the phone has no way to reach this Machine.
   OPENBOTS_DEPLOYMENT = "self_hosted"
+  # Fly's proxy, for the public address below. It connects to the Machine from
+  # 172.16.0.0/16 and appends to X-Forwarded-For the client's address and then
+  # the app's own address (the rightmost entry, docs.fly.io/networking/request-headers).
+  # The server reads X-Forwarded-For only from TRUSTED_PROXIES and walks it
+  # from the right, so for it to find the client both must be listed: this
+  # range, and the app's addresses from `fly ips list` once you allocate
+  # them. Without the app's addresses every request seems to come from the
+  # app itself, and rate limits and webhook IP allowlists see one client.
+  # Nothing reaches the Machine through the proxy until [http_service] is on.
+  TRUSTED_PROXIES = "172.16.0.0/16"
 
 # The database, Redis's append-only file, the Bots' home and files, and the
 # generated .env with the master key. One Machine per volume.
@@ -35,7 +48,10 @@ kill_timeout = "60s"
   initial_size = "10gb"
 
 # About 2 GB is in use with Chromium, Postgres and Node together; 4 GB leaves
-# room for a busy Bot.
+# room for a busy Bot. The Machine is a VM: /dev/shm, the process limit and
+# the memory are the VM's, sized by Fly from this section, so the docker run
+# flags of docker/standalone/README.md have no equivalent here. Chromium runs
+# with --disable-dev-shm-usage and does not need a large /dev/shm.
 [[vm]]
   size = "shared-cpu-2x"
   memory = "4gb"
@@ -57,8 +73,9 @@ kill_timeout = "60s"
 # the phone reaches it through the relay only, which is the safer start.
 # Before you turn it on, pair your phone first: on a server with no owner yet,
 # whoever opens the address first can create the owner. Then uncomment this
-# section, run `fly secrets set OPENBOTS_PUBLIC_URL=https://<your app>.fly.dev`
-# and `fly deploy`. The Machine must never stop on its own, or Routines and
+# section, run `fly secrets set OPENBOTS_PUBLIC_URL=https://<your app>.fly.dev`,
+# add the addresses `fly ips list` shows to TRUSTED_PROXIES above, and run
+# `fly deploy`. The Machine must never stop on its own, or Routines and
 # the relay link stop with it, hence the two settings below.
 #
 # [http_service]

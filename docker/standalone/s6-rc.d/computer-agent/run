@@ -16,6 +16,9 @@ openbots_load_env
   printf '%s' "$OPENBOTS_COMPUTER_AGENT_TOKEN" >/data/agent/token.new
 )
 mv -f /data/agent/token.new /data/agent/token
+# Under memory pressure the kernel ends the agent's tree (the Bots' shells
+# and browsers inherit this) before the server, Postgres or Redis.
+openbots_oom_score_adj 500
 agent_env=(
   PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   LANG=C.UTF-8
@@ -28,7 +31,10 @@ agent_env=(
   OPENBOTS_AGENT_HOST=127.0.0.1
   OPENBOTS_AGENT_PORT=7070
 )
-# The egress proxy, as the docker provider gives a computer container.
+# The egress proxy, as the docker provider gives a computer container. Here
+# it is advisory: the variables ask programs to use it, and a program that
+# ignores them reaches the network directly, since no firewall stands
+# between the Bots and the container's network.
 if [ -n "${OPENBOTS_SANDBOX_EGRESS_PROXY:-}" ]; then
   no_proxy="${OPENBOTS_SANDBOX_NO_PROXY:-localhost,127.0.0.1}"
   agent_env+=(

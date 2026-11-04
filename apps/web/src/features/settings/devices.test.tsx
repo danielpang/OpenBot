@@ -12,8 +12,10 @@ import {
   type RealtimeStatus,
 } from '../transcript/realtime.js';
 import {
+  clockSkew,
   countdown,
   DevicesSettings,
+  pairedByThis,
   RELAY_POLL_MS,
   relativeTime,
   relayQuery,
@@ -36,6 +38,8 @@ const server = vi.hoisted(() => {
     /** The pairing answer, or a problem code with 409. */
     pairing: null as Record<string, unknown> | null,
     pairingProblem: null as string | null,
+    /** The pairing answer's Date header, the server's clock; none when null. */
+    pairingDate: null as string | null,
   };
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
@@ -51,7 +55,10 @@ const server = vi.hoisted(() => {
           { status: 409 },
         );
       }
-      return Response.json(state.pairing, { status: 201 });
+      return Response.json(state.pairing, {
+        status: 201,
+        headers: state.pairingDate ? { date: state.pairingDate } : {},
+      });
     }
     if (path.startsWith('/api/v1/devices/') && request.method === 'DELETE') {
       state.devices = state.devices.filter((d) => !path.endsWith(String(d.id)));
@@ -111,6 +118,7 @@ beforeEach(() => {
     qr: {},
   };
   server.pairingProblem = null;
+  server.pairingDate = null;
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
@@ -238,11 +246,44 @@ describe('Settings > Devices', () => {
     expect(writeText).toHaveBeenCalledWith(LINK);
     await until(() => !!button('Copied'), 'Copied');
 
+    // A device of an older pairing (another tab's) is no news here.
+    live.emit('device.paired', { device: device({ name: 'Old phone' }) });
+    expect(dialog()!.textContent).not.toContain('Paired');
     // The phone pairs while the dialog is open.
-    live.emit('device.paired', { device: device() });
+    live.emit('device.paired', { device: device({ createdAt: new Date().toISOString() }) });
     expect(dialog()!.textContent).toContain("Paired Ada's iPhone");
     act(() => button('Done')!.click());
     await until(() => !dialog(), 'the dialog closed');
+    // A used pairing is not cancelled.
+    expect(server.requests.some((r) => r.path.startsWith('/api/v1/devices/pairings/'))).toBe(false);
+  });
+
+  it('cancels its pairing when the dialog closes unused', async () => {
+    render();
+    act(() => button('Pair a phone')!.click());
+    await until(() => page().includes('Expires in'), 'the code');
+    act(() => button('Close')!.click());
+    await until(() => !dialog(), 'the dialog closed');
+    await until(() => server.requests.some((r) => r.method === 'DELETE'), 'the pairing cancelled');
+    expect(server.requests.find((r) => r.method === 'DELETE')).toEqual({
+      method: 'DELETE',
+      path: '/api/v1/devices/pairings/00000000-0000-4000-8000-0000000000e1',
+    });
+  });
+
+  it("counts down by the server's clock, from its Date header", async () => {
+    // The server's clock is ten minutes ahead of this browser's.
+    const serverNow = Date.now() + 10 * 60_000;
+    server.pairingDate = new Date(serverNow).toUTCString();
+    server.pairing = {
+      ...server.pairing!,
+      expiresAt: new Date(serverNow + 5 * 60_000).toISOString(),
+    };
+    render();
+    act(() => button('Pair a phone')!.click());
+    await until(() => page().includes('Expires in'), 'the countdown');
+    // The header has whole seconds, so a second either way; never 14 minutes.
+    expect(page()).toMatch(/Expires in (4:5\d|5:0[01])/);
   });
 
   it('offers a new code once the code expires', async () => {
@@ -308,6 +349,19 @@ describe('Settings > Devices', () => {
     server.relay = { hostId: 'h1', relayUrl: 'wss://relay.example.com', status, since };
     render();
     await until(() => page().includes(text), status);
+    expect(page()).not.toContain('OPENBOTS_RELAY_URL');
+  });
+
+  it('says the relay connects once a phone is paired when it is set but off', async () => {
+    server.relay = {
+      hostId: 'h1',
+      relayUrl: 'wss://relay.example.com',
+      status: 'off',
+      since: null,
+    };
+    render();
+    await until(() => page().includes('Relay: off'), 'off');
+    expect(page()).toContain('The relay connects once a phone is paired.');
     expect(page()).not.toContain('OPENBOTS_RELAY_URL');
   });
 });
@@ -379,6 +433,16 @@ describe('device formatting', () => {
     expect(countdown('2026-11-02T10:04:59.000Z', now)).toBe('4:59');
     expect(countdown('2026-11-02T10:00:09.000Z', now)).toBe('0:09');
     expect(countdown('2026-11-02T09:59:00.000Z', now)).toBe('0:00');
+  });
+
+  it("reads the server's clock from a Date header, and knows a device of this pairing", () => {
+    const now = Date.parse('2026-11-02T10:00:00.000Z');
+    expect(clockSkew('Mon, 02 Nov 2026 10:02:00 GMT', now)).toBe(120_000);
+    expect(clockSkew(null, now)).toBe(0);
+    expect(clockSkew('not a date', now)).toBe(0);
+    const pairing = { expiresAt: '2026-11-02T10:05:00.000Z' };
+    expect(pairedByThis('2026-11-02T10:00:30.000Z', pairing)).toBe(true);
+    expect(pairedByThis('2026-11-02T09:59:00.000Z', pairing)).toBe(false);
   });
 
   it('says how long ago a device was seen', () => {

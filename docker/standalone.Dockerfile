@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # The standalone image: the whole of OpenBots in one container with one
-# volume on /data (plan 8.2, V1). The server, PostgreSQL 16 with pgvector,
+# volume on /data (plan 8.2, V1). The server, PostgreSQL with pgvector,
 # Redis and the Bots' computer (the computer image's control agent, desktop
 # and Chromium) run side by side under s6-overlay, for platforms that run
 # one container and no Docker inside it (Fly Machines, Sprites, Railway,
@@ -8,9 +8,18 @@
 #
 #   docker build -f docker/standalone.Dockerfile -t ghcr.io/danielpang/openbots/standalone .
 #
-# Every stage runs on the target platform, s6-overlay is picked by
-# TARGETARCH and checked against its release checksums, so
-# `docker buildx build --platform linux/amd64,linux/arm64` works as is.
+# The JavaScript build (base-build, build) runs on the build platform, so an
+# arm64 image built on an amd64 runner compiles TypeScript and bundles the
+# web app at native speed instead of under QEMU; its output is the same on
+# every platform. The stages that make native code or install packages
+# (prod-deps with node-pty, native, runtime) run on the target platform.
+# s6-overlay is picked by TARGETARCH and checked against its release
+# checksums, so `docker buildx build --platform linux/amd64,linux/arm64`
+# works as is.
+#
+# POSTGRES_MAJOR picks the PostgreSQL version: it drives the package, PATH
+# and the file the scripts read (postgres-major). A volume made by one major
+# version does not start under another; docker/standalone/README.md, Upgrade.
 # docker/standalone/README.md describes what runs inside and how to use it.
 
 # The full image carries python3, make and g++ for node-pty's native build.
@@ -19,6 +28,7 @@ ARG NODE_RUNTIME_IMAGE=node:22-bookworm-slim
 ARG UBUNTU_IMAGE=ubuntu:24.04
 
 # --- base: Node 22 with pnpm from corepack (pinned by packageManager) ---------
+# On the target platform, for prod-deps (node-pty is compiled for it).
 FROM ${NODE_IMAGE} AS base
 ENV CI=true \
     COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
@@ -29,13 +39,29 @@ COPY package.json ./
 RUN corepack enable pnpm && pnpm --version
 
 # --- fetch: the store from the lockfile alone, cached until it changes --------
+# pnpm fetches the optional packages of its own platform, so the target's
+# store and the build platform's are fetched apart.
 FROM base AS fetch
 COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY patches ./patches
 RUN pnpm fetch --store-dir /pnpm-store
 
+# --- base-build: the same on the build platform, for the JavaScript build -----
+# hadolint ignore=DL3029
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS base-build
+ENV CI=true \
+    COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+    COREPACK_HOME=/corepack \
+    TURBO_TELEMETRY_DISABLED=1
+WORKDIR /app
+COPY package.json ./
+RUN corepack enable pnpm && pnpm --version
+COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+RUN pnpm fetch --store-dir /pnpm-store
+
 # --- build: the server, the web app and the computer agent ---------------------
-FROM fetch AS build
+# Only dist/ leaves this stage, and it holds no native code.
+FROM base-build AS build
 COPY . .
 RUN pnpm install --frozen-lockfile --offline --store-dir /pnpm-store \
     && pnpm exec turbo run build \
@@ -44,9 +70,14 @@ RUN pnpm install --frozen-lockfile --offline --store-dir /pnpm-store \
 RUN mkdir /out && for dist in apps/*/dist packages/*/dist; do \
       mkdir -p "/out/$(dirname "$dist")" && cp -r "$dist" "/out/$dist"; \
     done
-# The user-switching helper, static so no dynamic loader reads LD_* for it.
+
+# --- native: the user-switching helper, for the target platform ----------------
+# Static, so no dynamic loader reads LD_* for it.
+FROM ${NODE_IMAGE} AS native
+WORKDIR /src
+COPY apps/computer-agent/native/runas.c ./
 RUN mkdir /native \
-    && gcc -O2 -Wall -Werror -static -o /native/runas apps/computer-agent/native/runas.c
+    && gcc -O2 -Wall -Werror -static -o /native/runas runas.c
 
 # --- prod-deps: production dependencies of the server and the agent -----------
 # As in the server image, no ee/ code; as in the computer image, node-pty is
@@ -113,25 +144,30 @@ ARG POSTGRES_MAJOR=16
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ENV LANG=C.UTF-8 \
     NODE_ENV=production \
-    PATH=/usr/lib/postgresql/16/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    PATH=/usr/lib/postgresql/${POSTGRES_MAJOR}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
     OPENBOTS_STANDALONE=1 \
+    OPENBOTS_SETUP_PAIRING_ONLY=1 \
     # s6-overlay: stop the container when a startup step fails (a refused
     # setting, a database that does not start), wait as long as the first
-    # boot's migrations take, and give the services time to stop cleanly.
+    # boot's migrations take, and give the services time to stop cleanly:
+    # 40 seconds for the services (PostgreSQL's fast shutdown writes a
+    # checkpoint), then 5 for what is left, which fits in the 60 seconds of
+    # `docker stop -t 60` (or --stop-timeout 60) and Fly's kill_timeout.
     S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
     S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0 \
-    S6_SERVICES_GRACETIME=20000 \
+    S6_SERVICES_GRACETIME=40000 \
     S6_KILL_GRACETIME=5000
 
 # The computer image's desktop and tools (docker/computer.Dockerfile): Xvfb,
 # openbox and feh for the wallpaper, x11vnc for the preview, xdotool for
-# input, ImageMagick for screenshots, tzdata for OPENBOTS_TIMEZONE, and the
-# terminal's everyday tools.
+# input, ImageMagick for screenshots, tzdata for OPENBOTS_TIMEZONE, the
+# terminal's everyday tools, and iptables for the optional metadata block
+# (standalone-init, with NET_ADMIN).
 # hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-      xvfb openbox x11vnc xdotool feh imagemagick tzdata \
+      xvfb openbox x11vnc xdotool feh imagemagick tzdata iptables \
       fonts-dejavu-core fonts-liberation fonts-noto-color-emoji \
       ca-certificates curl git less nano procps python3 unzip xz-utils \
     && rm -rf /var/lib/apt/lists/*
@@ -195,15 +231,19 @@ RUN node apps/computer-agent/node_modules/playwright-core/cli.js install --with-
     && rm -rf /var/lib/apt/lists/* \
     && chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH"
 
-COPY --from=build --chmod=0755 /native/runas /usr/local/libexec/openbots/runas
+COPY --from=native --chmod=0755 /native/runas /usr/local/libexec/openbots/runas
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/lib/openbots/entrypoint.sh
 COPY --chmod=0755 docker/standalone/lib/ /usr/local/lib/openbots/standalone/
 COPY --chmod=0755 docker/standalone/bin/openbots /usr/local/bin/openbots
+COPY --chmod=0755 docker/standalone/bin/start /usr/local/lib/openbots/start
 COPY --chmod=0755 scripts/backup.sh scripts/restore.sh /app/scripts/
 COPY docker/standalone/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
 COPY docker/standalone/user-bundles.d/ /etc/s6-overlay/user-bundles.d/
-# The Bots' home lives on the volume.
+# The Bots' home lives on the volume. postgres-major tells the scripts
+# (lib/env.sh) which PostgreSQL this image runs.
 RUN chmod 0755 /etc/s6-overlay/s6-rc.d/*/run \
+    && printf '%s\n' "$POSTGRES_MAJOR" >/usr/local/lib/openbots/standalone/postgres-major \
+    && chmod 0644 /usr/local/lib/openbots/standalone/postgres-major \
     && rm -rf /home/bot && ln -s /data/home /home/bot \
     && install -d -m 0711 /data
 
@@ -212,9 +252,13 @@ EXPOSE 3000
 # The first boot makes the database and runs every migration.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD ["curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:3000/readyz"]
-# s6-overlay's init starts standalone-init, postgres, redis, computer-agent and
-# openbots (docker/standalone/s6-rc.d), restarts any that dies and stops them
-# in order. It must run as root.
+# s6-overlay's init starts volume-lock, standalone-init, postgres, redis,
+# computer-agent, openbots and disk-watch (docker/standalone/s6-rc.d),
+# restarts any that dies and stops them in order on SIGTERM. Give it 60
+# seconds to do so: `docker stop -t 60`, `docker run --stop-timeout 60`.
+# It must run as root. The entrypoint first refuses a volume another
+# container is using (docker/standalone/bin/start).
+STOPSIGNAL SIGTERM
 # hadolint ignore=DL3002
 USER 0:0
-ENTRYPOINT ["/init"]
+ENTRYPOINT ["/usr/local/lib/openbots/start"]

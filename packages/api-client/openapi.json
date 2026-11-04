@@ -39,6 +39,11 @@
               }
             },
             "required": ["database"]
+          },
+          "disk": {
+            "type": "string",
+            "enum": ["low"],
+            "description": "The data disk is nearly full (the standalone image reports it). Still ready: a full disk never takes the server out of rotation"
           }
         },
         "required": ["status", "checks"]
@@ -88,6 +93,24 @@
           }
         },
         "required": ["type", "title", "status"]
+      },
+      "SetCredentials": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "At least 8 characters (better-auth's rule)"
+          }
+        },
+        "required": ["email", "password"],
+        "additionalProperties": false
       },
       "Me": {
         "type": "object",
@@ -884,6 +907,10 @@
             },
             "required": ["relay"],
             "description": "Protocol versions this server speaks"
+          },
+          "setupPairingOnly": {
+            "type": "boolean",
+            "description": "The first owner is made by pairing a phone (`openbots pair`), not the web wizard (OPENBOTS_SETUP_PAIRING_ONLY)"
           },
           "auth": {
             "type": "string",
@@ -6266,9 +6293,13 @@
           "setupRequired": {
             "type": "boolean",
             "description": "Show the first-run wizard: no user exists yet, or (Mac app local mode) its owner has no Bot yet"
+          },
+          "pairingOnly": {
+            "type": "boolean",
+            "description": "The owner is made by pairing a phone only (OPENBOTS_SETUP_PAIRING_ONLY): show `openbots pair` instead of the account form"
           }
         },
-        "required": ["setupRequired"]
+        "required": ["setupRequired", "pairingOnly"]
       },
       "SetupAdmin": {
         "type": "object",
@@ -6679,6 +6710,85 @@
           },
           "404": {
             "description": "Metrics are off (no OPENBOTS_METRICS_TOKEN)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/credentials": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Set an email and a password for the web app (an owner made by pairing, once)",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetCredentials"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Set: sign in on the web with them"
+          },
+          "400": {
+            "description": "Invalid email or password",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A server that signs in from the Mac app only (LOCAL_ONLY)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The account has credentials already (CREDENTIALS_SET), or EMAIL_TAKEN",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many tries",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -14709,7 +14819,7 @@
             }
           },
           "403": {
-            "description": "The request came from another origin, or the Mac app signs the owner in (LOCAL_ONLY)",
+            "description": "The request came from another origin, the Mac app signs the owner in (LOCAL_ONLY), or a pairing makes the owner (SETUP_PAIRING_ONLY)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -14985,6 +15095,56 @@
           },
           "409": {
             "description": "Too many open pairings (TOO_MANY_PAIRINGS)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/pairings/{id}": {
+      "delete": {
+        "tags": ["devices"],
+        "summary": "Cancel an open pairing: its code stops working at once",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Cancelled"
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such open pairing",
             "content": {
               "application/problem+json": {
                 "schema": {

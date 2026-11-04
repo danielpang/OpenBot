@@ -146,6 +146,90 @@ describe('push', () => {
     expect(new Set(apns.seen.map((s) => s.headers.authorization)).size).toBe(1);
   });
 
+  it('picks the APNs gateway per push, with a session and a token for each', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const production = await fakeApns(publicKey, [{ status: 200 }, { status: 200 }]);
+    const sandbox = await fakeApns(publicKey, [
+      { status: 200 },
+      { status: 400, body: '{"reason":"BadCollapseId"}' },
+    ]);
+    const relay = await startRelay({
+      apns: {
+        keyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+        keyId: 'KEYID12345',
+        teamId: 'TEAM123456',
+        topic: 'dev.openbots.app',
+        origins: { production: production.origin, sandbox: sandbox.origin },
+      },
+    });
+    const link = await linkHost(relay, makeHost());
+    // A frame without `environment` goes to production, as an older server sends it.
+    link.send(pushFrame('p1'));
+    expect(await link.text()).toMatchObject({ id: 'p1', ok: true });
+    link.send({ ...pushFrame('p2'), environment: 'sandbox' });
+    expect(await link.text()).toMatchObject({ id: 'p2', ok: true });
+    link.send({ ...pushFrame('p3'), environment: 'production' });
+    expect(await link.text()).toMatchObject({ id: 'p3', ok: true });
+    // A 400 that is not about the token is an error: the host keeps the token.
+    link.send({ ...pushFrame('p4'), environment: 'sandbox' });
+    expect(await link.text()).toMatchObject({ id: 'p4', reason: 'error', status: 400 });
+    expect(production.seen).toHaveLength(2);
+    expect(sandbox.seen).toHaveLength(2);
+    expect(production.seen.every((seen) => seen.jwtVerifies)).toBe(true);
+    // An unknown environment does not parse.
+    link.send({ ...pushFrame('p5'), environment: 'staging' });
+    expect(await link.text()).toMatchObject({ id: 'p5', reason: 'invalid', status: null });
+  });
+
+  it('answers error, and keeps the relay up, when signing or sending throws', async () => {
+    // An Ed25519 key loads, but cannot sign ES256: the JWT throws when it is made.
+    const { privateKey } = generateKeyPairSync('ed25519');
+    const relay = await startRelay({
+      apns: {
+        keyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+        keyId: 'KEYID12345',
+        teamId: 'TEAM123456',
+        topic: 'dev.openbots.app',
+        origin: 'http://127.0.0.1:9',
+      },
+    });
+    const link = await linkHost(relay, makeHost());
+    link.send(pushFrame('p1'));
+    expect(await link.text()).toEqual({
+      type: 'push.result',
+      id: 'p1',
+      ok: false,
+      reason: 'error',
+      status: null,
+    });
+  });
+
+  it('answers error when a gateway throws or rejects', async () => {
+    const throwing = {
+      send: (): never => {
+        throw new Error('broken gateway');
+      },
+      close: async () => {},
+    };
+    const relay = await startRelay({ apns: throwing });
+    const link = await linkHost(relay, makeHost());
+    link.send(pushFrame('p1'));
+    expect(await link.text()).toEqual({
+      type: 'push.result',
+      id: 'p1',
+      ok: false,
+      reason: 'error',
+      status: null,
+    });
+    const rejecting = await startRelay({
+      apns: { send: () => Promise.reject(new Error('down')), close: async () => {} },
+    });
+    const second = await linkHost(rejecting, makeHost());
+    second.send(pushFrame('p2'));
+    expect(await second.text()).toMatchObject({ id: 'p2', reason: 'error', status: null });
+    expect(await rejecting.metrics.render()).toMatch(/openbots_relay_push_failures_total 1/);
+  });
+
   it('answers error 429 past the pushes of the hour', async () => {
     const relay = await startRelay({ limits: { pushesPerHour: 2 } });
     const link = await linkHost(relay, makeHost());

@@ -232,6 +232,11 @@ describe('organizations are isolated (plan 21.3)', () => {
       call(cookie, 'post', '/api/v1/devices/pairings', { name: `${marker} Server` }),
       201,
     );
+    // One left open, for the cancel route.
+    const openPairing = await json<{ id: string }>(
+      call(cookie, 'post', '/api/v1/devices/pairings', { name: `${marker} Open` }),
+      201,
+    );
     const device = await json<{ device: { id: string } }>(
       call(cookie, 'post', '/api/v1/devices/pair', {
         code: pairing.qr.code,
@@ -292,6 +297,7 @@ describe('organizations are isolated (plan 21.3)', () => {
         provider: provider.id,
         apiKey: key.id,
         device: device.device.id,
+        pairing: openPairing.id,
         artifact: artifact.id,
         run: run.id,
         approval: approval!.id,
@@ -325,6 +331,7 @@ describe('organizations are isolated (plan 21.3)', () => {
       expect(id, `no resource for ${path}`).toBeDefined();
       filled = filled.replace('{id}', id!);
     }
+    if (path === '/api/v1/devices/pairings/{id}') filled = filled.replace('{id}', ids.pairing!);
     if (path === '/api/v1/messages/{id}/reactions') filled += '?emoji=%F0%9F%91%8D';
     return filled
       .replace('{memoryId}', ids.memory!)

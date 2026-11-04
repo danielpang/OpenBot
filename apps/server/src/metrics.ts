@@ -133,3 +133,14 @@ export function setRelayLinked(linked: boolean) {
 export function setRelayStreams(streams: number) {
   relayStreams.set(streams);
 }
+
+// The data disk, as the standalone image's watcher reports it (readiness.ts).
+const diskLow = new Gauge({
+  name: 'openbots_disk_low',
+  help: 'Whether the data disk is reported nearly full (1) or not (0)',
+  registers: [registry],
+});
+
+export function setDiskLow(low: boolean) {
+  diskLow.set(low ? 1 : 0);
+}

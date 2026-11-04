@@ -9,19 +9,26 @@
 #              linux/amd64 and linux/arm64, pushed to ghcr.io/<owner>/openbots, plus a
 #              `docker load` archive of each per architecture
 #              (release-images.yml)
-#   mac        the universal DMG, the zip and latest-mac.yml, signed and
-#              notarized when the Apple secrets are set (release-mac.yml)
+#   mac        the universal DMG, the zip and latest-mac.yml, Developer ID
+#              signed and notarized; a release without the Apple secrets
+#              fails here (release-mac.yml)
 #   bundle     the compose bundle (scripts/release-bundle.sh)
-#   release    after all three: the GitHub Release with notes, every file
-#              above and SHA256SUMS, then a check that the images are public
+#   release    after all three: the GitHub Release as a draft, every file
+#              above and SHA256SUMS uploaded to it, then published, and a
+#              check that the images are public
 #
 # The Mac app's local stack runs the images of its own version, so the release
 # (and with it latest-mac.yml) appears only after the images are pushed.
 #
-# A pull request that changes the release files, or a manual run, is a dry run:
-# it builds every artifact without publishing anything or reading a secret, and
-# uploads them as workflow artifacts (release-image-*, release-mac,
-# release-bundle).
+# A pull request that changes the release files, or a manual run without a
+# tag, is a dry run: it builds every artifact without publishing anything or
+# reading a secret, and uploads them as workflow artifacts (release-image-*,
+# release-mac, release-bundle).
+#
+# A manual run with a tag (Actions, Release, Run workflow, tag v1.2.0) retries
+# that release: every job builds the tag's commit, whichever branch the run
+# was started from, and publishes as the tag's push would have. Only the
+# newest tag can be retried, since a release moves `latest`.
 name: Release
 
 on:
@@ -35,9 +42,15 @@ on:
       - apps/desktop/packaging/**
       - scripts/release-*
   workflow_dispatch:
+    inputs:
+      tag:
+        description: An existing tag to release again (such as v1.2.0); empty for a dry run
+        type: string
+        default: ''
 
 concurrency:
-  group: release-${{ github.ref }}
+  # A retry and the tag's own push are the same release.
+  group: release-${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
   # A newer push to a pull request replaces its dry run; a release always finishes.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -57,9 +70,14 @@ jobs:
       minor: ${{ steps.version.outputs.minor }}
       prerelease: ${{ steps.version.outputs.prerelease }}
       image-prefix: ${{ steps.version.outputs.image-prefix }}
+      ref: ${{ steps.version.outputs.ref }}
     steps:
+      # A retry builds the tag, not the branch the run was started from. Every
+      # tag comes too, to check the retried one is the newest.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || '' }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -72,15 +90,29 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           OWNER: ${{ github.repository_owner }}
+          RETRY_TAG: ${{ inputs.tag }}
         run: |
+          tag=""
           if [ "$EVENT" = push ]; then
-            node scripts/release-version.mjs check "$GITHUB_REF_NAME" >>"$GITHUB_OUTPUT"
+            tag="$GITHUB_REF_NAME"
+          elif [ "$EVENT" = workflow_dispatch ] && [ -n "$RETRY_TAG" ]; then
+            tag="$RETRY_TAG"
+            # Prereleases sort before their release (versionsort.suffix).
+            newest="$(git -c versionsort.suffix=- tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
+            if [ "$tag" != "$newest" ]; then
+              echo "::error::Only the newest tag ($newest) can be released again: a release moves the latest image tags and the Mac app's update."
+              exit 1
+            fi
+          fi
+          if [ -n "$tag" ]; then
+            node scripts/release-version.mjs check "$tag" >>"$GITHUB_OUTPUT"
             echo "publish=true" >>"$GITHUB_OUTPUT"
           else
             node scripts/release-version.mjs current >>"$GITHUB_OUTPUT"
             echo "publish=false" >>"$GITHUB_OUTPUT"
           fi
           echo "image-prefix=ghcr.io/${OWNER,,}/openbots" >>"$GITHUB_OUTPUT"
+          echo "ref=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
   images:
@@ -97,6 +129,7 @@ jobs:
       prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
       image-prefix: ${{ needs.version.outputs.image-prefix }}
       publish: true
+      ref: ${{ needs.version.outputs.ref }}
 
   images-dry-run:
     name: Images (dry run)
@@ -121,6 +154,7 @@ jobs:
     with:
       version: ${{ needs.version.outputs.version }}
       publish: true
+      ref: ${{ needs.version.outputs.ref }}
     secrets:
       MAC_CERTS_P12_BASE64: ${{ secrets.MAC_CERTS_P12_BASE64 }}
       MAC_CERTS_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
@@ -150,6 +184,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.version.outputs.ref }}
           persist-credentials: false
       - name: Pack the bundle
         env:
@@ -192,6 +227,7 @@ jobs:
       # Every tag, for the notes' "changes since" range.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.version.outputs.ref }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -201,12 +237,13 @@ jobs:
           merge-multiple: true
           path: ${{ runner.temp }}/assets
 
-      # Squirrel.Mac installs only updates signed by the same Developer ID, so
-      # an unsigned release offers no update: without latest-mac.yml, earlier
-      # signed installs do not download an app they cannot install.
-      - name: Leave the update manifest out of an unsigned release
+      # release-mac.yml fails a release without the Apple secrets; this holds
+      # if that ever changes, since electron-updater cannot update an unsigned app.
+      - name: Refuse an unsigned Mac app
         if: env.SIGNED != 'true'
-        run: rm -f "$RUNNER_TEMP"/assets/latest-mac.yml "$RUNNER_TEMP"/assets/*.blockmap
+        run: |
+          echo "::error::The Mac app is not signed and notarized, so the release stops here."
+          exit 1
 
       - name: Check the assets and write SHA256SUMS
         working-directory: ${{ runner.temp }}/assets
@@ -216,13 +253,13 @@ jobs:
             "OpenBots-$VERSION-universal-mac.zip"
             "openbots.rb"
             "openbots-compose-$VERSION.tar.gz"
+            latest-mac.yml
           )
           for image in server computer sandbox-firewall relay standalone; do
             for arch in amd64 arm64; do
               expected+=("openbots-$image-$VERSION-linux-$arch.tar.gz")
             done
           done
-          if [ "$SIGNED" = true ]; then expected+=(latest-mac.yml); fi
           status=0
           for file in "${expected[@]}"; do
             if [ ! -f "$file" ]; then
@@ -262,22 +299,30 @@ jobs:
           bash scripts/release-notes.sh >"$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md"
 
-      # gh uploads the assets to a draft and publishes it once all are there,
-      # so electron-updater never sees a release without its files. A rerun
-      # updates the existing release.
+      # A new release is made as a draft, every file is uploaded to it, and
+      # only then is it published, so electron-updater and the download page
+      # never see a release without its files. A rerun or a retry finds the
+      # release: a draft is finished the same way; a published one gets its
+      # files again with latest-mac.yml last, so the update it names is there
+      # before the updater reads it.
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "OpenBots $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
-            gh release upload "$TAG" "$RUNNER_TEMP"/assets/* --clobber
-          else
-            flags=(--latest)
-            if [ "$PRERELEASE" = true ]; then flags=(--prerelease --latest=false); fi
-            gh release create "$TAG" --verify-tag --title "OpenBots $VERSION" \
-              --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}" "$RUNNER_TEMP"/assets/*
+          flags=(--latest)
+          if [ "$PRERELEASE" = true ]; then flags=(--prerelease --latest=false); fi
+          assets="$RUNNER_TEMP/assets"
+          if ! draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            gh release create "$TAG" --draft --verify-tag --title "OpenBots $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md"
+            draft=true
+          fi
+          gh release edit "$TAG" --title "OpenBots $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+          find "$assets" -maxdepth 1 -type f ! -name latest-mac.yml -exec gh release upload "$TAG" --clobber {} +
+          gh release upload "$TAG" --clobber "$assets/latest-mac.yml"
+          if [ "$draft" = true ]; then
+            gh release edit "$TAG" --draft=false "${flags[@]}"
           fi
 
       - name: Summarize
@@ -290,11 +335,7 @@ jobs:
             echo
             echo "Release: https://github.com/$REPOSITORY/releases/tag/$TAG"
             echo
-            if [ "$SIGNED" = true ]; then
-              echo "Mac app: Developer ID signed and notarized."
-            else
-              echo "Mac app: **unsigned build** (no Apple secrets). No latest-mac.yml, so no automatic updates."
-            fi
+            echo "Mac app: Developer ID signed and notarized."
             echo
             if [ -n "$PRIVATE_IMAGES" ]; then
               echo "> [!WARNING]"

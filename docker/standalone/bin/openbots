@@ -10,13 +10,15 @@
 #   rotate-key                  re-encrypt every stored secret under OPENBOTS_MASTER_KEY
 #   keygen                      print a fresh OPENBOTS_MASTER_KEY
 #   migrate                     apply the database migrations and exit
-#   backup [dir]                back up into dir (default /data/backups/<UTC timestamp>)
-#   restore <dir> [--yes]       restore a backup; stops the server while it runs
+#   backup [dir] [--out <dir>]  back up into dir/<UTC timestamp> (default dir /data/backups),
+#                               or into exactly --out <dir>
+#   restore <dir> [--yes]       restore a backup; stops the server while it runs.
+#                               Without a terminal (docker exec without -it) it needs --yes
 set -euo pipefail
 
 LIB=/usr/local/lib/openbots
 
-usage() { sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 command="${1:-help}"
 [ "$#" -gt 0 ] && shift
@@ -37,7 +39,7 @@ case "$command" in
   pair | devices | relay | rotate-key | migrate)
     # shellcheck source=SCRIPTDIR/../lib/env.sh
     . "$LIB/standalone/env.sh"
-    openbots_load_env
+    openbots_server_env
     # The secrets go to files the openbots user reads, as for the server, in a
     # directory of this command's own that goes when it ends.
     secrets="$(mktemp -d /run/openbots-cli.XXXXXX)"

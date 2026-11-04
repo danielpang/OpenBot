@@ -1,4 +1,4 @@
-import { boolean, check, index, integer, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, index, integer, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { apikeys, users } from './auth.js';
 import { bytea, createdAt, id, timestamptz } from './columns.js';
@@ -26,10 +26,11 @@ export const devices = pgTable(
     platform: text('platform').$type<DevicePlatform>().notNull(),
     /**
      * The device's Noise static key (X25519 public key, 32 bytes), unique
-     * across every organization. Cleared when the device is revoked: the
-     * server forgets it (RELAY_PROTOCOL.md section 2).
+     * in its organization: one phone may pair with several organizations of
+     * one server, each its own device. Cleared when the device is revoked:
+     * the server forgets it (RELAY_PROTOCOL.md section 2).
      */
-    publicKey: bytea('public_key').unique(),
+    publicKey: bytea('public_key'),
     /** The better-auth API key it authenticates with; null once revoked. */
     apiKeyId: uuid('api_key_id').references(() => apikeys.id, { onDelete: 'set null' }),
     /** The APNs (or later FCM) token, sealed; null until `PUT /devices/{id}/push`. */
@@ -42,7 +43,10 @@ export const devices = pgTable(
     createdAt: createdAt(),
     revokedAt: timestamptz('revoked_at'),
   },
-  (t) => [index('devices_workspace_owner').on(t.workspaceId, t.ownerId)],
+  (t) => [
+    index('devices_workspace_owner').on(t.workspaceId, t.ownerId),
+    unique('devices_workspace_public_key').on(t.workspaceId, t.publicKey),
+  ],
 );
 
 /** A pairing offer: the link's code, good for 5 minutes and once. */

@@ -137,6 +137,12 @@ export interface StackManagerOptions {
    * without `serverVersion` or with development `images`.
    */
   releaseImages?: ReleaseImageLoader;
+  /**
+   * The relay a `.env` without one gets as OPENBOTS_RELAY_URL on its next
+   * start: the project's shared relay (main/pairing.ts). The owner changes it
+   * with `setRelay`.
+   */
+  defaultRelayUrl?: string;
   exec?: Exec;
   spawn?: Spawn;
   files?: StackFiles;
@@ -212,6 +218,14 @@ export interface StackManager {
    * process only: it never crosses the preload bridge.
    */
   localToken(): Promise<string | null>;
+  /** OPENBOTS_RELAY_URL from `.env`; null when it is empty or there is no `.env`. */
+  relayUrl(): Promise<string | null>;
+  /**
+   * Writes OPENBOTS_RELAY_URL into `.env` and, when the stack runs and the
+   * value changed, runs `compose up` so the server takes it. The caller
+   * checks the URL (main/pairing.ts parseRelayUrl).
+   */
+  setRelay(url: string): Promise<StackStatus>;
   /**
    * Moves a stack that is not running to the first free port (and its
    * localhost OPENBOTS_PUBLIC_URL with it), for when another app took its port.
@@ -317,6 +331,16 @@ export function generateLocalToken(): string {
 /** 24 random bytes in hex, like install.sh: nothing to escape in DATABASE_URL. */
 export function generateDatabasePassword(): string {
   return randomBytes(24).toString('hex');
+}
+
+/**
+ * The default relay (OPENBOTS_RELAY_URL) for a `.env` that has none, so the
+ * phone can reach This Mac away from home without a setting. One the owner
+ * set stays.
+ */
+export function withRelay(env: string, url: string | undefined): string {
+  if (!url || envValue(env, 'OPENBOTS_RELAY_URL')?.trim()) return env;
+  return setEnvValue(env, 'OPENBOTS_RELAY_URL', url);
 }
 
 /** The stack's web port: OPENBOTS_HTTP_PORT, or Compose's default of 3000. */
@@ -707,6 +731,7 @@ export function createStackManager(options: StackManagerOptions): StackManager {
       }
       fixed = await sandboxFor(cli, name, fixed);
       fixed = withImages(fixed, options.images);
+      fixed = withRelay(fixed, options.defaultRelayUrl);
       if (fixed !== current) await files.writeFile(paths.envFile, fixed);
       return fixed;
     }
@@ -723,8 +748,9 @@ export function createStackManager(options: StackManagerOptions): StackManager {
       sandbox: await freeSandbox(cli),
       images: options.images,
     });
-    await files.writeFile(paths.envFile, created);
-    return created;
+    const withDefaultRelay = withRelay(created, options.defaultRelayUrl);
+    await files.writeFile(paths.envFile, withDefaultRelay);
+    return withDefaultRelay;
   }
 
   async function pendingUpgradeHere(): Promise<StackUpgrade | null> {
@@ -891,6 +917,25 @@ export function createStackManager(options: StackManagerOptions): StackManager {
     async localToken() {
       if (!(await files.exists(paths.envFile))) return null;
       return envValue(await files.readFile(paths.envFile), 'OPENBOTS_LOCAL_TOKEN')?.trim() || null;
+    },
+
+    async relayUrl() {
+      if (!(await files.exists(paths.envFile))) return null;
+      return envValue(await files.readFile(paths.envFile), 'OPENBOTS_RELAY_URL')?.trim() || null;
+    },
+
+    async setRelay(url) {
+      const docker = await requireReady();
+      if (!(await files.exists(paths.envFile))) {
+        throw new StackError('Start OpenBots on this Mac before you choose its relay.', '');
+      }
+      const name = await project(docker.cli);
+      const current = await files.readFile(paths.envFile);
+      const next = setEnvValue(current, 'OPENBOTS_RELAY_URL', url);
+      if (next === current) return statusOf(docker, name);
+      await files.writeFile(paths.envFile, next);
+      if (!anyRunning(await services(docker.cli, name))) return statusOf(docker, name);
+      return up(false);
     },
 
     async changePort() {

@@ -387,6 +387,9 @@ describe('email sign-up', () => {
   });
 });
 
+// These tests build their apps in the test, not in a hook, so each gets the
+// hooks' 30 seconds (vitest.config.ts): a test app is a fresh database, and two
+// of them outlast the default 5 seconds on a busy runner.
 describe('sign-up codes in the logs', () => {
   it('logs a code only on a development server that asked for it', async () => {
     for (const logLinks of [false, true]) {
@@ -404,7 +407,7 @@ describe('sign-up codes in the logs', () => {
     expect(() =>
       emailFromEnv({ OPENBOTS_DEV_LOG_EMAIL_LINKS: '1', NODE_ENV: 'production' }),
     ).toThrow(/OPENBOTS_DEV_LOG_EMAIL_LINKS/);
-  });
+  }, 30_000);
 
   it('logs no code or invitation id when sending fails', async () => {
     const sentBodies: string[] = [];
@@ -447,7 +450,7 @@ describe('sign-up codes in the logs', () => {
     } finally {
       await app.close();
     }
-  });
+  }, 30_000);
 });
 
 describe('a GitHub sign-up from an invite link', () => {
