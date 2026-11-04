@@ -5,7 +5,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
-      "env": { "OPENBOTS_APNS_ENVIRONMENT": "development" }
+      "env": { "OPENBOTS_APNS_ENVIRONMENT": "development" },
+      "android": { "buildType": "apk" }
     },
     "simulator": {
       "extends": "development",
@@ -20,13 +21,15 @@
       "developmentClient": false,
       "distribution": "store",
       "channel": "preview",
-      "env": { "OPENBOTS_APNS_ENVIRONMENT": "production" }
+      "env": { "OPENBOTS_APNS_ENVIRONMENT": "production" },
+      "android": { "buildType": "app-bundle" }
     },
     "production": {
       "developmentClient": false,
       "distribution": "store",
       "channel": "production",
-      "env": { "OPENBOTS_APNS_ENVIRONMENT": "production" }
+      "env": { "OPENBOTS_APNS_ENVIRONMENT": "production" },
+      "android": { "buildType": "app-bundle" }
     }
   },
   "submit": {
