@@ -105,6 +105,10 @@ overrides:
   'fast-uri@>=3.0.0 <3.1.9': ^3.1.9
   'undici@>=7.0.0 <7.30.1': ^7.30.1
   'uuid@<11.1.1': ^11.1.1
+  # Mobile renders untrusted assistant text and parses incoming deep links.
+  'react-native-markdown-display>markdown-it': ^14.3.3
+  'markdown-it>linkify-it': ^5.0.2
+  'query-string>decode-uri-component': ^0.5.1
 
 # Advisories `pnpm audit` may ignore, each with the reason (docs/SECURITY.md).
 # GHSA-g3hv-75wg-m249 (minimatch < 11.0.1, glob pattern denial of service):

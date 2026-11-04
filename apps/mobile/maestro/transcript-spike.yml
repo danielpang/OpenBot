@@ -1,0 +1,13 @@
+appId: dev.openbots.mobile
+---
+- launchApp
+- openLink: openbots://dev/transcript-spike
+- assertVisible: Transcript spike
+- assertVisible: Start replay
+- tapOn: Start replay
+- assertVisible: Pause replay
+- swipe:
+    direction: DOWN
+    duration: 1200
+- tapOn: Reset replay
+- assertVisible: Start replay
