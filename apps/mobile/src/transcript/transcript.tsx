@@ -1,13 +1,7 @@
-import { memo, useCallback, useEffect, useRef } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  View,
-} from 'react-native';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, Pressable, View } from 'react-native';
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { unwrap } from '@openbots/api-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,6 +32,13 @@ export function Transcript({
 }) {
   const c = useTheme();
   const safe = useSafeAreaInsets();
+  const keyboard = useAnimatedKeyboard();
+  // Follow the native keyboard frame on the UI thread, including interactive
+  // dismissal. The bottom inset is applied once, not added above the keyboard.
+  const keyboardInsets = useAnimatedStyle(() => ({
+    paddingBottom: Math.max(keyboard.height.value, safe.bottom),
+  }));
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
   const messages = useMessages(chatId, threadRootId);
   const list = useRef<FlashListRef<Message>>(null);
   const jumped = useRef<string | undefined>(undefined);
@@ -90,10 +91,9 @@ export function Transcript({
     messages.loadMore,
   ]);
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: c.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 96 : 0}
+    <Animated.View
+      testID="chat-keyboard-frame"
+      style={[{ flex: 1, backgroundColor: c.background }, keyboardInsets]}
     >
       <View style={{ flex: 1 }}>
         <ErrorNote error={messages.error} onRetry={refresh} />
@@ -121,7 +121,16 @@ export function Transcript({
               }
             />
           )}
-          contentContainerStyle={{ paddingVertical: 18 }}
+          contentContainerStyle={{ paddingTop: 12, paddingBottom: 8 }}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={false}
+          scrollEventThrottle={32}
+          onScroll={({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
+            setAwayFromBottom(
+              contentSize.height - layoutMeasurement.height - contentOffset.y > 180,
+            );
+          }}
           maintainVisibleContentPosition={{
             startRenderingFromBottom: true,
             autoscrollToBottomThreshold: 0.2,
@@ -152,16 +161,37 @@ export function Transcript({
             ) : null
           }
         />
+        {awayFromBottom ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Jump to latest message"
+            onPress={() => list.current?.scrollToEnd({ animated: true })}
+            style={({ pressed }) => ({
+              position: 'absolute',
+              right: 20,
+              bottom: 8,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: c.card,
+              borderWidth: 1,
+              borderColor: c.border,
+              opacity: pressed ? 0.65 : 1,
+            })}
+          >
+            <Icon name="arrow-down" size={20} />
+          </Pressable>
+        ) : null}
       </View>
-      <View style={{ paddingBottom: safe.bottom ? Math.max(safe.bottom - 8, 0) : 0 }}>
-        <Composer
-          bots={bots}
-          onSend={messages.send}
-          sending={messages.sending}
-          threadRootId={threadRootId}
-        />
-      </View>
-    </KeyboardAvoidingView>
+      <Composer
+        bots={bots}
+        onSend={messages.send}
+        sending={messages.sending}
+        threadRootId={threadRootId}
+      />
+    </Animated.View>
   );
 }
 
@@ -198,14 +228,16 @@ const MessageRow = memo(
         onLongPress={menu}
         style={{
           paddingHorizontal: 20,
-          paddingVertical: 13,
+          paddingVertical: 16,
           backgroundColor: highlighted ? c.accent : 'transparent',
         }}
       >
-        <View style={[row.base, { marginBottom: 9 }]}>
+        <View
+          style={[row.base, { marginBottom: 8, justifyContent: user ? 'flex-end' : 'flex-start' }]}
+        >
           {bot ? (
             <BotAvatar bot={bot} size={28} />
-          ) : (
+          ) : !user ? (
             <View
               style={{
                 width: 28,
@@ -216,9 +248,9 @@ const MessageRow = memo(
                 justifyContent: 'center',
               }}
             >
-              <Icon name={user ? 'person-outline' : 'ellipse-outline'} size={15} />
+              <Icon name="ellipse-outline" size={15} />
             </View>
-          )}
+          ) : null}
           <Label weight="600" size={14}>
             {bot?.name ??
               (user ? 'You' : message.authorType === 'system' ? 'OpenBots' : message.authorType)}
@@ -231,7 +263,22 @@ const MessageRow = memo(
           </Label>
           {message.status === 'streaming' ? <ActivityIndicator size="small" /> : null}
         </View>
-        <View style={{ gap: 10, marginLeft: user ? 0 : 0 }}>
+        <View
+          style={
+            user
+              ? {
+                  gap: 8,
+                  alignSelf: 'flex-end',
+                  maxWidth: '88%',
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 22,
+                  borderBottomRightRadius: 8,
+                  backgroundColor: c.card,
+                }
+              : { gap: 10 }
+          }
+        >
           {message.parts.map((part, index) => (
             <MessagePartView
               key={`${index}-${part.type}`}
@@ -247,7 +294,12 @@ const MessageRow = memo(
             This response was interrupted.
           </Label>
         ) : null}
-        <View style={[row.base, { marginTop: 8, flexWrap: 'wrap' }]}>
+        <View
+          style={[
+            row.base,
+            { marginTop: 8, flexWrap: 'wrap', justifyContent: user ? 'flex-end' : 'flex-start' },
+          ]}
+        >
           {Object.entries(
             (message.reactions ?? []).reduce<Record<string, number>>(
               (counts, reaction) => ({

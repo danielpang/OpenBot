@@ -1,9 +1,19 @@
 import { useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, TextInput, View } from 'react-native';
+import {
+  ActionSheetIOS,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useMobile } from '../api/provider';
-import { Button, Icon, Label, row } from '../components/ui';
+import { Icon, Label, row } from '../components/ui';
 import { useTheme } from '../theme';
 import { activeMention, insertMention, type Attachment } from './model';
 import type { Bot } from '../screens/data';
@@ -29,6 +39,10 @@ export function Composer({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [cursor, setCursor] = useState(0);
+  const [focused, setFocused] = useState(false);
+  const sendInFlight = useRef(false);
+  const busy = sending || uploading;
+  const canSend = Boolean(text.trim() || attachments.length) && !busy;
   const input = useRef<TextInput>(null);
   const mention = activeMention(text, cursor);
   const suggestions = mention
@@ -78,7 +92,37 @@ export function Composer({
       Alert.alert('Could not select files', error instanceof Error ? error.message : String(error));
     }
   }
+  function mentionBot() {
+    setText((value) => `${value}${value && !value.endsWith(' ') ? ' ' : ''}@`);
+    input.current?.focus();
+  }
+  function showActions() {
+    if (busy) return;
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: 'Add to your message',
+          options: ['Cancel', 'Photo library', 'Attach a file', 'Mention a Bot'],
+          cancelButtonIndex: 0,
+        },
+        (index) => {
+          if (index === 1) void photos();
+          else if (index === 2) void files();
+          else if (index === 3) mentionBot();
+        },
+      );
+    } else {
+      Alert.alert('Add to your message', undefined, [
+        { text: 'Photo library', onPress: () => void photos() },
+        { text: 'Attach a file', onPress: () => void files() },
+        { text: 'Mention a Bot', onPress: mentionBot },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }
   async function send() {
+    if (!canSend || sendInFlight.current) return;
+    sendInFlight.current = true;
     const draft = text;
     const files = attachments;
     setUploading(true);
@@ -96,21 +140,12 @@ export function Composer({
     } catch (error) {
       Alert.alert('Message not sent', error instanceof Error ? error.message : String(error));
     } finally {
+      sendInFlight.current = false;
       setUploading(false);
     }
   }
   return (
-    <View
-      style={{
-        paddingHorizontal: 16,
-        paddingTop: 10,
-        paddingBottom: 10,
-        gap: 8,
-        borderTopWidth: 1,
-        borderTopColor: c.border,
-        backgroundColor: c.background,
-      }}
-    >
+    <View style={styles.dock}>
       {suggestions.length ? (
         <View
           style={{
@@ -141,7 +176,12 @@ export function Composer({
         </View>
       ) : null}
       {attachments.length ? (
-        <ScrollView horizontal contentContainerStyle={{ gap: 8 }}>
+        <ScrollView
+          horizontal
+          keyboardShouldPersistTaps="always"
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 8 }}
+        >
           {attachments.map((file, index) => (
             <Pressable
               key={`${file.uri}-${index}`}
@@ -158,69 +198,94 @@ export function Composer({
           ))}
         </ScrollView>
       ) : null}
-      <View style={{ backgroundColor: c.muted, borderRadius: 20, padding: 10, gap: 6 }}>
+      <View
+        style={[
+          styles.capsule,
+          {
+            backgroundColor: c.card,
+            borderColor: focused ? c.mutedForeground : c.border,
+            shadowColor: c.foreground,
+          },
+        ]}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add to message"
+          accessibilityHint="Choose a photo, file, or Bot mention"
+          accessibilityState={{ disabled: busy }}
+          disabled={busy}
+          onPress={showActions}
+          style={({ pressed }) => [styles.iconButton, { opacity: busy ? 0.4 : pressed ? 0.6 : 1 }]}
+        >
+          <Icon name="add" size={25} color={c.foreground} />
+        </Pressable>
         <TextInput
           ref={input}
           accessibilityLabel="Message"
-          placeholder={threadRootId ? 'Reply in thread…' : 'Message your Bot…'}
+          placeholder={threadRootId ? 'Reply in thread…' : 'Message…'}
           placeholderTextColor={c.mutedForeground}
           multiline
           editable={!sending && !uploading}
           value={text}
           onChangeText={setText}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           onSelectionChange={(event) => setCursor(event.nativeEvent.selection.end)}
-          style={{
-            color: c.foreground,
-            fontSize: 16,
-            lineHeight: 23,
-            minHeight: 42,
-            maxHeight: 140,
-            paddingHorizontal: 6,
-            paddingVertical: 6,
-          }}
+          style={[styles.input, { color: c.foreground }]}
         />
-        <View style={row.between}>
-          <View style={row.base}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Attach a photo"
-              disabled={sending || uploading}
-              onPress={() => void photos()}
-              style={{ padding: 6 }}
-            >
-              <Icon name="image-outline" size={22} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Attach a file"
-              disabled={sending || uploading}
-              onPress={() => void files()}
-              style={{ padding: 6 }}
-            >
-              <Icon name="attach-outline" size={22} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Mention a Bot"
-              disabled={sending || uploading}
-              onPress={() => {
-                setText((value) => `${value}${value && !value.endsWith(' ') ? ' ' : ''}@`);
-                input.current?.focus();
-              }}
-              style={{ padding: 6 }}
-            >
-              <Icon name="at-outline" size={22} />
-            </Pressable>
-          </View>
-          <Button
-            title={sending || uploading ? 'Sending' : 'Send'}
-            icon="arrow-up"
-            loading={sending || uploading}
-            disabled={!text.trim() && !attachments.length}
-            onPress={() => void send()}
-          />
-        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={busy ? 'Sending message' : 'Send'}
+          accessibilityState={{ disabled: !canSend, busy }}
+          disabled={!canSend}
+          onPress={() => void send()}
+          style={({ pressed }) => [
+            styles.iconButton,
+            styles.send,
+            {
+              backgroundColor: canSend || busy ? c.primary : c.muted,
+              transform: [{ scale: pressed ? 0.94 : 1 }],
+            },
+          ]}
+        >
+          {busy ? (
+            <ActivityIndicator size="small" color={c.primaryForeground} />
+          ) : (
+            <Icon
+              name="arrow-up"
+              size={22}
+              color={canSend ? c.primaryForeground : c.mutedForeground}
+            />
+          )}
+        </Pressable>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  dock: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 8 },
+  capsule: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
+    borderRadius: 28,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+  },
+  iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  send: { borderRadius: 22 },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    lineHeight: 23,
+    minHeight: 44,
+    maxHeight: 144,
+    paddingHorizontal: 2,
+    paddingTop: 10,
+    paddingBottom: 10,
+  },
+});

@@ -5,7 +5,7 @@ Status: **not yet passed**. Unit/component tests, native project generation and 
 ## Hardware spike
 
 1. Use a signed development build on iPhone 12 (record iOS, app commit and build number).
-2. Open `openbots://dev/transcript-spike` or navigate to `/dev/transcript-spike` in development. Run the 500-message transcript replay while scrolling and using the keyboard. Profile frame time with Instruments; record dropped frames and sustained 60fps behavior. Do not use the JS test duration as a frame-rate measurement.
+2. Open `openbots://dev/transcript-spike` or navigate to `/dev/transcript-spike` in development. Run the 500-message transcript replay while scrolling; test keyboard interactions in a real conversation using the checklist below. Profile frame time with Instruments; record dropped frames and sustained 60fps behavior. Do not use the JS test duration as a frame-rate measurement.
 3. Pair with a real Mac host that has no public URL. Confirm Noise pinning, relay HTTP and `/ws` subscriptions on Wi-Fi and cellular. Repeat after switching networks and after suspending the phone; compare all messages with the server after resync.
 4. Complete the encrypted-push checklist in [maestro/push-device-checklist.md](maestro/push-device-checklist.md), including locked-device decryption and exact message/thread/host navigation.
 5. Install an EAS preview build through TestFlight. Record provisioning for both App IDs, shared Keychain/App Group access, and OTA runtime matching.
@@ -20,6 +20,16 @@ View Activity, run/enable/disable a Routine, preview an Artifact, and open the B
 
 Use VoiceOver, large Dynamic Type, light/dark mode, reduced motion, hardware keyboard, native dictation, a small-screen phone and an iPad. Verify readable errors, retry, keyboard avoidance, touch targets and focus after navigation. Open from notifications when terminated and when app-locked; cancelling authentication must never issue a decision request.
 
+## Chat composer / keyboard pass
+
+- Tap the compact Message field: the composer should follow the keyboard with no jump or extra home-indicator gap. Repeat with predictive text and dictation enabled.
+- Drag down through the transcript to dismiss the keyboard interactively; reverse the gesture halfway to cancel dismissal. The composer must remain attached to the keyboard throughout.
+- Read older messages while a reply streams: keep the reading position, then use **Jump to latest message** to return. Repeat with the keyboard open.
+- Type several lines (including large Dynamic Type); the field should grow up to its cap, then scroll internally without hiding the arrow send button.
+- Use **+** to select a photo/file or insert a mention. Cancel the picker, remove an attachment, and send an attachment-only message. The keyboard should not dismiss when tapping Send.
+- Confirm the arrow is announced as **Send** in VoiceOver, and that sending disables duplicate sends and attachment actions. Simulate a failed send and confirm the draft remains intact.
+- Repeat in light/dark mode, landscape, Reduce Motion, with a hardware keyboard, and on iPad (including its floating keyboard). Automated component tests cover inset calculations and controls, not native frame pacing or gesture tracking.
+
 ## Authoring environment
 
-The local Xcode installation failed before compilation while loading `IDESimulatorFoundation`, reporting an incompatible symbol in `DVTDownloads`. No signed app build, simulator launch, Maestro execution, physical-device gate, TestFlight upload or App Store submission was completed. The notification Swift source did pass a standalone simulator-SDK typecheck. Repair/select a working Xcode installation before the native acceptance run.
+Xcode 26.4 destination discovery was repaired by installing the matching iOS runtime. A native Debug build was installed and launched on an iPhone 17 Pro iOS 26.2 simulator, and the user confirmed development-build launch and live UI updates on a personal iPhone. These smoke checks do not establish the M0 performance, keyboard-animation, APNs, accessibility, or release-distribution gates. Maestro execution, TestFlight upload and App Store submission remain unverified.
