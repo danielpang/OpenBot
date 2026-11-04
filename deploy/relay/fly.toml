@@ -8,7 +8,7 @@
 #   fly redis create                       # or a Redis Machine on the private network
 #   fly secrets set RELAY_REDIS_URL=redis://... RELAY_METRICS_TOKEN=...
 #   fly deploy --image <image>             # the first deploy, by hand
-#   fly scale count 2 --region iad,fra     # at least two, across regions
+#   fly scale count 2 --region iad,fra     # the most Machines the proxy may start
 #
 # `fly launch` replaces `app` and `primary_region` with yours. After that,
 # .github/workflows/deploy-relay.yml builds and deploys the relay on every push
@@ -65,11 +65,15 @@ kill_timeout = 30
 [http_service]
   internal_port = 3200
   force_https = true
-  # The relay holds long lived WebSockets; a Machine must never stop because
-  # it looks idle to the proxy.
-  auto_stop_machines = "off"
+  # Fly's proxy scales between min_machines_running and the Machines the app
+  # has (`fly scale count`): it starts a stopped Machine when the running ones
+  # pass the soft limit below, and stops one when the rest have room for its
+  # load. A stopped Machine gets SIGTERM and drains first (kill_timeout above),
+  # so its servers and phones reconnect to the one still running. It never
+  # creates Machines, so `fly scale count` sets the most there can be.
+  auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 2
+  min_machines_running = 1
 
   # Counted by connection, as the relay counts its sockets. Past the soft
   # limit the proxy prefers other Machines; at the hard limit it sends none.
