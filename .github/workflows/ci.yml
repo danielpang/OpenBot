@@ -190,6 +190,15 @@ jobs:
       VOLUME: openbots-ci-data
     steps:
       - uses: actions/checkout@v4
+      # The build cache (every stage of the image, with pnpm's store twice)
+      # and the loaded image outgrow what some runner images leave free, and
+      # the backup step below refuses to run with under 10 percent of the
+      # disk free. The toolchains removed here are ones this job never uses,
+      # as in release-images.yml.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
@@ -200,6 +209,12 @@ jobs:
           tags: openbots-ci/standalone:ci
           cache-from: type=gha,scope=ci-standalone
           cache-to: type=gha,scope=ci-standalone,mode=max
+      # The image is loaded and its layers are in the GitHub cache, so the
+      # builder's copy of every stage only takes the space the volume needs.
+      - name: Drop the build cache
+        run: |
+          docker buildx prune -af >/dev/null
+          df -h /
       - name: Boot it on a volume
         run: |
           cat >"$RUNNER_TEMP/start.sh" <<'EOF'
