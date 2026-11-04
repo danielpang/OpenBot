@@ -12,7 +12,7 @@
 #
 # `fly launch` replaces `app` and `primary_region` with yours. After that,
 # .github/workflows/deploy-relay.yml builds and deploys the relay on every push
-# to main that changes it, as registry.fly.io/<app>:<commit sha>.
+# to main that changes it, as ghcr.io/<owner>/openbots/relay:sha-<commit sha>.
 
 app = "openbots-relay"
 primary_region = "iad"
@@ -26,7 +26,7 @@ kill_signal = "SIGTERM"
 kill_timeout = 30
 
 # No [build]: every deploy names its image with --image (the workflow passes
-# registry.fly.io/<app>:<commit sha>), so a `fly deploy` by hand without one
+# ghcr.io/<owner>/openbots/relay:sha-<commit sha>), so a `fly deploy` by hand without one
 # fails rather than rolling the relay back to an old pinned release. Run
 # `fly releases --image` to see which image each release ran.
 

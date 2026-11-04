@@ -68,7 +68,7 @@ fly status
 fly checks list
 ```
 
-The workflow deploys on every push to `main` that changes the relay (`apps/relay`, its Dockerfile, the lockfile, or this `fly.toml`). No tag or release is needed. It runs the relay's typecheck and tests, builds `docker/relay.Dockerfile` for linux/amd64, pushes it as `registry.fly.io/<app>:<commit sha>` and runs `fly deploy --image` with it. It needs one repository secret, `FLY_API_TOKEN`:
+The workflow deploys on every push to `main` that changes the relay (`apps/relay`, its Dockerfile, the lockfile, or this `fly.toml`). No tag or release is needed. It runs the relay's typecheck and tests, builds `docker/relay.Dockerfile` for linux/amd64, pushes it to GHCR as `ghcr.io/<owner>/openbots/relay:sha-<commit sha>` and runs `fly deploy --image` with it, so Fly pulls it from GHCR. The `openbots/relay` package must be public (its package settings on GitHub), since Fly pulls without credentials. Only the `sha-` tag is pushed: the version tags and `latest` still move only with a release. It needs one repository secret, `FLY_API_TOKEN`:
 
 ```sh
 fly tokens create deploy -a <your app>    # then: gh secret set FLY_API_TOKEN
