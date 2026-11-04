@@ -90,11 +90,30 @@ export function BotsScreen() {
         <View style={row.between}>
           <View>
             <Label size={32} weight="700">
-              Bots
+              OpenBots
             </Label>
-            <Label muted size={13}>
-              {mobile.host?.name ?? 'OpenBots'} · {mobile.connected ? 'Connected' : 'Reconnecting…'}
-            </Label>
+            <View style={[row.base, { gap: 6 }]}>
+              <View
+                accessibilityRole="image"
+                accessibilityLabel={
+                  mobile.connected ? 'Connected to server' : 'Disconnected from server'
+                }
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: mobile.connected ? c.success : c.danger,
+                }}
+              />
+              <Label muted size={13}>
+                {mobile.host?.name ?? 'OpenBots'} ·{' '}
+                {mobile.connected
+                  ? 'Connected'
+                  : mobile.connecting
+                    ? 'Reconnecting…'
+                    : 'Disconnected'}
+              </Label>
+            </View>
           </View>
           <Pressable
             accessibilityRole="button"

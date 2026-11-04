@@ -8,11 +8,13 @@ import { Button, Card, Empty, ErrorNote, Icon, Label, Page, Section, row } from 
 import { BotAvatar } from '../components/bot-avatar';
 import { useTheme } from '../theme';
 import { useBots, type Bot } from './data';
+import { BotAppearance } from './bot-appearance';
 
 type Tab = 'Activity' | 'Artifacts' | 'Routines' | 'About';
 export function BotDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [tab, setTab] = useState<Tab>('Activity');
+  const [editingAppearance, setEditingAppearance] = useState(false);
   const bots = useBots();
   const bot = bots.data?.find((bot) => bot.id === id);
   const c = useTheme();
@@ -27,7 +29,23 @@ export function BotDetailsScreen() {
               {bot.name}
             </Label>
             <Label muted>{bot.label || `@${bot.handle}`}</Label>
+            {!editingAppearance ? (
+              <Button
+                title="Edit appearance"
+                variant="ghost"
+                icon="color-palette-outline"
+                onPress={() => setEditingAppearance(true)}
+              />
+            ) : null}
           </View>
+          {editingAppearance ? (
+            <BotAppearance
+              key={bot.id}
+              bot={bot}
+              bots={bots.data ?? []}
+              onClose={() => setEditingAppearance(false)}
+            />
+          ) : null}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
