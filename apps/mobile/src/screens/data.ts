@@ -1,6 +1,7 @@
 import { unwrap, type components } from '@openbots/api-client';
 import { useQuery } from '@tanstack/react-query';
 import { useMobile } from '../api/provider';
+import { botsQueryOptions } from '../api/bots';
 
 export type Bot = components['schemas']['Bot'];
 export type Chat = components['schemas']['Chat'];
@@ -8,9 +9,8 @@ export type Message = components['schemas']['Message'];
 export function useBots() {
   const { client: api, transport } = useMobile();
   return useQuery({
-    queryKey: ['bots'],
+    ...botsQueryOptions(api),
     enabled: !!api && !!transport,
-    queryFn: () => unwrap(api!.GET('/api/v1/bots')),
     select: (result) => result.items,
   });
 }

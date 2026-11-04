@@ -15,6 +15,7 @@ import {
   type GeneratedAvatar,
 } from '@openbots/avatars';
 import { useApi, useMobile } from '../api/provider';
+import { botsQueryOptions } from '../api/bots';
 import { BotAvatar } from '../components/bot-avatar';
 import { Button, Card, ErrorNote, Label, Section } from '../components/ui';
 import { useTheme } from '../theme';
@@ -61,13 +62,19 @@ export function BotAppearance({
           body: { avatar: draft },
         }),
       );
-      await cache.cancelQueries({ queryKey: ['bots'] });
-      cache.setQueryData<Bot[]>(['bots'], (current) =>
-        current?.map((item) =>
-          item.id === updated.id ? { ...item, avatar: updated.avatar } : item,
-        ),
+      const { queryKey } = botsQueryOptions(api);
+      await cache.cancelQueries({ queryKey });
+      cache.setQueryData(queryKey, (current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.map((item) =>
+                item.id === updated.id ? { ...item, avatar: updated.avatar } : item,
+              ),
+            }
+          : current,
       );
-      void cache.invalidateQueries({ queryKey: ['bots'] });
+      void cache.invalidateQueries({ queryKey });
       onClose();
     } catch (cause) {
       setError(cause);

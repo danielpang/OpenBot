@@ -1,12 +1,15 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Text } from 'react-native';
 import { BotAppearance } from './bot-appearance';
-import type { Bot } from './data';
+import { useBots, type Bot } from './data';
+import { botsQueryOptions, type BotsResponse } from '../api/bots';
 
 const mockPatch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
-const mockMobile = { connected: true };
+const mockMobile = { connected: true, client: null, transport: null };
+const { queryKey } = botsQueryOptions(null);
 jest.mock('../api/provider', () => ({
   useApi: () => ({ PATCH: mockPatch }),
   useMobile: () => mockMobile,
@@ -22,16 +25,22 @@ const bot = {
 const close = jest.fn();
 const caches: QueryClient[] = [];
 afterEach(() => {
+  cleanup();
   caches.forEach((cache) => cache.clear());
   caches.length = 0;
 });
-function setup(value = bot) {
-  const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function RosterObserver() {
+  const bots = useBots();
+  return <Text testID="roster-avatar">{JSON.stringify(bots.data?.[0]?.avatar)}</Text>;
+}
+function setup(value = bot, response: BotsResponse | undefined = { items: [value] }) {
+  const cache = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   caches.push(cache);
-  cache.setQueryData(['bots'], [value]);
+  cache.setQueryData(queryKey, response);
   render(
     <QueryClientProvider client={cache}>
       <BotAppearance bot={value} bots={[value]} onClose={close} />
+      <RosterObserver />
     </QueryClientProvider>,
   );
   return cache;
@@ -65,15 +74,38 @@ describe('Bot appearance', () => {
       params: { path: { id: bot.id } },
       body: { avatar },
     });
-    expect(cache.getQueryData<Bot[]>(['bots'])?.[0]?.avatar).toEqual(avatar);
+    expect(cache.getQueryData(queryKey)?.items[0]?.avatar).toEqual(avatar);
+    await waitFor(() =>
+      expect(screen.getByTestId('roster-avatar').props.children).toBe(JSON.stringify(avatar)),
+    );
     expect(close).toHaveBeenCalledTimes(1);
   });
+  it('preserves other Bots and the response envelope when saving', async () => {
+    const other = { ...bot, id: 'bot-2', name: 'Other Bot' };
+    const cache = setup(bot, { items: [bot, other] });
+    fireEvent.press(screen.getByRole('button', { name: 'Colors: Sky' }));
+    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Save appearance' })));
+    expect(cache.getQueryData(queryKey)).toEqual({
+      items: [{ ...bot, avatar: { ...bot.avatar, palette: 'sky' } }, other],
+    });
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('finishes a successful save even if the roster cache was evicted', async () => {
+    const cache = setup();
+    act(() => cache.removeQueries({ queryKey }));
+    fireEvent.press(screen.getByRole('button', { name: 'Colors: Sky' }));
+    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Save appearance' })));
+    expect(cache.getQueryData(queryKey)).toBeUndefined();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it('cancels without persisting draft changes', () => {
     const cache = setup();
     fireEvent.press(screen.getByRole('button', { name: 'Colors: Sky' }));
     fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
     expect(mockPatch).not.toHaveBeenCalled();
-    expect(cache.getQueryData(['bots'])).toEqual([bot]);
+    expect(cache.getQueryData(queryKey)).toEqual({ items: [bot] });
     expect(close).toHaveBeenCalled();
   });
   it('keeps the draft and allows retry after a failed save', async () => {
@@ -135,7 +167,7 @@ describe('Bot appearance', () => {
     expect(screen.queryByText('Colors')).toBeNull();
     fireEvent.press(screen.getByRole('button', { name: 'Use a generated avatar' }));
     expect(screen.getByRole('button', { name: 'Colors: Mint' })).toBeTruthy();
-    expect(cache.getQueryData(['bots'])).toEqual([uploaded]);
+    expect(cache.getQueryData(queryKey)).toEqual({ items: [uploaded] });
     expect(mockPatch).not.toHaveBeenCalled();
   });
 });
