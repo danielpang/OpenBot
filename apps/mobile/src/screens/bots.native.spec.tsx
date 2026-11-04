@@ -54,6 +54,10 @@ beforeEach(() => {
 describe('background reconnection on the Bots home screen', () => {
   it('keeps cached Bots tappable without showing a refresh spinner or transient error', () => {
     render(<BotsScreen />);
+    expect(screen.getByText('OpenBots')).toBeTruthy();
+    expect(screen.getByLabelText('Disconnected from server').props.style.backgroundColor).toBe(
+      '#dc2626',
+    );
     expect(screen.getByText(/Reconnecting/)).toBeTruthy();
     expect(screen.queryByText('Disconnected')).toBeNull();
     expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(false);
@@ -67,6 +71,24 @@ describe('background reconnection on the Bots home screen', () => {
     Object.assign(mockMobile, { connected: true, transport: {} });
     render(<BotsScreen />);
     expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(false);
+  });
+
+  it('shows a green connection dot when connected', () => {
+    Object.assign(mockMobile, { connected: true, connecting: false, transport: {} });
+    render(<BotsScreen />);
+    expect(screen.getByLabelText('Connected to server').props.style.backgroundColor).toBe(
+      '#169449',
+    );
+    expect(screen.getByText('My Mac · Connected')).toBeTruthy();
+  });
+
+  it('shows a red dot and disconnected text when not reconnecting', () => {
+    mockMobile.connecting = false;
+    render(<BotsScreen />);
+    expect(screen.getByLabelText('Disconnected from server').props.style.backgroundColor).toBe(
+      '#dc2626',
+    );
+    expect(screen.getByText('My Mac · Disconnected')).toBeTruthy();
   });
 
   it('only shows the spinner for a user-initiated refresh and clears it afterward', async () => {

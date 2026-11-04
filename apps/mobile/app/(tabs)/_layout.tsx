@@ -50,7 +50,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="bots"
           options={{
-            title: 'Bots',
+            title: 'OpenBots',
             tabBarIcon: ({ color, size }) => (
               <Icon name="chatbubbles-outline" color={color} size={size} />
             ),
