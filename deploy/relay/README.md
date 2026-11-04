@@ -62,7 +62,7 @@ Leave `RELAY_NODE_ID` unset. On Fly the relay uses the Machine's own `FLY_MACHIN
 `.github/workflows/deploy-relay.yml` deploys the relay (see below). For the first deploy, run it by hand from the Actions tab (Deploy relay, Run workflow) once the secrets are set, or deploy a release from GHCR yourself with `fly deploy --image ghcr.io/danielpang/openbots/relay:<version>`. Then:
 
 ```sh
-fly scale count 2                                # the minimum: one Machine can go while the other serves
+fly scale count 2                                # the most Machines the proxy may start
 fly scale count 4 --region iad,fra,sin           # spread across regions
 fly status
 fly checks list
@@ -76,7 +76,7 @@ fly tokens create deploy -a <your app>    # then: gh secret set FLY_API_TOKEN
 
 Run it by hand to redeploy `main`. Do not also connect the repository in Fly's dashboard, or every push deploys twice. Self-hosted relays are unaffected: they run the GHCR image each release publishes.
 
-Keep at least two Machines (`min_machines_running = 2`). Spread them over the regions your users are in: a phone and its server both connect to the hostname, Fly's proxy takes each to a nearby Machine, and the one that does not own the host replays to the one that does. The replay is one hop inside Fly's network, and only on connect.
+Fly's proxy keeps at least one Machine running (`min_machines_running = 1`) and starts the others as load needs them (`auto_stop_machines = "stop"`, `auto_start_machines = true`): it starts a stopped Machine when the running ones pass the soft limit below, and stops one, which drains first, when the rest have room. It never creates Machines, so `fly scale count` sets the most there can be. Spread them over the regions your users are in: a phone and its server both connect to the hostname, Fly's proxy takes each to a nearby Machine, and the one that does not own the host replays to the one that does. The replay is one hop inside Fly's network, and only on connect.
 
 Each Machine takes up to 20,000 sockets (host links and phone streams together, `RELAY_MAX_SOCKETS`). `[http_service.concurrency]` matches it: past the soft limit of 16,000 the proxy prefers other Machines, and at 20,000 it sends no more. A Machine that is full answers `/ready` with 503 and refuses upgrades for hosts it does not serve with 503, so the proxy picks another; it still admits links and phones of the hosts it owns (a replay can bring those past the proxy's limit), up to a hard ceiling 10 percent above, where it refuses everything. Scale out before Machines stay near the soft limit. Each also holds at most 512 MiB of bytes in flight (`RELAY_BUDGET_BYTES`), which is why the Machine has 2 GB of memory; raise both together.
 

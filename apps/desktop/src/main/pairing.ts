@@ -6,7 +6,7 @@
 // OPENBOTS_SHARED_RELAY_URL in a development run, else DEFAULT_SHARED_RELAY_URL.
 
 /** The relay the project runs for every install without its own (deploy/relay). */
-export const DEFAULT_SHARED_RELAY_URL = 'wss://relay.openbots.dev';
+export const DEFAULT_SHARED_RELAY_URL = 'wss://openbots-relay.fly.dev';
 
 /** How long a pairing is good for (RELAY_PROTOCOL.md 6.1). */
 export const PAIRING_TTL_MS = 5 * 60_000;

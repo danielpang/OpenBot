@@ -78,7 +78,7 @@ its files.
     through `onNew` on the preload bridge. Its Pair your phone opens the pairing window.
   - `pairing.ts` and `renderer/pair*.ts(x)`: the pairing window. This Mac's stack runs with
     the OpenBots relay by default: a `.env` without `OPENBOTS_RELAY_URL` gets
-    `wss://relay.openbots.dev` (or the build's `openbots.relayUrl`, or
+    `wss://openbots-relay.fly.dev` (or the build's `openbots.relayUrl`, or
     `OPENBOTS_SHARED_RELAY_URL` in development) on its next start. Pair your phone shows the QR
     code from `POST /api/v1/devices/pairings` straight away, with its countdown and the phone's
     name once it pairs (`device.paired` on the main process's socket); closing the window
