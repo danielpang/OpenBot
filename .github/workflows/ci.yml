@@ -77,7 +77,10 @@ jobs:
             echo "::error::ee/server/openapi.json or ee/web/src/schema.ts is stale; run the three commands above and commit the result"
             exit 1
           fi
-      - run: pnpm test
+      # Mobile Vitest + native Jest suites run in the dedicated job above.
+      # Do not run Jest a second time alongside all server/browser workers:
+      # CPU contention on shared runners can exhaust its per-test time budget.
+      - run: pnpm exec turbo run test --filter='!@openbots/mobile'
       - run: pnpm build
 
   # The server tests again, on real Postgres instead of PGlite (db/test-db.ts):

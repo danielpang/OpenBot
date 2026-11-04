@@ -2,7 +2,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { ActionSheetIOS, Alert } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Composer } from './composer';
 const mockUpload = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.mock('../api/provider', () => ({ useMobile: () => ({ uploadAttachment: mockUpload }) }));
@@ -53,13 +53,15 @@ describe('native composer', () => {
     const send = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(undefined);
     render(<Composer onSend={send} sending={false} />);
     fireEvent.press(screen.getByRole('button', { name: 'Add to message' }));
-    fireEvent.press(screen.getByRole('button', { name: 'Files' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Remove notes.txt' })).toBeTruthy(),
-    );
-    fireEvent.press(screen.getByRole('button', { name: 'Send' }));
-    await waitFor(() => expect(send).toHaveBeenCalledWith({ attachments: ['file-1'] }));
-    await waitFor(() => expect(screen.queryByText('notes.txt')).toBeNull());
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Files' }));
+    });
+    expect(screen.getByRole('button', { name: 'Remove notes.txt' })).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Send' }));
+    });
+    expect(send).toHaveBeenCalledWith({ attachments: ['file-1'] });
+    expect(screen.queryByText('notes.txt')).toBeNull();
   });
 
   it('disables editing and actions while sending', () => {

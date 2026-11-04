@@ -1,4 +1,6 @@
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
@@ -7,6 +9,19 @@ const config = createRequire(expo.resolve('@expo/config/package.json'));
 const cli = createRequire(expo.resolve('@expo/cli/package.json'));
 
 describe('Expo tooling security overrides', () => {
+  it.each([
+    'docker/server.Dockerfile',
+    'docker/computer.Dockerfile',
+    'docker/relay.Dockerfile',
+    'docker/standalone.Dockerfile',
+    'ee/server/Dockerfile',
+  ])('copies security patches before every dependency fetch in %s', (file) => {
+    const source = readFileSync(new URL(`../../../../${file}`, import.meta.url), 'utf8');
+    const fetches = source.match(/^RUN pnpm fetch /gm) ?? [];
+    const patchedFetches = source.match(/^COPY patches \.\/patches\nRUN pnpm fetch /gm) ?? [];
+    expect(fetches.length).toBeGreaterThan(0);
+    expect(patchedFetches.length).toBe(fetches.length);
+  });
   it.each(['deepmerge', 'deepmerge/dist/umd.js'])(
     'blocks poisoned source and target keys in %s, including nested objects',
     (entry) => {
