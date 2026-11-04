@@ -7,6 +7,7 @@ import {
   type BinaryWebSocketLike,
 } from '@openbots/tunnel';
 import type { HostSecrets, SavedHost } from '../hosts/types';
+import { DEFAULT_RELAY_URL } from '../hosts/relay';
 
 export interface MobileTransport {
   kind: 'direct' | 'relay';
@@ -135,12 +136,12 @@ export async function createTunnelTransport(
   secrets: HostSecrets,
   options: TransportOptions = {},
 ): Promise<MobileTransport> {
-  if (!host.relayUrl || !host.serverPublicKey || !secrets.devicePrivateKey)
+  if (!host.serverPublicKey || !secrets.devicePrivateKey)
     throw new Error('Relay credentials are missing');
   const serverKey = base64urlDecode(host.serverPublicKey);
   const staticKey = base64urlDecode(secrets.devicePrivateKey);
   const stream = await connectThroughRelay({
-    relayUrl: host.relayUrl,
+    relayUrl: host.relayUrl ?? DEFAULT_RELAY_URL,
     hostId: host.id,
     signal: options.signal,
     createSocket: options.createRelaySocket ?? ((url) => nativeSocket(url) as BinaryWebSocketLike),
@@ -212,7 +213,10 @@ export async function connectHost(
     }
   }
   if (options.signal?.aborted) throw options.signal.reason;
-  if (host.relayUrl) return createTunnelTransport(host, secrets, options);
+  // Previously paired hosts can also use the shared relay. Plain URL/API-key
+  // connections have no pinned host/device keys and must remain direct-only.
+  if (host.relayUrl || (host.serverPublicKey && secrets.devicePrivateKey))
+    return createTunnelTransport(host, secrets, options);
   throw new AggregateError(
     failures,
     'Cannot reach this server. Check its address and your connection.',

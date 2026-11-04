@@ -19,6 +19,20 @@ Choose **Scan a QR code** to open the camera: pairing codes open pairing confirm
 
 Connect by scanning or pasting a five-minute pairing link from the desktop/server, or sign in to an HTTPS server with email/password. Password sign-in creates a one-use device pairing and discards the temporary session. API-key connection is also available, but push requires a paired device. Public and local direct URLs require HTTPS; private servers can use the encrypted relay without opening inbound ports.
 
+### Shared relay
+
+The default shared relay is **https://openbots-relay.fly.dev**. Encrypted tunnels use its WebSocket endpoint, `wss://openbots-relay.fly.dev`; this is not an OpenBots server address to enter in the sign-in form.
+
+Pairing codes without a relay use this default, and previously paired hosts without a saved relay can fall back to it when direct HTTPS is unavailable. A custom relay explicitly included in a pairing code always takes precedence. The pairing confirmation shows the selected relay. Pinned server keys and device keys are still required; plain URL/API-key connections remain direct-only.
+
+The host must register with the same relay. Configure the OpenBots server with:
+
+```sh
+OPENBOTS_RELAY_URL=wss://openbots-relay.fly.dev
+```
+
+Restart the server after configuring it, then generate a fresh pairing code. The iOS default does not configure or register the host automatically. Direct HTTPS remains preferred when reachable; relay traffic is encrypted end-to-end using the paired server key.
+
 `EXPO_PUBLIC_OPENBOTS_CLOUD_URL` configures the managed-account sign-in destination. That option is disabled when unset. No hosted service URL is assumed.
 
 ### Clean release builds (no developer tools)

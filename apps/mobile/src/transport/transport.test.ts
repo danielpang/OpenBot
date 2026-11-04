@@ -84,7 +84,32 @@ describe('direct transport', () => {
 });
 
 describe('relay transport', () => {
-  it('uses the shared Noise handshake and streams an authenticated HTTP response through the relay socket', async () => {
+  it('does not contact the shared relay for unpaired URL/API-key connections', async () => {
+    const createRelaySocket = vi.fn();
+    await expect(
+      connectHost(
+        {
+          id: 'server-https://bots.example.com',
+          name: 'Server',
+          kind: 'server',
+          directUrls: ['https://bots.example.com'],
+          relayUrl: null,
+        },
+        { apiKey: 'secret' },
+        {
+          fetch: async () => {
+            throw new Error('Offline');
+          },
+          createRelaySocket,
+        },
+      ),
+    ).rejects.toThrow('Cannot reach this server');
+    expect(createRelaySocket).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['wss://relay.example.com', 'wss://relay.example.com'],
+    [null, 'wss://openbots-relay.fly.dev'],
+  ])('uses pinned Noise and authenticated HTTP with relay %s', async (relayUrl, expectedRelay) => {
     const serverKey = generateDeviceKey();
     const deviceKey = generateDeviceKey();
     const [devicePipe, serverPipe] = memoryTransportPair();
@@ -129,13 +154,13 @@ describe('relay transport', () => {
         name: 'Mac',
         kind: 'paired',
         directUrls: [],
-        relayUrl: 'wss://relay.example.com',
+        relayUrl,
         serverPublicKey: base64urlEncode(serverKey.publicKey),
       },
       { apiKey: 'relay-secret', devicePrivateKey: base64urlEncode(deviceKey.privateKey) },
       {
         createRelaySocket(url) {
-          expect(url).toBe('wss://relay.example.com/v1/connect/aaaaaaaaaaaaaaaaaaaaaaaaaa');
+          expect(url).toBe(`${expectedRelay}/v1/connect/aaaaaaaaaaaaaaaaaaaaaaaaaa`);
           const socket: BinaryWebSocketLike = {
             readyState: 1,
             binaryType: 'arraybuffer',

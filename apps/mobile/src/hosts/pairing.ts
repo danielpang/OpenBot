@@ -1,6 +1,7 @@
 import { base64urlDecode, base64urlEncode, generateDeviceKey, isHostId } from '@openbots/tunnel';
 import { connectHost, normalizeServerUrl, type TransportOptions } from '../transport';
 import type { HostSecrets, SavedHost } from './types';
+import { DEFAULT_RELAY_URL } from './relay';
 
 export interface PairingLink {
   v: 1;
@@ -54,7 +55,7 @@ export function parsePairingLink(input: string): PairingLink {
   if (direct.length > 8) throw new Error('Too many server addresses');
   // Parse local HTTP here; connection still needs the explicit allowInsecureLocal flag.
   for (const address of direct) normalizeServerUrl(address, true);
-  const relay = read('relay') ?? null;
+  const relay = read('relay') ?? DEFAULT_RELAY_URL;
   if (relay) {
     const url = new URL(relay);
     if (

@@ -7,6 +7,19 @@ const code = base64urlEncode(new Uint8Array(32).fill(2));
 const link = `openbots://pair#v=1&host=aaaaaaaaaaaaaaaaaaaaaaaaaa&key=${key}&code=${code}&direct=https%3A%2F%2Fbots.example.com&name=Ada%27s%20Mac%20%2B%20VM`;
 
 describe('pairing', () => {
+  it('defaults to the shared relay when the pairing code omits one', () => {
+    expect(parsePairingLink(link).relay).toBe('wss://openbots-relay.fly.dev');
+  });
+
+  it('preserves a custom secure relay advertised by the host', () => {
+    expect(parsePairingLink(`${link}&relay=wss%3A%2F%2Fprivate.example.com`).relay).toBe(
+      'wss://private.example.com',
+    );
+  });
+
+  it('rejects an insecure relay rather than silently replacing it', () => {
+    expect(() => parsePairingLink(`${link}&relay=ws%3A%2F%2Fprivate.example.com`)).toThrow();
+  });
   it('parses the server fragment encoding and repeated direct paths', () => {
     expect(
       parsePairingLink(`${link}&direct=https%3A%2F%2Fother.example.com&setup=1`),
