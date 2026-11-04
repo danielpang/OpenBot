@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Platform } from 'react-native';
 import { base64urlEncode } from '@openbots/tunnel';
 import { pairHost, parsePairingLink } from './pairing';
 
@@ -7,6 +8,10 @@ const code = base64urlEncode(new Uint8Array(32).fill(2));
 const link = `openbots://pair#v=1&host=aaaaaaaaaaaaaaaaaaaaaaaaaa&key=${key}&code=${code}&direct=https%3A%2F%2Fbots.example.com&name=Ada%27s%20Mac%20%2B%20VM`;
 
 describe('pairing', () => {
+  afterEach(() => {
+    Platform.OS = 'ios';
+  });
+
   it('defaults to the shared relay when the pairing code omits one', () => {
     expect(parsePairingLink(link).relay).toBe('wss://openbots-relay.fly.dev');
   });
@@ -54,12 +59,12 @@ describe('pairing', () => {
     }
   });
 
-  it('exchanges exactly one pairing POST with real device key material', async () => {
+  async function pairWithExpectedPlatform(platform: 'ios' | 'android') {
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       if (String(input).endsWith('/healthz')) return Response.json({ status: 'ok' });
       const body = JSON.parse(String(init?.body)) as Record<string, string>;
       expect(body.code).toBe(code);
-      expect(body.platform).toBe('ios');
+      expect(body.platform).toBe(platform);
       expect(body.publicKey).toHaveLength(43);
       expect(body.pushKey).toBe(base64urlEncode(new Uint8Array(32).fill(3)));
       expect(init?.headers).toBeInstanceOf(Headers);
@@ -81,5 +86,14 @@ describe('pairing', () => {
       setupNeeded: true,
     });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  }
+
+  it('exchanges exactly one pairing POST with real device key material', async () => {
+    await pairWithExpectedPlatform('ios');
+  });
+
+  it('identifies Android clients in the pairing POST', async () => {
+    Platform.OS = 'android';
+    await pairWithExpectedPlatform('android');
   });
 });

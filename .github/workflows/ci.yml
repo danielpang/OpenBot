@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   mobile:
-    name: iOS unit tests and bundle
+    name: Mobile unit tests and bundle
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -27,7 +27,7 @@ jobs:
       - run: pnpm --filter @openbots/mobile lint
       - name: Test mobile logic and native components
         run: pnpm --filter @openbots/mobile test
-      - name: Export iOS bundle and Hermes bytecode
+      - name: Export iOS and Android bundles and Hermes bytecode
         run: pnpm --filter @openbots/mobile build
 
   check:

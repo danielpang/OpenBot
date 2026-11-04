@@ -1,4 +1,4 @@
-import { Alert, Pressable, Switch, View } from 'react-native';
+import { Alert, Platform, Pressable, Switch, View } from 'react-native';
 import { router } from 'expo-router';
 import { useMobile } from '../api/provider';
 import { Button, Card, Icon, Label, Page, Section, row } from '../components/ui';
@@ -6,6 +6,7 @@ import { useTheme } from '../theme';
 export function SettingsScreen() {
   const mobile = useMobile();
   const c = useTheme();
+  const ios = Platform.OS === 'ios';
   function remove(id: string, name: string) {
     Alert.alert(
       `Remove ${name}?`,
@@ -104,7 +105,7 @@ export function SettingsScreen() {
             <View style={{ flex: 1 }}>
               <Label weight="600">Notifications</Label>
               <Label muted size={13}>
-                Manage alerts in iOS Settings.
+                {ios ? 'Manage alerts in iOS Settings.' : 'Manage alerts in system Settings.'}
               </Label>
             </View>
             <Button
@@ -124,11 +125,13 @@ export function SettingsScreen() {
             <View style={{ flex: 1 }}>
               <Label weight="600">App lock</Label>
               <Label muted size={13}>
-                Require Face ID or your device passcode.
+                {ios
+                  ? 'Require Face ID or your device passcode.'
+                  : 'Require biometric or your device passcode.'}
               </Label>
             </View>
             <Switch
-              accessibilityLabel="Require Face ID"
+              accessibilityLabel={ios ? 'Require Face ID' : 'Require biometric or device passcode'}
               value={mobile.lockEnabled}
               onValueChange={(enabled) =>
                 void mobile
@@ -146,7 +149,7 @@ export function SettingsScreen() {
           onPress={() => router.push('/licenses')}
         />
         <Card>
-          <Label weight="600">OpenBots for iOS</Label>
+          <Label weight="600">{ios ? 'OpenBots for iOS' : 'OpenBots for Android'}</Label>
           <Label muted>A native companion for your Bots.</Label>
           <Label muted size={13}>
             Your keys stay in this device’s Keychain. Your conversations stay on your server.

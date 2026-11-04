@@ -2,6 +2,8 @@
 
 Status: **not yet passed**. Unit/component tests, native project generation and a Hermes bundle export are available; no simulator/device performance or APNs success is inferred from them.
 
+Android JS/export checks (including CI `expo export --platform all`) do not prove an emulator or physical-device run, a Gradle compile, or Play Store readiness. Encrypted push remains iOS-only because the relay is APNs-only. Do not treat those checks as an Android hardware gate pass.
+
 ## Hardware spike
 
 1. Use a signed development build on iPhone 12 (record iOS, app commit and build number).

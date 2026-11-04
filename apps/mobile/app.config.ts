@@ -16,7 +16,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   version,
   orientation: 'default',
   userInterfaceStyle: 'automatic',
-  platforms: ['ios'],
+  platforms: ['ios', 'android'],
   runtimeVersion: { policy: 'appVersion' },
   ...(projectId
     ? {
@@ -35,6 +35,26 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       NSPhotoLibraryUsageDescription: 'Attach photos to a conversation with your Bots.',
     },
   },
+  android: {
+    package: process.env.OPENBOTS_ANDROID_PACKAGE ?? 'dev.openbots.mobile',
+    versionCode: Number.parseInt(process.env.OPENBOTS_ANDROID_VERSION_CODE ?? '1', 10),
+    adaptiveIcon: {
+      foregroundImage: './assets/icon.png',
+    },
+    intentFilters: [
+      {
+        action: 'VIEW',
+        category: ['BROWSABLE', 'DEFAULT'],
+        data: [{ scheme: 'openbots' }],
+      },
+      {
+        action: 'VIEW',
+        autoVerify: true,
+        category: ['BROWSABLE', 'DEFAULT'],
+        data: [{ scheme: 'https', host: 'openbots.dev', path: '/pair' }],
+      },
+    ],
+  },
   plugins: [
     'expo-router',
     'expo-secure-store',
@@ -49,7 +69,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       { photosPermission: 'Attach photos to your Bots.', microphonePermission: false },
     ],
     ['expo-local-authentication', { faceIDPermission: 'Unlock your OpenBots conversations.' }],
-    ['expo-build-properties', { ios: { deploymentTarget: '17.0' } }],
+    [
+      'expo-build-properties',
+      { android: { minSdkVersion: 24 }, ios: { deploymentTarget: '17.0' } },
+    ],
     [
       './plugins/withOpenBotsNative.cjs',
       {

@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { base64urlDecode, base64urlEncode, generateDeviceKey, isHostId } from '@openbots/tunnel';
 import { connectHost, normalizeServerUrl, type TransportOptions } from '../transport';
 import type { HostSecrets, SavedHost } from './types';
@@ -118,7 +119,7 @@ export async function pairHost(
       body: JSON.stringify({
         code: link.code,
         name: options.deviceName.trim(),
-        platform: 'ios',
+        platform: Platform.OS === 'android' ? 'android' : 'ios',
         publicKey: base64urlEncode(device.publicKey),
         pushKey: secrets.pushKey,
         ...(options.ownerName?.trim() ? { ownerName: options.ownerName.trim() } : {}),

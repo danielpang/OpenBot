@@ -1,6 +1,6 @@
-# OpenBots for iOS
+# OpenBots for iOS and Android
 
-Expo SDK 55 / React Native companion to the OpenBots server. The app lives in the pnpm workspace and uses the existing API client, event/widget schemas, avatars and Noise tunnel. Requires iOS 17 or later. No analytics or crash collection is configured.
+Expo SDK 55 / React Native companion to the OpenBots server. The app lives in the pnpm workspace and uses the existing API client, event/widget schemas, avatars and Noise tunnel. Requires iOS 17 or later, or Android API 24. No analytics or crash collection is configured. Encrypted push and notification decryption remain iOS-only: the hosted relay delivers through APNs, and there is no FCM path.
 
 ## Run
 
@@ -10,12 +10,14 @@ From the repository root, using Node 22 and the pinned pnpm version:
 pnpm install --frozen-lockfile
 pnpm --filter @openbots/mobile prebuild
 pnpm --filter @openbots/mobile ios
+pnpm --filter @openbots/mobile prebuild:android
+pnpm --filter @openbots/mobile android
 pnpm --filter @openbots/mobile dev
 ```
 
-Use a development build, not Expo Go: the shared push-key module and Notification Service Extension are native targets. `ios/` is generated and ignored. `expo prebuild --platform ios --no-install` regenerates it without running CocoaPods. Full compilation needs a working Xcode installation, an installed iOS SDK and CocoaPods. Physical-device builds also need Apple provisioning for the app and extension.
+Use a development build, not Expo Go: the shared native module is a native target, and on iOS so is the Notification Service Extension. `ios/` and `android/` are generated and ignored. `prebuild` generates iOS only, so a Mac without the Android SDK still works; `prebuild:android` generates the Android project. `expo prebuild --platform ios --no-install` regenerates iOS without running CocoaPods. iOS compilation needs a working Xcode installation, an installed iOS SDK and CocoaPods. Physical-device iOS builds also need Apple provisioning for the app and extension. Android compilation needs the Android SDK (typically via Android Studio); `prebuild:android` and `android` are the matching commands.
 
-Choose **Scan a QR code** to open the camera: pairing codes open pairing confirmation, and plain HTTPS server-origin codes prefill the sign-in form. Scanning a server URL does not bypass authentication. Choose **Enter manually** to type the server URL. The simulator cannot scan a physical QR code; use a pasted pairing link or enter the URL there.
+Choose **Scan a QR code** to open the camera: pairing codes open pairing confirmation, and plain HTTPS server-origin codes prefill the sign-in form. Scanning a server URL does not bypass authentication. Choose **Enter manually** to type the server URL. The iOS Simulator and Android emulator cannot scan a physical QR code; use a pasted pairing link or enter the URL there.
 
 Connect by scanning or pasting a five-minute pairing link from the desktop/server, or sign in to an HTTPS server with email/password. Password sign-in creates a one-use device pairing and discards the temporary session. API-key connection is also available, but push requires a paired device. Public and local direct URLs require HTTPS; private servers can use the encrypted relay without opening inbound ports.
 
@@ -43,9 +45,10 @@ To build and run the clean experience locally, from the repository root:
 
 ```sh
 pnpm --filter @openbots/mobile ios:release --device YOUR_SIMULATOR_UUID
+pnpm --filter @openbots/mobile android:release
 ```
 
-This replaces the development build on the selected simulator with a Release build. Use `pnpm --filter @openbots/mobile ios` to return to development mode.
+This replaces the development build on the selected simulator or emulator with a Release build. Use `pnpm --filter @openbots/mobile ios` or `pnpm --filter @openbots/mobile android` to return to development mode.
 
 For EAS builds, run these from `apps/mobile` with EAS CLI installed and configured:
 
@@ -53,9 +56,12 @@ For EAS builds, run these from `apps/mobile` with EAS CLI installed and configur
 eas build --platform ios --profile simulator-release # clean simulator .app
 eas build --platform ios --profile preview           # TestFlight
 eas build --platform ios --profile production        # App Store release
+eas build --platform android --profile development   # APK with the development client
+eas build --platform android --profile preview       # app bundle
+eas build --platform android --profile production    # app bundle
 ```
 
-The release profiles explicitly disable `developmentClient`. Store builds still require Apple signing, EAS project configuration and the release prerequisites below; a simulator build cannot be submitted to the App Store.
+The `simulator` and `simulator-release` profiles are iOS simulator builds. The release profiles explicitly disable `developmentClient`. iOS store builds still require Apple signing, EAS project configuration and the release prerequisites below; a simulator build cannot be submitted to the App Store. Android EAS profiles already set `apk` (development) or `app-bundle` (preview and production). That is not Play Store shipping: there is no Play Console setup, FCM configuration, or Play submission workflow.
 
 ### Xcode cannot find the simulator destination (exit 70)
 
@@ -92,8 +98,8 @@ Wait for installation to finish, then choose an available simulator in Expo's de
 - Native approval, question, sign-in and Routine widgets; Inbox scans all chat pages and groups, with a pending count.
 - Bot activity, Routine controls, read-only About, image/text/HTML/PDF Artifacts and view-only noVNC preview. WebViews receive no owner key; preview has a single allowlisted socket and Artifacts cannot access the network or app bridge.
 - SQLite roster/transcript snapshots, per-host cache isolation, reconnect resync, socket teardown in background, and Face ID/passcode lock on launch and after five minutes away.
-- Direct APNs registration, encrypted notification decryption in Swift, exact conversation/thread links and authenticated approval actions; cached Bot avatar attachments.
-- EAS development/simulator/TestFlight/production profiles and a `v*` release workflow. OTA is enabled only when an EAS project ID is configured, with runtime version pinned to the native app version.
+- Direct APNs registration and encrypted notification decryption in Swift on iOS, exact conversation/thread links and authenticated approval actions; cached Bot avatar attachments. Encrypted push stays iOS-only because the relay is APNs-only; Android pairing still works, but `registerDevicePush` returns `unsupported` and there is no FCM path.
+- EAS development/simulator/TestFlight/production profiles (Android uses the same `development`, `preview`, and `production` profiles) and a `v*` iOS release workflow. OTA is enabled only when an EAS project ID is configured, with runtime version pinned to the native app version.
 
 ## Validate
 
@@ -102,18 +108,18 @@ pnpm --filter @openbots/mobile test       # Vitest logic/integration + native RN
 pnpm --filter @openbots/mobile typecheck
 pnpm --filter @openbots/mobile lint
 pnpm --filter @openbots/mobile check:sdk
-pnpm --filter @openbots/mobile build      # noVNC bundle, Metro export, Hermes bytecode
+pnpm --filter @openbots/mobile build      # noVNC bundle, Metro export for iOS and Android, Hermes bytecode
 ```
 
-PR CI includes a separately named **iOS unit tests and bundle** job running SDK compatibility, typecheck, lint, Vitest logic/integration tests, Jest native component tests, and the iOS/Hermes export on Linux. The workspace-wide `pnpm test` also includes both mobile suites. These are automated JavaScript/component checks, not a native Xcode or physical-device test run.
+PR CI includes a separately named **Mobile unit tests and bundle** job running SDK compatibility, typecheck, lint, Vitest logic/integration tests, Jest native component tests, and the iOS and Android Hermes export on Linux (`expo export --platform all`). The workspace-wide `pnpm test` also includes both mobile suites. These are automated JavaScript/component checks, not a native Xcode, Gradle, emulator, or physical-device test run.
 
-Tests exercise real encrypted tunnel HTTP, native fetch-stream compatibility, pairing/sign-in, credential origin isolation, cache/lifecycle races, transcript delta gaps and resync pagination, widget actions/composer, push encryption and routing, native target generation/autolinking, and the preview bridge. They do not establish device frame rate, APNs delivery, WKWebView rendering or App Store acceptance.
+Tests exercise real encrypted tunnel HTTP, native fetch-stream compatibility, pairing/sign-in, credential origin isolation, cache/lifecycle races, transcript delta gaps and resync pagination, widget actions/composer, push encryption and routing, native target generation/autolinking, and the preview bridge. They do not establish device frame rate, APNs delivery, WKWebView rendering, Android emulator launch, or App Store / Play Store acceptance.
 
 The development-only `/dev/transcript-spike` route provides 500 messages with replayed markdown deltas for the M0 hardware gate. Maestro flows live in `maestro/`. Run the performance and push checks in [DEVICE-VALIDATION.md](DEVICE-VALIDATION.md) on an iPhone 12 and a signed physical device before external TestFlight. The M0 gate remains open until those checks pass.
 
 ## Release configuration
 
-See `.github/workflows/release-mobile.yml` and `eas.json`. Configure an EAS project, Apple app/team identifiers, App Store Connect credentials, and provisioning for `dev.openbots.mobile` plus `dev.openbots.mobile.notifications` (or your configured bundle prefix). The plugin supplies EAS extension metadata and shared Keychain/App Group entitlements. Configure the associated-domain file on `openbots.dev` for your team and app ID before relying on universal links; QR scans and the custom scheme work independently.
+See `.github/workflows/release-mobile.yml` and `eas.json`. Configure an EAS project, Apple app/team identifiers, App Store Connect credentials, and provisioning for `dev.openbots.mobile` plus `dev.openbots.mobile.notifications` (or your configured bundle prefix). The plugin supplies EAS extension metadata and shared Keychain/App Group entitlements. Configure the associated-domain file on `openbots.dev` for your team and app ID before relying on universal links; QR scans and the custom scheme work independently. Android uses package `dev.openbots.mobile` (or `OPENBOTS_ANDROID_PACKAGE`) and the existing EAS profiles; that is not Play Console, FCM, or Play Store shipping.
 
 The version bump script updates the root, desktop and mobile packages together. Release build numbers come from the workflow run and attempt. Missing release credentials produce only a JavaScript export; a partially configured signing environment fails rather than implying a signed build. No upload or submission happens during local development.
 
@@ -124,6 +130,6 @@ The version bump script updates the root, desktop and mobile packages together. 
 - Maintain the Expo tooling security overrides: patched Zod 4, Glob and esbuild versions, plus the local deepmerge prototype-poisoning fix until upstream publishes a patched release. Installed-package regression tests cover Expo schema compatibility and deepmerge; `docs/SECURITY.md` records the scoped audit exception for the local patch. Markdown, linkifier and URL-decoder dependencies also use patched versions. Recheck all overrides on Expo upgrades.
 - A fresh ownerless server can be paired with an owner name; provider/model credentials and first-run setup still finish on the desktop. The mobile app can create Bots once the server is configured.
 - Per-kind push preference controls, device rename and account revocation UI beyond forgetting the local host remain follow-up work. Revocation is available in the server's Devices settings.
-- Share extension, App Intents, WidgetKit, Live Activities, Android shipping, and the separate responsive web redesign are not part of this first native implementation.
+- Share extension, App Intents, WidgetKit, Live Activities, Play Store shipping, FCM, and the separate responsive web redesign are not part of this native companion. Encrypted push remains iOS-only.
 
 The minimum server version is currently `0.0.0`, matching the repository's development release. New optional routes (notably approvals) tolerate 404; capabilities without a version remain usable. Raise `OLDEST_SERVER_VERSION` with an explicit server compatibility decision when releases become versioned.
