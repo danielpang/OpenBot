@@ -1,0 +1,56 @@
+import { createRequire } from 'node:module';
+import { describe, expect, it } from 'vitest';
+
+const require = createRequire(import.meta.url);
+const expo = createRequire(require.resolve('expo/package.json'));
+const config = createRequire(expo.resolve('@expo/config/package.json'));
+const cli = createRequire(expo.resolve('@expo/cli/package.json'));
+
+describe('Expo tooling security overrides', () => {
+  it.each(['deepmerge', 'deepmerge/dist/umd.js'])(
+    'blocks poisoned source and target keys in %s, including nested objects',
+    (entry) => {
+      const merge = config(entry) as (target: object, source: object) => Record<string, unknown>;
+      const poisoned = JSON.parse(
+        '{"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}},"prototype":{"polluted":true},"safe":1}',
+      );
+      for (const result of [
+        merge({}, poisoned),
+        merge(poisoned, {}),
+        merge(Object.create(null), poisoned),
+      ]) {
+        expect(result.safe).toBe(1);
+        expect(result.polluted).toBeUndefined();
+        expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+        for (const key of ['__proto__', 'constructor', 'prototype'])
+          expect(Object.hasOwn(result, key)).toBe(false);
+      }
+      const result = merge({ nested: poisoned }, { other: [poisoned] });
+      expect(result.nested).toEqual({ safe: 1 });
+      expect(result.other).toEqual([{ safe: 1 }]);
+      expect(
+        merge({ ios: { a: true }, plugins: ['one'] }, { ios: { b: true }, plugins: ['two'] }),
+      ).toEqual({ ios: { a: true, b: true }, plugins: ['one', 'two'] });
+    },
+  );
+
+  it('keeps Expo CLI plugin validation compatible with patched Zod 4', () => {
+    const { PluginSchema, DevToolsPluginOutputSchema } = cli(
+      './build/src/start/server/DevToolsPlugin.schema.js',
+    );
+    expect(cli('zod/package.json').version).toMatch(/^4\./);
+    expect(
+      PluginSchema.safeParse({ packageName: 'test-plugin', packageRoot: '/tmp/plugin' }).success,
+    ).toBe(true);
+    expect(PluginSchema.safeParse({ packageName: '', packageRoot: '/tmp/plugin' }).success).toBe(
+      false,
+    );
+    expect(
+      DevToolsPluginOutputSchema.safeParse([{ type: 'text', text: 'Hello', level: 'info' }])
+        .success,
+    ).toBe(true);
+    expect(
+      DevToolsPluginOutputSchema.safeParse([{ type: 'image', url: 'not-a-url' }]).success,
+    ).toBe(false);
+  });
+});

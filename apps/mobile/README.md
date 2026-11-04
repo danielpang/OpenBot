@@ -105,6 +105,8 @@ pnpm --filter @openbots/mobile check:sdk
 pnpm --filter @openbots/mobile build      # noVNC bundle, Metro export, Hermes bytecode
 ```
 
+PR CI includes a separately named **iOS unit tests and bundle** job running SDK compatibility, typecheck, lint, Vitest logic/integration tests, Jest native component tests, and the iOS/Hermes export on Linux. The workspace-wide `pnpm test` also includes both mobile suites. These are automated JavaScript/component checks, not a native Xcode or physical-device test run.
+
 Tests exercise real encrypted tunnel HTTP, native fetch-stream compatibility, pairing/sign-in, credential origin isolation, cache/lifecycle races, transcript delta gaps and resync pagination, widget actions/composer, push encryption and routing, native target generation/autolinking, and the preview bridge. They do not establish device frame rate, APNs delivery, WKWebView rendering or App Store acceptance.
 
 The development-only `/dev/transcript-spike` route provides 500 messages with replayed markdown deltas for the M0 hardware gate. Maestro flows live in `maestro/`. Run the performance and push checks in [DEVICE-VALIDATION.md](DEVICE-VALIDATION.md) on an iPhone 12 and a signed physical device before external TestFlight. The M0 gate remains open until those checks pass.
@@ -119,7 +121,7 @@ The version bump script updates the root, desktop and mobile packages together. 
 
 - Complete the physical M0 gate, VoiceOver/Dynamic Type review and Maestro server-backed flows. Native Debug build, installation and welcome-screen launch have been verified on the iPhone 17 Pro iOS 26.2 simulator with Xcode 26.4. Physical camera scanning, APNs delivery and authenticated server-backed flows still require device/server validation.
 - Provision EAS/Apple credentials, register export compliance for the custom tunnel crypto, configure universal links, supply App Store screenshots/support URL and a working reviewer demo server, then run TestFlight and App Review.
-- Resolve the remaining Expo SDK 55 tooling advisories before release: Zod 3 in `@expo/cli` (GHSA-mrhx-c7xc-m3w5), Glob in Expo configuration tools (GHSA-3g3m-2fjr-6pw4), and Deepmerge in `@expo/config` (GHSA-gcqx-w48m-w2h4, no patched release). These paths process project/build configuration, not mobile chat payloads; they remain visible in `pnpm audit --prod`. The mobile Markdown, linkifier and URL-decoder dependencies are overridden to patched releases and covered by renderer tests. The app's shared runtime Zod is 4.6.7.
+- Maintain the Expo tooling security overrides: patched Zod 4, Glob and esbuild versions, plus the local deepmerge prototype-poisoning fix until upstream publishes a patched release. Installed-package regression tests cover Expo schema compatibility and deepmerge; `docs/SECURITY.md` records the scoped audit exception for the local patch. Markdown, linkifier and URL-decoder dependencies also use patched versions. Recheck all overrides on Expo upgrades.
 - A fresh ownerless server can be paired with an owner name; provider/model credentials and first-run setup still finish on the desktop. The mobile app can create Bots once the server is configured.
 - Per-kind push preference controls, device rename and account revocation UI beyond forgetting the local host remain follow-up work. Revocation is available in the server's Devices settings.
 - Share extension, App Intents, WidgetKit, Live Activities, Android shipping, and the separate responsive web redesign are not part of this first native implementation.

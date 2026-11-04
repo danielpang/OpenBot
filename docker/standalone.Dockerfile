@@ -31,6 +31,7 @@ RUN corepack enable pnpm && pnpm --version
 # --- fetch: the store from the lockfile alone, cached until it changes --------
 FROM base AS fetch
 COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches
 RUN pnpm fetch --store-dir /pnpm-store
 
 # --- build: the server, the web app and the computer agent ---------------------

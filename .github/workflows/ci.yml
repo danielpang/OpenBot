@@ -10,6 +10,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  mobile:
+    name: iOS unit tests and bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @openbots/mobile check:sdk
+      - run: pnpm --filter @openbots/mobile typecheck
+      - run: pnpm --filter @openbots/mobile lint
+      - name: Test mobile logic and native components
+        run: pnpm --filter @openbots/mobile test
+      - name: Export iOS bundle and Hermes bytecode
+        run: pnpm --filter @openbots/mobile build
+
   check:
     runs-on: ubuntu-24.04
     steps:
