@@ -6,13 +6,12 @@
 # It never publishes: everything goes to the workflow artifact release-mac,
 # and release.yml attaches it to the GitHub Release.
 #
-# With `publish` and all five Apple secrets, the app is Developer ID signed,
-# notarized with @electron/notarize and verified. With none of them, or in a
-# dry run (which gets no secrets), it is ad-hoc signed instead: an unsigned
-# build that Gatekeeper blocks until it is opened with right-click Open, and
-# that electron-updater cannot update. Some but not all of them fail the job,
-# since that is a broken setup rather than a choice. The `signed` output says
-# which it built.
+# With `publish` the app is Developer ID signed, notarized with
+# @electron/notarize and verified, and the job fails unless all five Apple
+# secrets are set: electron-updater cannot update an unsigned app, so an
+# unsigned release would leave everyone who installs it on that version. The
+# dry run (which gets no secrets) builds it ad-hoc signed instead. The
+# `signed` output says which it built.
 #
 # Secrets (signed builds):
 #   MAC_CERTS_P12_BASE64     Developer ID Application certificate and key, .p12, base64
@@ -30,9 +29,13 @@ on:
         type: string
         required: true
       publish:
-        description: A real release (sign when the secrets are set); otherwise the dry run
+        description: A real release, which must be signed; otherwise the dry run
         type: boolean
         default: false
+      ref:
+        description: The commit to build (a retried tag's); the event's own when empty
+        type: string
+        default: ''
     secrets:
       MAC_CERTS_P12_BASE64:
         required: false
@@ -64,6 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       # The same pnpm/action-setup as ci.yml's v4 tag resolves to, which CI has
       # proven with this repository's pnpm; v5 and later install pnpm differently.
@@ -98,11 +102,10 @@ jobs:
           elif [ "${#missing[@]}" -eq 0 ]; then
             signed=true
             echo "Signing and notarizing with the Developer ID certificate"
-          elif [ "${#missing[@]}" -eq 5 ]; then
-            signed=false
-            echo "::warning::No Apple signing secrets are set, so the Mac app is an unsigned build (apps/desktop/RELEASING.md)"
           else
-            echo "::error::Some Apple signing secrets are set but not ${missing[*]}. Set all five to sign the Mac app, or none to build it unsigned."
+            # electron-updater cannot update an unsigned app, so an unsigned
+            # release would strand everyone who installs it.
+            echo "::error::A release must be signed and notarized, and ${missing[*]} is not set. Set all five Apple secrets (apps/desktop/RELEASING.md)."
             exit 1
           fi
           echo "signed=$signed" >>"$GITHUB_OUTPUT"

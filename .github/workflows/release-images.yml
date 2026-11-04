@@ -64,6 +64,10 @@ on:
         description: Push to the registry; otherwise build only (the dry run)
         type: boolean
         default: false
+      ref:
+        description: The commit to build (a retried tag's); the event's own when empty
+        type: string
+        default: ''
 
 jobs:
   image:
@@ -108,6 +112,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       # Two architectures of the computer or standalone image, their build
