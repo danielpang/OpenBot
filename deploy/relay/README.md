@@ -1,6 +1,6 @@
 # The OpenBots relay on Fly.io
 
-This runs the shared relay (`ghcr.io/danielpang/openbots/relay`) as several Fly Machines behind one hostname, so it scales out and survives a Machine going away. It is how the project runs the relay that every install without its own uses. You only need it to run a relay for many servers; one server or a small group is served well by a single relay container (see [apps/relay/README.md](../../apps/relay/README.md)).
+This runs the shared relay as several Fly Machines behind one hostname, so it scales out and survives a Machine going away. It is how the project runs the relay that every install without its own uses. You only need it to run a relay for many servers; one server or a small group is served well by a single relay container (see [apps/relay/README.md](../../apps/relay/README.md)).
 
 The design is [docs/MOBILE_AND_VM_PLAN.md](../../docs/MOBILE_AND_VM_PLAN.md) section 5.8. In short: one Machine owns each host id at a time, recorded in Redis with a lease. Every link of that server and every phone stream for it end on that Machine, so stream bytes never cross Machines. A Machine that gets a connection for a host another Machine owns answers with `fly-replay`, and Fly's proxy replays the request on the owner.
 
@@ -15,7 +15,7 @@ cd deploy/relay
 fly launch --copy-config --no-deploy --name <your app>
 ```
 
-`fly launch` keeps this file's settings and writes your app name and region into it. `[build] image` names a pinned release, never `:latest`; set it to the release you run (for example `ghcr.io/danielpang/openbots/relay:1.2`) before the first deploy, so a deploy never upgrades by surprise.
+`fly launch` keeps this file's settings and writes your app name and region into it. The file has no `[build]`: every deploy names its image with `--image`, and after the first one the workflow below deploys for you.
 
 ## Create the Redis
 
@@ -59,13 +59,22 @@ Leave `RELAY_NODE_ID` unset. On Fly the relay uses the Machine's own `FLY_MACHIN
 
 ## Deploy and scale
 
+`.github/workflows/deploy-relay.yml` deploys the relay (see below). For the first deploy, run it by hand from the Actions tab (Deploy relay, Run workflow) once the secrets are set, or deploy a release from GHCR yourself with `fly deploy --image ghcr.io/danielpang/openbots/relay:<version>`. Then:
+
 ```sh
-fly deploy
 fly scale count 2                                # the minimum: one Machine can go while the other serves
 fly scale count 4 --region iad,fra,sin           # spread across regions
 fly status
 fly checks list
 ```
+
+The workflow deploys on every push to `main` that changes the relay (`apps/relay`, its Dockerfile, the lockfile, or this `fly.toml`). No tag or release is needed. It runs the relay's typecheck and tests, builds `docker/relay.Dockerfile` for linux/amd64, pushes it as `registry.fly.io/<app>:<commit sha>` and runs `fly deploy --image` with it. It needs one repository secret, `FLY_API_TOKEN`:
+
+```sh
+fly tokens create deploy -a <your app>    # then: gh secret set FLY_API_TOKEN
+```
+
+Run it by hand to redeploy `main`. Do not also connect the repository in Fly's dashboard, or every push deploys twice. Self-hosted relays are unaffected: they run the GHCR image each release publishes.
 
 Keep at least two Machines (`min_machines_running = 2`). Spread them over the regions your users are in: a phone and its server both connect to the hostname, Fly's proxy takes each to a nearby Machine, and the one that does not own the host replays to the one that does. The replay is one hop inside Fly's network, and only on connect.
 
