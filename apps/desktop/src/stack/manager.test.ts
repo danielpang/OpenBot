@@ -1455,6 +1455,32 @@ describe('the relay (OPENBOTS_RELAY_URL)', () => {
     expect(await own.manager.relayUrl()).toBe('wss://mine.example');
   });
 
+  it('moves a `.env` off a retired shared relay, and leaves any other relay alone', async () => {
+    const defaultRelayUrl = 'wss://shared.example';
+    const retiredRelayUrls = ['wss://retired.example'];
+    const retired = makeManager({
+      defaultRelayUrl,
+      retiredRelayUrls,
+      files: memoryFiles({
+        [paths.envTemplate]: TEMPLATE,
+        [paths.envFile]: `${RECORDED}OPENBOTS_RELAY_URL=wss://retired.example\n`,
+      }),
+    });
+    await retired.manager.start();
+    expect(await retired.manager.relayUrl()).toBe(defaultRelayUrl);
+
+    const own = makeManager({
+      defaultRelayUrl,
+      retiredRelayUrls,
+      files: memoryFiles({
+        [paths.envTemplate]: TEMPLATE,
+        [paths.envFile]: `${RECORDED}OPENBOTS_RELAY_URL=wss://mine.example\n`,
+      }),
+    });
+    await own.manager.start();
+    expect(await own.manager.relayUrl()).toBe('wss://mine.example');
+  });
+
   it('refuses before the first start wrote `.env`', async () => {
     const { manager } = makeManager();
     await expect(manager.setRelay('wss://a.example')).rejects.toThrow(/Start OpenBots/);

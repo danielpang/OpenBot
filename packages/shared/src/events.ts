@@ -228,6 +228,8 @@ export const EVENT_PAYLOADS = {
     relayUrl: z.string().nullable(),
     status: z.enum(['off', 'connecting', 'linked']),
     since: timestamp.nullable(),
+    /** Why the last attempt to link failed, while connecting. Absent from servers before it. */
+    error: z.string().nullable().optional(),
   }),
   /** Who controls a Bot's screen: the Bot, or the owner after a takeover. */
   'screen.control': z.looseObject({

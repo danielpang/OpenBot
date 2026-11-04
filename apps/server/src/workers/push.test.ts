@@ -129,7 +129,7 @@ describe('push worker', () => {
       ...t.deps,
       config: { ...t.deps.config, relayUrl: 'ws://127.0.0.1:1' },
       relay: {
-        status: () => ({ hostId, relayUrl: null, status: 'linked', since: null }),
+        status: () => ({ hostId, relayUrl: null, status: 'linked', since: null, error: null }),
         wake: () => {},
         stop: async () => {},
         push: async (request) => {

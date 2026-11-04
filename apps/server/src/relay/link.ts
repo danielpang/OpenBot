@@ -203,6 +203,10 @@ class Connection {
   readonly streams = new Map<number, Stream>();
   readonly pushes = new Map<string, PendingPush>();
   linked = false;
+  /** Whether the relay ever said `linked` on this socket. */
+  everLinked = false;
+  /** What went wrong before `linked`, for the status's `error`. */
+  failure: string | null = null;
   #lastPong = Date.now();
   #ping: NodeJS.Timeout | undefined;
   #linkTimer: NodeJS.Timeout;
@@ -219,6 +223,7 @@ class Connection {
     });
     socket.on('error', (err) => {
       link.logger.warn({ err: { message: err.message } }, 'relay link socket error');
+      if (!this.linked) this.failure ??= err.message;
       socket.terminate();
     });
     socket.on('close', (code, reason) => {
@@ -226,6 +231,7 @@ class Connection {
     });
     this.#linkTimer = setTimeout(() => {
       link.logger.warn('the relay did not link in time');
+      this.failure ??= 'the relay did not answer in time';
       socket.terminate();
     }, link.timing.linkTimeoutMs);
     this.#linkTimer.unref();
@@ -317,6 +323,8 @@ class Connection {
       case 'linked':
         clearTimeout(this.#linkTimer);
         this.linked = true;
+        this.everLinked = true;
+        this.failure = null;
         this.#lastPong = Date.now();
         this.#ping = setInterval(() => this.#keepalive(), this.link.timing.pingIntervalMs);
         this.#ping.unref();
@@ -361,6 +369,7 @@ class Connection {
           { code: frame.code, message: frame.message },
           'the relay reported a protocol error',
         );
+        if (!this.linked && typeof frame.message === 'string') this.failure ??= frame.message;
         return;
       default:
         return;
@@ -427,6 +436,8 @@ export async function createRelayLink(
 
   let status: RelayStatus['status'] = 'off';
   let since: string | null = null;
+  /** Why the last dial failed, while connecting (RelayStatus.error). */
+  let error: string | null = null;
   let connection: Connection | null = null;
   let backoffMs = timing.initialBackoffMs;
   let retry: NodeJS.Timeout | undefined;
@@ -444,22 +455,45 @@ export async function createRelayLink(
   let announcing: Promise<void> = Promise.resolve();
   const announces = capabilities.includes('streams');
 
-  const currentStatus = (): RelayStatus => ({ hostId: instance.hostId, relayUrl, status, since });
+  const currentStatus = (): RelayStatus => ({
+    hostId: instance.hostId,
+    relayUrl,
+    status,
+    since,
+    error,
+  });
+
+  /** Sends the status to the owners, one event at a time, in order. */
+  const publish = () => {
+    if (!announces) return;
+    const snapshot = currentStatus();
+    announcing = announcing.then(() =>
+      outsideScope(() => announce(snapshot)).catch((err: unknown) =>
+        logger.warn({ err }, 'relay link could not publish its status'),
+      ),
+    );
+  };
+
+  /**
+   * Records why a dial failed. The status stays `connecting` meanwhile, so
+   * this goes out on its own, once per distinct failure: the owner sees why
+   * their server cannot reach the relay while it keeps trying.
+   */
+  const setError = (next: string | null) => {
+    if (next === error) return;
+    error = next;
+    if (next !== null) logger.warn({ error: next, hostId: instance.hostId }, 'relay link failed');
+    publish();
+  };
 
   const setStatus = (next: RelayStatus['status']) => {
+    if (next !== 'connecting') error = null;
     if (next === status) return;
     status = next;
     since = new Date().toISOString();
     setRelayLinked(next === 'linked');
     logger.info({ status: next, hostId: instance.hostId }, 'relay link status');
-    if (announces) {
-      const snapshot = currentStatus();
-      announcing = announcing.then(() =>
-        outsideScope(() => announce(snapshot)).catch((err: unknown) =>
-          logger.warn({ err }, 'relay link could not publish its status'),
-        ),
-      );
-    }
+    publish();
   };
 
   /** Publishes `relay.status` to the owners with a device or an open pairing, and to those told last. */
@@ -503,6 +537,11 @@ export async function createRelayLink(
       }
       logger.info({ code, reason, retryInMs: backoffMs }, 'relay link closed; reconnecting');
       setStatus('connecting');
+      // A link that never got to `linked` failed: say why, so the owner can
+      // fix the relay's address. One that was linked and dropped just retries.
+      if (!c.everLinked) {
+        setError(c.failure ?? `the relay closed the link (${code}${reason ? `, ${reason}` : ''})`);
+      }
       scheduleRetry();
     },
     streamOpened(stream) {

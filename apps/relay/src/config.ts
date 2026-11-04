@@ -13,6 +13,11 @@ import { z } from 'zod';
 // Anywhere else it serves every upgrade itself, and a relay of several
 // machines there needs a proxy that routes by host id.
 //
+// Behind Fly's proxy the client's address is in `fly-client-ip`, and the last
+// `x-forwarded-for` hop is the app's own address, so on Fly the relay reads
+// that header (`RELAY_CLIENT_IP_HEADER` names another proxy's) rather than
+// the last hop, or every client would share one address and its limits.
+//
 // The cluster settings (MOBILE_AND_VM_PLAN.md 5.8): without `RELAY_REDIS_URL`
 // the relay keeps its registry in memory and is a cluster of one, as a
 // self-hosted relay is. The node id defaults to Fly's `FLY_MACHINE_ID`, and
@@ -22,6 +27,7 @@ export const RELAY_ENV_VARS = [
   'RELAY_PORT',
   'RELAY_HOST',
   'RELAY_TRUST_PROXY',
+  'RELAY_CLIENT_IP_HEADER',
   'RELAY_APNS_KEY_FILE',
   'RELAY_APNS_KEY',
   'RELAY_APNS_KEY_ID',
@@ -50,6 +56,10 @@ const EnvSchema = z.object({
   RELAY_PORT: z.coerce.number().int().min(0).max(65535).default(3200),
   RELAY_HOST: z.string().default('0.0.0.0'),
   RELAY_TRUST_PROXY: z.stringbool().default(false),
+  RELAY_CLIENT_IP_HEADER: z
+    .string()
+    .regex(/^[a-z0-9-]{1,64}$/, 'must be a lower case header name')
+    .optional(),
   RELAY_APNS_KEY_FILE: z.string().optional(),
   RELAY_APNS_KEY: z.string().optional(),
   RELAY_APNS_KEY_ID: z.string().optional(),
@@ -88,6 +98,8 @@ export interface RelayConfig {
   port: number;
   host: string;
   trustProxy: boolean;
+  /** With `trustProxy`, the header that carries the client's address: `fly-client-ip` on Fly. */
+  clientIpHeader?: string;
   logLevel: string;
   /** Set only when every APNs setting is. */
   apns?: {
@@ -163,6 +175,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayConfig {
   if (e.RELAY_REDIS_URL) config.redisUrl = e.RELAY_REDIS_URL;
   if (e.RELAY_METRICS_TOKEN) config.metricsToken = e.RELAY_METRICS_TOKEN;
   if (e.RELAY_PRESENCE_TOKEN) config.presenceToken = e.RELAY_PRESENCE_TOKEN;
+  const clientIpHeader =
+    e.RELAY_CLIENT_IP_HEADER ?? (e.FLY_MACHINE_ID ? 'fly-client-ip' : undefined);
+  if (clientIpHeader) config.clientIpHeader = clientIpHeader;
   const nodeId = e.RELAY_NODE_ID ?? e.FLY_MACHINE_ID;
   if (nodeId) config.nodeId = nodeId;
   const { leaseMs, renewMs, nodeTtlMs, heartbeatMs } = config.cluster;

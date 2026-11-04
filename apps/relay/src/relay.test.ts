@@ -64,6 +64,23 @@ describe('relay', () => {
     expect(await link.text()).toMatchObject({ type: 'open', remote: '203.0.113.7' });
   });
 
+  it('takes the client address from the proxy’s own header first, when it has one', async () => {
+    const relay = await startRelay({ trustProxy: true, clientIpHeader: 'fly-client-ip' });
+    const host = makeHost();
+    const link = await linkHost(relay, host);
+    // Fly's proxy: the client in its own header, the app's address last in the chain.
+    const client = new Peer(
+      new WebSocket(wsUrl(relay, `/v1/connect/${host.hostId}`), {
+        headers: {
+          'fly-client-ip': '198.51.100.9',
+          'x-forwarded-for': '198.51.100.9, 66.241.124.106',
+        },
+      }),
+    );
+    await client.text();
+    expect(await link.text()).toMatchObject({ type: 'open', remote: '198.51.100.9' });
+  });
+
   it('closes its links and streams 1001 when it closes', async () => {
     const relay = await startRelay();
     const host = makeHost();

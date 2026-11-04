@@ -8,6 +8,15 @@
 /** The relay the project runs for every install without its own (deploy/relay). */
 export const DEFAULT_SHARED_RELAY_URL = 'wss://openbots-relay.fly.dev';
 
+/**
+ * Shared relay addresses earlier builds wrote into `.env` that do not serve:
+ * `relay.openbots.dev` never had a DNS record, so every pairing code that
+ * named it failed on the phone with a bare socket error. A `.env` that still
+ * names one is moved to the shared relay on the next start (stack/manager.ts,
+ * `withRelay`). An address the owner typed themselves is never one of these.
+ */
+export const RETIRED_SHARED_RELAY_URLS: readonly string[] = ['wss://relay.openbots.dev'];
+
 /** How long a pairing is good for (RELAY_PROTOCOL.md 6.1). */
 export const PAIRING_TTL_MS = 5 * 60_000;
 

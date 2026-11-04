@@ -37,7 +37,9 @@ kill_timeout = 30
 
 [env]
   RELAY_PORT = "3200"
-  # Fly's proxy appends the client's address to X-Forwarded-For.
+  # Fly's proxy puts the client's address in Fly-Client-IP, which the relay
+  # reads on Fly (FLY_MACHINE_ID is set). The last X-Forwarded-For hop there
+  # is the app's own address, never the client's.
   RELAY_TRUST_PROXY = "true"
   RELAY_DRAIN_GRACE_MS = "20000"
   # The socket ceiling, matched by [http_service.concurrency] below.

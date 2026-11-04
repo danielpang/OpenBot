@@ -7,7 +7,7 @@ import {
   type WsStatus,
 } from '@openbots/api-client';
 import type { WsEvent } from '@openbots/shared';
-import type { PairCode, QuickAskBot, QuickAskResult } from '../ipc.js';
+import type { PairCode, PairRelayStatus, QuickAskBot, QuickAskResult } from '../ipc.js';
 import { createApprovalTracker, type PendingApproval } from './approvals.js';
 import { createNoticeWatcher, ownerHandles, type ChatKind, type Notice } from './notices.js';
 import { clockSkew } from './pairing.js';
@@ -52,6 +52,8 @@ export interface Connection {
   avatar(botId: string): Promise<Uint8Array | null>;
   /** The relay the server runs with (`GET /api/v1/relay`); null for none. */
   relayUrl(): Promise<string | null>;
+  /** The server's link to that relay, and why it fails while connecting (`GET /api/v1/relay`). */
+  relayStatus(): Promise<PairRelayStatus & { relayUrl: string | null }>;
   /** A new pairing code for the phone, good for 5 minutes, once. */
   createPairing(): Promise<PairCode & { id: string }>;
   /** Cancels a pairing nobody used; a failure is only logged by the caller. */
@@ -209,6 +211,12 @@ export function createConnection(options: ConnectionOptions): Connection {
 
     async relayUrl() {
       return (await unwrap(api.GET('/api/v1/relay'))).relayUrl;
+    },
+
+    async relayStatus() {
+      const { relayUrl, status, error } = await unwrap(api.GET('/api/v1/relay'));
+      // A server from before `error` leaves it out.
+      return { relayUrl, status, error: (error as string | null | undefined) ?? null };
     },
 
     async createPairing() {

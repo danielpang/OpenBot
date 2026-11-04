@@ -246,7 +246,13 @@ function CodeStep({ flow, state }: { flow: PairFlow; state: PairState }) {
           Scan this code with the OpenBots app on your iPhone.
         </p>
       </header>
-      {state.code ? (
+      {state.code && state.link === 'failed' ? (
+        <LinkFailed flow={flow} state={state} />
+      ) : state.code && state.link === 'waiting' ? (
+        <div className="flex h-56 items-center">
+          <Busy text="Connecting your server to the relay…" />
+        </div>
+      ) : state.code ? (
         <Code code={state.code} onRenew={() => void flow.newCode()} />
       ) : state.making ? (
         <div className="flex h-56 items-center">
@@ -271,6 +277,40 @@ function CodeStep({ flow, state }: { flow: PairFlow; state: PairState }) {
           </button>
         )}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The server has not linked to its relay, so the code stays hidden: a phone
+ * that scanned it could not get through, and would only see a socket error.
+ */
+function LinkFailed({ flow, state }: { flow: PairFlow; state: PairState }) {
+  return (
+    <div
+      id="link-failed"
+      className="flex min-h-56 max-w-80 flex-col items-center justify-center gap-3 text-center"
+    >
+      <ErrorLine id="link-error">{state.linkError}</ErrorLine>
+      <p className="text-xs text-muted-foreground">
+        Your phone cannot reach this Mac through the relay until the server connects to it. Check
+        the relay address, then try again.
+      </p>
+      <div className="flex gap-2">
+        {state.relay?.local && (
+          <Button
+            id="link-change-relay"
+            variant="outline"
+            size="sm"
+            onClick={() => flow.changeRelay()}
+          >
+            Change relay
+          </Button>
+        )}
+        <Button id="link-retry" size="sm" onClick={() => void flow.newCode()}>
+          Try again
+        </Button>
+      </div>
     </div>
   );
 }

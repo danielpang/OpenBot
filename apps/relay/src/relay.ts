@@ -69,8 +69,14 @@ export interface RelayOptions {
   port?: number;
   /** Default 0.0.0.0. */
   host?: string;
-  /** Read the client address from the last `x-forwarded-for` hop. */
+  /** Read the client address from the proxy's headers (`remoteAddress`), not the socket. */
   trustProxy?: boolean;
+  /**
+   * With `trustProxy`, a header that carries the client's address on its own,
+   * read before `x-forwarded-for`: `fly-client-ip` on Fly, whose proxy puts
+   * the app's own address last in `x-forwarded-for`. Lower case.
+   */
+  clientIpHeader?: string;
   /** APNs credentials, or a gateway (a test's fake). Without either, push answers `unavailable`. */
   apns?: ApnsOptions | PushGateway;
   logger?: Logger;
@@ -154,6 +160,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
         ? options.apns
         : new ApnsGateway(options.apns, logger);
   const trustProxy = options.trustProxy ?? false;
+  const clientIpHeader = options.clientIpHeader;
   const minClusterSize = options.minClusterSize ?? 1;
   const budget = new NodeBudget(options.budget);
   const flow = new FlowControl(options.flow);
@@ -316,7 +323,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
 
   const upgrade = async (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = new URL(req.url ?? '/', 'http://relay');
-    const remote = remoteAddress(req, trustProxy);
+    const remote = remoteAddress(req, trustProxy, clientIpHeader);
     const replayed = req.headers[REPLAY_SOURCE_HEADER] !== undefined;
     if (url.pathname === HOST_PATH) {
       const hostId = url.searchParams.get('hostId');
@@ -468,12 +475,24 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
 }
 
 /**
- * The client's address: the socket's peer, or behind a trusted proxy the last
- * `x-forwarded-for` hop, the one the proxy itself added. Earlier hops are
- * whatever the client claimed.
+ * The client's address: the socket's peer, or behind a trusted proxy what the
+ * proxy says. That is `clientIpHeader` when the proxy sets one (Fly's
+ * `fly-client-ip`), else the last `x-forwarded-for` hop, the one a proxy that
+ * appends the client adds. Earlier hops are whatever the client claimed. On
+ * Fly the last hop is the app's own address, so without the header every
+ * client there would share one address, and the limits on it.
  */
-export function remoteAddress(req: IncomingMessage, trustProxy: boolean): string {
+export function remoteAddress(
+  req: IncomingMessage,
+  trustProxy: boolean,
+  clientIpHeader?: string,
+): string {
   if (trustProxy) {
+    if (clientIpHeader) {
+      const direct = req.headers[clientIpHeader];
+      const claimed = (Array.isArray(direct) ? direct[0] : direct)?.trim();
+      if (claimed) return claimed;
+    }
     const header = req.headers['x-forwarded-for'];
     const value = Array.isArray(header) ? header.join(',') : header;
     const hops = (value ?? '')

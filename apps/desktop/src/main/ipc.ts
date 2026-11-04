@@ -3,6 +3,7 @@ import {
   type ConnectionInfo,
   type ConnectOptions,
   type PairCode,
+  type PairRelayStatus,
   type PairRelayView,
   type ProfilesView,
   type QuickAskBot,
@@ -48,6 +49,8 @@ export interface DesktopHandlers {
    */
   pairSetRelay(url: string): Promise<PairRelayView>;
   pairCode(): Promise<PairCode>;
+  /** The server's link to its relay, polled by the window while a code is up. */
+  pairRelayStatus(): Promise<PairRelayStatus>;
   closePair(): void;
 }
 
@@ -115,5 +118,6 @@ export function registerDesktopIpc(
     handlers.pairSetRelay(text(url, 'The relay address')),
   );
   handle(DESKTOP_CHANNELS.pairCode, () => handlers.pairCode());
+  handle(DESKTOP_CHANNELS.pairRelayStatus, () => handlers.pairRelayStatus());
   handle(DESKTOP_CHANNELS.pairClose, () => handlers.closePair());
 }

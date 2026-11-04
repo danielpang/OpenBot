@@ -95,6 +95,7 @@ describe('connectThroughRelay', () => {
       code: 4404,
       reason: 'host offline',
       hostOffline: true,
+      unreachable: false,
     });
     await expect(
       connectThroughRelay({ relayUrl, hostId: BUSY, createSocket }),
@@ -126,6 +127,27 @@ describe('connectThroughRelay', () => {
     await expect(
       connectThroughRelay({ relayUrl, hostId: ONLINE, createSocket, signal: controller.signal }),
     ).rejects.toThrow('stop');
+  });
+
+  it('says the relay could not be reached when the socket never opens', async () => {
+    // A port nothing listens on: refused before any upgrade, as a relay whose
+    // name does not resolve or that is down looks to a phone.
+    const closed = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    await new Promise<void>((resolve) => closed.once('listening', () => resolve()));
+    const port = (closed.address() as AddressInfo).port;
+    await new Promise<void>((resolve) => closed.close(() => resolve()));
+    const attempt = connectThroughRelay({
+      relayUrl: `ws://127.0.0.1:${port}`,
+      hostId: ONLINE,
+      createSocket,
+    });
+    await expect(attempt).rejects.toBeInstanceOf(RelayConnectError);
+    await expect(attempt).rejects.toMatchObject({
+      code: 1006,
+      unreachable: true,
+      hostOffline: false,
+    });
+    await expect(attempt).rejects.toThrow(`could not reach the relay at 127.0.0.1:${port} (`);
   });
 });
 

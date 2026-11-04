@@ -46,6 +46,7 @@ function setup(trusted = true, serverPage = false) {
     pairRelay: vi.fn(async () => relay),
     pairSetRelay: vi.fn(async () => relay),
     pairCode: vi.fn(async () => ({ link: 'openbots://pair#x', expiresAt: '', skewMs: 0 })),
+    pairRelayStatus: vi.fn(async () => ({ status: 'linked' as const, error: null })),
     closePair: vi.fn(),
   };
   registerDesktopIpc(

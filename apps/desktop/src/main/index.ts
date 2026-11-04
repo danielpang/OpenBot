@@ -23,6 +23,7 @@ import electronUpdater from 'electron-updater';
 import WebSocket from 'ws';
 import {
   DESKTOP_CHANNELS,
+  type PairRelayStatus,
   type PairRelayView,
   type PlatformInfo,
   type ServerProfile,
@@ -37,7 +38,12 @@ import {
 } from '../images/release-archive.js';
 import { createStackManager, devImageOverrides } from '../stack/manager.js';
 import { cloudUrl } from './app-config.js';
-import { pairedByThis, parseRelayUrl, sharedRelayUrl } from './pairing.js';
+import {
+  pairedByThis,
+  parseRelayUrl,
+  RETIRED_SHARED_RELAY_URLS,
+  sharedRelayUrl,
+} from './pairing.js';
 import { devAppIconPath } from './app-icon.js';
 import { QUICK_ASK_ACCELERATOR, trayMenu, type PendingApproval } from './approvals.js';
 import { createConnection, type Connection } from './connection.js';
@@ -138,6 +144,7 @@ const paths = stackPaths();
 const stack = createStackManager({
   paths,
   defaultRelayUrl: SHARED_RELAY_URL,
+  retiredRelayUrls: RETIRED_SHARED_RELAY_URLS,
   serverVersion: app.isPackaged ? app.getVersion() : undefined,
   // `OPENBOTS_IMAGE_PREFIX=openbots-local OPENBOTS_VERSION=dev pnpm dev` runs images built from source.
   images: devImageOverrides(process.env, app.isPackaged),
@@ -946,6 +953,11 @@ if (!app.requestSingleInstanceLock()) {
           const { id, ...code } = await connection.createPairing();
           openPairing = { id, expiresAt: code.expiresAt };
           return code;
+        },
+        pairRelayStatus: async (): Promise<PairRelayStatus> => {
+          if (!connection) throw new Error('Sign in to OpenBots first.');
+          const { status, error } = await connection.relayStatus();
+          return { status, error };
         },
         closePair: () => pairWindow?.close(),
       },

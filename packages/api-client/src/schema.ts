@@ -10479,6 +10479,8 @@ export interface components {
       status: 'off' | 'connecting' | 'linked';
       /** Format: date-time */
       since: string | null;
+      /** @description Why the last attempt to link failed, while connecting; null otherwise */
+      error: string | null;
     };
   };
   responses: never;
