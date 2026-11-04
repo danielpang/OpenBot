@@ -4,3 +4,9 @@ docs/TECHNICAL_PLAN.md
 docs/bento/
 apps/server/drizzle/
 apps/web/src/routeTree.gen.ts
+
+# Expo prebuild output and the generated noVNC browser bundle.
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/.expo/
+apps/mobile/src/preview/generated.ts

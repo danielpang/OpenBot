@@ -1,0 +1,6 @@
+.expo/
+/ios/
+/android/
+dist/
+*.ipa
+*.mobileprovision

@@ -34,6 +34,17 @@ const ALLOWED = new Set([
   'Apache 2.0',
   '(MIT OR EUPL-1.1+)',
   '(AFL-2.1 OR BSD-3-Clause)',
+  // Expo/RN dependencies: preserve acknowledgements in the mobile app's
+  // licenses screen. Dual licenses use their permissive MIT/BSD option;
+  // caniuse's data requires attribution, and Beerware retains its notice.
+  'MIT AND Apache-2.0',
+  '(MIT OR Apache-2.0)',
+  '(MIT OR CC0-1.0)',
+  '(BSD-3-Clause OR GPL-2.0)',
+  'CC-BY-4.0',
+  'CC0-1.0',
+  'Apache 2.0',
+  'Beerware',
 ]);
 
 const root = join(import.meta.dirname, '..');

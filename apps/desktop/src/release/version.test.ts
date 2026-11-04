@@ -31,8 +31,12 @@ const { VERSION_FILES, checkRelease, main, parseVersion, setVersion } = (await i
 const both = (version: string) => Object.fromEntries(VERSION_FILES.map((file) => [file, version]));
 
 describe('release version', () => {
-  it('covers the root package and the Mac app', () => {
-    expect(VERSION_FILES).toEqual(['package.json', 'apps/desktop/package.json']);
+  it('covers the root package, Mac app and mobile app', () => {
+    expect(VERSION_FILES).toEqual([
+      'package.json',
+      'apps/desktop/package.json',
+      'apps/mobile/package.json',
+    ]);
   });
 
   it('parses releases and prereleases, with the floating major.minor tag', () => {

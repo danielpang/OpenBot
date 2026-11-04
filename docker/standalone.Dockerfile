@@ -43,6 +43,7 @@ RUN corepack enable pnpm && pnpm --version
 # store and the build platform's are fetched apart.
 FROM base AS fetch
 COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches
 RUN pnpm fetch --store-dir /pnpm-store
 
 # --- base-build: the same on the build platform, for the JavaScript build -----
@@ -56,6 +57,7 @@ WORKDIR /app
 COPY package.json ./
 RUN corepack enable pnpm && pnpm --version
 COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches
 RUN pnpm fetch --store-dir /pnpm-store
 
 # --- build: the server, the web app and the computer agent ---------------------

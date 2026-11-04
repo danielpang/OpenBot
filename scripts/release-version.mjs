@@ -18,7 +18,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const REPO_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** The package.json files that carry the release version, relative to the repository. */
-export const VERSION_FILES = ['package.json', 'apps/desktop/package.json'];
+export const VERSION_FILES = [
+  'package.json',
+  'apps/desktop/package.json',
+  'apps/mobile/package.json',
+];
 
 // Semantic Versioning 2.0.0, without build metadata (Docker tags cannot hold a +).
 const VERSION =

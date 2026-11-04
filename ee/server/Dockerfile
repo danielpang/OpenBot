@@ -37,6 +37,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund --cache /tmp/npm-cac
 # --- fetch: the store from the lockfile alone, cached until it changes --------
 FROM base AS fetch
 COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches
 RUN pnpm fetch --store-dir /pnpm-store
 
 # --- build: every workspace dependency, then the server and the web app -------

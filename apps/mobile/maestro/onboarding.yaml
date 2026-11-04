@@ -1,0 +1,10 @@
+# Run against a simulator development build: maestro test maestro/onboarding.yaml
+appId: dev.openbots.mobile
+---
+- launchApp:
+    clearState: true
+- assertVisible: 'Pair your phone'
+- assertVisible: 'Scan a QR code'
+- assertVisible: 'Connect to a server'
+- tapOn: 'Connect to a server'
+- assertVisible: 'Server address'
