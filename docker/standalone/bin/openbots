@@ -1,0 +1,73 @@
+#!/bin/bash
+# `openbots` in the standalone image, for `docker exec <container> openbots ...`
+# (or `fly ssh console -C "openbots pair"`). Runs as root, with the settings
+# the server runs with (lib/env.sh), and hands the server's own commands to
+# docker/entrypoint.sh, which runs them as the openbots user.
+#
+#   pair [--name <n>] [--link]  print a QR code (or the link) for pairing a phone
+#   devices [revoke <id>]       list paired devices, or revoke one
+#   relay                       this server's relay host id and link state
+#   rotate-key                  re-encrypt every stored secret under OPENBOTS_MASTER_KEY
+#   keygen                      print a fresh OPENBOTS_MASTER_KEY
+#   migrate                     apply the database migrations and exit
+#   backup [dir] [--out <dir>]  back up into dir/<UTC timestamp> (default dir /data/backups),
+#                               or into exactly --out <dir>
+#   restore <dir> [--yes]       restore a backup; stops the server while it runs.
+#                               Without a terminal (docker exec without -it) it needs --yes
+set -euo pipefail
+
+LIB=/usr/local/lib/openbots
+
+usage() { sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+command="${1:-help}"
+[ "$#" -gt 0 ] && shift
+
+case "$command" in
+  help | -h | --help)
+    usage
+    exit 0
+    ;;
+esac
+
+if [ "$(id -u)" != 0 ]; then
+  echo "openbots: run it as root, as docker exec does by default" >&2
+  exit 1
+fi
+
+case "$command" in
+  pair | devices | relay | rotate-key | migrate)
+    # shellcheck source=SCRIPTDIR/../lib/env.sh
+    . "$LIB/standalone/env.sh"
+    openbots_server_env
+    # The secrets go to files the openbots user reads, as for the server, in a
+    # directory of this command's own that goes when it ends.
+    secrets="$(mktemp -d /run/openbots-cli.XXXXXX)"
+    trap 'rm -rf "$secrets"' EXIT
+    chown "$OPENBOTS_SERVER_USER:$OPENBOTS_SERVER_USER" "$secrets"
+    OPENBOTS_SECRETS_DIR="$secrets" \
+      OPENBOTS_SERVER_UID="$(id -u "$OPENBOTS_SERVER_USER")" \
+      OPENBOTS_SERVER_GID="$(id -g "$OPENBOTS_SERVER_USER")" \
+      HOME=/var/lib/openbots-server \
+      "$LIB/entrypoint.sh" "$command" "$@"
+    ;;
+  keygen)
+    OPENBOTS_STANDALONE=1 OPENBOTS_SERVER_UID="$(id -u openbots)" \
+      OPENBOTS_SERVER_GID="$(id -g openbots)" exec "$LIB/entrypoint.sh" keygen
+    ;;
+  backup)
+    OPENBOTS_STANDALONE=1 exec bash /app/scripts/backup.sh "$@"
+    ;;
+  restore)
+    OPENBOTS_STANDALONE=1 exec bash /app/scripts/restore.sh "$@"
+    ;;
+  start)
+    echo "openbots: the image's init (s6) starts the server; restart it with: s6-svc -r /run/service/openbots" >&2
+    exit 2
+    ;;
+  *)
+    echo "openbots: unknown command '$command'" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

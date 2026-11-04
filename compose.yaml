@@ -1,9 +1,11 @@
 # Entry point for `docker compose` run from the repository root. The stack
-# itself lives in docker/; see docker/docker-compose.yml.
+# itself lives in docker/; see docker/docker-compose.yml. The tunnels and the
+# relay run only with their profiles.
 name: openbots
 
 include:
   - path:
       - docker/docker-compose.yml
       - docker/docker-compose.tunnels.yml
+      - docker/docker-compose.relay.yml
     project_directory: .

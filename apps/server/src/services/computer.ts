@@ -32,6 +32,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
+import { inRanges } from '../client-ip.js';
 import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
 import { publishEvent } from '../infra/index.js';
@@ -304,10 +305,51 @@ export async function ensureComputer(
     });
     row = (await getComputer(deps, owner))!;
   } else {
+    row = await adoptStrayRemote(deps, row);
     await assertRemoteFor(deps, owner);
   }
   if (row.agentUrl && row.agentToken) return row;
   return createMachine(deps, row, by);
+}
+
+/** Whether an agent URL points at this host's loopback. */
+function loopbackUrl(url: string | null): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, '');
+    return host === 'localhost' || inRanges(host, ['127.0.0.0/8', '::1']);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A database restored from the standalone image into the compose stack (or
+ * any Docker install) has `remote` computers whose agent was on the
+ * standalone container's loopback (`http://127.0.0.1:7070`), which is
+ * nothing here. With no OPENBOTS_COMPUTER_AGENT_URL and Docker as the
+ * provider, such a row becomes a Docker computer that is made at its next
+ * start, keeping its home volume's name. Any other remote row is left alone.
+ */
+async function adoptStrayRemote(deps: AppDeps, row: ComputerRow): Promise<ComputerRow> {
+  if (row.provider !== 'remote' || deps.config.computerAgent) return row;
+  if (provider(deps).name !== 'docker' || !loopbackUrl(row.agentUrl)) return row;
+  const [adopted] = await deps.db
+    .update(schema.computers)
+    .set({
+      provider: 'docker',
+      containerId: null,
+      agentUrl: null,
+      agentToken: null,
+      status: 'stopped',
+    })
+    .where(and(eq(schema.computers.id, row.id), eq(schema.computers.provider, 'remote')))
+    .returning();
+  deps.logger.info(
+    { computerId: row.id, agentUrl: row.agentUrl, volumeName: row.volumeName },
+    'a remote computer on a loopback agent (a restored standalone database) becomes a Docker computer, made at this start with its volume',
+  );
+  return adopted ?? row;
 }
 
 /**

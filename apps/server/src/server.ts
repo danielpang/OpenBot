@@ -15,6 +15,9 @@ import { createInfra } from './infra/index.js';
 import { createLogger } from './logger.js';
 import { rotateMasterKey } from './rotation.js';
 import { closeMcpManager, sealPlaintextConnectorValues } from './services/connectors.js';
+import { openInstanceKey } from './services/instance-key.js';
+import { startRelayAdapter } from './relay/adapter.js';
+import { createRelayLink } from './relay/link.js';
 import { registerLoginHooks } from './services/logins.js';
 import {
   backfillProviderKeyHints,
@@ -75,6 +78,9 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
     return 0;
   });
   await encryptStoredOAuthTokens({ db, config });
+  // The relay identity, made on the first start (services/instance-key.ts).
+  // One the master key does not open leaves the relay off rather than the server down.
+  const instance = await openInstanceKey({ db, config, logger });
   logger.info({ role: config.role }, 'migrations applied');
 
   const infra = createInfra(config, (err) => logger.error({ err }, 'redis error'));
@@ -99,15 +105,36 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
   registerSkillHooks();
   registerLoginHooks();
 
+  /**
+   * The relay link (src/relay), when OPENBOTS_RELAY_URL is set: with the
+   * adapter that serves its streams on `port` in an API process, push only
+   * in a worker. `GET /relay` and the push worker find it on `deps.relay`.
+   */
+  async function startRelay(port: number | null) {
+    if (!config.relayUrl || !instance) return;
+    const link = await createRelayLink(deps, { instance });
+    deps.relay = link;
+    stops.push(link.stop);
+    if (port !== null) stops.push(startRelayAdapter(deps, { link, instance, port }).stop);
+  }
+
   if (config.role === 'api' || config.role === 'all') {
     const app = createApp(deps, { webDist: extensions.webDist });
-    const server = serve({ fetch: app.fetch, port: PORT }, (info) =>
-      logger.info({ port: info.port, publicUrl: config.publicUrl }, 'listening'),
-    );
+    let listening!: () => void;
+    const listened = new Promise<void>((resolve) => (listening = resolve));
+    const server = serve({ fetch: app.fetch, port: PORT }, (info) => {
+      logger.info({ port: info.port, publicUrl: config.publicUrl }, 'listening');
+      listening();
+    });
     const gateway = await attachGateway(server, deps, { ignore: isComputerSocketPath });
     stops.push(gateway.close);
     stops.push((await attachComputerProxies(server, deps)).close);
     stops.push(() => new Promise((resolve) => server.close(() => resolve())));
+    // Streams become requests to this port, so the link waits for it.
+    await listened;
+    await startRelay(PORT);
+  } else {
+    await startRelay(null);
   }
   if (config.role === 'worker' || config.role === 'all') {
     const workers = await startWorkers(deps);

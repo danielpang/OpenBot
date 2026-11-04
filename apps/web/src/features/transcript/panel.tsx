@@ -81,7 +81,7 @@ export function useShowBotPanel(botId: string) {
             />
           </PanelFrame>
         ) : panel.kind === 'screen' ? (
-          <PanelFrame title="Preview" onClose={hide}>
+          <PanelFrame title="Computer" onClose={hide}>
             <ScreenPreview botId={botId} />
           </PanelFrame>
         ) : (

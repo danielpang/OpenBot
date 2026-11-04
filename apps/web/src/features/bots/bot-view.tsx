@@ -11,7 +11,7 @@ import { panelId, useShowBotPanel } from '../transcript/panel.js';
 import { botChatQuery, botsQuery, type Bot } from './queries.js';
 
 // The Bot view (PRD section 5): title bar, then the secondary tabs above the
-// tab's content. The Preview toggle (K3) shows when the install has a
+// tab's content. The Computer toggle (K3) shows when the install has a
 // computer, with a green dot while the Bot is using it (I5).
 
 const TABS = [
@@ -91,7 +91,7 @@ export function BotTitleBar({ bot }: { bot: Bot }) {
   );
 }
 
-/** The Preview toggle, which opens the screen in the right panel, dotted while it is in use. */
+/** The Computer toggle, which opens the screen in the right panel, dotted while it is in use. */
 function ComputerControls({ bot }: { bot: Bot }) {
   const { data: capabilities } = useQuery(capabilitiesQuery);
   const { id } = useRightPanel();
@@ -109,7 +109,7 @@ function ComputerControls({ bot }: { bot: Bot }) {
         className={cn('relative', previewing && 'bg-accent')}
         onClick={() => show(previewing ? null : { kind: 'screen' })}
       >
-        Preview
+        Computer
         <ComputerActiveDot bot={bot} />
       </Button>
     </div>

@@ -14,6 +14,7 @@ import { authenticateHeaders } from '../middleware/auth.js';
 import { ownedBotIds, ownedChatIds } from '../ownership.js';
 import { MEMBERSHIP_ENDED_CHANNEL, type MembershipEnded } from '../membership.js';
 import { inWorkspace } from '../db/scope.js';
+import { KEY_RECHECK_MS, watchApiKeys } from './key-watch.js';
 
 // The realtime gateway on `/ws` (plan 14.2). A socket authenticates on upgrade
 // with the session cookie or an API key, subscribes to chats and Bots it owns,
@@ -22,7 +23,8 @@ import { inWorkspace } from '../db/scope.js';
 // organization it authenticated in (plan 21.3): user-scoped events reach it
 // only when they carry that organization, and when a member's access to the
 // organization ends every instance closes their sockets there (policy
-// violation, 1008).
+// violation, 1008). A socket opened with an API key closes 1008 too when the
+// key stops working: deleted, or its device revoked (ws/key-watch.ts).
 
 export const WS_PATH = '/ws';
 
@@ -43,11 +45,15 @@ export interface GatewayOptions {
   heartbeatMs?: number;
   /** Upgrade paths another listener serves (the computer's terminal and screen proxies). */
   ignore?(pathname: string): boolean;
+  /** How often the API keys of open sockets are looked up again; KEY_RECHECK_MS. */
+  keyRecheckMs?: number;
 }
 
 export interface Gateway {
   /** Open sockets. */
   readonly size: number;
+  /** Looks the API keys of open sockets up again now, as the minute's timer does: for tests. */
+  checkKeys(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -64,7 +70,11 @@ interface Client {
 export async function attachGateway(
   server: UpgradeSource,
   deps: AppDeps,
-  { heartbeatMs = 30_000, ignore = () => false }: GatewayOptions = {},
+  {
+    heartbeatMs = 30_000,
+    ignore = () => false,
+    keyRecheckMs = KEY_RECHECK_MS,
+  }: GatewayOptions = {},
 ): Promise<Gateway> {
   const { db, logger, config } = deps;
   const origin = new URL(config.publicUrl).origin;
@@ -211,15 +221,29 @@ export async function attachGateway(
       }
     },
   );
+  const keys = await watchApiKeys(
+    deps,
+    function* () {
+      for (const client of clients) {
+        yield {
+          apiKeyId: client.user.apiKeyId,
+          close: (code: number, reason: string) => client.socket.close(code, reason),
+        };
+      }
+    },
+    keyRecheckMs,
+  );
   server.on('upgrade', onUpgrade);
 
   return {
     get size() {
       return clients.size;
     },
+    checkKeys: () => keys.check(),
     async close() {
       server.off('upgrade', onUpgrade);
       clearInterval(heartbeat);
+      await keys.stop();
       await unsubscribeEvents();
       await unsubscribeDisabled();
       for (const client of clients) client.socket.close(1001, 'server shutting down');

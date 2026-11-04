@@ -189,6 +189,7 @@ function actions(): TrayActions {
     open: vi.fn(),
     decide: vi.fn(),
     quickAsk: vi.fn(),
+    pairPhone: vi.fn(),
     changeConnection: vi.fn(),
     checkForUpdates: vi.fn(),
     quit: vi.fn(),
@@ -267,6 +268,19 @@ describe('tray menu', () => {
     expect(a.changeConnection).toHaveBeenCalled();
     // A thin client's tray has nothing about Docker or the local stack.
     expect(menu.some((i) => /docker|stack|start|stop/i.test(i.label ?? ''))).toBe(false);
+  });
+
+  it('offers Pair your phone beside Quick Ask and Change connection', () => {
+    const a = actions();
+    const menu = trayMenu({ approvals: [], profileName: 'This Mac', connected: false, actions: a });
+    const labels = menu.map((i) => i.label);
+    const pair = labels.indexOf('Pair your phone…');
+    expect(labels[pair - 1]).toBe('Quick Ask…');
+    expect(labels[pair + 1]).toBe('Change connection…');
+    // It opens the window on whatever connection is active, so it works while disconnected too.
+    expect(menu[pair]!.enabled).toBeUndefined();
+    menu[pair]!.click!();
+    expect(a.pairPhone).toHaveBeenCalledOnce();
   });
 
   it('shortens long summaries', () => {

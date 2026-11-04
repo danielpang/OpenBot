@@ -117,7 +117,7 @@ describe('the web bridge', () => {
 });
 
 describe('the app bridge', () => {
-  it('adds profiles, the ways to connect, the stack and quick ask to the web bridge', () => {
+  it('adds profiles, the ways to connect, the stack, quick ask and pairing to the web bridge', () => {
     const bridge = createAppBridge(fakeIpcRenderer().ipcRenderer, platform);
     expect(Object.keys(bridge).sort()).toEqual([
       'connect',
@@ -125,6 +125,7 @@ describe('the app bridge', () => {
       'oauth',
       'onNavigate',
       'onNew',
+      'pair',
       'platform',
       'profiles',
       'quickAsk',
@@ -168,6 +169,10 @@ describe('the app bridge', () => {
     await bridge.connect.check('w.example.com');
     await bridge.connect.server('w.example.com');
     await bridge.connect.local();
+    await bridge.pair.relay();
+    await bridge.pair.setRelay('wss://mine.example');
+    await bridge.pair.code();
+    bridge.pair.close();
     expect(ipcRenderer.invoke.mock.calls).toEqual([
       [DESKTOP_CHANNELS.profilesList],
       [DESKTOP_CHANNELS.profilesAdd, { name: 'Work', url: 'https://w.example.com' }],
@@ -182,6 +187,10 @@ describe('the app bridge', () => {
       [DESKTOP_CHANNELS.connectCheck, 'w.example.com'],
       [DESKTOP_CHANNELS.connectServer, 'w.example.com'],
       [DESKTOP_CHANNELS.connectLocal],
+      [DESKTOP_CHANNELS.pairRelay],
+      [DESKTOP_CHANNELS.pairSetRelay, 'wss://mine.example'],
+      [DESKTOP_CHANNELS.pairCode],
+      [DESKTOP_CHANNELS.pairClose],
     ]);
   });
 

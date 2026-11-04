@@ -38,6 +38,12 @@ import type { Db } from './client.js';
 // - `connectorWorkspace`: which organization a connector's OAuth callback
 //   belongs to, through openbots_connector_workspace(); the state is then
 //   checked there.
+// - `deviceWorkspaces` and `pairingWorkspace`: which organizations have a
+//   device with a Noise static key (one phone may pair with several), or
+//   which one a pairing code's hash belongs to, through
+//   openbots_device_workspaces() and openbots_pairing_workspace(); the
+//   device or the code is then read there. `devicesExist` says only whether any
+//   organization has a device or an open pairing (openbots_devices_exist()).
 // - Jobs carry the organization that queued them and run in it
 //   (infra/index.ts); realtime events carry it too, and the gateway and the
 //   outbound fan-out work in it.
@@ -227,6 +233,34 @@ export async function connectorWorkspace(db: Db, connectorId: string): Promise<s
     sql`select openbots_connector_workspace(${connectorId}::uuid) as id`,
   );
   return rowsOf<{ id: string | null }>(result)[0]?.id ?? null;
+}
+
+/**
+ * The organizations with an unrevoked device of this static key, oldest
+ * pairing first (openbots_device_workspaces()). One phone may pair with
+ * several organizations; an empty list when none has it.
+ */
+export async function deviceWorkspaces(db: Db, publicKey: Uint8Array): Promise<string[]> {
+  const result = await db.execute<{ id: string }>(
+    sql`select openbots_device_workspaces(${Buffer.from(publicKey)}) as id`,
+  );
+  return rowsOf<{ id: string }>(result).map((r) => r.id);
+}
+
+/** The organization of a pairing by its code's SHA-256 (openbots_pairing_workspace()). */
+export async function pairingWorkspace(db: Db, codeHash: Uint8Array): Promise<string | null> {
+  const result = await db.execute<{ id: string | null }>(
+    sql`select openbots_pairing_workspace(${Buffer.from(codeHash)}) as id`,
+  );
+  return rowsOf<{ id: string | null }>(result)[0]?.id ?? null;
+}
+
+/** Whether any organization has an unrevoked device or an open pairing (openbots_devices_exist()). */
+export async function devicesExist(db: Db, now = new Date()): Promise<boolean> {
+  const result = await db.execute<{ exists: boolean }>(
+    sql`select openbots_devices_exist(${now.toISOString()}::timestamptz) as exists`,
+  );
+  return rowsOf<{ exists: boolean }>(result)[0]?.exists === true;
 }
 
 /** postgres.js answers an array of rows, PGlite `{ rows }`. */

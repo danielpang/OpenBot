@@ -162,6 +162,23 @@ describe('routes', () => {
     expect((await renderPath('/settings/limits')).pathname).toBe('/settings/limits');
   });
 
+  it('puts Devices right after the first Settings tab on every deployment', async () => {
+    for (const [routes, first] of [
+      [selfHosted, 'account'],
+      [managed, 'account'],
+      [local, 'general'],
+    ] as const) {
+      server.routes = {
+        ...routes,
+        '/api/v1/me': first === 'general' ? localOwner() : me('owner'),
+      };
+      const { html, pathname } = await renderPath('/settings/devices');
+      expect(pathname).toBe('/settings/devices');
+      const tabs = [...html.matchAll(/href="\/settings\/([a-z]+)"/g)].map((m) => m[1]);
+      expect(tabs.slice(0, 2)).toEqual([first, 'devices']);
+    }
+  }, 20_000);
+
   it('says nothing about admins to a self-hosted owner in Settings', async () => {
     server.routes = { ...selfHosted, '/api/v1/me': me('owner') };
     for (const tab of ['account', 'models', 'events', 'limits']) {
@@ -206,6 +223,15 @@ describe('routes', () => {
       expect(html).toContain('Your account will be its owner.');
       expect(html.replace(/<[^>]*>/g, ' ')).not.toMatch(/admin/i);
     }
+  });
+
+  it('shows how to pair instead of the account form when the owner is made by pairing', async () => {
+    server.routes = { '/api/v1/setup': { setupRequired: true, pairingOnly: true } };
+    const { pathname, html } = await renderPath('/');
+    expect(pathname).toBe('/setup');
+    expect(html).toContain('Set up OpenBots from your phone');
+    expect(html).toContain('openbots pair');
+    expect(html).not.toContain('Create your account');
   });
 
   it('hides the setup wizard once a user exists', async () => {

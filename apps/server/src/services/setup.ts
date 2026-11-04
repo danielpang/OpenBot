@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { LOCAL_ONLY_MESSAGE, LOCAL_OWNER_EMAIL } from '../auth.js';
+import { LOCAL_ONLY_MESSAGE, LOCAL_OWNER_EMAIL, SETUP_PAIRING_ONLY_MESSAGE } from '../auth.js';
 import { CLIENT_IP_HEADER } from '../client-ip.js';
 import type { AppDeps } from '../context.js';
 import { schema, type Db } from '../db/client.js';
@@ -80,6 +80,10 @@ export async function createAdmin(
 ): Promise<Response> {
   // In local mode only the Mac app makes the owner (routes/local.ts).
   if (deps.config.localToken) throw new DomainError(403, 'LOCAL_ONLY', LOCAL_ONLY_MESSAGE);
+  // The standalone image makes its owner by pairing (OPENBOTS_SETUP_PAIRING_ONLY).
+  if (deps.config.setupPairingOnly) {
+    throw new DomainError(403, 'SETUP_PAIRING_ONLY', SETUP_PAIRING_ONLY_MESSAGE);
+  }
   const origin = new URL(deps.config.publicUrl).origin;
   if (requestOrigin !== undefined && requestOrigin !== origin) {
     throw forbidden('Create the first account from the OpenBots page itself');

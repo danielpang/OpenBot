@@ -208,7 +208,7 @@ describe('Bot view', () => {
     for (const tab of ['Chat', 'Routines', 'Artifacts', 'Memory', 'Settings']) {
       expect(html).toContain(`>${tab}</a>`);
     }
-    expect(html).not.toContain('Preview');
+    expect(html).not.toContain('aria-pressed');
   });
 
   it('centres the tabs in their bar, marks the open one, and scrolls the tab below', async () => {

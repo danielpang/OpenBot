@@ -40,6 +40,17 @@ describe.each(backends)('%s rate limiter', (_, make) => {
     );
     expect(results.filter((r) => r.allowed)).toHaveLength(5);
   });
+
+  it.skipIf(!make)('gives a bucket back whole on reset', async () => {
+    const limiter = make!();
+    open.push(limiter);
+    const key = `test:${randomUUID()}`;
+    const rule = { window: 86_400, max: 1 };
+    expect((await limiter.consume(key, rule)).allowed).toBe(true);
+    expect((await limiter.consume(key, rule)).allowed).toBe(false);
+    await limiter.reset(key);
+    expect((await limiter.consume(key, rule)).allowed).toBe(true);
+  });
 });
 
 describe('token bucket', () => {

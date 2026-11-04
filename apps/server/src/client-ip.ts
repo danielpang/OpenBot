@@ -1,3 +1,4 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { BlockList, isIP } from 'node:net';
 import { getConnInfo } from '@hono/node-server/conninfo';
 import type { Context } from 'hono';
@@ -7,7 +8,9 @@ import type { AppEnv } from './context.js';
 // is only read when the peer is one of TRUSTED_PROXIES, and then from the
 // right: each trusted hop is skipped and the first untrusted one is the
 // client, since a hop to its left can say anything. With no trusted proxies
-// the header is ignored and the peer is the client.
+// the header is ignored and the peer is the client. A proxy that names the
+// client in a header of its own (Fly's `fly-client-ip`) is read through
+// OPENBOTS_CLIENT_IP_HEADER instead, again only from a trusted peer.
 
 /** Set by `createApp` on requests it hands to better-auth; any inbound copy is replaced. */
 export const CLIENT_IP_HEADER = 'x-openbots-client-ip';
@@ -82,11 +85,122 @@ function peerAddress(c: Context<AppEnv>): string | undefined {
   }
 }
 
-/** The caller's address for the request, per TRUSTED_PROXIES. */
+/**
+ * The client's address from the peer and a proxy's own client header
+ * (OPENBOTS_CLIENT_IP_HEADER): the header's address when the peer is a
+ * trusted proxy and the header holds one address, else as `resolveClientIp`.
+ */
+export function resolveClientIpFrom(
+  peer: string | undefined,
+  headers: { clientHeader?: string; forwardedFor?: string },
+  trustedProxies: readonly string[],
+): string | null {
+  if (headers.clientHeader !== undefined && peer && inRanges(peer, trustedProxies)) {
+    const address = normalizeIp(headers.clientHeader.trim());
+    if (isIP(address)) return address;
+  }
+  return resolveClientIp(peer, headers.forwardedFor, trustedProxies);
+}
+
+/** The caller's address for the request, per TRUSTED_PROXIES and OPENBOTS_CLIENT_IP_HEADER. */
 export function clientIp(c: Context<AppEnv>): string | null {
-  return resolveClientIp(
+  const { trustedProxies, clientIpHeader } = c.var.deps.config;
+  return resolveClientIpFrom(
     peerAddress(c),
-    c.req.header('x-forwarded-for'),
-    c.var.deps.config.trustedProxies,
+    {
+      clientHeader: clientIpHeader ? c.req.header(clientIpHeader) : undefined,
+      forwardedFor: c.req.header('x-forwarded-for'),
+    },
+    trustedProxies,
   );
+}
+
+/**
+ * Set by the relay adapter (src/relay) on each request it forwards from a
+ * tunnel to this server's own port on loopback: the device's id, or
+ * `remote:<address>` for a stream whose device is not paired yet, with the
+ * client's address as the relay reported it (RELAY_PROTOCOL.md 5.4). Relay
+ * stream ids start again at 1 on every link, so they cannot key a limit
+ * that has to outlast one. Believed only from loopback.
+ */
+export const DEVICE_HEADER = 'x-openbots-device';
+
+/**
+ * Set by the relay adapter beside DEVICE_HEADER: the tunnel's device static
+ * key from the Noise handshake, base64url. `POST /devices/pair` checks the
+ * body's `publicKey` against it (PAIRING_KEY_MISMATCH). Believed only from loopback.
+ */
+export const DEVICE_KEY_HEADER = 'x-openbots-device-key';
+
+const LOOPBACK = ['127.0.0.0/8', '::1'];
+
+/**
+ * A loopback peer alone does not prove a request came from the relay
+ * adapter: a reverse proxy or another program on the same host connects from
+ * loopback too. The adapter runs in this process and sends this secret,
+ * made fresh at every start and never written anywhere, so the device headers
+ * are believed only beside it. A request through the tunnel cannot carry it:
+ * the adapter drops a client-sent copy before it adds its own.
+ */
+export const ADAPTER_SECRET_HEADER = 'x-openbots-adapter';
+
+/**
+ * The headers the relay adapter adds for the server's own use. Nothing that
+ * stores or shows a request's headers (the webhook delivery log, a Bot's view
+ * of a delivery) may keep them: the secret above must never leave this process.
+ */
+export const INTERNAL_HEADERS: ReadonlySet<string> = new Set([
+  'x-openbots-adapter',
+  'x-openbots-device',
+  'x-openbots-device-key',
+]);
+const ADAPTER_SECRET = randomBytes(32).toString('base64url');
+
+/** The header the relay adapter adds to every loopback request and socket. */
+export function adapterHeaders(): Record<string, string> {
+  return { [ADAPTER_SECRET_HEADER]: ADAPTER_SECRET };
+}
+
+function fromAdapter(c: Context<AppEnv>): boolean {
+  const sent = c.req.header(ADAPTER_SECRET_HEADER);
+  if (!sent) return false;
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(sent), digest(ADAPTER_SECRET));
+}
+
+/** Whether the peer of the connection itself (never X-Forwarded-For) is loopback. */
+export function fromLoopback(c: Context<AppEnv>): boolean {
+  const peer = peerAddress(c);
+  return peer !== undefined && inRanges(peer, LOOPBACK);
+}
+
+/** A header the relay adapter sets, when the request came from loopback; else undefined. */
+export function tunnelHeader(c: Context<AppEnv>, name: string): string | undefined {
+  if (!fromLoopback(c) || !fromAdapter(c)) return undefined;
+  const value = c.req.header(name)?.trim();
+  return value ? value : undefined;
+}
+
+/** The DEVICE_HEADER prefix for a stream whose device is not paired yet. */
+export const REMOTE_PREFIX = 'remote:';
+
+/** The DEVICE_HEADER value for an unpaired stream from `remote`, as the relay reported it. */
+export function remoteDeviceHeader(remote: string): string {
+  const address = normalizeIp(remote.trim()).slice(0, 128);
+  return `${REMOTE_PREFIX}${address || 'unknown'}`;
+}
+
+/**
+ * The key the server's own rate limits count a request under: the client's
+ * address, `device:<id>` for a tunneled request of a paired device, or
+ * `remote:<address>` for one of a stream not paired yet (DEVICE_HEADER from
+ * the adapter), so every phone behind the relay adapter gets its own bucket
+ * and a client cannot get a fresh one by opening another stream. From any
+ * other peer the header is ignored. Null when neither is known.
+ */
+export function rateLimitKey(c: Context<AppEnv>): string | null {
+  const device = tunnelHeader(c, DEVICE_HEADER);
+  if (device?.startsWith(REMOTE_PREFIX)) return device.slice(0, 128 + REMOTE_PREFIX.length);
+  if (device) return `device:${device.slice(0, 128)}`;
+  return clientIp(c);
 }

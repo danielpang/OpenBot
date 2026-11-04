@@ -2,6 +2,8 @@ import {
   DESKTOP_CHANNELS,
   type ConnectionInfo,
   type ConnectOptions,
+  type PairCode,
+  type PairRelayView,
   type ProfilesView,
   type QuickAskBot,
   type QuickAskResult,
@@ -39,6 +41,14 @@ export interface DesktopHandlers {
   quickAskBots(): Promise<QuickAskBot[]>;
   quickAsk(botId: string, text: string): Promise<QuickAskResult>;
   closeQuickAsk(): void;
+  pairRelay(): Promise<PairRelayView>;
+  /**
+   * This Mac only: a new relay address, which the main process checks. Every
+   * paired phone is signed out, since it reached the server through the old one.
+   */
+  pairSetRelay(url: string): Promise<PairRelayView>;
+  pairCode(): Promise<PairCode>;
+  closePair(): void;
 }
 
 export const MAX_QUICK_ASK_LENGTH = 100_000;
@@ -100,4 +110,10 @@ export function registerDesktopIpc(
     return handlers.quickAsk(text(botId, 'The Bot'), body);
   });
   handle(DESKTOP_CHANNELS.quickAskClose, () => handlers.closeQuickAsk());
+  handle(DESKTOP_CHANNELS.pairRelay, () => handlers.pairRelay());
+  handle(DESKTOP_CHANNELS.pairSetRelay, (url) =>
+    handlers.pairSetRelay(text(url, 'The relay address')),
+  );
+  handle(DESKTOP_CHANNELS.pairCode, () => handlers.pairCode());
+  handle(DESKTOP_CHANNELS.pairClose, () => handlers.closePair());
 }

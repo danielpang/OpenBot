@@ -1,0 +1,50 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# The Bots' computer: the control agent of the computer image on
+# 127.0.0.1:7070, with the Bots' home at /home/bot (a link to /data/home) and
+# its state in /data/agent. It starts as root, reads and deletes its token
+# file, lays out a user per screen and drops to the bot user
+# (apps/computer-agent/src/privileges.ts). Its environment is built from
+# nothing: every program it starts inherits it, so it holds no server secret.
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../../lib/env.sh
+. /usr/local/lib/openbots/standalone/env.sh
+openbots_load_env
+# Root's, mode 0600, as the agent requires; it deletes the file once read.
+(
+  umask 077
+  printf '%s' "$OPENBOTS_COMPUTER_AGENT_TOKEN" >/data/agent/token.new
+)
+mv -f /data/agent/token.new /data/agent/token
+# Under memory pressure the kernel ends the agent's tree (the Bots' shells
+# and browsers inherit this) before the server, Postgres or Redis.
+openbots_oom_score_adj 500
+agent_env=(
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  LANG=C.UTF-8
+  NODE_ENV=production
+  HOME=/home/bot
+  TZ="${OPENBOTS_TIMEZONE:-UTC}"
+  PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+  OPENBOTS_HOME=/home/bot
+  OPENBOTS_STATE_DIR=/data/agent
+  OPENBOTS_AGENT_HOST=127.0.0.1
+  OPENBOTS_AGENT_PORT=7070
+)
+# The egress proxy, as the docker provider gives a computer container. Here
+# it is advisory: the variables ask programs to use it, and a program that
+# ignores them reaches the network directly, since no firewall stands
+# between the Bots and the container's network.
+if [ -n "${OPENBOTS_SANDBOX_EGRESS_PROXY:-}" ]; then
+  no_proxy="${OPENBOTS_SANDBOX_NO_PROXY:-localhost,127.0.0.1}"
+  agent_env+=(
+    "HTTP_PROXY=$OPENBOTS_SANDBOX_EGRESS_PROXY" "HTTPS_PROXY=$OPENBOTS_SANDBOX_EGRESS_PROXY"
+    "http_proxy=$OPENBOTS_SANDBOX_EGRESS_PROXY" "https_proxy=$OPENBOTS_SANDBOX_EGRESS_PROXY"
+    "NO_PROXY=$no_proxy" "no_proxy=$no_proxy"
+  )
+fi
+# Any answer means it is up: /healthz needs the token too.
+exec env -i "${agent_env[@]}" \
+  s6-notifyoncheck -d -3 3 -n 0 -s 1000 -w 1000 \
+  -c "curl -sS -o /dev/null http://127.0.0.1:7070/healthz" \
+  node /app/apps/computer-agent/dist/main.js

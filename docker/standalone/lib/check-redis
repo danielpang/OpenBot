@@ -1,0 +1,6 @@
+#!/bin/bash
+# Readiness of the redis service: a PONG with the password from its config.
+set -eu
+REDISCLI_AUTH="$(sed -n 's/^requirepass "\(.*\)"$/\1/p' /run/redis/redis.conf)"
+export REDISCLI_AUTH
+[ "$(redis-cli -h 127.0.0.1 -p 6379 ping 2>/dev/null)" = PONG ]

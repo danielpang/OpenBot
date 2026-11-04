@@ -118,6 +118,21 @@ export function fakeBridge(
       send: vi.fn(async (botId: string) => ({ botId, seq: 1 })),
       close: vi.fn(),
     },
+    pair: {
+      relay: vi.fn(async () => ({
+        local: true,
+        sharedUrl: 'wss://relay.example',
+        current: 'wss://relay.example',
+      })),
+      setRelay: vi.fn(async (url: string) => ({
+        local: true,
+        sharedUrl: 'wss://relay.example',
+        current: url,
+      })),
+      code: vi.fn(async () => ({ link: 'openbots://pair#v=1', expiresAt: '', skewMs: 0 })),
+      onPaired: vi.fn(() => () => undefined),
+      close: vi.fn(),
+    },
   };
   return bridge as unknown as FakeBridge;
 }

@@ -10,11 +10,13 @@ import {
 import { APPROVALS_QUEUE, expireDueApprovals, expiryHandler } from './services/approvals.js';
 import { AUDIT_TRIM_MS, trimAuditLog } from './services/audit.js';
 import { BOT_STATE_QUEUE, settleHandler } from './services/bot-state.js';
+import { PAIRING_SWEEP_MS, expireDuePairings } from './services/devices.js';
 import { IDLE_SWEEP_MS, refreshSandboxImage, sweepIdleComputers } from './services/computer.js';
 import { expireDueLoginRequests, LOGINS_QUEUE, loginExpiryHandler } from './services/logins.js';
 import { MEMORIES_QUEUE, reembedHandler } from './services/memories.js';
 import { startRoutineScheduler } from './services/routines.js';
 import { RUNS_QUEUE } from './services/runs.js';
+import { startPushWorker } from './workers/push.js';
 import { createRunWorker, recoverInterruptedRuns } from './workers/runs.js';
 
 /**
@@ -94,18 +96,32 @@ export async function startWorkers(deps: AppDeps): Promise<{ stop(): Promise<voi
   void trimAudit();
   const trim = setInterval(trimAudit, AUDIT_TRIM_MS);
   trim.unref();
+  // Pairings used or past their 5 minutes are dropped; now and every few minutes (plan 4.5).
+  const sweepPairings = () =>
+    inEveryOrganization(deps, () => expireDuePairings(deps)).then(
+      (dropped) => dropped && logger.info({ pairings: dropped }, 'dropped spent pairings'),
+      (err: unknown) => logger.error({ err }, 'pairing sweep failed'),
+    );
+  void sweepPairings();
+  const pairings = setInterval(sweepPairings, PAIRING_SWEEP_MS);
+  pairings.unref();
   // Due Routines every 30 seconds, exactly once per slot across workers (plan 10.2).
   const stopScheduler = startRoutineScheduler(deps);
   // Bus events an owner subscribed to become signed outbound deliveries (H6).
   const stopFanOut = await startEventFanOut(deps);
+  // Notices become encrypted pushes through the relay (RELAY_PROTOCOL.md 7), when there is one
+  // and its link runs (it does not when the instance key could not be opened, server.ts).
+  const push = deps.config.relayUrl && deps.relay ? await startPushWorker(deps) : null;
   logger.info({ queues: Object.keys(JOB_HANDLERS), infra: infra.kind }, 'workers started');
   // The queues themselves are closed with the infra in main.ts.
   return {
     stop: async () => {
       clearInterval(sweep);
       clearInterval(trim);
+      clearInterval(pairings);
       stopScheduler();
       await stopFanOut();
+      await push?.stop();
     },
   };
 }

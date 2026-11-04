@@ -1,0 +1,86 @@
+# OpenBots on one Fly Machine, from the standalone image (deploy/fly/README.md,
+# docs/MOBILE_AND_VM_PLAN.md 8.4). Server, Postgres, Redis and the Bots'
+# computer run in one container, on one volume at /data.
+#
+#   fly launch --copy-config --no-deploy --name <your app>
+#   fly volumes create data --size 10
+#   fly deploy
+#   fly ssh console -C "openbots pair"
+#
+# `fly launch` replaces `app` and `primary_region` with yours.
+
+app = "openbots"
+primary_region = "iad"
+
+# Postgres and Redis get time to shut down cleanly on a deploy or a restart.
+# The image's s6 gives its services 45 seconds in all (docker/standalone.Dockerfile),
+# so keep this at 60 seconds or more.
+kill_signal = "SIGTERM"
+kill_timeout = "60s"
+
+[build]
+  # Pin a release (:1.2 follows its fixes, :1.2.0 never moves) so a deploy
+  # never upgrades by surprise. Upgrade by changing it and running `fly deploy`.
+  image = "ghcr.io/danielpang/openbots/standalone:latest"
+
+[env]
+  # Everything else comes from /data/.env, which the image writes on first
+  # boot, and from `fly secrets set` (provider keys, OPENBOTS_RELAY_URL), which
+  # override it. Set OPENBOTS_RELAY_URL: without it, and without the public
+  # address below, the phone has no way to reach this Machine.
+  OPENBOTS_DEPLOYMENT = "self_hosted"
+  # Fly's proxy, for the public address below. It connects to the Machine from
+  # 172.16.0.0/16 and appends to X-Forwarded-For the client's address and then
+  # the app's own address (the rightmost entry, docs.fly.io/networking/request-headers).
+  # The server reads X-Forwarded-For only from TRUSTED_PROXIES and walks it
+  # from the right, so for it to find the client both must be listed: this
+  # range, and the app's addresses from `fly ips list` once you allocate
+  # them. Without the app's addresses every request seems to come from the
+  # app itself, and rate limits and webhook IP allowlists see one client.
+  # Nothing reaches the Machine through the proxy until [http_service] is on.
+  TRUSTED_PROXIES = "172.16.0.0/16"
+
+# The database, Redis's append-only file, the Bots' home and files, and the
+# generated .env with the master key. One Machine per volume.
+[mounts]
+  source = "data"
+  destination = "/data"
+  initial_size = "10gb"
+
+# About 2 GB is in use with Chromium, Postgres and Node together; 4 GB leaves
+# room for a busy Bot. The Machine is a VM: /dev/shm, the process limit and
+# the memory are the VM's, sized by Fly from this section, so the docker run
+# flags of docker/standalone/README.md have no equivalent here. Chromium runs
+# with --disable-dev-shm-usage and does not need a large /dev/shm.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "4gb"
+
+# Reported by `fly checks list` and in the dashboard. A check outside a
+# service never routes or stops anything.
+[checks]
+  [checks.ready]
+    type = "http"
+    port = 3000
+    path = "/readyz"
+    method = "get"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "2m"
+
+# Optional: a public https address at <your app>.fly.dev, for webhooks and
+# connector sign-in (OAuth). Without it the Machine has no public address and
+# the phone reaches it through the relay only, which is the safer start.
+# Before you turn it on, pair your phone first: on a server with no owner yet,
+# whoever opens the address first can create the owner. Then uncomment this
+# section, run `fly secrets set OPENBOTS_PUBLIC_URL=https://<your app>.fly.dev`,
+# add the addresses `fly ips list` shows to TRUSTED_PROXIES above, and run
+# `fly deploy`. The Machine must never stop on its own, or Routines and
+# the relay link stop with it, hence the two settings below.
+#
+# [http_service]
+#   internal_port = 3000
+#   force_https = true
+#   auto_stop_machines = "off"
+#   auto_start_machines = true
+#   min_machines_running = 1

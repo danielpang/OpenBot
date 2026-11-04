@@ -5,9 +5,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { authSecret } from './auth.js';
 import { schema } from './db/client.js';
 import { createTestDb, type TestDb } from './db/test-db.js';
-import { SEALED_COLUMNS, rotateMasterKey } from './rotation.js';
+import { PLAIN_BYTEA_COLUMNS, SEALED_COLUMNS, rotateMasterKey } from './rotation.js';
+import { ensureInstanceKey, instanceKeyFrom } from './services/instance-key.js';
 import {
   decodeEnvelope,
+  decryptSecret,
   decryptSecretString,
   encryptSecret,
   generateMasterKey,
@@ -31,7 +33,9 @@ describe('SEALED_COLUMNS', () => {
         if (column.getSQLType() === 'bytea') found.push(`${getTableName(table)}.${column.name}`);
       }
     }
-    expect(found.sort()).toEqual(SEALED_COLUMNS.map((c) => c.name).sort());
+    expect(found.sort()).toEqual(
+      [...SEALED_COLUMNS.map((c) => c.name), ...PLAIN_BYTEA_COLUMNS].sort(),
+    );
   });
 });
 
@@ -92,6 +96,8 @@ describe('rotateMasterKey', () => {
       schema.webhookEndpoints,
       schema.eventSubscriptions,
       schema.accounts,
+      schema.devices,
+      schema.instanceKeys,
     ]) {
       await t.db.delete(table);
     }
@@ -186,6 +192,35 @@ describe('rotateMasterKey', () => {
       current: 7,
       failed: [],
     });
+  });
+
+  it("re-seals the instance key and a device's push key and token, and keeps the host id", async () => {
+    await clear();
+    const instance = await ensureInstanceKey({ db: t.db, config: before });
+    await t.db.insert(schema.devices).values({
+      workspaceId,
+      ownerId,
+      name: 'Phone',
+      platform: 'ios',
+      publicKey: Buffer.alloc(32, 7),
+      pushKey: encryptSecret(Buffer.alloc(32, 9), keyringFromConfig(before)),
+      pushToken: seal('abcdef0123456789'),
+    });
+
+    const report = await rotateMasterKey({ db: t.db, config: rotating });
+    expect(report).toEqual({ resealed: 3, current: 0, failed: [] });
+
+    const ring = keyringFromConfig(after);
+    const [key] = await t.db.select().from(schema.instanceKeys);
+    expect(decodeEnvelope(key!.signingKey).kid).toBe(ring.current.id);
+    const reopened = instanceKeyFrom(decryptSecret(key!.signingKey, ring));
+    expect(reopened.hostId).toBe(instance.hostId);
+    expect(Buffer.from(reopened.tunnelPublicKey)).toEqual(Buffer.from(instance.tunnelPublicKey));
+    const [device] = await t.db.select().from(schema.devices);
+    expect(decryptSecret(device!.pushKey!, ring)).toEqual(Buffer.alloc(32, 9));
+    expect(decryptSecretString(device!.pushToken!, ring)).toBe('abcdef0123456789');
+    // The public key is no secret, and is left as it is.
+    expect(device!.publicKey).toEqual(Buffer.alloc(32, 7));
   });
 
   it('resumes where an interrupted run stopped', async () => {

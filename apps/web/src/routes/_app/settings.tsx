@@ -13,8 +13,9 @@ const TAB_CLASS =
   'rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent data-[status=active]:bg-accent data-[status=active]:font-medium data-[status=active]:text-foreground';
 
 /**
- * The tabs a caller gets. A self-hosted owner changes the limits in Limits.
- * The managed build adds its organization tabs (plan 21.5), where an
+ * The tabs a caller gets. Devices, the owner's paired phones, follows the
+ * first tab on every deployment. A self-hosted owner changes the limits in
+ * Limits. The managed build adds its organization tabs (plan 21.5), where an
  * organization's owners and admins find its limits. In the Mac app's local
  * mode there is no account: General, with the owner's name, takes Account's
  * place.
@@ -24,6 +25,7 @@ function settingsTabs(me: ActiveMe, managed: boolean, localAuth: boolean) {
     localAuth
       ? { to: '/settings/general', label: 'General' }
       : { to: '/settings/account', label: 'Account' },
+    { to: '/settings/devices', label: 'Devices' },
     { to: '/settings/models', label: 'Models' },
     { to: '/settings/events', label: 'Events' },
     ...(isAdmin(me.role) && !managed ? [{ to: '/settings/limits', label: 'Limits' }] : []),

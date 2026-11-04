@@ -1,6 +1,8 @@
 import { mkdtemp, rm } from 'node:fs/promises';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { serve, type ServerType } from '@hono/node-server';
 import { DEFAULT_CAPABILITIES } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import { createApp, type App } from './app.js';
@@ -14,6 +16,7 @@ import { inWorkspace, scopedDb } from './db/scope.js';
 import type { ServerExtensions } from './extensions.js';
 import { createLogger } from './logger.js';
 import { generateMasterKey } from './secrets.js';
+import { attachGateway } from './ws/gateway.js';
 import { ensureWorkspace, organizationSlug, type Role } from './workspace.js';
 
 // An app over a fresh test database (see db/test-db.ts), plus helpers that
@@ -254,4 +257,31 @@ function sessionCookie(res: Response): string | undefined {
     .getSetCookie()
     .map((c) => c.split(';')[0]!)
     .find((c) => c.includes('session_token='));
+}
+
+/**
+ * Serves a test app on an ephemeral port of 127.0.0.1 with the WS gateway
+ * attached, as server.ts serves the real one: for tests that need a real
+ * socket, such as the relay adapter's loopback requests.
+ */
+export async function serveTestApp(t: TestApp): Promise<{
+  port: number;
+  server: ServerType;
+  close(): Promise<void>;
+}> {
+  const server = await new Promise<ServerType>((resolve) => {
+    const s = serve({ fetch: t.app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s));
+  });
+  const gateway = await attachGateway(server, t.deps);
+  return {
+    port: (server.address() as AddressInfo).port,
+    server,
+    async close() {
+      await gateway.close();
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        (server as { closeAllConnections?: () => void }).closeAllConnections?.();
+      });
+    },
+  };
 }

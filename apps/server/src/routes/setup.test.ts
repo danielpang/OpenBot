@@ -1,6 +1,10 @@
 import { startFakeOpenAI, type FakeOpenAI } from '@openbots/models/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
+import { schema } from '../db/client.js';
+import { SYSTEM_ACTOR } from '../services/audit.js';
+import { createPairing } from '../services/devices.js';
+import { ensureWorkspace } from '../workspace.js';
 import { setComputerProvider } from '../services/computer.js';
 import { ORIGIN, createTestApp, type TestApp } from '../test-app.js';
 import { useTestComputer } from '../test-computer.js';
@@ -32,6 +36,65 @@ describe('/api/v1/setup with sign-in rate limits on (the default)', () => {
   });
 });
 
+describe('/api/v1/setup when the owner is made by pairing only (the standalone image)', () => {
+  let t: TestApp;
+  beforeAll(async () => {
+    t = await createTestApp({ OPENBOTS_SETUP_PAIRING_ONLY: '1' });
+  });
+  afterAll(() => t.close());
+
+  it('refuses the wizard and the sign-up, says so, and still pairs the owner in', async () => {
+    expect(await (await t.app.request('/api/v1/setup')).json()).toEqual({
+      setupRequired: true,
+      pairingOnly: true,
+    });
+    expect(await (await t.app.request('/api/v1/capabilities')).json()).toMatchObject({
+      setupPairingOnly: true,
+    });
+    const account = { name: 'Ada', email: 'ada@example.com', password: 'correct horse battery' };
+    const admin = await t.app.request('/api/v1/setup/admin', {
+      method: 'POST',
+      headers: { origin: ORIGIN, 'content-type': 'application/json' },
+      body: JSON.stringify(account),
+    });
+    expect(admin.status).toBe(403);
+    expect(await admin.json()).toMatchObject({ code: 'SETUP_PAIRING_ONLY' });
+    const signUp = await t.app.request('/api/auth/sign-up/email', {
+      method: 'POST',
+      headers: { origin: ORIGIN, 'content-type': 'application/json' },
+      body: JSON.stringify(account),
+    });
+    expect(signUp.status).toBe(403);
+    expect(await signUp.json()).toMatchObject({ code: 'SETUP_PAIRING_ONLY' });
+    expect(await t.db.select().from(schema.users)).toEqual([]);
+
+    // `openbots pair` makes a pairing that makes the owner.
+    const workspaceId = (await ensureWorkspace(t.db)).id;
+    const pairing = await createPairing({
+      db: t.deps.db,
+      config: t.deps.config,
+      workspaceId,
+      ownerId: null,
+      createdBy: 'cli',
+      actor: SYSTEM_ACTOR,
+    });
+    const paired = await t.app.request('/api/v1/devices/pair', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        code: pairing.qr.code,
+        name: 'Phone',
+        platform: 'ios',
+        publicKey: Buffer.alloc(32, 3).toString('base64url'),
+        pushKey: Buffer.alloc(32, 4).toString('base64url'),
+        ownerName: 'Ada',
+      }),
+    });
+    expect(paired.status, await paired.clone().text()).toBe(200);
+    expect(await t.db.select().from(schema.users)).toHaveLength(1);
+  });
+});
+
 describe('/api/v1/setup on the managed service', () => {
   let t: TestApp;
   beforeAll(async () => {
@@ -41,7 +104,7 @@ describe('/api/v1/setup on the managed service', () => {
 
   it('offers no wizard: people sign up, and the account step and image pull are not there', async () => {
     const setup = await t.app.request('/api/v1/setup');
-    expect(await setup.json()).toEqual({ setupRequired: false });
+    expect(await setup.json()).toEqual({ setupRequired: false, pairingOnly: false });
     const admin = await t.app.request('/api/v1/setup/admin', {
       method: 'POST',
       headers: { origin: ORIGIN, 'content-type': 'application/json' },

@@ -22,6 +22,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit
       - run: node scripts/check-licenses.mjs
+      # The install script, the release, backup and image scripts, and the
+      # standalone image's scripts and s6 services (their `up` files are one
+      # command line each, checked as sh).
+      - name: Lint the shell scripts
+        run: |
+          shellcheck -x install.sh scripts/*.sh docker/*.sh \
+            docker/standalone/lib/*.sh docker/standalone/lib/check-redis \
+            docker/standalone/bin/openbots docker/standalone/bin/start docker/standalone/test/*.sh \
+            docker/standalone/s6-rc.d/*/run
+          shellcheck -s sh docker/standalone/s6-rc.d/*/up
+      - name: Test the standalone image's init checks
+        run: bash docker/standalone/test/init-lib.test.sh
       - run: pnpm lint
       - run: pnpm typecheck
       # The committed OpenAPI document and the client generated from it must
@@ -80,6 +92,7 @@ jobs:
 
   server-image:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     continue-on-error: false
     steps:
       - uses: actions/checkout@v4
@@ -88,12 +101,14 @@ jobs:
         run: >-
           docker run --rm -v "$PWD:/repo:ro" -w /repo hadolint/hadolint:v2.12.0
           hadolint docker/server.Dockerfile docker/computer.Dockerfile
-          docker/sandbox-firewall.Dockerfile ee/server/Dockerfile
+          docker/sandbox-firewall.Dockerfile docker/relay.Dockerfile
+          docker/standalone.Dockerfile ee/server/Dockerfile
       - name: Validate the compose files
         run: |
           cp .env.example .env
           docker compose config --quiet
           docker compose --profile s3 --profile ngrok --profile cloudflare config --quiet
+          docker compose --profile relay config --quiet
           docker compose --project-directory . -f docker/docker-compose.yml -f docker/docker-compose.dev.yml config --quiet
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
@@ -103,8 +118,19 @@ jobs:
           push: false
           load: true
           tags: openbots-ci/server:ci
-          cache-from: type=gha,scope=server
-          cache-to: type=gha,scope=server,mode=max
+          cache-from: type=gha,scope=ci-server
+          cache-to: type=gha,scope=ci-server,mode=max
+      # The relay: built, not published here (release-images.yml publishes
+      # it). The standalone image has a job of its own below.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/relay.Dockerfile
+          push: false
+          load: true
+          tags: openbots-ci/relay:ci
+          cache-from: type=gha,scope=ci-relay
+          cache-to: type=gha,scope=ci-relay,mode=max
       # The managed image (ee/server): built, not published here.
       - uses: docker/build-push-action@v6
         with:
@@ -112,8 +138,8 @@ jobs:
           file: ee/server/Dockerfile
           push: false
           tags: openbots-ci/managed-server:ci
-          cache-from: type=gha,scope=managed-server
-          cache-to: type=gha,scope=managed-server,mode=max
+          cache-from: type=gha,scope=ci-managed-server
+          cache-to: type=gha,scope=ci-managed-server,mode=max
       - name: Smoke-test the stack
         run: |
           key="$(docker run --rm openbots-ci/server:ci keygen)"
@@ -123,8 +149,106 @@ jobs:
           docker compose up -d --wait
           curl -fsS http://localhost:3000/readyz
           curl -fsS http://localhost:3000/ | grep -q "<title>OpenBots</title>"
+      - name: Smoke-test the relay profile
+        run: |
+          docker compose --profile relay up -d --wait relay
+          curl -fsS http://127.0.0.1:3200/healthz
       - if: failure()
         run: docker compose logs
+
+  # The standalone image, built and booted on a volume: first boot, pairing
+  # before any owner exists, a backup, a clean stop and a start on the same
+  # volume, the volume lock against a second container, and a restore.
+  standalone-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      IMAGE: openbots-ci/standalone:ci
+      VOLUME: openbots-ci-data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/standalone.Dockerfile
+          push: false
+          load: true
+          tags: openbots-ci/standalone:ci
+          cache-from: type=gha,scope=ci-standalone
+          cache-to: type=gha,scope=ci-standalone,mode=max
+      - name: Boot it on a volume
+        run: |
+          cat >"$RUNNER_TEMP/start.sh" <<'EOF'
+          set -eu
+          docker run -d --name openbots --stop-timeout 60 \
+            --log-opt max-size=10m --log-opt max-file=3 --pids-limit 4096 \
+            --cap-add NET_ADMIN -v "$VOLUME:/data" -p 127.0.0.1:3000:3000 "$IMAGE"
+          for _ in $(seq 1 120); do
+            if curl -fsS -o /dev/null http://127.0.0.1:3000/readyz; then exit 0; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' openbots)" != true ]; then
+              echo "::error::the container stopped"
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::/readyz did not answer"
+          exit 1
+          EOF
+          docker volume create "$VOLUME"
+          bash "$RUNNER_TEMP/start.sh"
+          docker logs openbots 2>&1 | grep -q 'Blocked the metadata address'
+      - name: Pair before any owner exists
+        run: |
+          docker exec openbots openbots pair --link | tee "$RUNNER_TEMP/pair.txt"
+          grep -q '^openbots://pair#.*setup=1' "$RUNNER_TEMP/pair.txt"
+      - name: Back up
+        run: |
+          docker exec openbots sh -c 'echo kept >/data/home/ci-marker'
+          docker exec openbots grep '^OPENBOTS_MASTER_KEY=' /data/.env >"$RUNNER_TEMP/key"
+          # A directory that exists is the parent of a new timestamped
+          # backup, so the same command runs twice.
+          docker exec openbots openbots backup /data/backups
+          docker exec openbots openbots backup /data/backups
+          [ "$(docker exec openbots sh -c 'ls /data/backups | wc -l')" = 2 ]
+          docker exec openbots openbots backup --out /data/backups/ci
+          docker exec openbots test -f /data/backups/ci/MANIFEST
+      - name: A second container on the volume stops at once
+        run: |
+          status=0
+          timeout -k 10 120 docker run --rm --name openbots-second -v "$VOLUME:/data" "$IMAGE" >"$RUNNER_TEMP/second.log" 2>&1 || status=$?
+          docker rm -f openbots-second >/dev/null 2>&1 || true
+          cat "$RUNNER_TEMP/second.log"
+          [ "$status" != 0 ] && [ "$status" != 124 ]
+          grep -q 'another container is using this volume' "$RUNNER_TEMP/second.log"
+          curl -fsS -o /dev/null http://127.0.0.1:3000/readyz
+      - name: Stop cleanly and start again on the same volume
+        run: |
+          start="$(date +%s)"
+          docker stop -t 60 openbots
+          echo "stopped in $(($(date +%s) - start)) seconds"
+          [ "$(docker inspect -f '{{.State.ExitCode}}' openbots)" = 0 ] || docker logs --tail 50 openbots
+          docker logs openbots 2>&1 | grep -q 'database system is shut down'
+          docker rm openbots
+          bash "$RUNNER_TEMP/start.sh"
+          # The data survived: the key, the Bots' home and the pairing.
+          docker exec openbots grep '^OPENBOTS_MASTER_KEY=' /data/.env | cmp - "$RUNNER_TEMP/key"
+          [ "$(docker exec openbots cat /data/home/ci-marker)" = kept ]
+          pairings="$(docker exec openbots runuser -u postgres -- psql -h /run/postgresql -d openbots -tA -c 'SELECT count(*) FROM device_pairings')"
+          [ "$pairings" -ge 1 ]
+      - name: Restore
+        run: |
+          docker exec openbots rm /data/home/ci-marker
+          # Without a terminal and without --yes it refuses, changing nothing.
+          if docker exec openbots openbots restore /data/backups/ci; then
+            echo "::error::restore without --yes and without a terminal went ahead"
+            exit 1
+          fi
+          docker exec openbots openbots restore /data/backups/ci --yes
+          curl -fsS -o /dev/null http://127.0.0.1:3000/readyz
+          [ "$(docker exec openbots cat /data/home/ci-marker)" = kept ]
+      - if: failure()
+        run: docker logs openbots || true
 
   # The Playwright specs in apps/web/e2e against the built server and web app,
   # with Postgres and Redis as services and the scripted model of

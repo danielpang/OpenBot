@@ -1,0 +1,24 @@
+#!/command/with-contenv bash
+# shellcheck shell=bash
+# The OpenBots server, role `all`, once Postgres, Redis and the computer
+# agent are ready. docker/entrypoint.sh applies the migrations, moves the
+# secrets into files under /run/openbots and runs the server as the openbots
+# user with no capability. Ready once /readyz answers. POSTGRES_PASSWORD and
+# OPENBOTS_REDIS_PASSWORD stay out of its environment: DATABASE_URL and
+# REDIS_URL carry them, and those reach node as files like every secret.
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../../lib/env.sh
+. /usr/local/lib/openbots/standalone/env.sh
+openbots_server_env
+# Kept from the kernel's OOM killer ahead of the Bots' programs.
+openbots_oom_score_adj -500
+rm -rf /run/openbots
+install -d -m 0700 -o "$OPENBOTS_SERVER_USER" -g "$OPENBOTS_SERVER_USER" /run/openbots
+export OPENBOTS_SECRETS_DIR=/run/openbots
+OPENBOTS_SERVER_UID="$(id -u "$OPENBOTS_SERVER_USER")"
+OPENBOTS_SERVER_GID="$(id -g "$OPENBOTS_SERVER_USER")"
+export OPENBOTS_SERVER_UID OPENBOTS_SERVER_GID
+export HOME=/var/lib/openbots-server
+exec s6-notifyoncheck -d -3 3 -n 0 -s 2000 -w 1000 \
+  -c "curl -fsS -o /dev/null http://127.0.0.1:3000/readyz" \
+  "$OPENBOTS_LIB/entrypoint.sh" start

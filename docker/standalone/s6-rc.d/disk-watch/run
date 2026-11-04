@@ -1,0 +1,30 @@
+#!/bin/bash
+# shellcheck shell=bash
+# Watches the free space on /data, which holds everything at once: the
+# database, Redis, uploads, the Bots' home and the backups written there. A
+# Bot that fills its home fills the disk under PostgreSQL too. Below 10
+# percent free it logs a warning (to `docker logs`, `fly logs`), again every
+# hour while it lasts, and writes the state to /run/openbots-status/disk
+# (`ok` or `low`) for the server to read once its /readyz looks there.
+set -euo pipefail
+# shellcheck source=SCRIPTDIR/../../lib/init-lib.sh
+. /usr/local/lib/openbots/standalone/init-lib.sh
+install -d -m 0755 /run/openbots-status
+quiet=0
+while :; do
+  read -r total avail < <(disk_space_kib /data)
+  if [ "$((avail * 10))" -lt "$total" ]; then
+    printf 'low\n' >/run/openbots-status/disk.tmp
+    if [ "$quiet" -le 0 ]; then
+      echo "disk-watch: warning: /data has $((avail / 1024)) MiB free of $((total / 1024)) MiB, under 10 percent. PostgreSQL stops writing when it is full. Free space (old backups in /data/backups, large files in the Bots' home) or grow the volume." >&2
+      quiet=12
+    fi
+    quiet=$((quiet - 1))
+  else
+    printf 'ok\n' >/run/openbots-status/disk.tmp
+    quiet=0
+  fi
+  chmod 0644 /run/openbots-status/disk.tmp
+  mv -f /run/openbots-status/disk.tmp /run/openbots-status/disk
+  sleep 300
+done

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
@@ -94,6 +95,7 @@ const SAMPLE_BODIES: Record<string, unknown> = {
   'patch /api/v1/endpoints/{id}': { slug: 'taken' },
   'post /api/v1/endpoints/{id}/test': { payload: {} },
   'patch /api/v1/event-subscriptions/{id}': { enabled: false },
+  'put /api/v1/devices/{id}/push': { token: 'ab'.repeat(32), environment: 'sandbox' },
 };
 
 /** What one person owns in organization A, and the words that would give it away. */
@@ -226,6 +228,24 @@ describe('organizations are isolated (plan 21.3)', () => {
       call(cookie, 'post', '/api/v1/api-keys', { name: marker.slice(0, 20) }),
       201,
     );
+    const pairing = await json<{ qr: { code: string } }>(
+      call(cookie, 'post', '/api/v1/devices/pairings', { name: `${marker} Server` }),
+      201,
+    );
+    // One left open, for the cancel route.
+    const openPairing = await json<{ id: string }>(
+      call(cookie, 'post', '/api/v1/devices/pairings', { name: `${marker} Open` }),
+      201,
+    );
+    const device = await json<{ device: { id: string } }>(
+      call(cookie, 'post', '/api/v1/devices/pair', {
+        code: pairing.qr.code,
+        name: `${marker} Phone`,
+        platform: 'ios',
+        publicKey: randomBytes(32).toString('base64url'),
+        pushKey: randomBytes(32).toString('base64url'),
+      }),
+    );
 
     const [botRow] = await t.db.select().from(schema.bots).where(eq(schema.bots.id, bot.id));
     const owner = { id: userId, workspaceId: botRow!.workspaceId };
@@ -276,6 +296,8 @@ describe('organizations are isolated (plan 21.3)', () => {
         subscription: subscription.subscription.id,
         provider: provider.id,
         apiKey: key.id,
+        device: device.device.id,
+        pairing: openPairing.id,
         artifact: artifact.id,
         run: run.id,
         approval: approval!.id,
@@ -301,6 +323,7 @@ describe('organizations are isolated (plan 21.3)', () => {
       endpoints: ids.endpoint!,
       'event-subscriptions': ids.subscription!,
       'api-keys': ids.apiKey!,
+      devices: ids.device!,
     };
     let filled = path;
     if (first) {
@@ -308,6 +331,7 @@ describe('organizations are isolated (plan 21.3)', () => {
       expect(id, `no resource for ${path}`).toBeDefined();
       filled = filled.replace('{id}', id!);
     }
+    if (path === '/api/v1/devices/pairings/{id}') filled = filled.replace('{id}', ids.pairing!);
     if (path === '/api/v1/messages/{id}/reactions') filled += '?emoji=%F0%9F%91%8D';
     return filled
       .replace('{memoryId}', ids.memory!)

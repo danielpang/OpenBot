@@ -45,7 +45,7 @@ again, it keeps an existing `.env`, key and password.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/danielpang/OpenBots/main/install.sh | bash
-# or, from a checkout: bash install.sh [--dir <path>] [--ref <tag>] [--no-start]
+# or, from a checkout: bash install.sh [--dir <path>] [--ref <tag>] [--no-start] [--pair]
 ```
 
 By hand, the same steps:
@@ -176,10 +176,13 @@ apply it with `docker compose up -d`. Health endpoints: `/healthz` (process up),
 (database and Redis reachable, used by the container healthcheck) and `/metrics` (Prometheus,
 off unless `OPENBOTS_METRICS_TOKEN` is set).
 
-Each release tag (`v1.2.0`) publishes the server, computer and sandbox firewall images for
-linux/amd64 and linux/arm64 to `ghcr.io/danielpang/openbots/server`,
-`ghcr.io/danielpang/openbots/computer` and `ghcr.io/danielpang/openbots/sandbox-firewall`, tagged
-`1.2.0`, `1.2` and `latest` (`.github/workflows/release.yml`), and attaches the Mac app, the
+Each release tag (`v1.2.0`) publishes five images for linux/amd64 and linux/arm64:
+`ghcr.io/danielpang/openbots/server`, `ghcr.io/danielpang/openbots/computer`,
+`ghcr.io/danielpang/openbots/sandbox-firewall`, `ghcr.io/danielpang/openbots/relay` (the private
+relay) and `ghcr.io/danielpang/openbots/standalone` (all of OpenBots in one container, see
+[Run OpenBots 24/7 on a VM](#run-openbots-247-on-a-vm)), tagged `1.2.0`, `1.2` and `latest`
+(`.github/workflows/release.yml`; `1.2` and `latest` move only once every image is pushed), and
+attaches the Mac app, the
 compose bundle and the image archives to its GitHub Release
 ([apps/desktop/RELEASING.md](apps/desktop/RELEASING.md)). `OPENBOTS_IMAGE_PREFIX` in `.env`
 says where they come from (a fork publishes to `ghcr.io/<its owner>/openbots`, and
@@ -215,9 +218,15 @@ now has fixed options: `docker compose down`, remove any computer containers
 ## Backup and restore
 
 ```sh
-bash scripts/backup.sh                      # writes backups/<timestamp>/
+bash scripts/backup.sh                      # writes a new backups/<timestamp>/ each time
 bash scripts/restore.sh backups/<timestamp> # replaces the current data, asks first
+bash scripts/restore.sh backups/<timestamp> --yes   # the same without asking, for scripts
 ```
+
+`backup.sh <dir>` writes a new `<dir>/<timestamp>` inside a directory of your choice, so the same
+command runs every time; `--out <dir>` writes into exactly `dir`, which must be new or empty.
+`restore.sh` without `--yes` and without a terminal to ask on (a script, cron, `docker exec`
+without `-it`) stops with a message and changes nothing.
 
 A backup holds a `pg_dump` of the database (`database.dump`), the `files` volume with every upload
 and Artifact file (`files.tar.gz`), each Bot computer's home volume (`computers/<volume>.tar.gz`)
@@ -230,10 +239,30 @@ stack can be up or down.
 and find the users table, and every archive must pass `gzip -t`. A backup that fails is removed,
 so a directory under `backups/` with a `MANIFEST` is a good one.
 
-`restore.sh` checks the backup first (checksums from `MANIFEST`, the dump, the archives) and
-stops before touching anything if that fails. It then asks (skip with `--yes`), stops `openbots`
-and the computers, recreates the database, refills the volumes, starts the stack, and checks that
-the restored file count matches the backup.
+`restore.sh` checks the backup first (checksums from `MANIFEST`, the dump, the archives, where
+each archive goes, and twice the backup's size in free space) and stops before touching anything
+if that fails. It then asks (skip with `--yes`), stops `openbots` and the computers, recreates the
+database, refills the volumes, starts the stack, and checks that the restored file count matches
+the backup.
+
+A backup of the standalone image restores into the compose stack too: its files are given to the
+server's uid 1000, its Bots' home (`home.tar.gz`) fills the home volume of the computer its
+database names, and the standalone computer's browser sign-ins are left out with a message (the
+Bots sign in to sites again). If its database has no computer, the restore stops before changing
+anything; `--skip-home` restores without the Bots' home.
+
+**Restoring onto a new install.** A new install generates a master key of its own. Put the old
+one in place before you restore: set `OPENBOTS_MASTER_KEY=<the old key>` in `.env` (in
+`/data/.env`, or as a secret such as `fly secrets set OPENBOTS_MASTER_KEY=...`, for the standalone
+image), restart (`docker compose up -d`, or restart the container), then run the restore with
+`--yes`. The standalone image refuses to boot on an existing database whose master key is
+missing, rather than generating a new one that could not open its secrets.
+
+**Moving a server: stop the old one first.** A backup carries the server's identity, the key it
+links to the relay with. Restored onto a second machine while the first still runs, both dial the
+relay as one server and the phone reaches whichever linked last. Stop the old install
+(`docker compose down`, `docker stop -t 60 <container>`, `fly machine stop`) before you start the
+restored one.
 
 Without Docker (a development install), both scripts use `DATABASE_URL` and `OPENBOTS_FILES_DIR`
 and need `pg_dump` / `pg_restore` on `PATH`; computer volumes are skipped.
@@ -450,6 +479,43 @@ fails through a tunnel, check that no intermediate proxy is stripping the `Upgra
 When you start the stack with a profile, keep passing it (`docker compose --profile ngrok up -d`,
 `docker compose --profile ngrok pull`), or set `COMPOSE_PROFILES=ngrok` in `.env` so plain
 `docker compose` commands include the tunnel.
+
+## Reaching your server from your phone
+
+The OpenBots app for iOS is in development ([docs/IOS_APP_PLAN.md](docs/IOS_APP_PLAN.md)). The server side it needs is in place: a phone pairs with a server by scanning a QR code, and reaches it either directly (a public URL from the section above) or through the private relay, which needs no public address, port, DNS or certificate. The wire protocol is in [docs/RELAY_PROTOCOL.md](docs/RELAY_PROTOCOL.md) and the design in [docs/MOBILE_AND_VM_PLAN.md](docs/MOBILE_AND_VM_PLAN.md).
+
+**Pairing.** Settings > Devices in the web app (and "Pair your phone…" in the Mac app) shows a QR code that is good for 5 minutes and works once. On a VM with no browser at hand, print it in the terminal:
+
+```sh
+docker compose run --rm openbots pair          # add --link to print the link too
+docker compose run --rm openbots devices       # list paired devices, or `devices revoke <id>`
+docker compose run --rm openbots relay         # the server's host id and whether the relay sees it
+```
+
+On a fresh install with no owner yet, `openbots pair` prints a code that creates the owner when the phone pairs, so a server on a VM needs no browser to get going. A paired device holds a key with the owner's access; revoke a lost phone in Settings > Devices, which stops its key at once.
+
+**The relay.** Set `OPENBOTS_RELAY_URL` in `.env` to a relay's `wss://` address and run `docker compose up -d`. The server dials the relay out, only once a device is paired or a pairing is open, and the phone reaches it through the relay when no direct address answers. Everything between the phone and the server is end-to-end encrypted with keys the relay never holds: the relay sees your server's id, when it is connected, how many streams and bytes, and nothing of what they carry. Leave the setting empty and the phone needs a direct address (`OPENBOTS_PUBLIC_URL` over https, or the same network). The Mac app's This Mac stack uses the OpenBots relay by default. To use a relay of your own, open "Relay…" in the OpenBots menu and enter its `wss://` address: the app sets `OPENBOTS_RELAY_URL` and restarts the stack, and every paired phone is signed out and has to pair again.
+
+To run a relay of your own, start the compose stack's `relay` profile (see [Run OpenBots 24/7 on a VM](#run-openbots-247-on-a-vm)) or run `docker/relay.Dockerfile`'s image on its own, behind a TLS terminator; it listens on port 3200 and needs no state. `apps/relay/README.md` has its settings. Push notifications go through the relay too, and only a relay holding the app's APNs key can send them, so a self-hosted relay carries the tunnel and no push.
+
+## Run OpenBots 24/7 on a VM
+
+The Mac app's This Mac stack is the free way to run OpenBots, but it pauses while the Mac sleeps: Routines wait, and Bots stop mid-task until the lid opens. To have Bots and Routines work around the clock, run OpenBots on a machine that stays on, such as a cloud VM or a home server. Your phone reaches it through the relay, so the VM needs no public address, open port, DNS or certificate. Templates and step-by-step guides are in [deploy/](deploy/README.md).
+
+There are two shapes:
+
+- **The compose stack**, on any VM where you can run Docker (EC2, Hetzner, DigitalOcean, a home server). It is this README's install, with every Bot's computer in its own container behind the Docker guard and the sandbox firewall. **This is the hardened path; use it wherever Docker is available.** On a new Ubuntu VM, [deploy/ec2/cloud-init.yaml](deploy/ec2/cloud-init.yaml) installs Docker and runs the installer for you; elsewhere, run `bash install.sh --pair`.
+- **The standalone image**, `ghcr.io/danielpang/openbots/standalone`, for platforms that run one container and no Docker inside it (Fly Machines, Sprites, Railway, Render), or for one person on one VM. The server, Postgres, Redis and the Bots' computer share one container with one volume at `/data`. Give it about 2 GB of memory and 2 CPUs. [deploy/fly](deploy/fly/README.md) and [deploy/sprites](deploy/sprites/README.md) have the steps, and [docker/standalone/README.md](docker/standalone/README.md) the `docker run` line with its flags (`--stop-timeout 60`, `--pids-limit`, `--cap-add NET_ADMIN`, log rotation). Stop it with `docker stop -t 60`, not `docker rm -f`. Everything shares one disk, so a Bot that fills its home fills the disk under the database; the image warns below 10 percent free. Modal can run the image with a Volume at `/data`, but Modal Sandboxes are built for shorter work; the other platforms fit a server that runs around the clock better.
+
+**Set the relay, and pair first.** With the recommended setup (no inbound rule, no public address) the relay is the phone's only way to the server: set `OPENBOTS_RELAY_URL`, or the phone cannot reach it. `install.sh --pair`, the EC2 template and the standalone image warn when it is empty and no https `OPENBOTS_PUBLIC_URL` is set. On a platform that publishes the port as soon as the service runs (Railway, Render), the first visitor to the web app can create the owner while none exists: run `openbots pair` in the service's shell and pair your phone before you give it a public address.
+
+**Pairing from the terminal.** A new server needs no browser. `bash install.sh --pair` starts the stack and prints a QR code once it is ready; with no terminal attached (cloud-init, for instance) it writes the code to `openbots-pair.txt` beside `.env`, readable by you only, and prints nothing a log could keep. Scan it with the OpenBots app. On a server with no owner yet, the phone that pairs becomes the owner. A code works once and for 5 minutes. For a new one, run `docker compose run --rm openbots pair` (compose stack), `docker exec <container> openbots pair` (standalone image) or `fly ssh console -C "openbots pair"` (Fly).
+
+**Your own relay.** On a VM with a public address you can run a relay beside the compose stack, with the `relay` profile: `docker compose --profile relay up -d`. It listens on `OPENBOTS_RELAY_PORT` (3200), on loopback unless `OPENBOTS_RELAY_BIND` says otherwise, and needs TLS in front of it: a Cloudflare Tunnel hostname whose service is `http://relay:3200` (the `cloudflare` profile), or a reverse proxy on the host. Set `OPENBOTS_RELAY_URL` to that `wss://` address. A relay of your own carries the tunnel and no push notifications, since only the project's relay holds the app's APNs key; the phone then gets notices only while the app is open.
+
+**Cost.** You pay the platform for a machine that runs all month, plus your model provider's usage, which each Bot's usage rows show. Prices change, so this README gives no number: check the platform's own pricing page for a machine with 2 CPUs and 4 GB of memory and a 10 to 30 GB disk: [Fly.io](https://fly.io/docs/about/pricing/), [Amazon EC2](https://aws.amazon.com/ec2/pricing/on-demand/), [Railway](https://railway.com/pricing), [Render](https://render.com/pricing). A Sprite costs nothing while paused, but it pauses when idle, and OpenBots pauses with it, so it does not suit Routines around the clock.
+
+**What the standalone image gives up.** In the compose stack a Bot's shell runs in its own container, which cannot reach the server, the database or the server's network. In the standalone image there is one container and one kernel: the Bots' shells run beside the server, as another user. They cannot read the server's secrets: the computer agent's token is kept out of every program it starts, and the server's routes all need a key the Bots do not have. But a Bot's shell can reach the server's port on loopback, the VM's own network (on Fly, the organization's private network and other apps on it) and, on a cloud VM, the metadata address that hands out the machine's credentials. Run the container with `--cap-add NET_ADMIN` and the image drops that address for the Bots' users, or block it in the platform's firewall (on EC2, require IMDSv2 with a hop limit of 1). `OPENBOTS_SANDBOX_EGRESS_PROXY` is advisory in this image: programs that honour `HTTP_PROXY` use it, and nothing stops one that does not. The image is meant for one person's own server; for anything more, use the compose stack.
 
 ## Development
 

@@ -5,8 +5,8 @@
 #   git tag v1.2.0 && git push origin v1.2.0
 #
 #   version    checks the tag against the package.json versions
-#   images     server, computer and sandbox-firewall for linux/amd64 and
-#              linux/arm64, pushed to ghcr.io/<owner>/openbots, plus a
+#   images     server, computer, sandbox-firewall, relay and standalone for
+#              linux/amd64 and linux/arm64, pushed to ghcr.io/<owner>/openbots, plus a
 #              `docker load` archive of each per architecture
 #              (release-images.yml)
 #   mac        the universal DMG, the zip and latest-mac.yml, signed and
@@ -217,7 +217,7 @@ jobs:
             "openbots.rb"
             "openbots-compose-$VERSION.tar.gz"
           )
-          for image in server computer sandbox-firewall; do
+          for image in server computer sandbox-firewall relay standalone; do
             for arch in amd64 arm64; do
               expected+=("openbots-$image-$VERSION-linux-$arch.tar.gz")
             done

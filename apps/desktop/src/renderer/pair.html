@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- img-src data: is the QR code, an SVG made on the page. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:"
+    />
+    <title>Pair your phone</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./pair.tsx"></script>
+  </body>
+</html>

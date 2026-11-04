@@ -14,3 +14,9 @@
 .env.*
 !.env.example
 **/.DS_Store
+backups/
+.worktrees/
+.pnpm-store/
+**/.env
+**/.env.*
+!**/.env.example

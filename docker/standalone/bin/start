@@ -1,0 +1,16 @@
+#!/bin/bash
+# shellcheck shell=bash
+# The image's entrypoint: refuses to start on a volume another container is
+# using, then hands over to s6-overlay's /init. The check runs here, before
+# s6 starts, because a service cannot stop the container while s6 is still
+# bringing services up (its halt waits for that transition, which waits for
+# the service). volume-lock then takes the same lock and holds it for as long
+# as the container runs (docker/standalone/s6-rc.d/volume-lock/run).
+set -euo pipefail
+exec 9>>/data/.lock
+if ! flock -n 9; then
+  echo "volume-lock: another container is using this volume: /data/.lock is held. Two containers on one volume would corrupt the database, so this one stops. Stop the other container first (docker ps --filter volume=<the volume>), then start this one again." >&2
+  exit 75
+fi
+exec 9>&-
+exec /init "$@"

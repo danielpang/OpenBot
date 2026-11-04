@@ -7,9 +7,12 @@ import {
   APP_ROLE,
   DIRECTORY_ROLE,
   asDirectory,
+  deviceWorkspaces,
+  devicesExist,
   dueRoutineWorkspaces,
   forEachWorkspace,
   inWorkspace,
+  pairingWorkspace,
   webhookWorkspaces,
   workspaceIds,
 } from './scope.js';
@@ -220,6 +223,84 @@ describe('row-level security between organizations', () => {
       (await t.deps.db.select({ id: schema.bots.id }).from(schema.bots)).map((r) => r.id),
     );
     expect(seen.flat().sort()).toEqual([botA, botB].sort());
+  });
+
+  it("finds a device's or a pairing's organization through SECURITY DEFINER functions only", async () => {
+    const key = Buffer.alloc(32, 1);
+    const revokedKey = Buffer.alloc(32, 2);
+    const hash = Buffer.alloc(32, 3);
+    expect(await devicesExist(t.deps.db)).toBe(false);
+    await t.db.insert(schema.devices).values([
+      { workspaceId: orgB, ownerId: owner, name: 'Phone', platform: 'ios', publicKey: key },
+      {
+        workspaceId: orgA,
+        ownerId: owner,
+        name: 'Old phone',
+        platform: 'ios',
+        publicKey: revokedKey,
+        revokedAt: new Date(),
+      },
+    ]);
+    await t.db.insert(schema.devicePairings).values({
+      workspaceId: orgA,
+      ownerId: owner,
+      codeHash: hash,
+      name: 'Home',
+      expiresAt: new Date(Date.now() + 60_000),
+      createdBy: 'user',
+    });
+    // The app's own handle, in no organization: the rows are out of reach...
+    expect(await t.deps.db.select().from(schema.devices)).toEqual([]);
+    expect(await t.deps.db.select().from(schema.devicePairings)).toEqual([]);
+    // ...and the functions answer an id, or no.
+    expect(await deviceWorkspaces(t.deps.db, key)).toEqual([orgB]);
+    expect(await deviceWorkspaces(t.deps.db, revokedKey)).toEqual([]);
+    expect(await deviceWorkspaces(t.deps.db, Buffer.alloc(32, 9))).toEqual([]);
+    expect(await pairingWorkspace(t.deps.db, hash)).toBe(orgA);
+    expect(await pairingWorkspace(t.deps.db, Buffer.alloc(32, 9))).toBeNull();
+    expect(await devicesExist(t.deps.db)).toBe(true);
+    // In organization A, B's device is out of reach too.
+    const inA = await inWorkspace(orgA, () =>
+      t.deps.db.select({ name: schema.devices.name }).from(schema.devices),
+    );
+    expect(inA).toEqual([{ name: 'Old phone' }]);
+
+    // One phone in two organizations: both answer, the older pairing first.
+    await t.db.insert(schema.devices).values({
+      workspaceId: orgA,
+      ownerId: owner,
+      name: 'Same phone',
+      platform: 'ios',
+      publicKey: key,
+    });
+    expect(await deviceWorkspaces(t.deps.db, key)).toEqual([orgB, orgA]);
+
+    const lookups = [
+      'openbots_device_workspaces',
+      'openbots_devices_exist',
+      'openbots_pairing_workspace',
+    ];
+    const functions = rowsOf<{ name: string; definer: boolean; owner: string }>(
+      await t.db.execute(sql`
+        select p.proname as name, p.prosecdef as definer, pg_get_userbyid(p.proowner) as owner
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname in ${lookups}
+        order by 1`),
+    );
+    expect(functions).toEqual(
+      lookups.map((name) => ({ name, definer: true, owner: 'openbots_system' })),
+    );
+    await t.db.delete(schema.devices);
+    await t.db.delete(schema.devicePairings);
+  });
+
+  it('lets the app role keep the install-wide relay identity with no organization set', async () => {
+    await as<{ n: number }>(t.db, APP_ROLE, null, async (q) => {
+      await q(sql`insert into instance_keys (signing_key, public_key) values ('\x01', '\x02')`);
+      const [row] = await q(sql`select count(*)::int as n from instance_keys`);
+      expect(row!.n).toBe(1);
+      await q(sql`delete from instance_keys`);
+    });
   });
 
   it('runs a job in the organization that queued it, and refuses one for another or for none', async () => {

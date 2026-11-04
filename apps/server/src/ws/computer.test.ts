@@ -192,6 +192,59 @@ describe('computer socket proxies', () => {
     await vi.waitFor(async () => expect(await holder()).toBeNull());
   });
 
+  it("closes a revoked phone's shell and screen at once, and a key gone unheard within the minute", async () => {
+    await startedByOwner();
+    const workspaceId = await t.defaultOrganization();
+    const ownerId = await t.userId('dana@example.com');
+    const makeKey = async (name: string) => {
+      const res = await t.app.request('/api/v1/api-keys', {
+        method: 'POST',
+        headers: { cookie: dana, 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      return (await res.json()) as { id: string; key: string };
+    };
+    const byKey = (url: string, key: string, protocols: string[] = []) =>
+      new Promise<WebSocket>((resolve, reject) => {
+        const ws = new WebSocket(url, protocols, { headers: { authorization: `Bearer ${key}` } });
+        ws.once('open', () => resolve(ws));
+        ws.once('unexpected-response', (_, res) => reject(new Error(`refused ${res.statusCode}`)));
+        ws.once('error', reject);
+      });
+    const phoneKey = await makeKey('phone');
+    const [device] = await t.db
+      .insert(schema.devices)
+      .values({
+        workspaceId,
+        ownerId,
+        name: 'Phone',
+        platform: 'ios',
+        publicKey: Buffer.alloc(32, 8),
+        apiKeyId: phoneKey.id,
+      })
+      .returning();
+    const pty = await byKey(`${base}/api/v1/computer/pty?cols=80&rows=24`, phoneKey.key);
+    const screen = await byKey(`${base}/api/v1/bots/${botId}/screen/vnc`, phoneKey.key, ['binary']);
+    const closed = Promise.all([closing(pty), closing(screen)]);
+    const res = await t.app.request(`/api/v1/devices/${device!.id}`, {
+      method: 'DELETE',
+      headers: { cookie: dana },
+    });
+    expect(res.status).toBe(204);
+    expect(await closed).toEqual([
+      { code: 1008, reason: 'api key revoked' },
+      { code: 1008, reason: 'api key revoked' },
+    ]);
+
+    // Deleted where this process heard nothing of it: the next look finds it.
+    const quiet = await makeKey('quiet');
+    const shell = await byKey(`${base}/api/v1/computer/pty?cols=80&rows=24`, quiet.key);
+    const shellClosed = closing(shell);
+    await t.db.delete(schema.apikeys).where(eq(schema.apikeys.id, quiet.id));
+    await proxies.checkKeys();
+    expect(await shellClosed).toEqual({ code: 1008, reason: 'api key revoked' });
+  });
+
   it('refuses other origins, strangers and other users’ Bots', async () => {
     const vnc = `${base}/api/v1/bots/${botId}/screen/vnc`;
     expect(await refused(vnc, { cookie: dana, origin: 'https://evil.example' })).toBe(403);

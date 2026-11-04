@@ -21,6 +21,10 @@ const SetupStatusSchema = z
       description:
         'Show the first-run wizard: no user exists yet, or (Mac app local mode) its owner has no Bot yet',
     }),
+    pairingOnly: z.boolean().openapi({
+      description:
+        'The owner is made by pairing a phone only (OPENBOTS_SETUP_PAIRING_ONLY): show `openbots pair` instead of the account form',
+    }),
   })
   .openapi('SetupStatus');
 
@@ -62,7 +66,14 @@ export const setupRoutes = createRouter()
         },
       },
     }),
-    async (c) => c.json({ setupRequired: await wizardRequired(c.var.deps) }, 200),
+    async (c) =>
+      c.json(
+        {
+          setupRequired: await wizardRequired(c.var.deps),
+          pairingOnly: c.var.deps.config.setupPairingOnly,
+        },
+        200,
+      ),
   )
   .openapi(
     createRoute({
@@ -82,7 +93,7 @@ export const setupRoutes = createRouter()
         },
         400: problemResponse('Invalid account details'),
         403: problemResponse(
-          'The request came from another origin, or the Mac app signs the owner in (LOCAL_ONLY)',
+          'The request came from another origin, the Mac app signs the owner in (LOCAL_ONLY), or a pairing makes the owner (SETUP_PAIRING_ONLY)',
         ),
         404: problemResponse('The managed service, where people sign up instead'),
         409: problemResponse('Setup is complete: a user already exists'),

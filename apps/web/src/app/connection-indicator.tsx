@@ -20,10 +20,10 @@ import {
   type DesktopConnectionInfo,
 } from './platform.js';
 
-// The Mac app's connection indicator (plan 14.4): one small icon at the foot
-// of the sidebar that says how the app reaches its server. Its menu has the
-// details, "Change connection…", and for This Mac the stack's Start, Stop and
-// Show logs. A browser has no bridge, so nothing renders there.
+// The Mac app's connection indicator (plan 14.4): one small icon at the top
+// left of the sidebar, beside the traffic lights, that says how the app
+// reaches its server. Its menu has the details, "Change connection…", and for
+// This Mac the stack's Start, Stop and Show logs. A browser has no bridge, so nothing renders there.
 
 /** How often the indicator asks again while the realtime connection is down. */
 export const RECHECK_MS = 10_000;
@@ -87,17 +87,17 @@ export function Indicator({
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger
-              className={cn('self-start rounded-md p-1.5 hover:bg-accent', TONES[state.tone])}
+              className={cn('rounded-md p-1 hover:bg-accent', TONES[state.tone])}
               aria-label={state.tooltip}
               data-tone={state.tone}
             >
               <KindIcon kind={info.kind} className="size-4" aria-hidden />
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="right">{state.tooltip}</TooltipContent>
+          <TooltipContent side="bottom">{state.tooltip}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <DropdownMenuContent side="top" align="start" className="w-64">
+      <DropdownMenuContent side="bottom" align="start" className="w-64">
         <DropdownMenuLabel>
           {state.title}
           <span className="block text-xs font-normal text-muted-foreground">{info.host}</span>

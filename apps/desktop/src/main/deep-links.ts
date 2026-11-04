@@ -7,7 +7,8 @@
 // notifications carry these links, and macOS hands them back through
 // `open-url` when one is clicked or opened from elsewhere. `openbots://connectors`
 // opens the Connectors page: a connector's OAuth sign-in, finished in the
-// default browser, links back with it.
+// default browser, links back with it. `openbots://devices` opens Settings >
+// Devices, where the menus' "Pair your phone…" goes.
 
 export const PROTOCOL = 'openbots';
 
@@ -19,13 +20,14 @@ export type MessageLink =
   | { kind: 'bot'; botId: string; chat?: string; seq?: number; thread?: string }
   | { kind: 'chat'; chatId: string; seq?: number; thread?: string };
 
-export type DeepLink = MessageLink | { kind: 'connectors' };
+export type DeepLink = MessageLink | { kind: 'connectors' } | { kind: 'devices' };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The link for a message, or for the chat when `seq` is missing. */
 export function formatDeepLink(link: DeepLink): string {
   if (link.kind === 'connectors') return `${PROTOCOL}://connectors`;
+  if (link.kind === 'devices') return `${PROTOCOL}://devices`;
   const [kind, id] = link.kind === 'bot' ? ['bot', link.botId] : ['chat', link.chatId];
   const base = `${PROTOCOL}://${kind}/${encodeURIComponent(id)}`;
   const path = link.seq != null ? `${base}/message/${link.seq}` : base;
@@ -50,8 +52,9 @@ export function parseDeepLink(raw: string): DeepLink | null {
   if (url.protocol !== `${PROTOCOL}:`) return null;
   // `openbots://bot/<id>/...` parses with the kind as the host.
   const segments = [url.hostname, ...url.pathname.split('/')].filter((s) => s !== '');
-  if (segments.length === 1 && segments[0] === 'connectors' && !url.search) {
-    return { kind: 'connectors' };
+  if (segments.length === 1 && !url.search) {
+    if (segments[0] === 'connectors') return { kind: 'connectors' };
+    if (segments[0] === 'devices') return { kind: 'devices' };
   }
   const [kind, id, message, seqText, ...rest] = segments;
   if (rest.length > 0 || id == null || !UUID.test(id)) return null;
@@ -88,6 +91,7 @@ export function parseDeepLink(raw: string): DeepLink | null {
  */
 export function deepLinkPath(link: DeepLink): string {
   if (link.kind === 'connectors') return '/connectors';
+  if (link.kind === 'devices') return '/settings/devices';
   const base = link.kind === 'bot' ? `/bots/${link.botId}` : `/groups/${link.chatId}`;
   const query = new URLSearchParams();
   if (link.kind === 'bot' && link.chat) query.set('chat', link.chat);

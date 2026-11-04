@@ -30,6 +30,8 @@ const ALLOWED = new Set([
   'MPL-2.0',
   'Python-2.0',
   'BlueOak-1.0.0',
+  // qrcode-terminal's package.json spells Apache-2.0 this way.
+  'Apache 2.0',
   '(MIT OR EUPL-1.1+)',
   '(AFL-2.1 OR BSD-3-Clause)',
 ]);

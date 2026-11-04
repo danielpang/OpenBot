@@ -65,7 +65,7 @@ export function useWriteComputer() {
 }
 
 /**
- * The owner's Start (Computer page, Preview, file browser): the only way the
+ * The owner's Start (Computer page, the Computer panel, file browser): the only way the
  * UI starts the computer besides taking a screen over. File listings refetch
  * once it runs.
  */

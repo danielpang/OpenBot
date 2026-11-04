@@ -1,0 +1,53 @@
+# An optional private relay of your own, for a server on a VM with a public
+# address (README "Run OpenBots 24/7 on a VM", apps/relay/README.md). Included
+# by the root compose.yaml; it runs only with its profile:
+#
+#   docker compose --profile relay up -d
+#
+# The relay speaks plain HTTP and WebSocket on 3200. Phones need it at a
+# wss:// address, so put TLS in front of it: a Cloudflare Tunnel (the
+# `cloudflare` profile, with a second public hostname whose service is
+# http://relay:3200) or a reverse proxy on the host in front of the published
+# port. Then set OPENBOTS_RELAY_URL in .env to that wss:// address. A relay of
+# your own carries the tunnel and no push: only the project's relay holds the
+# app's APNs key.
+name: openbots
+
+services:
+  relay:
+    # Published by .github/workflows/release.yml with the other images.
+    image: ${OPENBOTS_IMAGE_PREFIX:-ghcr.io/danielpang/openbots}/relay:${OPENBOTS_VERSION:-latest}
+    # Used when the image is not published or not pullable: builds this checkout.
+    build:
+      context: .
+      dockerfile: docker/relay.Dockerfile
+    profiles: [relay]
+    restart: unless-stopped
+    init: true
+    # It writes nothing to disk and needs no capability.
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    environment:
+      RELAY_PORT: 3200
+      # It sits behind a TLS terminator that adds the client's address as the
+      # last X-Forwarded-For hop, which the relay's rate limits key on. Set it
+      # to false only if clients reach the port with nothing in between.
+      RELAY_TRUST_PROXY: ${OPENBOTS_RELAY_TRUST_PROXY:-true}
+      RELAY_LOG_LEVEL: ${OPENBOTS_RELAY_LOG_LEVEL:-info}
+    ports:
+      # Loopback by default, for a reverse proxy on the same host; a tunnel on
+      # this stack's network needs no published port at all. Set
+      # OPENBOTS_RELAY_BIND=0.0.0.0: for a load balancer on another machine,
+      # and let only that load balancer reach the port.
+      - '${OPENBOTS_RELAY_BIND:-127.0.0.1:}${OPENBOTS_RELAY_PORT:-3200}:3200'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3200/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

@@ -81,6 +81,48 @@ const samples: WsEvent[] = [
   wsEvent('connector.updated', { connectorId: run, oauth: 'connected' }, { user_id: chat }),
   wsEvent('screen.control', { screenId: run, controller: 'user', userId: chat }, { bot_id: bot }),
   wsEvent(
+    'device.paired',
+    { device: { id: run, name: 'Phone', platform: 'ios', createdAt: '2026-01-01T00:00:00.000Z' } },
+    { user_id: chat, workspace_id: bot },
+  ),
+  wsEvent(
+    'device.revoked',
+    {
+      device: {
+        id: run,
+        name: 'Phone',
+        platform: 'ios',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        revokedAt: '2026-01-02T00:00:00.000Z',
+      },
+    },
+    { user_id: chat, workspace_id: bot },
+  ),
+  wsEvent(
+    'device.updated',
+    {
+      device: {
+        id: run,
+        name: 'Phone',
+        platform: 'ios',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        revokedAt: null,
+        pushRegistered: true,
+      },
+    },
+    { user_id: chat, workspace_id: bot },
+  ),
+  wsEvent(
+    'relay.status',
+    {
+      hostId: 'abcdefghijklmnopqrstuvwxyz',
+      relayUrl: 'wss://relay.example.com',
+      status: 'linked',
+      since: '2026-01-02T00:00:00.000Z',
+    },
+    { user_id: chat, workspace_id: bot },
+  ),
+  wsEvent(
     'reaction.added',
     { messageId: message.id, emoji: '👍', reactorType: 'user', reactorId: chat },
     { chat_id: chat, seq: 7 },
@@ -95,7 +137,7 @@ const samples: WsEvent[] = [
 describe('WS events', () => {
   it('has a sample for every event type', () => {
     expect(new Set(samples.map((e) => e.type))).toEqual(new Set(WS_EVENT_TYPES));
-    expect(WS_EVENT_TYPES).toHaveLength(18);
+    expect(WS_EVENT_TYPES).toHaveLength(22);
   });
 
   it.each(samples.map((e) => [e.type, e] as const))('%s round-trips through JSON', (_, event) => {
@@ -121,6 +163,16 @@ describe('WS events', () => {
         payload: { botId: bot, state: 'asleep' },
       }).success,
     ).toBe(false);
+  });
+
+  it('carries a device event to its owner in its organization, and refuses an unknown platform', () => {
+    const event = samples.find((e) => e.type === 'device.revoked')!;
+    expect(event).toMatchObject({ user_id: chat, workspace_id: bot });
+    const wrong = {
+      ...event,
+      payload: { device: { id: run, name: 'Phone', platform: 'fridge', createdAt: 'x' } },
+    };
+    expect(WsEventSchema.safeParse(wrong).success).toBe(false);
   });
 
   it('parses client frames, defaulting missing lists', () => {

@@ -2,17 +2,24 @@
 # Backs up an OpenBots install (plan 16.3): the database, the files directory
 # and every computer's home volume, then verifies what it wrote.
 #
-#   bash scripts/backup.sh [output dir]   # default: backups/<UTC timestamp>
+#   bash scripts/backup.sh [dir]          # writes dir/<UTC timestamp>; dir defaults to backups
+#   bash scripts/backup.sh --out <dir>    # writes exactly dir, which must be new or empty
 #
-# Writes <dir>/database.dump (pg_dump custom format), <dir>/files.tar.gz,
-# <dir>/computers/<volume>.tar.gz and <dir>/MANIFEST (checksums and counts
-# that restore.sh checks before it replaces anything). Restore with
-# scripts/restore.sh.
+# So the same command runs again and again: each run makes a new timestamped
+# directory under the one named. A backup holds database.dump (pg_dump custom
+# format), files.tar.gz, computers/<volume>.tar.gz and MANIFEST (checksums
+# and counts that restore.sh checks before it replaces anything). Restore
+# with scripts/restore.sh.
 #
 # With Docker running it backs up the compose stack in this checkout (run it
 # from anywhere; the stack can be up or down). Without Docker it backs up a
 # development install from DATABASE_URL and OPENBOTS_FILES_DIR (computers need
-# Docker and are skipped).
+# Docker and are skipped). Inside the standalone image (OPENBOTS_STANDALONE=1,
+# `docker exec <container> openbots backup [dir]`) it backs up /data, by
+# default into /data/backups/<UTC timestamp>, with the Bots' home as
+# home.tar.gz and the computer agent's state as agent.tar.gz. There it first
+# checks the free space: a backup onto the volume that would leave it under
+# 10 percent free is refused, since PostgreSQL shares that disk.
 #
 # The backup does not contain OPENBOTS_MASTER_KEY. Keep .env (or at least the
 # key) somewhere safe as well: stored secrets cannot be decrypted without it.
@@ -28,19 +35,77 @@ die() {
   exit 1
 }
 
-case "${1:-}" in
-  -h | --help)
-    sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
-    exit 0
-    ;;
-  -*) die "unknown option '$1' (try --help)" ;;
-esac
+PARENT=""
+EXACT=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h | --help)
+      sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    --out)
+      [ "$#" -ge 2 ] || die "--out needs a directory"
+      EXACT="$2"
+      shift
+      ;;
+    -*) die "unknown option '$1' (try --help)" ;;
+    *)
+      [ -z "$PARENT" ] || die "one directory only (try --help)"
+      PARENT="$1"
+      ;;
+  esac
+  shift
+done
+[ -z "$PARENT" ] || [ -z "$EXACT" ] || die "give a directory or --out <dir>, not both"
 
 # The dump holds sessions and sealed secrets: keep the backup private.
 umask 077
 
-OUT="${1:-$REPO_DIR/backups/$(date -u +%Y%m%dT%H%M%SZ)}"
+STANDALONE="${OPENBOTS_STANDALONE:-}"
+[ "$STANDALONE" = 1 ] || STANDALONE=""
+if [ -n "$STANDALONE" ]; then
+  [ "$(id -u)" = 0 ] || die "run it as root in the container: docker exec <container> openbots backup"
+  BACKUPS_DIR=/data/backups
+else
+  BACKUPS_DIR="$REPO_DIR/backups"
+fi
+if [ -n "$EXACT" ]; then
+  OUT="$EXACT"
+else
+  OUT="${PARENT:-$BACKUPS_DIR}/$(date -u +%Y%m%dT%H%M%SZ)"
+  # Two runs in one second: the second gets a suffix rather than failing.
+  base="$OUT"
+  n=1
+  while [ -e "$OUT" ]; do
+    n=$((n + 1))
+    OUT="$base-$n"
+  done
+fi
 [ ! -e "$OUT" ] || [ -z "$(ls -A "$OUT")" ] || die "$OUT exists and is not empty"
+
+# The nearest directory of PATH that exists, for df.
+existing_dir() {
+  local dir="$1"
+  while [ ! -d "$dir" ]; do dir="$(dirname "$dir")"; done
+  printf '%s\n' "$dir"
+}
+
+if [ -n "$STANDALONE" ]; then
+  # What the backup may take at most: the data uncompressed. Onto /data it
+  # must leave 10 percent of the disk free, since PostgreSQL, Redis and the
+  # Bots write there too; elsewhere it must fit.
+  need_kib="$(du -skc /data/pgdata /data/files /data/home /data/agent 2>/dev/null | tail -n 1 | cut -f1)"
+  target="$(existing_dir "$OUT")"
+  read -r total_kib avail_kib < <(df -Pk "$target" | awk 'NR == 2 { print $2, $4 }')
+  if [ "$(stat -c %d "$target")" = "$(stat -c %d /data)" ]; then
+    if [ "$(((avail_kib - need_kib) * 10))" -lt "$total_kib" ]; then
+      die "not enough space on /data: the backup may take up to $((need_kib / 1024)) MiB and $((avail_kib / 1024)) MiB of $((total_kib / 1024)) MiB is free, which would leave under 10 percent for the database. Remove old backups from /data/backups, back up elsewhere (a mounted disk: openbots backup /mnt/backups), or grow the volume."
+    fi
+  elif [ "$avail_kib" -lt "$need_kib" ]; then
+    die "not enough space in $target: the backup may take up to $((need_kib / 1024)) MiB and $((avail_kib / 1024)) MiB is free"
+  fi
+fi
+
 mkdir -p "$OUT/computers"
 OUT="$(cd "$OUT" && pwd)"
 
@@ -78,7 +143,33 @@ files_run() {
     --entrypoint "$entrypoint" openbots "$@"
 }
 
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+# Archives a directory that may change while it is read (a Bot at work, a
+# running browser): tar's status 1 says a file changed as it was read, and
+# the archive is still complete.
+tar_live() {
+  local status=0
+  tar --numeric-owner --warning=no-file-changed --warning=no-file-removed "$@" || status=$?
+  [ "$status" -le 1 ] || return "$status"
+}
+
+if [ -n "$STANDALONE" ]; then
+  MODE=standalone
+  log "Backing up the standalone container into $OUT"
+
+  log "Database"
+  # As the postgres superuser, over the socket only root and postgres open.
+  runuser -u postgres -- pg_dump -h /run/postgresql -d openbots -Fc >"$OUT/database.dump"
+  list_dump() { pg_restore --list "$OUT/database.dump"; }
+
+  log "Files"
+  tar --numeric-owner -C /data/files -czf "$OUT/files.tar.gz" .
+  source_files="$(find /data/files -type f | wc -l | tr -d '[:space:]')"
+
+  log "The Bots' home"
+  tar_live -C /data/home -czf "$OUT/home.tar.gz" .
+  log "The computer agent's state"
+  tar_live -C /data/agent --exclude=./token --exclude=./token.new -czf "$OUT/agent.tar.gz" .
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   MODE=compose
   log "Backing up the compose stack into $OUT"
   compose up -d --wait postgres
@@ -132,7 +223,7 @@ grep -q 'TABLE DATA public users ' "$OUT/database.list" ||
   die "database.dump has no users table; is this an OpenBots database?"
 rm "$OUT/database.list"
 # Each archive must be complete.
-for archive in "$OUT/files.tar.gz" "$OUT"/computers/*.tar.gz; do
+for archive in "$OUT/files.tar.gz" "$OUT/home.tar.gz" "$OUT/agent.tar.gz" "$OUT"/computers/*.tar.gz; do
   [ -e "$archive" ] || continue
   gzip -t "$archive" || die "$(basename "$archive") is corrupt"
 done
@@ -147,10 +238,14 @@ fi
   echo "created $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "mode $MODE"
   echo "files $backed_up"
-  (cd "$OUT" && for f in database.dump files.tar.gz computers/*.tar.gz; do
+  (cd "$OUT" && for f in database.dump files.tar.gz home.tar.gz agent.tar.gz computers/*.tar.gz; do
     if [ -e "$f" ]; then echo "sha256 $(sha256 "$f") $f"; fi
   done)
 } >"$OUT/MANIFEST"
 
 finished=1
 log "Done: $OUT ($backed_up files, $(du -sh "$OUT" | cut -f1))"
+if [ -n "$STANDALONE" ]; then
+  # On the same volume as what it backs up: a copy elsewhere survives losing it.
+  log "Copy it off the volume, with /data/.env kept apart: docker cp <container>:$OUT ."
+fi

@@ -2,9 +2,10 @@ import { Button } from '@openbots/ui';
 import { ErrorText } from '../models/error-text.js';
 import { useStartComputer } from './live.js';
 
-// What the Preview and the file browser show while the computer is off: they
-// never start it on their own (a stale tab would boot the sandbox), so the
-// owner gets a Start button instead.
+// What the Computer panel and the file browser show while the computer is
+// off: the file browser never starts it on its own (a stale tab would boot
+// the sandbox), and the panel only when it first opens (./preview.tsx), so
+// the owner gets a Start button instead.
 
 export function ComputerOff({ text }: { text: string }) {
   const start = useStartComputer();

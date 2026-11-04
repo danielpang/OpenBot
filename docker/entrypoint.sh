@@ -5,6 +5,9 @@
 #   migrate          apply migrations and exit
 #   keygen           print a fresh OPENBOTS_MASTER_KEY
 #   rotate-key       re-encrypt every stored secret under OPENBOTS_MASTER_KEY (plan 4.9)
+#   pair             print a QR code for pairing a phone (--name, --direct <url>, --link)
+#   devices          list paired devices, or `devices revoke <id>`
+#   relay            this server's relay host id and whether the relay sees it linked
 #   docker-guard     run the docker guard in front of the socket proxy (compose service docker-guard)
 #   anything else    run it as a command, e.g. `sh`
 #
@@ -15,6 +18,12 @@
 # Started as uid 1000 (the image's USER, as with a plain `docker run`), it
 # runs as that user with whatever capabilities it has, usually none.
 #
+# The standalone image (docker/standalone.Dockerfile) starts it as root too,
+# with OPENBOTS_STANDALONE=1 and OPENBOTS_SERVER_UID and OPENBOTS_SERVER_GID
+# naming its own server user, since uid 1000 there is the Bots' `bot` user.
+# Its stdio MCP servers run in the computer (OPENBOTS_STDIO_RUNNER=computer),
+# so the server keeps no capability at all.
+#
 # Before the server starts, the secrets below move from the environment into
 # private files under OPENBOTS_SECRETS_DIR (a tmpfs in compose) and reach node as
 # NAME_FILE, so node's /proc/<pid>/environ, and anything it starts with an
@@ -22,13 +31,19 @@
 # they stay in the environment and the server logs a warning.
 set -eu
 
-SERVER_UID=1000
-SERVER_GID=1000
+SERVER_UID="${OPENBOTS_SERVER_UID:-1000}"
+SERVER_GID="${OPENBOTS_SERVER_GID:-$SERVER_UID}"
 SECRETS_DIR="${OPENBOTS_SECRETS_DIR:-/run/openbots}"
 # The variables apps/server/src/env-files.ts reads from NAME_FILE
 # (env-files.test.ts checks that the two lists match).
 SECRET_VARS="OPENBOTS_MASTER_KEY OPENBOTS_MASTER_KEY_PREVIOUS DATABASE_URL OPENBOTS_DB_APP_PASSWORD REDIS_URL OPENBOTS_COMPUTER_AGENT_TOKEN OPENBOTS_METRICS_TOKEN OPENBOTS_LOCAL_TOKEN ANTHROPIC_API_KEY OPENAI_API_KEY XAI_API_KEY GOOGLE_GENERATIVE_AI_API_KEY GITHUB_CLIENT_SECRET GOOGLE_CLIENT_SECRET"
 
+if [ "$(id -u)" = 0 ] && [ "${OPENBOTS_STANDALONE:-}" = 1 ]; then
+  # Leaving uid 0 clears every capability, and no_new_privs keeps a setuid
+  # binary from giving one back.
+  exec setpriv --reuid="$SERVER_UID" --regid="$SERVER_GID" --clear-groups \
+    --inh-caps=-all --ambient-caps=-all --no-new-privs -- "$0" "$@"
+fi
 if [ "$(id -u)" = 0 ]; then
   # Ambient capabilities survive the uid change and the exec of node, and
   # nothing else does: setpriv clears the rest of the permitted set when it
@@ -50,7 +65,7 @@ secrets_to_files() {
   for name in $SECRET_VARS; do
     eval "value=\${$name:-}"
     eval "file=\${${name}_FILE:-}"
-    [ -n "$value" ] && [ -z "$file" ] || continue
+    if [ -z "$value" ] || [ -n "$file" ]; then continue; fi
     printf '%s' "$value" >"$SECRETS_DIR/$name"
     unset "$name"
     export "${name}_FILE=$SECRETS_DIR/$name"
@@ -84,6 +99,10 @@ case "$command" in
   rotate-key)
     secrets_to_files
     exec node dist/rotate-key.js "$@"
+    ;;
+  pair | devices | relay)
+    secrets_to_files
+    exec node dist/cli/main.js "$command" "$@"
     ;;
   docker-guard)
     exec node /app/packages/computer/dist/docker-guard-main.js

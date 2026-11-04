@@ -85,6 +85,7 @@ const limitsShape = Object.fromEntries(
 
 const envSchema = z.object({
   OPENBOTS_PUBLIC_URL: withDefault(z.url(), 'http://localhost:3000'),
+  OPENBOTS_RELAY_URL: optional(z.url({ protocol: /^wss?$/ })),
   OPENBOTS_MASTER_KEY: masterKey,
   OPENBOTS_MASTER_KEY_PREVIOUS: withDefault(masterKeyList, ''),
   DATABASE_URL: z.string().min(1),
@@ -109,6 +110,9 @@ const envSchema = z.object({
   OPENBOTS_COMPUTER_AGENT_TOKEN: optional(z.string()),
   OPENBOTS_COMPUTER_AGENT_SHARED: withDefault(z.stringbool(), 'false'),
   OPENBOTS_DEPLOYMENT: withDefault(z.enum(['self_hosted', 'managed']), 'self_hosted'),
+  // Set by the standalone image (docker/standalone.Dockerfile), not by hand.
+  OPENBOTS_STANDALONE: withDefault(z.stringbool(), 'false'),
+  OPENBOTS_SETUP_PAIRING_ONLY: withDefault(z.stringbool(), 'false'),
   OPENBOTS_LOCAL_TOKEN: optional(
     z.string().min(32, { message: 'must be 32 characters or more (the Mac app generates one)' }),
   ),
@@ -126,6 +130,12 @@ const envSchema = z.object({
   OPENBOTS_ROLE: withDefault(z.enum(['api', 'worker', 'all']), 'all'),
   OPENBOTS_METRICS_TOKEN: optional(z.string().min(16)),
   TRUSTED_PROXIES: withDefault(cidrList, ''),
+  OPENBOTS_CLIENT_IP_HEADER: optional(
+    z
+      .string()
+      .regex(/^[A-Za-z0-9-]+$/, { message: 'must be a header name, such as fly-client-ip' })
+      .transform((name) => name.toLowerCase()),
+  ),
   ANTHROPIC_API_KEY: optional(z.string()),
   OPENAI_API_KEY: optional(z.string()),
   XAI_API_KEY: optional(z.string()),
@@ -148,6 +158,13 @@ export interface OAuthClient {
 
 export interface Config {
   publicUrl: string;
+  /**
+   * The private relay phones reach this server through (OPENBOTS_RELAY_URL,
+   * a wss:// or ws:// URL; docs/RELAY_PROTOCOL.md). The server dials it only
+   * once a device is paired or a pairing is open. Unset: no relay, and a
+   * pairing link lists only direct addresses.
+   */
+  relayUrl?: string;
   /** Base64; seals every new secret. Open secrets with `keyringFromConfig`. */
   masterKey: string;
   /**
@@ -204,6 +221,15 @@ export interface Config {
    */
   localToken?: string;
   /**
+   * The first owner is made by pairing a phone only
+   * (OPENBOTS_SETUP_PAIRING_ONLY; the standalone image sets it): the web
+   * wizard's account step and the email sign-up refuse with 403
+   * SETUP_PAIRING_ONLY while there is no owner, so nobody who finds the port
+   * first claims the install. `openbots pair` prints the link that makes the
+   * owner. Self-hosted only.
+   */
+  setupPairingOnly: boolean;
+  /**
    * Who may sign up on the managed service (plan 21.6): `open` lets anyone
    * sign up and make an organization; `invite` and `first_user_admin` (its
    * old name) let only the first user and people with a pending invitation.
@@ -245,6 +271,12 @@ export interface Config {
    * ranges). Empty means the header is ignored (see client-ip.ts).
    */
   trustedProxies: string[];
+  /**
+   * A header a trusted proxy sets to the client's address, read instead of
+   * X-Forwarded-For (OPENBOTS_CLIENT_IP_HEADER, such as `fly-client-ip`),
+   * lower case. Believed only from one of `trustedProxies`.
+   */
+  clientIpHeader?: string;
   providerKeys: {
     anthropic?: string;
     openai?: string;
@@ -276,6 +308,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (e.OPENBOTS_MASTER_KEY_PREVIOUS.includes(e.OPENBOTS_MASTER_KEY.trim())) {
     throw new Error(
       'invalid configuration:\n  OPENBOTS_MASTER_KEY_PREVIOUS: holds OPENBOTS_MASTER_KEY itself; list only the keys being replaced',
+    );
+  }
+  // The standalone image runs one person's OpenBots, database and computer in
+  // one container (V6): it is never the managed service.
+  if (e.OPENBOTS_STANDALONE && e.OPENBOTS_DEPLOYMENT === 'managed') {
+    throw new Error(
+      'invalid configuration:\n  OPENBOTS_DEPLOYMENT: the standalone image is a single-person install and runs self_hosted only; unset OPENBOTS_DEPLOYMENT or set it to self_hosted',
     );
   }
   if (e.OPENBOTS_LOCAL_TOKEN && e.OPENBOTS_DEPLOYMENT !== 'self_hosted') {
@@ -314,6 +353,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   return {
     publicUrl: e.OPENBOTS_PUBLIC_URL,
+    ...(e.OPENBOTS_RELAY_URL ? { relayUrl: e.OPENBOTS_RELAY_URL.replace(/\/+$/, '') } : {}),
     masterKey: e.OPENBOTS_MASTER_KEY,
     previousMasterKeys: e.OPENBOTS_MASTER_KEY_PREVIOUS,
     secretsFromEnvironment: secrets.fromEnvironment,
@@ -336,6 +376,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       : undefined,
     deployment: e.OPENBOTS_DEPLOYMENT,
     localToken: e.OPENBOTS_LOCAL_TOKEN,
+    setupPairingOnly: e.OPENBOTS_SETUP_PAIRING_ONLY && e.OPENBOTS_DEPLOYMENT === 'self_hosted',
     signupMode: e.OPENBOTS_SIGNUP_MODE,
     localEndpoints: e.OPENBOTS_LOCAL_ENDPOINTS ?? e.OPENBOTS_DEPLOYMENT === 'self_hosted',
     customStdio: e.OPENBOTS_CUSTOM_STDIO ?? e.OPENBOTS_DEPLOYMENT === 'self_hosted',
@@ -345,6 +386,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     role: e.OPENBOTS_ROLE,
     metricsToken: e.OPENBOTS_METRICS_TOKEN,
     trustedProxies: e.TRUSTED_PROXIES,
+    ...(e.OPENBOTS_CLIENT_IP_HEADER ? { clientIpHeader: e.OPENBOTS_CLIENT_IP_HEADER } : {}),
     providerKeys: {
       anthropic: e.ANTHROPIC_API_KEY,
       openai: e.OPENAI_API_KEY,

@@ -21,7 +21,12 @@ import {
 } from 'electron';
 import electronUpdater from 'electron-updater';
 import WebSocket from 'ws';
-import { DESKTOP_CHANNELS, type PlatformInfo, type ServerProfile } from '../ipc.js';
+import {
+  DESKTOP_CHANNELS,
+  type PairRelayView,
+  type PlatformInfo,
+  type ServerProfile,
+} from '../ipc.js';
 import { isAppPage } from '../preload/bridge.js';
 import { registerStackIpc } from '../stack/bridge.js';
 import { bundledStackPaths, type StackPaths } from '../stack/compose.js';
@@ -32,6 +37,7 @@ import {
 } from '../images/release-archive.js';
 import { createStackManager, devImageOverrides } from '../stack/manager.js';
 import { cloudUrl } from './app-config.js';
+import { pairedByThis, parseRelayUrl, sharedRelayUrl } from './pairing.js';
 import { devAppIconPath } from './app-icon.js';
 import { QUICK_ASK_ACCELERATOR, trayMenu, type PendingApproval } from './approvals.js';
 import { createConnection, type Connection } from './connection.js';
@@ -64,10 +70,10 @@ import { createUpdater } from './updater.js';
 // The Electron main process (plan 14.4, 18.8). The main window shows the
 // active server profile's web app, once that server answers as OpenBots
 // (./opener.ts, ./server-gate.ts); the app's own start page (the three ways to
-// connect on first launch, profiles and the local stack) and quick-ask window
-// come from the bundle. Everything with
-// logic in it lives in the plain modules next to this file, which are tested
-// without Electron; this file only wires them to Electron.
+// connect on first launch, profiles and the local stack), quick-ask window and
+// pairing window come from the bundle. Everything with logic in it lives in
+// the plain modules next to this file, which are tested without Electron;
+// this file only wires them to Electron.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PRELOAD = join(here, '../preload/index.cjs');
@@ -121,9 +127,17 @@ function releaseRepository(): string {
   }
 }
 
+/** The project's relay, This Mac's unless the owner sets their own (./pairing.ts). */
+const SHARED_RELAY_URL = sharedRelayUrl({
+  packaged: app.isPackaged,
+  packageJson: packageJson(),
+  env: process.env,
+});
+
 const paths = stackPaths();
 const stack = createStackManager({
   paths,
+  defaultRelayUrl: SHARED_RELAY_URL,
   serverVersion: app.isPackaged ? app.getVersion() : undefined,
   // `OPENBOTS_IMAGE_PREFIX=openbots-local OPENBOTS_VERSION=dev pnpm dev` runs images built from source.
   images: devImageOverrides(process.env, app.isPackaged),
@@ -201,6 +215,9 @@ const computerWake = createComputerWake({
 
 let mainWindow: BrowserWindow | null = null;
 let quickAskWindow: BrowserWindow | null = null;
+let pairWindow: BrowserWindow | null = null;
+/** The pairing window's code, until a phone uses it or the window lets it go. */
+let openPairing: { id: string; expiresAt: string } | null = null;
 let activeProfile: ServerProfile | null = null;
 let connection: Connection | null = null;
 let connectionToken: string | null = null;
@@ -264,7 +281,7 @@ function isActiveServerPage(event: { sender: unknown }): boolean {
 
 function loadAppPage(
   window: BrowserWindow,
-  page: 'index' | 'quick-ask',
+  page: 'index' | 'quick-ask' | 'pair',
   query: Record<string, string> = {},
 ) {
   if (RENDERER_URL) {
@@ -403,6 +420,11 @@ function connect(profile: ServerProfile, token: SessionToken) {
     token,
     createSocket: (url, headers) => new WebSocket(url, { headers }) as unknown as WebSocketLike,
     onNotice: showNotice,
+    onDevicePaired: (device) => {
+      if (!openPairing || !pairedByThis(device.createdAt, openPairing)) return;
+      openPairing = null;
+      pairWindow?.webContents.send(DESKTOP_CHANNELS.pairPaired, device.name);
+    },
     onApprovals: (list) => {
       approvals = list;
       updateTray();
@@ -702,6 +724,70 @@ function toggleQuickAsk() {
   quickAskWindow.show();
 }
 
+// The pairing window (docs/RELAY_PROTOCOL.md 6) shows the code; its Relay
+// view (the app menu's "Relay…") changes This Mac's relay, restarting the
+// stack on it and signing out the paired phones, which reached it through
+// the old one. Without a connection yet, Pair your phone opens Settings >
+// Devices instead.
+
+/** This Mac's stack, not a development server named by OPENBOTS_DESKTOP_LOCAL_URL. */
+function setsOwnRelay(profile: ServerProfile | null): boolean {
+  return profile?.kind === 'local' && !process.env.OPENBOTS_DESKTOP_LOCAL_URL;
+}
+
+/** Cancels the window's code nobody used; the server lets it expire anyway. */
+function releasePairing() {
+  const pairing = openPairing;
+  openPairing = null;
+  if (pairing) void connection?.cancelPairing(pairing.id).catch(() => undefined);
+}
+
+async function pairRelayView(): Promise<PairRelayView> {
+  if (!connection) throw new Error('Sign in to OpenBots first.');
+  return {
+    local: setsOwnRelay(activeProfile),
+    sharedUrl: SHARED_RELAY_URL,
+    current: await connection.relayUrl(),
+  };
+}
+
+type PairView = 'pair' | 'relay';
+
+function openPairWindow(view: PairView = 'pair') {
+  if (!connection) {
+    if (view === 'pair') void openLink({ kind: 'devices' });
+    else
+      showNotification('Sign in to OpenBots first', 'The relay is set once the app is connected.');
+    return;
+  }
+  if (pairWindow) {
+    releasePairing();
+    pairWindow.setTitle(view === 'relay' ? 'Relay' : 'Pair your phone');
+    void loadAppPage(pairWindow, 'pair', { view });
+    pairWindow.show();
+    pairWindow.focus();
+    return;
+  }
+  const window = new BrowserWindow({
+    width: 440,
+    height: 580,
+    show: false,
+    resizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    title: view === 'relay' ? 'Relay' : 'Pair your phone',
+    webPreferences: webPreferences(),
+  });
+  window.on('closed', () => {
+    if (pairWindow === window) pairWindow = null;
+    releasePairing();
+  });
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', (event) => event.preventDefault());
+  pairWindow = window;
+  void loadAppPage(window, 'pair', { view }).then(() => window.show());
+}
+
 // The tray (N2).
 
 function updateTray() {
@@ -722,6 +808,7 @@ function updateTray() {
         });
       },
       quickAsk: toggleQuickAsk,
+      pairPhone: () => openPairWindow(),
       changeConnection: () => void launcher.changeConnection(),
       checkForUpdates: () => updater.checkNow(),
       quit: () => app.quit(),
@@ -745,6 +832,7 @@ function applicationMenu() {
         { role: 'about' },
         { label: 'Check for Updates…', click: () => updater.checkNow() },
         { type: 'separator' },
+        { label: 'Relay…', click: () => openPairWindow('relay') },
         {
           label: 'Change connection…',
           accelerator: 'CommandOrControl+,',
@@ -758,7 +846,10 @@ function applicationMenu() {
         { role: 'quit' },
       ],
     },
-    fileMenu({ newItem: () => void openNewDialog() }),
+    fileMenu({
+      newItem: () => void openNewDialog(),
+      pairPhone: () => openPairWindow(),
+    }),
     { role: 'editMenu' },
     { role: 'viewMenu' },
     { role: 'windowMenu' },
@@ -833,6 +924,30 @@ if (!app.requestSingleInstanceLock()) {
           return result;
         },
         closeQuickAsk: () => quickAskWindow?.hide(),
+        pairRelay: pairRelayView,
+        pairSetRelay: async (value) => {
+          if (!setsOwnRelay(activeProfile)) {
+            throw new Error('Only OpenBots on this Mac can change its relay here.');
+          }
+          const url = parseRelayUrl(value);
+          if (url === null) {
+            throw new Error('Enter a wss:// address, like wss://relay.example.com.');
+          }
+          if (url === (await stack.relayUrl())) return pairRelayView();
+          await stack.setRelay(url);
+          // The phones reached This Mac through the old relay: they pair again.
+          if (!connection) throw new Error('Sign in to OpenBots first.');
+          await connection.revokeDevices();
+          return pairRelayView();
+        },
+        pairCode: async () => {
+          if (!connection) throw new Error('Sign in to OpenBots first.');
+          releasePairing();
+          const { id, ...code } = await connection.createPairing();
+          openPairing = { id, expiresAt: code.expiresAt };
+          return code;
+        },
+        closePair: () => pairWindow?.close(),
       },
       isTrusted,
       isActiveServerPage,

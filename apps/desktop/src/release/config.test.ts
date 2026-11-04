@@ -302,8 +302,10 @@ describe('the bundled compose stack', () => {
     }
     expect(published.map((p) => p.image).sort()).toEqual([
       'computer',
+      'relay',
       'sandbox-firewall',
       'server',
+      'standalone',
     ]);
   });
 });

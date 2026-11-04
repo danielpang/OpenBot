@@ -1,6 +1,6 @@
 import { hkdfSync } from 'node:crypto';
 import { apiKey } from '@better-auth/api-key';
-import { betterAuth, type BetterAuthPlugin } from 'better-auth';
+import { betterAuth, type BetterAuthPlugin, type InternalAdapter } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError, createAuthEndpoint } from 'better-auth/api';
 import { setSessionCookie } from 'better-auth/cookies';
@@ -53,6 +53,15 @@ import { ensureWorkspace, lockWorkspace } from './workspace.js';
 // a password they know. An owner from before local mode keeps their account,
 // and is signed in by the app; their password no longer works.
 //
+// Pairing a phone with a server that has no owner yet (headless first run,
+// MOBILE_AND_VM_PLAN.md 8.3) makes the owner the same way, through
+// `createPairingOwner`, another server-only endpoint: the same placeholder
+// email, no password, and no session (the phone gets an API key instead,
+// services/devices.ts). Such an owner sets an email and a password for the
+// web app later from the phone (`POST /api/v1/me/credentials`, plan 8.3
+// step 5) through `setOwnerCredentials`, a third server-only endpoint: only
+// while they still have the placeholder email and no password.
+//
 // Sign-in providers' access and refresh tokens are encrypted at rest with the
 // better-auth secret (`encryptOAuthTokens`, S-9); rows from before are
 // encrypted at start-up by `encryptStoredOAuthTokens`.
@@ -68,6 +77,15 @@ export const LOCAL_OWNER_EMAIL = 'owner@openbots.local';
 /** better-auth's path for `createLocalSession`, which no HTTP request reaches. */
 const LOCAL_SESSION_PATH = '/openbots/local-session';
 
+/** better-auth's path for `createPairingOwner`, which no HTTP request reaches either. */
+const PAIRING_OWNER_PATH = '/openbots/pairing-owner';
+
+/** better-auth's path for `setOwnerCredentials`, which no HTTP request reaches. */
+const OWNER_CREDENTIALS_PATH = '/openbots/owner-credentials';
+
+/** The server-only endpoints that may make the owner in local mode. */
+const OWNER_PATHS = new Set([LOCAL_SESSION_PATH, PAIRING_OWNER_PATH]);
+
 /** Every way in but the Mac app's, refused when it signs the owner in (see the top). */
 const SIGN_IN_PATHS = /^\/api\/auth\/(sign-up|sign-in|callback|oauth2)(\/|$)/;
 
@@ -75,6 +93,12 @@ export const LOCAL_ONLY_MESSAGE = 'This OpenBots server signs in from the Mac ap
 
 const localOnly = () =>
   new APIError('FORBIDDEN', { code: 'LOCAL_ONLY', message: LOCAL_ONLY_MESSAGE });
+
+export const SETUP_PAIRING_ONLY_MESSAGE =
+  'This server makes its owner by pairing a phone. Run `openbots pair` on the server and scan the code with the OpenBots app.';
+
+const setupPairingOnly = () =>
+  new APIError('FORBIDDEN', { code: 'SETUP_PAIRING_ONLY', message: SETUP_PAIRING_ONLY_MESSAGE });
 
 /**
  * The part of the better-auth instance the server uses. Spelled out because the
@@ -108,6 +132,22 @@ export interface Auth {
       headers: Headers;
       asResponse: true;
     }): Promise<Response>;
+    /**
+     * The install's owner, created first (named `name`, no password, no
+     * session) when there is none yet. For pairing on a fresh install.
+     */
+    createPairingOwner(input: {
+      body: { name: string };
+    }): Promise<{ user: { id: string; name: string }; created: boolean }>;
+    /**
+     * Gives an owner made with the placeholder email and no password (a
+     * pairing's or the Mac app's) an email and a password. Refuses (409
+     * CREDENTIALS_SET) once they have either, and an email another account
+     * has (409 EMAIL_TAKEN).
+     */
+    setOwnerCredentials(input: {
+      body: { userId: string; email: string; password: string };
+    }): Promise<{ user: { id: string; email: string } }>;
   };
 }
 
@@ -183,7 +223,7 @@ export function createAuth({
         // routes, not the key.
         rateLimit: { enabled: false },
       }),
-      localSessionPlugin(db),
+      ownerPlugin(db),
       ...plugins,
     ],
     databaseHooks: {
@@ -192,11 +232,15 @@ export function createAuth({
           // On a self-hosted install the first account is the owner and the
           // only one (U1). The managed build's plugin hooks run before these.
           before: async (_user, ctx) => {
-            if (config.localToken && ctx?.path !== LOCAL_SESSION_PATH) throw localOnly();
+            if (config.localToken && !OWNER_PATHS.has(ctx?.path ?? '')) throw localOnly();
             if (!selfHosted()) return;
             await ensureWorkspace(db);
             const [anyUser] = await db.select({ id: schema.users.id }).from(schema.users).limit(1);
             if (anyUser) throw signupClosed();
+            // The first owner comes from a pairing only (OPENBOTS_SETUP_PAIRING_ONLY).
+            if (config.setupPairingOnly && !OWNER_PATHS.has(ctx?.path ?? '')) {
+              throw setupPairingOnly();
+            }
           },
           after: async (user) => {
             if (!selfHosted()) return;
@@ -331,7 +375,7 @@ export function createAuth({
 const SIGN_IN_EMAIL = '/api/auth/sign-in/email';
 
 /** The owner of the implicit organization (a self-hosted install has only them). */
-async function findOwner(db: Db): Promise<string | undefined> {
+export async function findInstallOwner(db: Db): Promise<string | undefined> {
   const workspace = await ensureWorkspace(db);
   const [owner] = await inWorkspace(workspace.id, () =>
     db
@@ -349,41 +393,127 @@ async function findOwner(db: Db): Promise<string | undefined> {
   return owner?.id;
 }
 
-/** `createLocalSession` (see the top of this file). */
-function localSessionPlugin(db: Db) {
+/**
+ * The install's owner, made first when there is none: through the user
+ * hooks above, which make the first user the owner as for setup, with the
+ * placeholder email and no password. `created` says whether this call made them.
+ */
+async function ensureOwner(
+  adapter: InternalAdapter,
+  db: Db,
+  name: string,
+  method: string,
+): Promise<{ id: string; created: boolean }> {
+  const existing = await findInstallOwner(db);
+  if (existing) return { id: existing, created: false };
+  try {
+    const user = await adapter.createUser(
+      { email: LOCAL_OWNER_EMAIL, name, emailVerified: false },
+      { method },
+    );
+    return { id: user.id, created: true };
+  } catch (error) {
+    // Two first calls at once: the other one made the owner.
+    const other = await findInstallOwner(db);
+    if (!other) throw error;
+    return { id: other, created: false };
+  }
+}
+
+/** `createLocalSession`, `createPairingOwner` and `setOwnerCredentials` (see the top of this file). */
+function ownerPlugin(db: Db) {
+  const body = z.object({ name: z.string().min(1).max(100) });
+  const credentials = z.object({
+    userId: z.string().min(1),
+    email: z.email().max(254),
+    password: z.string().min(1).max(1024),
+  });
+  const credentialsSet = () =>
+    new APIError('CONFLICT', {
+      code: 'CREDENTIALS_SET',
+      message: 'This account has an email and a password already. Change them on the web.',
+    });
   return {
-    id: 'openbots-local-session',
+    id: 'openbots-owner',
     endpoints: {
       createLocalSession: createAuthEndpoint(
         LOCAL_SESSION_PATH,
         {
           method: 'POST',
-          body: z.object({ name: z.string().min(1).max(100) }),
+          body,
           // Called from routes/local.ts only, never routed.
           metadata: { SERVER_ONLY: true },
         },
         async (ctx) => {
           const adapter = ctx.context.internalAdapter;
-          let ownerId = await findOwner(db);
-          if (!ownerId) {
-            try {
-              // The user hooks above make the first user the owner, as for setup.
-              const user = await adapter.createUser(
-                { email: LOCAL_OWNER_EMAIL, name: ctx.body.name, emailVerified: false },
-                { method: 'openbots-local' },
-              );
-              ownerId = user.id;
-            } catch (error) {
-              // Two first calls at once: the other one made the owner.
-              ownerId = await findOwner(db);
-              if (!ownerId) throw error;
-            }
-          }
-          const user = await adapter.findUserById(ownerId);
+          const owner = await ensureOwner(adapter, db, ctx.body.name, 'openbots-local');
+          const user = await adapter.findUserById(owner.id);
           if (!user) throw new APIError('NOT_FOUND', { message: 'The owner is gone' });
           const session = await adapter.createSession(user.id);
           await setSessionCookie(ctx, { session, user });
           return ctx.json({ user: { id: user.id, name: user.name } });
+        },
+      ),
+      createPairingOwner: createAuthEndpoint(
+        PAIRING_OWNER_PATH,
+        {
+          method: 'POST',
+          body,
+          // Called from services/devices.ts only, never routed.
+          metadata: { SERVER_ONLY: true },
+        },
+        async (ctx) => {
+          const adapter = ctx.context.internalAdapter;
+          const owner = await ensureOwner(adapter, db, ctx.body.name, 'openbots-pairing');
+          const user = await adapter.findUserById(owner.id);
+          if (!user) throw new APIError('NOT_FOUND', { message: 'The owner is gone' });
+          return ctx.json({ user: { id: user.id, name: user.name }, created: owner.created });
+        },
+      ),
+      setOwnerCredentials: createAuthEndpoint(
+        OWNER_CREDENTIALS_PATH,
+        {
+          method: 'POST',
+          body: credentials,
+          // Called from routes/me.ts only, never routed.
+          metadata: { SERVER_ONLY: true },
+        },
+        async (ctx) => {
+          const adapter = ctx.context.internalAdapter;
+          const { userId, password } = ctx.body;
+          const email = ctx.body.email.toLowerCase();
+          const user = await adapter.findUserById(userId);
+          if (!user) throw new APIError('NOT_FOUND', { message: 'No such account' });
+          if (user.email !== LOCAL_OWNER_EMAIL) throw credentialsSet();
+          if (await adapter.findCredentialAccount(userId)) throw credentialsSet();
+          const { minPasswordLength, maxPasswordLength } = ctx.context.password.config;
+          if (password.length < minPasswordLength || password.length > maxPasswordLength) {
+            throw new APIError('BAD_REQUEST', {
+              code: 'INVALID_PASSWORD',
+              message: `A password has ${minPasswordLength} to ${maxPasswordLength} characters.`,
+            });
+          }
+          if (email === LOCAL_OWNER_EMAIL) {
+            throw new APIError('BAD_REQUEST', {
+              code: 'INVALID_EMAIL',
+              message: 'Give your own email address.',
+            });
+          }
+          const taken = await adapter.findUserByEmail(email);
+          if (taken && taken.user.id !== userId) {
+            throw new APIError('CONFLICT', {
+              code: 'EMAIL_TAKEN',
+              message: 'Another account has this email.',
+            });
+          }
+          await adapter.createAccount({
+            userId,
+            providerId: 'credential',
+            accountId: userId,
+            password: await ctx.context.password.hash(password),
+          });
+          await adapter.updateUser(userId, { email, emailVerified: false });
+          return ctx.json({ user: { id: userId, email } });
         },
       ),
     },
