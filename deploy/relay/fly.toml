@@ -7,10 +7,12 @@
 #   fly launch --copy-config --no-deploy --name <your app>
 #   fly redis create                       # or a Redis Machine on the private network
 #   fly secrets set RELAY_REDIS_URL=redis://... RELAY_METRICS_TOKEN=...
-#   fly deploy
+#   fly deploy --image <image>             # the first deploy, by hand
 #   fly scale count 2 --region iad,fra     # at least two, across regions
 #
-# `fly launch` replaces `app` and `primary_region` with yours.
+# `fly launch` replaces `app` and `primary_region` with yours. After that,
+# .github/workflows/deploy-relay.yml builds and deploys the relay on every push
+# to main that changes it, as ghcr.io/<owner>/openbots/relay:sha-<commit sha>.
 
 app = "openbots-relay"
 primary_region = "iad"
@@ -23,10 +25,10 @@ primary_region = "iad"
 kill_signal = "SIGTERM"
 kill_timeout = 30
 
-[build]
-  # A pinned release, never :latest, so a deploy never upgrades by surprise.
-  # Set it to the release you run (:1.2 follows its fixes, :1.2.0 never moves).
-  image = "ghcr.io/danielpang/openbots/relay:1.0.0"
+# No [build]: every deploy names its image with --image (the workflow passes
+# ghcr.io/<owner>/openbots/relay:sha-<commit sha>), so a `fly deploy` by hand without one
+# fails rather than rolling the relay back to an old pinned release. Run
+# `fly releases --image` to see which image each release ran.
 
 [deploy]
   # One Machine at a time, so the others take its hosts while it drains.
