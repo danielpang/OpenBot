@@ -25,6 +25,19 @@ export function BotsScreen() {
   const chats = useChats();
   const [search, setSearch] = useState('');
   const [create, setCreate] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  async function refreshManually() {
+    if (!mobile.transport) {
+      mobile.refresh();
+      return;
+    }
+    setRefreshing(true);
+    try {
+      await Promise.allSettled([bots.refetch(), chats.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }
   const visible = (bots.data ?? []).filter(
     (bot) =>
       !bot.hidden &&
@@ -68,11 +81,8 @@ export function BotsScreen() {
       <ScrollView
         refreshControl={
           <RefreshControl
-            refreshing={bots.isRefetching}
-            onRefresh={() => {
-              void bots.refetch();
-              void chats.refetch();
-            }}
+            refreshing={refreshing && mobile.connected}
+            onRefresh={() => void refreshManually()}
           />
         }
         contentContainerStyle={{ padding: 22, paddingBottom: 50, gap: 28 }}
@@ -83,8 +93,7 @@ export function BotsScreen() {
               Bots
             </Label>
             <Label muted size={13}>
-              {mobile.host?.name ?? 'OpenBots'} ·{' '}
-              {mobile.connected ? 'Connected' : mobile.connecting ? 'Connecting…' : 'Offline'}
+              {mobile.host?.name ?? 'OpenBots'} · {mobile.connected ? 'Connected' : 'Reconnecting…'}
             </Label>
           </View>
           <Pressable
@@ -102,8 +111,10 @@ export function BotsScreen() {
           value={search}
           onChangeText={setSearch}
         />
-        <ErrorNote error={bots.error} onRetry={() => void bots.refetch()} />
-        {bots.isLoading ? <ActivityIndicator /> : null}
+        {mobile.connected ? (
+          <ErrorNote error={bots.error} onRetry={() => void bots.refetch()} />
+        ) : null}
+        {bots.isLoading && !bots.data && mobile.connected ? <ActivityIndicator /> : null}
         {visible.some((bot) => bot.pinned) ? (
           <Section title="Pinned">{visible.filter((bot) => bot.pinned).map(botRow)}</Section>
         ) : null}
@@ -133,7 +144,7 @@ export function BotsScreen() {
             ))}
           </Section>
         ) : null}
-        {!bots.isLoading && !visible.length && !groups.length ? (
+        {!bots.isLoading && bots.data !== undefined && !visible.length && !groups.length ? (
           <Empty
             title={search ? 'No matches' : 'Meet your first Bot'}
             detail={

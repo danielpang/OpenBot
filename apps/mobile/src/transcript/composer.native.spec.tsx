@@ -25,29 +25,24 @@ describe('native composer', () => {
   it('offers photos, files and mentions from the compact add button', () => {
     render(<Composer onSend={async () => {}} sending={false} />);
     fireEvent.press(screen.getByRole('button', { name: 'Add to message' }));
-    expect(ActionSheetIOS.showActionSheetWithOptions).toHaveBeenCalledWith(
-      expect.objectContaining({
-        options: ['Cancel', 'Photo library', 'Attach a file', 'Mention a Bot'],
-        cancelButtonIndex: 0,
-      }),
-      expect.any(Function),
-    );
+    expect(screen.getByRole('button', { name: 'Photos' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Files' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Mention a Bot' })).toBeTruthy();
+    expect(ActionSheetIOS.showActionSheetWithOptions).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByRole('button', { name: 'Close attachment options' }));
+    expect(screen.queryByRole('button', { name: 'Photos' })).toBeNull();
   });
 
   it('inserts a mention through the add menu', () => {
-    jest
-      .mocked(ActionSheetIOS.showActionSheetWithOptions)
-      .mockImplementation((_options, choose) => choose(3));
     render(<Composer onSend={async () => {}} sending={false} />);
     fireEvent.changeText(screen.getByLabelText('Message'), 'Hello');
     fireEvent.press(screen.getByRole('button', { name: 'Add to message' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Mention a Bot' }));
     expect(screen.getByLabelText('Message').props.value).toBe('Hello @');
+    expect(screen.queryByRole('button', { name: 'Files' })).toBeNull();
   });
 
   it('sends a file-only message selected from the add menu', async () => {
-    jest
-      .mocked(ActionSheetIOS.showActionSheetWithOptions)
-      .mockImplementation((_options, choose) => choose(2));
     jest.mocked(DocumentPicker.getDocumentAsync).mockResolvedValue({
       canceled: false,
       assets: [
@@ -58,6 +53,7 @@ describe('native composer', () => {
     const send = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(undefined);
     render(<Composer onSend={send} sending={false} />);
     fireEvent.press(screen.getByRole('button', { name: 'Add to message' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Files' }));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Remove notes.txt' })).toBeTruthy(),
     );

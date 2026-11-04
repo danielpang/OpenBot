@@ -6,28 +6,28 @@ export type Bot = components['schemas']['Bot'];
 export type Chat = components['schemas']['Chat'];
 export type Message = components['schemas']['Message'];
 export function useBots() {
-  const { client: api } = useMobile();
+  const { client: api, transport } = useMobile();
   return useQuery({
     queryKey: ['bots'],
-    enabled: !!api,
+    enabled: !!api && !!transport,
     queryFn: () => unwrap(api!.GET('/api/v1/bots')),
     select: (result) => result.items,
   });
 }
 export function useChats() {
-  const { client: api } = useMobile();
+  const { client: api, transport } = useMobile();
   return useQuery({
     queryKey: ['chats'],
-    enabled: !!api,
+    enabled: !!api && !!transport,
     queryFn: () => unwrap(api!.GET('/api/v1/chats')),
     select: (result) => result.items,
   });
 }
 export function useApprovals() {
-  const { client } = useMobile();
+  const { client, transport } = useMobile();
   return useQuery({
     queryKey: ['approvals'],
-    enabled: !!client,
+    enabled: !!client && !!transport,
     queryFn: async () => {
       if (!client) return [];
       const result = await client.GET('/api/v1/approvals');

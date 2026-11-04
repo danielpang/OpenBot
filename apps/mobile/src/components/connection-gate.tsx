@@ -16,7 +16,7 @@ export function ConnectionGate({ children }: PropsWithChildren) {
     return (
       <Page>
         <Label size={26} weight="600">
-          {mobile.connecting ? 'Connecting…' : 'You’re offline'}
+          Reconnecting…
         </Label>
         <ErrorNote error={mobile.error} />
         {mobile.connecting ? (

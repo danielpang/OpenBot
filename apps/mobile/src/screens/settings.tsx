@@ -72,9 +72,7 @@ export function SettingsScreen() {
               <Label size={12} muted>
                 {mobile.connected
                   ? `Connected · ${mobile.transport?.kind ?? 'direct'}`
-                  : mobile.connecting
-                    ? 'Connecting…'
-                    : 'Offline'}
+                  : 'Reconnecting…'}
                 {host.lastSeenAt
                   ? ` · Last seen ${new Date(host.lastSeenAt).toLocaleDateString()}`
                   : ''}

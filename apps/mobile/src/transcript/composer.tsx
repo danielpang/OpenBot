@@ -1,9 +1,7 @@
 import { useRef, useState } from 'react';
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -40,6 +38,7 @@ export function Composer({
   const [uploading, setUploading] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [focused, setFocused] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const sendInFlight = useRef(false);
   const busy = sending || uploading;
   const canSend = Boolean(text.trim() || attachments.length) && !busy;
@@ -97,32 +96,12 @@ export function Composer({
     input.current?.focus();
   }
   function showActions() {
-    if (busy) return;
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: 'Add to your message',
-          options: ['Cancel', 'Photo library', 'Attach a file', 'Mention a Bot'],
-          cancelButtonIndex: 0,
-        },
-        (index) => {
-          if (index === 1) void photos();
-          else if (index === 2) void files();
-          else if (index === 3) mentionBot();
-        },
-      );
-    } else {
-      Alert.alert('Add to your message', undefined, [
-        { text: 'Photo library', onPress: () => void photos() },
-        { text: 'Attach a file', onPress: () => void files() },
-        { text: 'Mention a Bot', onPress: mentionBot },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    }
+    if (!busy) setActionsOpen((open) => !open);
   }
   async function send() {
     if (!canSend || sendInFlight.current) return;
     sendInFlight.current = true;
+    setActionsOpen(false);
     const draft = text;
     const files = attachments;
     setUploading(true);
@@ -146,7 +125,39 @@ export function Composer({
   }
   return (
     <View style={styles.dock}>
-      {suggestions.length ? (
+      {actionsOpen && !busy ? (
+        <View
+          accessibilityLabel="Attachment options"
+          onAccessibilityEscape={() => setActionsOpen(false)}
+          style={[styles.actions, { backgroundColor: c.card, borderColor: c.border }]}
+        >
+          {(
+            [
+              { label: 'Photos', icon: 'images-outline', action: photos },
+              { label: 'Files', icon: 'folder-outline', action: files },
+              { label: 'Mention a Bot', icon: 'at-outline', action: mentionBot },
+            ] as const
+          ).map(({ label, icon, action }) => (
+            <Pressable
+              key={label}
+              accessibilityRole="button"
+              accessibilityLabel={label}
+              onPress={() => {
+                setActionsOpen(false);
+                void action();
+              }}
+              style={({ pressed }) => [
+                styles.action,
+                { backgroundColor: pressed ? c.muted : 'transparent' },
+              ]}
+            >
+              <Icon name={icon} size={23} />
+              <Label size={17}>{label}</Label>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {!actionsOpen && suggestions.length ? (
         <View
           style={{
             backgroundColor: c.card,
@@ -210,14 +221,14 @@ export function Composer({
       >
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Add to message"
+          accessibilityLabel={actionsOpen ? 'Close attachment options' : 'Add to message'}
           accessibilityHint="Choose a photo, file, or Bot mention"
-          accessibilityState={{ disabled: busy }}
+          accessibilityState={{ disabled: busy, expanded: actionsOpen }}
           disabled={busy}
           onPress={showActions}
           style={({ pressed }) => [styles.iconButton, { opacity: busy ? 0.4 : pressed ? 0.6 : 1 }]}
         >
-          <Icon name="add" size={25} color={c.foreground} />
+          <Icon name={actionsOpen ? 'close' : 'add'} size={25} color={c.foreground} />
         </Pressable>
         <TextInput
           ref={input}
@@ -228,7 +239,11 @@ export function Composer({
           editable={!sending && !uploading}
           value={text}
           onChangeText={setText}
-          onFocus={() => setFocused(true)}
+          onFocus={() => {
+            setFocused(true);
+            setActionsOpen(false);
+          }}
+          onPressIn={() => setActionsOpen(false)}
           onBlur={() => setFocused(false)}
           onSelectionChange={(event) => setCursor(event.nativeEvent.selection.end)}
           style={[styles.input, { color: c.foreground }]}
@@ -265,6 +280,23 @@ export function Composer({
 
 const styles = StyleSheet.create({
   dock: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 8 },
+  actions: {
+    alignSelf: 'flex-start',
+    width: 252,
+    maxWidth: '100%',
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 6,
+  },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    minHeight: 52,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 18,
+  },
   capsule: {
     flexDirection: 'row',
     alignItems: 'flex-end',
