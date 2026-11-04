@@ -693,7 +693,10 @@ describe('the Computer page', () => {
       });
       await until(
         () =>
-          server.requests.filter((r) => r.method === 'PATCH').length > patches && !idle.disabled,
+          server.requests.filter((r) => r.method === 'PATCH').length > patches &&
+          !idle.disabled &&
+          // The answer is written back, not just sent: a busy runner reaches here between the two.
+          idle.value === value,
         `saved ${value}`,
       );
     };

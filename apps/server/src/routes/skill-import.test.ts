@@ -570,10 +570,13 @@ describe('Skill import from GitHub', () => {
     }));
     const res = await preview(alice, 'https://github.com/anthropics/skills');
     expect(res.status).toBe(429);
-    const hhmm = new Date(reset * 1000).toISOString().slice(11, 16);
+    const at = new Date(reset * 1000).toISOString();
+    // Half an hour from now can be tomorrow in UTC, and then the message names the day.
+    const day =
+      at.slice(0, 10) === new Date().toISOString().slice(0, 10) ? '' : ` on ${at.slice(0, 10)}`;
     expect(await res.json()).toMatchObject({
       code: 'GITHUB_RATE_LIMITED',
-      title: `GitHub allows 60 requests an hour without a token, and they are used up. Try again after ${hhmm} UTC, or add the GitHub connector so imports use your token, which allows more.`,
+      title: `GitHub allows 60 requests an hour without a token, and they are used up. Try again after ${at.slice(11, 16)} UTC${day}, or add the GitHub connector so imports use your token, which allows more.`,
     });
   });
 
