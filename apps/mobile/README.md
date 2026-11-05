@@ -57,6 +57,18 @@ eas build --platform ios --profile production        # App Store release
 
 The release profiles explicitly disable `developmentClient`. Store builds still require Apple signing, EAS project configuration and the release prerequisites below; a simulator build cannot be submitted to the App Store.
 
+### Open the workspace when building in Xcode
+
+After generating `ios/` and installing CocoaPods, open the workspace from the repository root:
+
+```sh
+open apps/mobile/ios/OpenBots.xcworkspace
+```
+
+Do not open `OpenBots.xcodeproj` directly: it excludes the Pods project, causing missing `.modulemap` errors and `No such module 'Expo'`. Close the standalone project window and use the workspace window, which includes both **OpenBots** and **Pods** in the project navigator. Select the **OpenBots** scheme and your device, then build/run.
+
+App icon changes require regenerating the native assets with `pnpm exec expo prebuild --platform ios` from `apps/mobile`, then rebuilding the native app; a Metro reload alone cannot update the installed icon.
+
 ### Xcode cannot find the simulator destination (exit 70)
 
 The build SDK and simulator OS are separate. The installed iOS 26.4 SDK can be selected for a build targeting an existing iOS 26.2 simulator; do not change the app's minimum deployment target to select a simulator. First list available devices with `xcrun simctl list devices available`, then explicitly select the simulator SDK and the desired device from the repository root:
