@@ -9,6 +9,7 @@ import { useApi } from '../api/provider';
 import { useMessages } from '../api/messages';
 import { Button, Empty, ErrorNote, Icon, Label, row } from '../components/ui';
 import { BotAvatar } from '../components/bot-avatar';
+import { GlassIconButton } from '../components/glass';
 import { useTheme } from '../theme';
 import { Composer } from './composer';
 import { MessagePartView } from './parts';
@@ -162,27 +163,13 @@ export function Transcript({
           }
         />
         {awayFromBottom ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Jump to latest message"
-            onPress={() => list.current?.scrollToEnd({ animated: true })}
-            style={({ pressed }) => ({
-              position: 'absolute',
-              right: 20,
-              bottom: 8,
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: c.card,
-              borderWidth: 1,
-              borderColor: c.border,
-              opacity: pressed ? 0.65 : 1,
-            })}
-          >
-            <Icon name="arrow-down" size={20} />
-          </Pressable>
+          <View style={{ position: 'absolute', right: 20, bottom: 8 }}>
+            <GlassIconButton
+              icon="arrow-down"
+              label="Jump to latest message"
+              onPress={() => list.current?.scrollToEnd({ animated: true })}
+            />
+          </View>
         ) : null}
       </View>
       <Composer

@@ -4,13 +4,16 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { MobileProvider } from '../src/api/provider';
 import { useTheme } from '../src/theme';
 import { ServerCompatibility } from '../src/components/server-compatibility';
+import { GlassProvider } from '../src/components/glass';
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <MobileProvider>
-        <Navigator />
-      </MobileProvider>
+      <GlassProvider>
+        <MobileProvider>
+          <Navigator />
+        </MobileProvider>
+      </GlassProvider>
     </SafeAreaProvider>
   );
 }
@@ -19,7 +22,7 @@ function Navigator() {
   return (
     <>
       <ServerCompatibility />
-      <StatusBar style={c.background === '#171717' ? 'light' : 'dark'} />
+      <StatusBar style="auto" />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: c.background },

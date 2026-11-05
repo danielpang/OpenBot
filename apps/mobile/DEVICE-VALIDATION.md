@@ -30,6 +30,18 @@ Use VoiceOver, large Dynamic Type, light/dark mode, reduced motion, hardware key
 - Confirm the arrow is announced as **Send** in VoiceOver, and that sending disables duplicate sends and attachment actions. Simulate a failed send and confirm the draft remains intact.
 - Repeat in light/dark mode, landscape, Reduce Motion, with a hardware keyboard, and on iPad (including its floating keyboard). Automated component tests cover inset calculations and controls, not native frame pacing or gesture tracking.
 
+## Liquid Glass acceptance
+
+Run on an iOS 26+ iPhone and iPad, and an iOS 17/18 device or simulator. Build with Xcode 26+. These are manual acceptance checks, not assertions made by component tests.
+
+- Verify the native **OpenBots / Inbox / Settings** tabs, selected SF Symbols, pending-count badge, tab reselection, and navigation back from a conversation. Pairing and offline server management must still work.
+- Scroll each tab to both ends. Check the title clears the status bar and the final row clears the floating tab bar, with no doubled top/bottom safe area. Repeat in landscape and resized iPad windows.
+- In light and dark appearances, inspect the composer, attachment menu, create button and jump-to-latest button. They should use native regular glass on iOS 26; message content and settings cards should not become glass. On older iOS, controls should have a legible opaque surface.
+- Toggle **Reduce Transparency** and **Increase Contrast** while a draft is open. The custom material should become opaque immediately, without losing text, focus, attachments or cursor position. Turn settings off and verify glass returns. Check system tab adaptation as well.
+- Repeat with **Reduce Motion**, VoiceOver and accessibility text sizes. The material itself must never receive accessibility focus; controls retain their labels and at least 44-point targets. The native tab bar remains expanded rather than adding scroll-triggered motion.
+- Complete the composer/keyboard pass above, including mention suggestions, uploading/error states and long drafts. Test that glass layers do not swallow presses or block native text selection.
+- Profile a long streaming conversation on physical hardware. Check scrolling and input responsiveness before treating the visual update as release-ready.
+
 ## Authoring environment
 
 Xcode 26.4 destination discovery was repaired by installing the matching iOS runtime. A native Debug build was installed and launched on an iPhone 17 Pro iOS 26.2 simulator, and the user confirmed development-build launch and live UI updates on a personal iPhone. These smoke checks do not establish the M0 performance, keyboard-animation, APNs, accessibility, or release-distribution gates. Maestro execution, TestFlight upload and App Store submission remain unverified.

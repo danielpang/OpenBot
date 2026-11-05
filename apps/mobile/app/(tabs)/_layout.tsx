@@ -1,8 +1,8 @@
 import { ActivityIndicator } from 'react-native';
-import { Redirect, Tabs, useSegments, router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Redirect, useSegments, router } from 'expo-router';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useMobile } from '../../src/api/provider';
-import { Button, ErrorNote, Icon, Label, Page } from '../../src/components/ui';
+import { Button, ErrorNote, Label, Page } from '../../src/components/ui';
 import { useTheme } from '../../src/theme';
 import { useInbox } from '../../src/screens/inbox-data';
 export default function TabsLayout() {
@@ -37,45 +37,29 @@ export default function TabsLayout() {
       </Page>
     );
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: c.foreground,
-          tabBarInactiveTintColor: c.mutedForeground,
-          tabBarStyle: { backgroundColor: c.background, borderTopColor: c.border },
-          sceneStyle: { backgroundColor: c.background },
-        }}
-      >
-        <Tabs.Screen
-          name="bots"
-          options={{
-            title: 'OpenBots',
-            tabBarIcon: ({ color, size }) => (
-              <Icon name="chatbubbles-outline" color={color} size={size} />
-            ),
+    // UIKit owns the material, safe-area insets and accessibility adaptations.
+    // No opaque bar background: iOS 26 gets Liquid Glass, iOS 17–18 its native bar.
+    <NativeTabs tintColor={c.foreground} minimizeBehavior="never" disableTransparentOnScrollEdge>
+      <NativeTabs.Trigger name="bots" contentStyle={{ backgroundColor: c.background }}>
+        <NativeTabs.Trigger.Label>OpenBots</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{
+            default: 'bubble.left.and.bubble.right',
+            selected: 'bubble.left.and.bubble.right.fill',
           }}
         />
-        <Tabs.Screen
-          name="inbox"
-          options={{
-            title: 'Inbox',
-            tabBarBadge: inbox.count || undefined,
-            tabBarIcon: ({ color, size }) => (
-              <Icon name="file-tray-outline" color={color} size={size} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name="settings"
-          options={{
-            title: 'Settings',
-            tabBarIcon: ({ color, size }) => (
-              <Icon name="settings-outline" color={color} size={size} />
-            ),
-          }}
-        />
-      </Tabs>
-    </SafeAreaView>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="inbox" contentStyle={{ backgroundColor: c.background }}>
+        <NativeTabs.Trigger.Label>Inbox</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'tray', selected: 'tray.fill' }} />
+        {inbox.count > 0 ? (
+          <NativeTabs.Trigger.Badge>{String(inbox.count)}</NativeTabs.Trigger.Badge>
+        ) : null}
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="settings" contentStyle={{ backgroundColor: c.background }}>
+        <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="gearshape" />
+      </NativeTabs.Trigger>
+    </NativeTabs>
   );
 }
