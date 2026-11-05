@@ -2,10 +2,11 @@ import { Alert, Pressable, Switch, View } from 'react-native';
 import { router } from 'expo-router';
 import { useMobile } from '../api/provider';
 import { Button, Card, Icon, Label, Page, Section, row } from '../components/ui';
-import { useTheme } from '../theme';
+import { useAppearance, useTheme } from '../theme';
 export function SettingsScreen() {
   const mobile = useMobile();
   const c = useTheme();
+  const appearance = useAppearance();
   function remove(id: string, name: string) {
     Alert.alert(
       `Remove ${name}?`,
@@ -96,6 +97,62 @@ export function SettingsScreen() {
           variant="secondary"
           onPress={() => router.push('/(onboarding)/welcome')}
         />
+      </Section>
+      <Section title="Appearance">
+        <Card>
+          {(
+            [
+              {
+                mode: 'system',
+                title: 'System',
+                detail: 'Follow your device’s appearance.',
+                icon: 'phone-portrait-outline',
+              },
+              { mode: 'light', title: 'Light', icon: 'sunny-outline' },
+              { mode: 'dark', title: 'Dark', icon: 'moon-outline' },
+            ] as const
+          ).map((option) => (
+            <Pressable
+              key={option.mode}
+              accessibilityRole="radio"
+              accessibilityLabel={option.title}
+              accessibilityState={{
+                checked: appearance.mode === option.mode,
+                disabled: !appearance.ready || appearance.saving,
+              }}
+              disabled={!appearance.ready || appearance.saving}
+              onPress={() =>
+                void appearance
+                  .setMode(option.mode)
+                  .catch((error) =>
+                    Alert.alert(
+                      'Could not save appearance',
+                      error instanceof Error ? error.message : String(error),
+                    ),
+                  )
+              }
+              style={({ pressed }) => [
+                row.base,
+                {
+                  minHeight: 48,
+                  paddingVertical: 8,
+                  opacity: pressed || appearance.saving ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Icon name={option.icon} />
+              <View style={{ flex: 1 }}>
+                <Label weight="600">{option.title}</Label>
+                {'detail' in option ? (
+                  <Label muted size={13}>
+                    {option.detail}
+                  </Label>
+                ) : null}
+              </View>
+              {appearance.mode === option.mode ? <Icon name="checkmark" /> : null}
+            </Pressable>
+          ))}
+        </Card>
       </Section>
       <Section title="This device">
         <Card>

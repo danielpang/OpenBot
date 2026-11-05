@@ -30,6 +30,26 @@ Use VoiceOver, large Dynamic Type, light/dark mode, reduced motion, hardware key
 - Confirm the arrow is announced as **Send** in VoiceOver, and that sending disables duplicate sends and attachment actions. Simulate a failed send and confirm the draft remains intact.
 - Repeat in light/dark mode, landscape, Reduce Motion, with a hardware keyboard, and on iPad (including its floating keyboard). Automated component tests cover inset calculations and controls, not native frame pacing or gesture tracking.
 
+## Liquid Glass acceptance
+
+Run on an iOS 26+ iPhone and iPad, and an iOS 17/18 device or simulator. Build with Xcode 26+. These are manual acceptance checks, not assertions made by component tests.
+
+- Verify the native **OpenBots / Inbox / Settings** tabs, selected SF Symbols, pending-count badge, tab reselection, and navigation back from a conversation. Pairing and offline server management must still work.
+- Scroll each tab to both ends. Check the title clears the status bar and the final row clears the floating tab bar, with no doubled top/bottom safe area. Repeat in landscape and resized iPad windows.
+- Scroll a conversation underneath the header and input. Confirm the native back/info controls float above content with a soft top scroll edge, and that the composer refracts the messages beneath it rather than sitting in a solid bottom strip. Tap **ⓘ** from both the Bot route and a direct chat link; both must open that Bot’s details. Group chats must still open membership controls.
+- In light and dark appearances, inspect the composer, attachment menu, create button and jump-to-latest button. They should use native regular glass on iOS 26; message content and settings cards should not become glass. On older iOS, controls should have a legible opaque surface.
+- Toggle **Reduce Transparency** and **Increase Contrast** while a draft is open. The custom material should become opaque immediately, without losing text, focus, attachments or cursor position. Turn settings off and verify glass returns. Check system tab adaptation as well.
+- Repeat with **Reduce Motion**, VoiceOver and accessibility text sizes. The material itself must never receive accessibility focus; controls retain their labels and at least 44-point targets. The native tab bar remains expanded rather than adding scroll-triggered motion.
+- Complete the composer/keyboard pass above, including mention suggestions, uploading/error states and long drafts. Test that glass layers do not swallow presses or block native text selection.
+- Profile a long streaming conversation on physical hardware. Check scrolling and input responsiveness before treating the visual update as release-ready.
+
+## Appearance preference acceptance
+
+- Choose **Settings → Appearance → Dark** while iOS is Light, then reverse the combination. Check all tabs, navigation controls, message text, composer, keyboard, sheets and status bar. No white-on-white or dark-on-dark labels should appear.
+- Relaunch and switch servers: the selected mode should persist. Change the device appearance while an explicit mode is selected; the app should retain its choice.
+- Select **System**, then change iOS appearance while the app is open and while it is backgrounded. It should follow the system again. Repeat with Reduce Transparency and Increase Contrast enabled.
+- Open attachment options and type a long multiline draft under each mode. Ensure the final message and jump-to-latest control remain above the measured composer and scroll indicators do not run underneath it.
+
 ## Authoring environment
 
 Xcode 26.4 destination discovery was repaired by installing the matching iOS runtime. A native Debug build was installed and launched on an iPhone 17 Pro iOS 26.2 simulator, and the user confirmed development-build launch and live UI updates on a personal iPhone. These smoke checks do not establish the M0 performance, keyboard-animation, APNs, accessibility, or release-distribution gates. Maestro execution, TestFlight upload and App Store submission remain unverified.

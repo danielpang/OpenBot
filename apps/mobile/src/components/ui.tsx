@@ -155,7 +155,7 @@ export function Card({ children, style }: PropsWithChildren<{ style?: StyleProp<
 export function Section({ title, children }: PropsWithChildren<{ title: string }>) {
   return (
     <View style={{ gap: 12 }}>
-      <Label size={13} weight="600" muted style={{ letterSpacing: 1, textTransform: 'uppercase' }}>
+      <Label size={15} weight="600" muted>
         {title}
       </Label>
       {children}
@@ -170,6 +170,7 @@ export function Page({
   const c = useTheme();
   return scroll ? (
     <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
       style={{ backgroundColor: c.background }}
       contentContainerStyle={[{ padding: 22, gap: 28, paddingBottom: 48 }, style]}

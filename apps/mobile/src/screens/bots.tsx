@@ -14,6 +14,7 @@ import { SvgXml } from 'react-native-svg';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApi, useMobile } from '../api/provider';
 import { BotAvatar } from '../components/bot-avatar';
+import { GlassIconButton } from '../components/glass';
 import { Button, Empty, ErrorNote, Field, Icon, Label, Page, Section, row } from '../components/ui';
 import { useTheme } from '../theme';
 import { groupTitle, useBots, useChats, type Bot } from './data';
@@ -79,6 +80,8 @@ export function BotsScreen() {
   return (
     <Page scroll={false}>
       <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={refreshing && mobile.connected}
@@ -115,14 +118,11 @@ export function BotsScreen() {
               </Label>
             </View>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Create a Bot or group"
+          <GlassIconButton
+            icon="add"
+            label="Create a Bot or group"
             onPress={() => setCreate(true)}
-            style={{ backgroundColor: c.muted, padding: 10, borderRadius: 24 }}
-          >
-            <Icon name="add" />
-          </Pressable>
+          />
         </View>
         <Field
           accessibilityLabel="Search Bots and groups"

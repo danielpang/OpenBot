@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useMobile } from '../api/provider';
 import { Icon, Label, row } from '../components/ui';
+import { GlassSurface } from '../components/glass';
 import { useTheme } from '../theme';
 import { activeMention, insertMention, type Attachment } from './model';
 import type { Bot } from '../screens/data';
@@ -37,7 +38,6 @@ export function Composer({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [cursor, setCursor] = useState(0);
-  const [focused, setFocused] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const sendInFlight = useRef(false);
   const busy = sending || uploading;
@@ -126,10 +126,11 @@ export function Composer({
   return (
     <View style={styles.dock}>
       {actionsOpen && !busy ? (
-        <View
+        <GlassSurface
+          radius={24}
           accessibilityLabel="Attachment options"
           onAccessibilityEscape={() => setActionsOpen(false)}
-          style={[styles.actions, { backgroundColor: c.card, borderColor: c.border }]}
+          style={styles.actions}
         >
           {(
             [
@@ -155,7 +156,7 @@ export function Composer({
               <Label size={17}>{label}</Label>
             </Pressable>
           ))}
-        </View>
+        </GlassSurface>
       ) : null}
       {!actionsOpen && suggestions.length ? (
         <View
@@ -209,16 +210,7 @@ export function Composer({
           ))}
         </ScrollView>
       ) : null}
-      <View
-        style={[
-          styles.capsule,
-          {
-            backgroundColor: c.card,
-            borderColor: focused ? c.mutedForeground : c.border,
-            shadowColor: c.foreground,
-          },
-        ]}
-      >
+      <GlassSurface style={styles.capsule}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={actionsOpen ? 'Close attachment options' : 'Add to message'}
@@ -239,12 +231,8 @@ export function Composer({
           editable={!sending && !uploading}
           value={text}
           onChangeText={setText}
-          onFocus={() => {
-            setFocused(true);
-            setActionsOpen(false);
-          }}
+          onFocus={() => setActionsOpen(false)}
           onPressIn={() => setActionsOpen(false)}
-          onBlur={() => setFocused(false)}
           onSelectionChange={(event) => setCursor(event.nativeEvent.selection.end)}
           style={[styles.input, { color: c.foreground }]}
         />
@@ -259,7 +247,7 @@ export function Composer({
             styles.send,
             {
               backgroundColor: canSend || busy ? c.primary : c.muted,
-              transform: [{ scale: pressed ? 0.94 : 1 }],
+              opacity: pressed ? 0.65 : 1,
             },
           ]}
         >
@@ -273,7 +261,7 @@ export function Composer({
             />
           )}
         </Pressable>
-      </View>
+      </GlassSurface>
     </View>
   );
 }
@@ -284,8 +272,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     width: 252,
     maxWidth: '100%',
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
     padding: 6,
   },
   action: {
@@ -301,12 +287,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 4,
-    borderRadius: 28,
-    borderWidth: StyleSheet.hairlineWidth,
     padding: 5,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
   },
   iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   send: { borderRadius: 22 },
