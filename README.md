@@ -641,3 +641,8 @@ Using OpenBots, including the apps and the shared relay, means you accept the
 [Terms and Conditions](docs/TERMS.md). In short: you are responsible for what your Bots do, and
 OpenBots is not liable for their actions; the shared relay is free, with no promise of
 availability or latency, and may change at any time.
+
+The website serves a copy at `/terms/`. Change [docs/TERMS.md](docs/TERMS.md) here: the
+`terms-www` workflow then opens a matching pull request on
+[OpenBots-www](https://github.com/danielpang/OpenBots-www) and links it from yours, so merge both
+together. It needs the `OPENBOTS_WWW_TOKEN` secret (see the workflow for the token it expects).

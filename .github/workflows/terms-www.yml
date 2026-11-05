@@ -1,0 +1,141 @@
+name: Terms on the website
+
+# The website (danielpang/OpenBots-www) serves a copy of docs/TERMS.md at
+# /terms/. When a pull request here changes docs/TERMS.md, this opens (or
+# updates) a pull request on OpenBots-www with the new copy, made by
+# scripts/terms-for-www.mjs, and comments here with its link, asking the author
+# to merge it too. A pull request closed without merging closes its website
+# pull request.
+#
+# Needs the OPENBOTS_WWW_TOKEN secret: a fine-grained token for
+# danielpang/OpenBots-www only, with Contents and Pull requests read and write.
+# Without it the job warns and does nothing. Pull requests from forks get no
+# secrets, so they are skipped.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    paths: [docs/TERMS.md]
+
+concurrency:
+  group: terms-www-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  WWW_REPO: danielpang/OpenBots-www
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+  WWW_BRANCH: terms/openbots-pr-${{ github.event.pull_request.number }}
+  MARKER: '<!-- terms-www -->'
+
+jobs:
+  sync:
+    name: Sync the website's Terms
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check for the website token
+        id: token
+        env:
+          WWW_TOKEN: ${{ secrets.OPENBOTS_WWW_TOKEN }}
+        run: |
+          if [ -z "$WWW_TOKEN" ]; then
+            echo "::warning::OPENBOTS_WWW_TOKEN is not set, so the website's Terms were not updated. Copy them by hand: node scripts/terms-for-www.mjs > OpenBots-www/TERMS.md"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Closed without merging: the website copy is not wanted any more.
+      - name: Close the website pull request
+        if: steps.token.outputs.present == 'true' && github.event.action == 'closed' && !github.event.pull_request.merged
+        env:
+          GH_TOKEN: ${{ secrets.OPENBOTS_WWW_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          url=$(gh pr list -R "$WWW_REPO" --head "$WWW_BRANCH" --state open --json url --jq '.[0].url // ""')
+          if [ -n "$url" ]; then
+            gh pr close "$url" --delete-branch --comment "$PR_URL was closed without merging, so this copy of the Terms is not needed."
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.token.outputs.present == 'true' && github.event.action != 'closed'
+        with:
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.token.outputs.present == 'true' && github.event.action != 'closed'
+        with:
+          repository: ${{ env.WWW_REPO }}
+          ref: main
+          path: www
+          token: ${{ secrets.OPENBOTS_WWW_TOKEN }}
+
+      - name: Open or update the website pull request
+        id: www
+        if: steps.token.outputs.present == 'true' && github.event.action != 'closed'
+        env:
+          GH_TOKEN: ${{ secrets.OPENBOTS_WWW_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          node scripts/terms-for-www.mjs > www/TERMS.md
+          cd www
+          existing=$(gh pr list -R "$WWW_REPO" --head "$WWW_BRANCH" --state open --json url --jq '.[0].url // ""')
+
+          # The website already has this text (for example, the change was reverted).
+          if [ -z "$(git status --porcelain -- TERMS.md)" ]; then
+            if [ -n "$existing" ]; then
+              gh pr close "$existing" --delete-branch --comment "The Terms in $PR_URL now match the website, so this pull request is not needed."
+            fi
+            echo "url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B "$WWW_BRANCH"
+          git add TERMS.md
+          git commit -q -m "Update the Terms from OpenBots #$PR_NUMBER" -m "Copied from docs/TERMS.md in $PR_URL by scripts/terms-for-www.mjs."
+          git push -q --force origin "$WWW_BRANCH"
+
+          if [ -n "$existing" ]; then
+            url=$existing
+          else
+            body=$(printf '%s\n\n%s\n\n%s\n' \
+              "Updates the website's copy of the Terms (served at \`/terms/\`) to match docs/TERMS.md in $PR_URL." \
+              "Merge this together with $PR_URL so the website and the project show the same Terms." \
+              "Opened by the terms-www workflow in danielpang/OpenBots. Pushes to that pull request update this one.")
+            url=$(gh pr create -R "$WWW_REPO" --base main --head "$WWW_BRANCH" \
+              --title "Update the Terms: $PR_TITLE" --body "$body")
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      # One comment per pull request, edited in place on later pushes.
+      - name: Comment with the website pull request
+        if: steps.token.outputs.present == 'true' && github.event.action != 'closed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          WWW_URL: ${{ steps.www.outputs.url }}
+        run: |
+          if [ -n "$WWW_URL" ]; then
+            body=$(printf '%s\n%s\n\n%s\n' "$MARKER" \
+              "This pull request changes the Terms. The website's copy is updated in $WWW_URL." \
+              "@$AUTHOR, please also merge $WWW_URL when you merge this one, so the website shows the same Terms.")
+          else
+            body=$(printf '%s\n%s\n' "$MARKER" \
+              "The website's copy of the Terms already matches this pull request, so no website pull request is needed.")
+          fi
+          ids=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id")
+          comment=${ids%%$'\n'*}
+          if [ -n "$comment" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment" -f body="$body" > /dev/null
+          elif [ -n "$WWW_URL" ]; then
+            gh pr comment "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --body "$body"
+          fi
