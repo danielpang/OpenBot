@@ -4,12 +4,28 @@ import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { unwrap } from '@openbots/api-client';
 import { useApi } from '../api/provider';
-import { Button, ErrorNote, Page } from '../components/ui';
+import { ErrorNote, Page } from '../components/ui';
+import { useGlassEnabled } from '../components/glass';
+import { useTheme } from '../theme';
 import { Transcript } from '../transcript/transcript';
 import { groupTitle, useBots, useChats } from './data';
 import { GroupMembers } from './group-members';
 
+// Keep content underneath the native navigation controls. On iOS 26 the
+// system's soft scroll edge protects the title; accessibility/older-OS fallbacks
+// keep an opaque bar without changing the scroll view's inset geometry.
+function useConversationHeader() {
+  const glass = useGlassEnabled();
+  const c = useTheme();
+  return {
+    headerTransparent: true,
+    headerStyle: { backgroundColor: glass ? 'transparent' : c.background },
+    scrollEdgeEffects: { top: glass ? ('soft' as const) : ('hidden' as const) },
+  };
+}
+
 export function BotScreen() {
+  const header = useConversationHeader();
   const { id, message, seq, thread, threadRootId } = useLocalSearchParams<{
     id: string;
     message?: string;
@@ -29,14 +45,17 @@ export function BotScreen() {
     <>
       <Stack.Screen
         options={{
+          ...header,
           title: bot?.name ?? 'Bot',
-          headerRight: () => (
-            <Button
-              title="Details"
-              variant="ghost"
-              onPress={() => router.push(`/bot/${id}/details`)}
-            />
-          ),
+          unstable_headerRightItems: () => [
+            {
+              type: 'button',
+              label: 'Bot details',
+              accessibilityLabel: 'Bot details',
+              icon: { type: 'sfSymbol', name: 'info.circle' },
+              onPress: () => router.push(`/bot/${id}/details`),
+            },
+          ],
         }}
       />
       {chat.data?.id || bot?.chatId ? (
@@ -61,6 +80,7 @@ export function BotScreen() {
   );
 }
 export function ChatScreen() {
+  const header = useConversationHeader();
   const [membersOpen, setMembersOpen] = useState(false);
   const { id, thread, threadRootId, message, seq, title } = useLocalSearchParams<{
     id: string;
@@ -79,13 +99,30 @@ export function ChatScreen() {
     <>
       <Stack.Screen
         options={{
+          ...header,
           title: name,
-          headerRight:
+          unstable_headerRightItems: () =>
             chat?.type === 'group'
-              ? () => (
-                  <Button title="Members" variant="ghost" onPress={() => setMembersOpen(true)} />
-                )
-              : undefined,
+              ? [
+                  {
+                    type: 'button',
+                    label: 'Group members',
+                    accessibilityLabel: 'Group members',
+                    icon: { type: 'sfSymbol', name: 'person.2' },
+                    onPress: () => setMembersOpen(true),
+                  },
+                ]
+              : bot
+                ? [
+                    {
+                      type: 'button',
+                      label: 'Bot details',
+                      accessibilityLabel: 'Bot details',
+                      icon: { type: 'sfSymbol', name: 'info.circle' },
+                      onPress: () => router.push(`/bot/${bot.id}/details`),
+                    },
+                  ]
+                : [],
         }}
       />
       <Transcript

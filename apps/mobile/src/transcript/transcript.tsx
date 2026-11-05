@@ -40,6 +40,9 @@ export function Transcript({
     paddingBottom: Math.max(keyboard.height.value, safe.bottom),
   }));
   const [awayFromBottom, setAwayFromBottom] = useState(false);
+  // Measure the complete dock, including growing drafts, attachments and menus.
+  // Only scroll padding reserves space: the viewport continues behind the glass.
+  const [composerHeight, setComposerHeight] = useState(70);
   const messages = useMessages(chatId, threadRootId);
   const list = useRef<FlashListRef<Message>>(null);
   const jumped = useRef<string | undefined>(undefined);
@@ -97,8 +100,6 @@ export function Transcript({
       style={[{ flex: 1, backgroundColor: c.background }, keyboardInsets]}
     >
       <View style={{ flex: 1 }}>
-        <ErrorNote error={messages.error} onRetry={refresh} />
-        {messages.loading ? <ActivityIndicator style={{ marginTop: 40 }} /> : null}
         <FlashList
           ref={list}
           data={messages.messages}
@@ -122,7 +123,9 @@ export function Transcript({
               }
             />
           )}
-          contentContainerStyle={{ paddingTop: 12, paddingBottom: 8 }}
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={{ paddingTop: 12, paddingBottom: composerHeight + 8 }}
+          scrollIndicatorInsets={{ bottom: composerHeight }}
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={false}
@@ -141,13 +144,16 @@ export function Transcript({
           }}
           onStartReachedThreshold={0.5}
           ListHeaderComponent={
-            messages.hasMore ? (
-              <Button
-                title="Earlier messages"
-                variant="ghost"
-                onPress={() => void messages.loadMore()}
-              />
-            ) : null
+            <View>
+              {messages.loading ? <ActivityIndicator style={{ marginTop: 40 }} /> : null}
+              {messages.hasMore ? (
+                <Button
+                  title="Earlier messages"
+                  variant="ghost"
+                  onPress={() => void messages.loadMore()}
+                />
+              ) : null}
+            </View>
           }
           ListEmptyComponent={
             !messages.loading ? (
@@ -163,7 +169,10 @@ export function Transcript({
           }
         />
         {awayFromBottom ? (
-          <View style={{ position: 'absolute', right: 20, bottom: 8 }}>
+          <View
+            testID="chat-jump-control"
+            style={{ position: 'absolute', right: 20, bottom: composerHeight + 8 }}
+          >
             <GlassIconButton
               icon="arrow-down"
               label="Jump to latest message"
@@ -171,13 +180,25 @@ export function Transcript({
             />
           </View>
         ) : null}
+        <View
+          testID="chat-composer-overlay"
+          pointerEvents="box-none"
+          onLayout={({ nativeEvent }) => setComposerHeight(nativeEvent.layout.height)}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}
+        >
+          {messages.error ? (
+            <View style={{ paddingHorizontal: 16 }}>
+              <ErrorNote error={messages.error} onRetry={refresh} />
+            </View>
+          ) : null}
+          <Composer
+            bots={bots}
+            onSend={messages.send}
+            sending={messages.sending}
+            threadRootId={threadRootId}
+          />
+        </View>
       </View>
-      <Composer
-        bots={bots}
-        onSend={messages.send}
-        sending={messages.sending}
-        threadRootId={threadRootId}
-      />
     </Animated.View>
   );
 }

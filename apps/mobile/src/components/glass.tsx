@@ -8,12 +8,16 @@ import {
   type ViewProps,
 } from 'react-native';
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
-import { useTheme } from '../theme';
+import { useTheme, useThemeScheme } from '../theme';
 import { Icon } from './ui';
 
 // Start opaque until accessibility preferences resolve. Native bars manage their
 // own accessibility appearance; this policy is only for our custom surfaces.
 const GlassEnabled = createContext(false);
+
+export function useGlassEnabled() {
+  return useContext(GlassEnabled);
+}
 
 export function GlassProvider({ children }: PropsWithChildren) {
   const [reduceTransparency, setReduceTransparency] = useState(true);
@@ -69,7 +73,8 @@ export function GlassSurface({
   ...props
 }: ViewProps & { radius?: number }) {
   const c = useTheme();
-  const enabled = useContext(GlassEnabled);
+  const enabled = useGlassEnabled();
+  const scheme = useThemeScheme();
   return (
     <View {...props} style={[style, { borderRadius: radius }]}>
       {/* Keep the content tree stable so a preference change never remounts a
@@ -81,6 +86,7 @@ export function GlassSurface({
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
           glassEffectStyle="regular"
+          colorScheme={scheme}
           style={[StyleSheet.absoluteFill, { borderRadius: radius }]}
         />
       ) : (

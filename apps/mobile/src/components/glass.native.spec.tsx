@@ -1,6 +1,12 @@
 import React, { useEffect } from 'react';
 import { beforeEach, afterEach, describe, expect, it, jest } from '@jest/globals';
-import { AccessibilityInfo, Platform, TextInput, type ViewProps } from 'react-native';
+import {
+  AccessibilityInfo,
+  Platform,
+  TextInput,
+  useColorScheme,
+  type ViewProps,
+} from 'react-native';
 import type * as ReactNative from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
@@ -22,6 +28,7 @@ const material = () => screen.queryByTestId('native-glass', { includeHiddenEleme
 beforeEach(() => {
   jest.clearAllMocks();
   listeners.clear();
+  jest.mocked(useColorScheme).mockReturnValue('light');
   jest.mocked(isGlassEffectAPIAvailable).mockReturnValue(true);
   jest.mocked(isLiquidGlassAvailable).mockReturnValue(true);
   jest.spyOn(AccessibilityInfo, 'isReduceTransparencyEnabled').mockResolvedValue(false);
@@ -55,6 +62,7 @@ describe('Liquid Glass material', () => {
     await waitFor(() => expect(material()).toBeTruthy());
     expect(material()!.props).toMatchObject({
       glassEffectStyle: 'regular',
+      colorScheme: 'light',
       pointerEvents: 'none',
       accessibilityElementsHidden: true,
     });
@@ -84,6 +92,14 @@ describe('Liquid Glass material', () => {
       expect(material()).toBeNull();
     },
   );
+
+  it('updates the native glass color scheme with the app appearance', async () => {
+    const view = render(<Surface />);
+    await waitFor(() => expect(material()).toBeTruthy());
+    jest.mocked(useColorScheme).mockReturnValue('dark');
+    view.rerender(<Surface />);
+    expect(material()!.props.colorScheme).toBe('dark');
+  });
 
   it('fails closed if accessibility preferences cannot be read', async () => {
     jest

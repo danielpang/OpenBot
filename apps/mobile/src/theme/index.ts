@@ -1,4 +1,10 @@
-import { useColorScheme } from 'react-native';
+import { useThemeScheme } from './appearance';
+export {
+  AppearanceProvider,
+  useAppearance,
+  useThemeScheme,
+  type AppearanceMode,
+} from './appearance';
 
 // Native equivalents of packages/ui/src/styles.css's neutral colour tokens.
 export const themes = {
@@ -33,5 +39,5 @@ export const themes = {
 } as const;
 export type Theme = { [K in keyof typeof themes.light]: string };
 export function useTheme(): Theme {
-  return themes[useColorScheme() === 'dark' ? 'dark' : 'light'];
+  return themes[useThemeScheme()];
 }

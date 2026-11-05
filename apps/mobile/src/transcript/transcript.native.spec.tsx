@@ -9,6 +9,9 @@ type ListProps = {
   keyboardDismissMode?: string;
   keyboardShouldPersistTaps?: string;
   automaticallyAdjustKeyboardInsets?: boolean;
+  contentInsetAdjustmentBehavior?: string;
+  contentContainerStyle?: { paddingTop: number; paddingBottom: number };
+  scrollIndicatorInsets?: { bottom: number };
   onScroll: (event: {
     nativeEvent: {
       contentOffset: { y: number };
@@ -85,6 +88,36 @@ describe('chat keyboard and scrolling', () => {
     expect(mockListProps.keyboardDismissMode).toBe('interactive');
     expect(mockListProps.keyboardShouldPersistTaps).toBe('handled');
     expect(mockListProps.automaticallyAdjustKeyboardInsets).toBe(false);
+  });
+
+  it('lets messages scroll beneath the composer while reserving its measured height', () => {
+    render(<Transcript chatId="chat" bots={[]} title="Bot" />);
+    const overlay = screen.getByTestId('chat-composer-overlay');
+    expect(overlay.props.pointerEvents).toBe('box-none');
+    expect(StyleSheet.flatten(overlay.props.style)).toMatchObject({
+      position: 'absolute',
+      bottom: 0,
+    });
+    expect(mockListProps.contentInsetAdjustmentBehavior).toBe('automatic');
+    fireEvent(overlay, 'layout', { nativeEvent: { layout: { height: 220 } } });
+    expect(mockListProps.contentContainerStyle?.paddingBottom).toBe(228);
+    expect(mockListProps.scrollIndicatorInsets?.bottom).toBe(220);
+    // The keyboard inset is independent of multiline drafts and attachment menus.
+    expect(
+      StyleSheet.flatten(screen.getByTestId('chat-keyboard-frame').props.style).paddingBottom,
+    ).toBe(34);
+    act(() =>
+      mockListProps.onScroll({
+        nativeEvent: {
+          contentOffset: { y: 100 },
+          contentSize: { height: 2000 },
+          layoutMeasurement: { height: 600 },
+        },
+      }),
+    );
+    expect(StyleSheet.flatten(screen.getByTestId('chat-jump-control').props.style).bottom).toBe(
+      228,
+    );
   });
 
   it('offers a jump-to-latest action only while reading older messages', () => {

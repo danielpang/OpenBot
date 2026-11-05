@@ -98,7 +98,7 @@ Wait for installation to finish, then choose an available simulator in Expo's de
 
 ## Liquid Glass
 
-On iOS 26+, OpenBots uses UIKit's native floating tab bar with SF Symbols and the existing Inbox badge. The composer, attachment menu, create control and jump-to-latest control use `expo-glass-effect`'s **regular** native material. Message cards, approval content, search fields and settings stay opaque; glass is reserved for navigation and controls, following [Apple's adoption guidance](https://developer.apple.com/documentation/technologyoverviews/liquid-glass).
+On iOS 26+, OpenBots uses UIKit's native floating tab bar with SF Symbols and the existing Inbox badge. Chat headers let messages scroll beneath native glass navigation controls, with a soft system scroll-edge effect protecting the title. Bot details use the native `info.circle` button; group membership uses `person.2`. The composer, attachment menu, create control and jump-to-latest control use `expo-glass-effect`'s **regular** native material. The composer floats over the transcript rather than occupying an opaque strip below it; measured scroll padding keeps the final message and scroll indicator clear of multiline drafts and attachment menus. Message cards, approval content, search fields and settings stay opaque; glass is reserved for navigation and controls, following [Apple's adoption guidance](https://developer.apple.com/documentation/technologyoverviews/liquid-glass).
 
 - Build with **Xcode 26 or later** to see Liquid Glass. iOS 17 remains the deployment target: earlier systems retain their native tab bar and opaque custom controls.
 - `src/components/glass.tsx` centralizes capability checks and live accessibility preferences. Reduce Transparency or Increase Contrast selects opaque custom surfaces. Material layers do not intercept touches or appear in VoiceOver, and changing preferences does not remount the composer input. Custom glass adds no morphing/scale animations; system tab animations follow iOS accessibility settings.
@@ -106,6 +106,10 @@ On iOS 26+, OpenBots uses UIKit's native floating tab bar with SF Symbols and th
 - Rebuild the development client after installing dependencies: `pnpm --filter @openbots/mobile prebuild`, then `pnpm --filter @openbots/mobile ios`. A JavaScript reload alone is not a native rebuild. For an OTA release, bump the native app version/runtime before publishing a bundle requiring changed native dependencies.
 
 See the Liquid Glass checks in [DEVICE-VALIDATION.md](DEVICE-VALIDATION.md) for the device acceptance matrix.
+
+## Appearance
+
+**Settings → Appearance** offers **System** (the default), **Light**, and **Dark**. The device-local choice is saved across launches independently of the selected server. System follows live device appearance changes; explicit Light/Dark overrides remain fixed. The preference updates content colors, the status bar, native UIKit controls/keyboard/sheets and the glass material's color scheme. If saving fails, the previous choice stays active and Settings reports the error.
 
 ## Included
 
