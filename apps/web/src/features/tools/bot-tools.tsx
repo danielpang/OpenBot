@@ -6,6 +6,7 @@ import { Link } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { api, capabilitiesQuery } from '../../app/api.js';
 import { blockedText, useManaged } from '../../app/deployment.js';
+import { SettingsPanel, SettingsRow, SettingsSubheading } from '../../app/settings-layout.js';
 import { botsQuery, type Bot } from '../bots/queries.js';
 import {
   botConnectorsQuery,
@@ -124,78 +125,97 @@ export function BotToolsForm({
   );
 
   return (
-    <form className="flex flex-col gap-5" onSubmit={submit} aria-label="Tools and permissions">
-      <p>Choose whether each tool runs, asks you first, or is refused.</p>
+    <form className="flex flex-col gap-3" onSubmit={submit} aria-label="Tools and permissions">
+      <SettingsSubheading>Tool groups</SettingsSubheading>
+      <SettingsPanel>
+        {EDITED_GROUPS.filter((g) => g !== 'computer' && g !== 'connector').map((group) => (
+          <SettingsRow
+            key={group}
+            data-group={group}
+            title={GROUP_LABELS[group]}
+            description={GROUP_NOTES[group]}
+            control={
+              <DecisionSelect
+                label={GROUP_LABELS[group]}
+                value={policy.groups?.[group]}
+                inherited="Depends on the tool"
+                onChange={decide('groups', group)}
+              />
+            }
+          >
+            {toolList(group)}
+          </SettingsRow>
+        ))}
+      </SettingsPanel>
 
-      {EDITED_GROUPS.filter((g) => g !== 'computer' && g !== 'connector').map((group) => (
-        <GroupSection
-          key={group}
-          group={group}
-          value={policy.groups?.[group]}
-          onChange={decide('groups', group)}
-        >
-          {toolList(group)}
-        </GroupSection>
-      ))}
-
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 font-medium text-foreground">Hosts HTTP request may call</legend>
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name="http-allowlist"
-            checked={mode === 'any'}
-            onChange={() => setMode('any')}
-          />
-          Any public host
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            name="http-allowlist"
-            checked={mode === 'list'}
-            onChange={() => setMode('list')}
-          />
-          Only these hosts
-        </label>
-        {mode === 'list' && (
-          <>
-            <textarea
-              aria-label="Allowed hosts"
-              value={hostsText}
-              onChange={(e) => setHostsText(e.target.value)}
-              rows={3}
-              placeholder={'api.example.com\n*.example.org'}
-              className="w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs text-foreground"
+      <SettingsSubheading>Web requests</SettingsSubheading>
+      <SettingsPanel>
+        <fieldset className="flex flex-col gap-2 px-4 py-3">
+          <legend className="float-left mb-1 font-medium text-foreground">
+            Hosts HTTP request may call
+          </legend>
+          <label className="flex items-center gap-2 text-foreground">
+            <input
+              type="radio"
+              name="http-allowlist"
+              checked={mode === 'any'}
+              onChange={() => setMode('any')}
             />
-            <span className="text-xs">One per line: a host, or *.domain for its subdomains.</span>
-            {hosts.errors.length > 0 && (
-              <ErrorText error={`Not a host: ${hosts.errors.join(', ')}`} />
-            )}
-          </>
-        )}
-      </fieldset>
+            Any public host
+          </label>
+          <label className="flex items-center gap-2 text-foreground">
+            <input
+              type="radio"
+              name="http-allowlist"
+              checked={mode === 'list'}
+              onChange={() => setMode('list')}
+            />
+            Only these hosts
+          </label>
+          {mode === 'list' && (
+            <div className="flex flex-col gap-1.5 pl-6">
+              <textarea
+                aria-label="Allowed hosts"
+                value={hostsText}
+                onChange={(e) => setHostsText(e.target.value)}
+                rows={3}
+                placeholder={'api.example.com\n*.example.org'}
+                className="w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs text-foreground"
+              />
+              <span className="text-xs">One per line: a host, or *.domain for its subdomains.</span>
+              {hosts.errors.length > 0 && (
+                <ErrorText error={`Not a host: ${hosts.errors.join(', ')}`} />
+              )}
+            </div>
+          )}
+        </fieldset>
+      </SettingsPanel>
 
-      <div className="flex flex-col gap-2" data-group="computer">
-        <h3 className="font-medium text-foreground">{GROUP_LABELS.computer}</h3>
+      <SettingsSubheading>{GROUP_LABELS.computer}</SettingsSubheading>
+      <SettingsPanel data-group="computer">
         {computer ? (
           <>
-            <label className="flex items-center gap-2 text-foreground">
-              <input
-                type="checkbox"
-                checked={computerOn}
-                onChange={(e) => setPolicy((p) => setComputerEnabled(p, e.target.checked))}
-              />
-              Use its computer
-            </label>
-            <p className="text-xs">
-              {computerOn
-                ? GROUP_NOTES.computer
-                : 'Off: no computer tools, and no need for vision.'}
-            </p>
+            <SettingsRow
+              title={
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={computerOn}
+                    onChange={(e) => setPolicy((p) => setComputerEnabled(p, e.target.checked))}
+                  />
+                  Use its computer
+                </label>
+              }
+              description={
+                computerOn
+                  ? GROUP_NOTES.computer
+                  : 'Off: no computer tools, and no need for vision.'
+              }
+            />
             {computerOn && (
-              <>
-                <Row label={GROUP_LABELS.computer}>
+              <SettingsRow
+                title={GROUP_LABELS.computer}
+                control={
                   <DecisionSelect
                     label={GROUP_LABELS.computer}
                     value={policy.groups?.computer}
@@ -204,28 +224,33 @@ export function BotToolsForm({
                     choices={['auto', 'ask']}
                     onChange={decide('groups', 'computer')}
                   />
-                </Row>
+                }
+              >
                 {toolList('computer')}
-              </>
+              </SettingsRow>
             )}
           </>
         ) : (
-          <p className="text-xs">This install has no computer for its Bots.</p>
+          <p className="px-4 py-3 text-xs">This install has no computer for its Bots.</p>
         )}
-      </div>
+      </SettingsPanel>
 
-      <div className="flex flex-col gap-2" data-group="connector">
-        <h3 className="font-medium text-foreground">Connectors</h3>
-        <Row label={GROUP_LABELS.connector}>
-          <DecisionSelect
-            label={GROUP_LABELS.connector}
-            value={policy.groups?.connector}
-            inherited="Depends on the tool"
-            onChange={decide('groups', 'connector')}
-          />
-        </Row>
+      <SettingsSubheading>Connectors</SettingsSubheading>
+      <SettingsPanel data-group="connector">
+        <SettingsRow
+          title={GROUP_LABELS.connector}
+          description={GROUP_NOTES.connector}
+          control={
+            <DecisionSelect
+              label={GROUP_LABELS.connector}
+              value={policy.groups?.connector}
+              inherited="Depends on the tool"
+              onChange={decide('groups', 'connector')}
+            />
+          }
+        />
         {!entries.length && (
-          <p>
+          <p className="px-4 py-3">
             No connectors yet. Add them on the{' '}
             <Link to="/connectors" className="underline">
               Connectors page
@@ -244,10 +269,10 @@ export function BotToolsForm({
             onDecision={(tool, d) => setPolicy((p) => setDecision(p, 'tools', tool, d))}
           />
         ))}
-      </div>
+      </SettingsPanel>
 
       <ErrorText error={save.error} />
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 pt-1">
         <Button type="submit" disabled={save.isPending}>
           Save
         </Button>
@@ -257,33 +282,22 @@ export function BotToolsForm({
   );
 }
 
-function GroupSection({
-  group,
-  value,
-  onChange,
-  children,
-}: {
-  group: ToolGroupName;
-  value: PolicyDecision | undefined;
-  onChange(value: PolicyDecision | undefined): void;
-  children: ReactNode;
-}) {
+/** A collapsed list under a row, one tool per line. */
+function ToolDetails({ summary, children }: { summary: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-2" data-group={group}>
-      <h3 className="font-medium text-foreground">{GROUP_LABELS[group]}</h3>
-      <p className="text-xs">{GROUP_NOTES[group]}</p>
-      <Row label="Whole group">
-        <DecisionSelect
-          label={GROUP_LABELS[group]}
-          value={value}
-          inherited="Depends on the tool"
-          onChange={onChange}
-        />
-      </Row>
-      {children}
-    </div>
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-xs select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <span aria-hidden className="inline-block transition-transform group-open:rotate-90">
+          ›
+        </span>
+        {summary}
+      </summary>
+      <ul className="mt-2 divide-y rounded-md border bg-muted/30">{children}</ul>
+    </details>
   );
 }
+
+const TOOL_ROW = 'flex flex-wrap items-center gap-2 px-3 py-1.5';
 
 /** One select per tool, each defaulting to its group's setting or the engine's default. */
 function ToolList({
@@ -301,25 +315,22 @@ function ToolList({
   const managed = useManaged();
   if (!tools.length) return null;
   return (
-    <details>
-      <summary className="cursor-pointer select-none text-xs">
-        {tools.length === 1 ? 'One tool' : `${tools.length} tools`}, one setting each
-      </summary>
-      <ul className="mt-2 flex flex-col gap-1.5">
-        {tools.map((tool) => (
-          <li key={tool.name} className="flex flex-wrap items-center gap-2" title={tool.why}>
-            <code className="min-w-0 flex-1 truncate text-xs text-foreground">{tool.name}</code>
-            {tool.disabledByAdmin && <span className="text-xs">{blockedText(managed)}</span>}
-            <DecisionSelect
-              label={`${tool.name} approval`}
-              value={policy.tools?.[tool.name]}
-              inherited={defaultText(policy, tool, override)}
-              onChange={(d) => onDecision(tool.name, d)}
-            />
-          </li>
-        ))}
-      </ul>
-    </details>
+    <ToolDetails
+      summary={`${tools.length === 1 ? 'One tool' : `${tools.length} tools`}, one setting each`}
+    >
+      {tools.map((tool) => (
+        <li key={tool.name} className={TOOL_ROW} title={tool.why}>
+          <code className="min-w-0 flex-1 truncate text-xs text-foreground">{tool.name}</code>
+          {tool.disabledByAdmin && <span className="text-xs">{blockedText(managed)}</span>}
+          <DecisionSelect
+            label={`${tool.name} approval`}
+            value={policy.tools?.[tool.name]}
+            inherited={defaultText(policy, tool, override)}
+            onChange={(d) => onDecision(tool.name, d)}
+          />
+        </li>
+      ))}
+    </ToolDetails>
   );
 }
 
@@ -348,37 +359,38 @@ function ConnectorPermissions({
     mcp ? tool.name.slice(connector.slug.length + 2) : tool.name;
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3" data-connector={connector.id}>
+    <div className="flex flex-col gap-3 px-4 py-3" data-connector={connector.id}>
       <div className="flex flex-wrap items-center gap-3">
         <ConnectorIcon icon={iconOf(connector)} name={connector.name} />
-        <label className="flex items-center gap-2 font-medium text-foreground">
+        <label className="flex min-w-0 flex-1 items-center gap-2 font-medium text-foreground">
           <input
             type="checkbox"
             checked={enabled}
             onChange={(e) => onPermission(setConnectorEnabled(permission, e.target.checked))}
           />
           {connector.name}
+          {connector.disabledByAdmin && (
+            <span className="text-xs font-normal text-muted-foreground">
+              {blockedText(managed)}
+            </span>
+          )}
         </label>
-        {connector.disabledByAdmin && <span className="text-xs">{blockedText(managed)}</span>}
-        <span className="ml-auto">
-          <DecisionSelect
-            label={`${connector.name} approvals`}
-            value={permission.approvalOverride ?? undefined}
-            inherited="Per tool"
-            onChange={(d) => onPermission({ ...permission, approvalOverride: d ?? null })}
-          />
-        </span>
+        <DecisionSelect
+          label={`${connector.name} approvals`}
+          value={permission.approvalOverride ?? undefined}
+          inherited="Per tool"
+          onChange={(d) => onPermission({ ...permission, approvalOverride: d ?? null })}
+        />
       </div>
-      {enabled && (
-        <details>
-          <summary className="cursor-pointer select-none text-xs">
-            {mcp && !tools.length
-              ? 'No tools yet. Test it on the Connectors page.'
-              : `${tools.filter((t) => toolEnabled(permission, shortName(t))).length} of ${tools.length} tools allowed`}
-          </summary>
-          <ul className="mt-2 flex flex-col gap-1.5">
+      {enabled &&
+        (mcp && !tools.length ? (
+          <p className="text-xs">No tools yet. Test it on the Connectors page.</p>
+        ) : (
+          <ToolDetails
+            summary={`${tools.filter((t) => toolEnabled(permission, shortName(t))).length} of ${tools.length} tools allowed`}
+          >
             {tools.map((tool) => (
-              <li key={tool.name} className="flex flex-wrap items-center gap-2" title={tool.why}>
+              <li key={tool.name} className={TOOL_ROW} title={tool.why}>
                 <label className="flex min-w-0 flex-1 items-center gap-2">
                   <input
                     type="checkbox"
@@ -397,18 +409,8 @@ function ConnectorPermissions({
                 />
               </li>
             ))}
-          </ul>
-        </details>
-      )}
-    </div>
-  );
-}
-
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="min-w-0 flex-1 text-foreground">{label}</span>
-      {children}
+          </ToolDetails>
+        ))}
     </div>
   );
 }
@@ -432,7 +434,7 @@ export function DecisionSelect({
       aria-label={label}
       value={value ?? ''}
       onChange={(e) => onChange((e.target.value || undefined) as PolicyDecision | undefined)}
-      className="h-8 rounded-md border bg-transparent px-2 text-xs text-foreground"
+      className="h-8 max-w-64 rounded-md border bg-background px-2.5 text-xs text-foreground"
     >
       <option value="">{`Default: ${inherited}`}</option>
       {choices.map((d) => (

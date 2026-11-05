@@ -70,8 +70,19 @@ export function createApp(deps: AppDeps, { webDist = WEB_DIST }: AppOptions = {}
   const index = webDist && join(webDist, 'index.html');
   if (index && existsSync(index)) {
     const html = readFileSync(index, 'utf8');
-    app.use('*', serveStatic({ root: webDist }));
-    app.get('*', (c, next) => (isServerPath(c.req.path) ? next() : c.html(html)));
+    // The page is checked on every load, so a new build's assets show up
+    // without a cache clear; the assets are named by their hash.
+    app.use(
+      '*',
+      serveStatic({
+        root: webDist,
+        onFound: (path, c) =>
+          c.header('Cache-Control', /[/\\]assets[/\\]/.test(path) ? IMMUTABLE : 'no-cache'),
+      }),
+    );
+    app.get('*', (c, next) =>
+      isServerPath(c.req.path) ? next() : c.html(html, 200, { 'Cache-Control': 'no-cache' }),
+    );
   }
 
   app.notFound((c) => c.json(problem(404, 'Not found', { code: 'NOT_FOUND' }), 404, problemType));
@@ -90,6 +101,8 @@ export function createApp(deps: AppDeps, { webDist = WEB_DIST }: AppOptions = {}
 export type App = ReturnType<typeof createApp>;
 
 const problemType = { 'content-type': 'application/problem+json' };
+
+const IMMUTABLE = 'public, max-age=31536000, immutable';
 
 /**
  * Headers on every response (plan 17 control 8, S-19). A route that sets one
