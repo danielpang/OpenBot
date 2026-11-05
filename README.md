@@ -634,3 +634,10 @@ years after it is published.
 
 The `ee/` directory holds the managed service's proprietary code, under
 [ee/LICENSE](ee/LICENSE).
+
+## Terms
+
+Using OpenBots, including the apps and the shared relay, means you accept the
+[Terms and Conditions](docs/TERMS.md). In short: you are responsible for what your Bots do, and
+OpenBots is not liable for their actions; the shared relay is free, with no promise of
+availability or latency, and may change at any time.
