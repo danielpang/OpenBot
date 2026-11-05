@@ -61,18 +61,18 @@ export function BotSkillsForm({
 
   return (
     <div className="flex flex-col gap-3">
-      <ul className="flex flex-col gap-2" aria-label="Enabled Skills">
+      <ul className="divide-y rounded-lg border bg-card" aria-label="Enabled Skills">
         {skills.map((skill) => (
           <li key={skill.id}>
-            <label className="flex items-start gap-2 text-foreground">
+            <label className="flex cursor-pointer items-start gap-3 px-4 py-3 text-foreground">
               <input
                 type="checkbox"
                 className="mt-1"
                 checked={chosen.has(skill.id)}
                 onChange={(e) => toggle(skill.id, e.target.checked)}
               />
-              <span className="flex flex-col">
-                <span>{skill.name}</span>
+              <span className="flex flex-col gap-0.5">
+                <span className="font-medium">{skill.name}</span>
                 {skill.summary && (
                   <span className="text-xs text-muted-foreground">{skill.summary}</span>
                 )}

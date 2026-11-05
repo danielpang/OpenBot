@@ -28,11 +28,14 @@
   --sidebar: oklch(0.985 0 0);
   --scrollbar: oklch(0.556 0 0 / 30%);
   --scrollbar-hover: oklch(0.556 0 0 / 55%);
+  /* The muted foreground, as a data URL can't read currentColor. */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1a1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
@@ -135,4 +138,18 @@
   ::-webkit-scrollbar-button {
     display: none;
   }
+}
+
+/*
+ * Dropdowns draw an up and down chevron in place of the system arrow, inset
+ * from the right edge. Unlayered, so it wins over a padding utility on the
+ * select and the text never runs under the icon.
+ */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.625rem center;
+  background-size: 0.875rem;
+  padding-right: 2rem;
 }

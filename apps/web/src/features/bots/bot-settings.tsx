@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useSavedCheckbox } from '../../app/saved-checkbox.js';
+import { SettingsPanel, SettingsRow, SettingsSection } from '../../app/settings-layout.js';
 import { BotSkills } from '../skills/bot-skills.js';
 import { BotTools } from '../tools/bot-tools.js';
 import { BotInbox } from '../webhooks/endpoints.js';
@@ -56,7 +57,7 @@ function BotSettingsForm({ bot }: { bot: Bot }) {
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-8 p-8">
+    <div className="mx-auto flex max-w-3xl flex-col gap-10 p-8">
       <form className="flex flex-col gap-4" onSubmit={submit}>
         <Field label="Name">
           <Input
@@ -103,44 +104,65 @@ function BotSettingsForm({ bot }: { bot: Bot }) {
         </div>
       </form>
 
-      <MainBotToggle bot={bot} others={data?.items ?? []} />
+      <SettingsSection title="Role">
+        <SettingsPanel>
+          <div className="px-4 py-3">
+            <MainBotToggle bot={bot} others={data?.items ?? []} />
+          </div>
+        </SettingsPanel>
+      </SettingsSection>
 
-      <Section title="Tools and permissions">
+      <SettingsSection
+        title="Tools and permissions"
+        description="Choose whether each tool runs, asks you first, or is refused."
+      >
         <BotTools bot={bot} />
-      </Section>
-      <Section title="Skills">
+      </SettingsSection>
+
+      <SettingsSection title="Skills" description="Skills from your library this Bot may use.">
         <BotSkills botId={bot.id} />
-      </Section>
-      <Section title="Webhook inbox">
+      </SettingsSection>
+
+      <SettingsSection title="Webhook inbox">
         <BotInbox botId={bot.id} />
-      </Section>
-      <Section title="Usage">
+      </SettingsSection>
+
+      <SettingsSection title="Usage">
         <BotUsageSection botId={bot.id} />
-      </Section>
+      </SettingsSection>
 
-      <Section title="Duplicate">
-        <p>Copies the profile and settings, not the conversation.</p>
-        <Button
-          variant="outline"
-          className="self-start"
-          disabled={duplicate.isPending}
-          onClick={() =>
-            duplicate.mutate(bot.id, {
-              onSuccess: (copy) =>
-                void navigate({ to: '/bots/$botId/settings', params: { botId: copy.id } }),
-            })
-          }
-        >
-          Duplicate
-        </Button>
-      </Section>
-
-      <Section title="Delete">
-        <p>Removes the profile, conversation and Routines.</p>
-        <Button variant="destructive" className="self-start" onClick={() => setDeleting(true)}>
-          Delete…
-        </Button>
-      </Section>
+      <SettingsSection title="Manage">
+        <SettingsPanel>
+          <SettingsRow
+            title="Duplicate"
+            description="Copies the profile and settings, not the conversation."
+            control={
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={duplicate.isPending}
+                onClick={() =>
+                  duplicate.mutate(bot.id, {
+                    onSuccess: (copy) =>
+                      void navigate({ to: '/bots/$botId/settings', params: { botId: copy.id } }),
+                  })
+                }
+              >
+                Duplicate
+              </Button>
+            }
+          />
+          <SettingsRow
+            title="Delete"
+            description="Removes the profile, conversation and Routines."
+            control={
+              <Button variant="destructive" size="sm" onClick={() => setDeleting(true)}>
+                Delete…
+              </Button>
+            }
+          />
+        </SettingsPanel>
+      </SettingsSection>
       <DeleteBotDialog bot={deleting ? bot : null} onClose={() => setDeleting(false)} />
     </div>
   );
@@ -195,14 +217,5 @@ function Field({
       {children}
       {help && <span className="text-xs text-muted-foreground">{help}</span>}
     </Tag>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-2 text-sm text-muted-foreground">
-      <h2 className="font-medium text-foreground">{title}</h2>
-      {children}
-    </section>
   );
 }
