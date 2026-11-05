@@ -3,7 +3,7 @@
 Last updated: November 5, 2026
 
 These Terms and Conditions ("Terms") apply to OpenBots: the OpenBots software, the Mac, iOS and
-other apps, the openbots website, the shared OpenBots relay, and any other service the OpenBots
+other apps, the OpenBots website, the shared OpenBots relay, and any other service the OpenBots
 project offers (together, "OpenBots" or the "Service"). "We", "us" and "our" mean the OpenBots
 project and its maintainers. "You" means the person or organization using OpenBots.
 
