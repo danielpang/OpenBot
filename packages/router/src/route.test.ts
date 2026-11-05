@@ -96,8 +96,26 @@ describe('routeTargets', () => {
     expect(asked).toEqual([]);
   });
 
-  it('wakes nobody when no Bot wants to answer', async () => {
-    expect((await route('group', message('user'), [])).targets).toEqual([]);
+  it("has the group's first Bot answer an owner message no Bot wants to take", async () => {
+    const { targets, asked } = await route('group', message('user'), []);
+    expect(asked).toEqual([A, B, C]);
+    expect(targets).toEqual(['a:bot_message']);
+    // Only the owner gets the fallback: an unaddressed Bot message still wakes nobody.
+    expect((await route('group', message('bot'), [])).targets).toEqual([]);
+  });
+
+  it('falls back in a thread too, when it is about no Bot in particular', async () => {
+    const m = message('user');
+    expect((await route('group', m, [], { threadBotId: null })).targets).toEqual(['a:bot_message']);
+  });
+
+  it('wakes nobody in a group with no Bots', async () => {
+    const targets = await routeTargets(
+      { type: 'group', botIds: [] },
+      message('user'),
+      async () => false,
+    );
+    expect(targets).toEqual([]);
   });
 
   it('ignores a Bot-to-Bot message from a Bot outside the pair', async () => {
