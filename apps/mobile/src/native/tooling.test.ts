@@ -8,6 +8,35 @@ const expo = createRequire(require.resolve('expo/package.json'));
 const config = createRequire(expo.resolve('@expo/config/package.json'));
 const cli = createRequire(expo.resolve('@expo/cli/package.json'));
 
+describe('EAS build toolchain', () => {
+  it.each(['development', 'simulator', 'simulator-release', 'preview', 'production'])(
+    'pins the workspace-compatible Node and pnpm versions for %s',
+    (profile) => {
+      type Profile = { extends?: string; node?: string; pnpm?: string };
+      const eas = JSON.parse(readFileSync(new URL('../../eas.json', import.meta.url), 'utf8')) as {
+        build: Record<string, Profile>;
+      };
+      const root = JSON.parse(
+        readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'),
+      ) as {
+        packageManager: string;
+      };
+      const nodeMajor = readFileSync(new URL('../../../../.nvmrc', import.meta.url), 'utf8').trim();
+      function resolve(name: string, seen = new Set<string>()): Profile {
+        if (seen.has(name)) throw new Error(`Cyclic EAS profile: ${name}`);
+        seen.add(name);
+        const config = eas.build[name];
+        if (!config) throw new Error(`Missing EAS profile: ${name}`);
+        return { ...(config.extends ? resolve(config.extends, seen) : {}), ...config };
+      }
+      const resolved = resolve(profile);
+      expect(resolved.node).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(resolved.node?.split('.')[0]).toBe(nodeMajor);
+      expect(`pnpm@${resolved.pnpm}`).toBe(root.packageManager);
+    },
+  );
+});
+
 describe('Expo tooling security overrides', () => {
   it.each([
     'docker/server.Dockerfile',
