@@ -26,8 +26,15 @@ import {
   type ApprovalRow,
 } from './approvals.js';
 import { setState } from './bot-state.js';
+import { onCoderLoginAction } from './coder-login.js';
+import { onCodingSessionAction } from './coders.js';
 import { threadBotId } from './chats.js';
-import { onUserMessage, runRunStatusHooks, widgetActionHook } from './hooks.js';
+import {
+  onUserMessage,
+  runRunStatusHooks,
+  widgetActionHook,
+  type WidgetActionHook,
+} from './hooks.js';
 import { routeMessage, type RouterOptions } from './router.js';
 
 // Runs (plan 4.3, 5.1, 5.2, 5.6, 5.7). A run is one unit of Bot work in one
@@ -427,7 +434,34 @@ export interface WidgetActionResult {
 export const invalidAction = (message: string) =>
   new DomainError(400, 'INVALID_WIDGET_ACTION', message);
 /** Widget kinds whose actions are settled by the server and start no run. */
-const SETTLED_KINDS = new Set(['approval', 'skill_draft', 'login_request']);
+const SETTLED_KINDS = new Set([
+  'approval',
+  'skill_draft',
+  'login_request',
+  'coding_session',
+  'coder_login',
+]);
+
+/**
+ * Kinds whose waiting run the server resumes, not the owner's action: a
+ * coding session's run waits for the runner to settle it, so Stop or Open
+ * terminal leaves `pending_run_id` in place; a sign-in resumes its waiting
+ * runs from its own hook.
+ */
+const SERVER_RESUMED_KINDS = new Set(['coding_session', 'coder_login']);
+
+/** Effects of the coding agent widgets (services/coders.ts, coder-login.ts), built in. */
+const BUILTIN_HOOKS: Record<string, WidgetActionHook> = {
+  coding_session: (deps, tx, context) => onCodingSessionAction(deps, tx, context),
+  coder_login: async (deps, _tx, { props, action }) => ({
+    after: () =>
+      onCoderLoginAction(
+        deps,
+        props as Parameters<typeof onCoderLoginAction>[1],
+        action as Parameters<typeof onCoderLoginAction>[2],
+      ),
+  }),
+};
 
 export const widgetClosed = (message: string) => new DomainError(409, 'WIDGET_CLOSED', message);
 
@@ -485,7 +519,8 @@ async function applyWidgetAction(
     if (!next.ok) throw next.invalid ? invalidAction(next.error) : widgetClosed(next.error);
     let nextState = next.value;
     // A kind with a server-side effect (a Routine proposal's Confirm) applies it here.
-    const effect = await widgetActionHook(part.kind)?.(deps, tx, {
+    const hook = widgetActionHook(part.kind) ?? BUILTIN_HOOKS[part.kind];
+    const effect = await hook?.(deps, tx, {
       message,
       partIndex,
       props: part.props,
@@ -501,12 +536,13 @@ async function applyWidgetAction(
       // Who decided and when stay with the widget, so a reload still says so.
       nextState = { ...(nextState as ApprovalState), ...decision(approval) };
     }
+    const keepPending = SERVER_RESUMED_KINDS.has(part.kind);
     const values = {
       workspaceId: message.workspaceId,
       messageId,
       partIndex,
       state: nextState as object,
-      pendingRunId: null,
+      pendingRunId: keepPending ? (current?.pendingRunId ?? null) : null,
       updatedAt: new Date(),
     };
     await tx
@@ -514,11 +550,16 @@ async function applyWidgetAction(
       .values(values)
       .onConflictDoUpdate({
         target: [schema.widgetStates.messageId, schema.widgetStates.partIndex],
-        set: { state: values.state, pendingRunId: null, updatedAt: values.updatedAt },
+        set: {
+          state: values.state,
+          pendingRunId: values.pendingRunId,
+          updatedAt: values.updatedAt,
+        },
       });
     return {
       state: nextState,
-      pendingRunId: current?.pendingRunId ?? null,
+      kept: values.pendingRunId,
+      pendingRunId: keepPending ? null : (current?.pendingRunId ?? null),
       approval,
       after: effect ? effect.after : undefined,
     };
@@ -528,7 +569,7 @@ async function applyWidgetAction(
     messageId,
     partIndex,
     state: updated.state,
-    pendingRunId: null,
+    pendingRunId: updated.kept,
   };
   await publishEvent(
     deps.infra.bus,

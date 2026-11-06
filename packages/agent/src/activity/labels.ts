@@ -1,3 +1,5 @@
+import { CODER_AGENT_LABELS, CoderAgentSchema } from '@openbots/shared';
+
 // One-line activity labels (plan 6.2, I3, I4), made from the tool call alone:
 // no model call, so they are instant and cheap. Without a result the label
 // says what is happening ("Editing math.ts", the hover text while a tool
@@ -137,12 +139,27 @@ export function labelFor(
       return `${done ? 'Asked' : 'Asking'} for a sign-in to ${clip(str(a.site) ?? 'a site')}`;
     case 'message_bot':
       return `${done ? 'Messaged' : 'Messaging'} @${str(a.handle)?.replace(/^@/, '') ?? 'a Bot'}`;
+    case 'code_task':
+      return codeTaskLabel(a);
   }
 
   if (isMcpTool(toolName)) return mcpLabel(toolName, context);
   // The GitHub built-in reads like a connector: "GitHub: Create issue".
   if (toolName.startsWith('github_')) return `GitHub: ${sentenceCase(toolName.slice(7))}`;
   return sentenceCase(toolName);
+}
+
+/**
+ * "Coding: openbots-relay with Claude Code" (I9), the same before and after
+ * the session: while it runs the Bot's state shows the server's label.
+ */
+function codeTaskLabel(a: Args) {
+  const repo = (str(a.repo) ?? '').trim().replace(/\.git$/, '');
+  const name = clip(repo.split('/').at(-1) || 'a repository');
+  const agent = CoderAgentSchema.safeParse(a.agent);
+  return agent.success
+    ? `Coding: ${name} with ${CODER_AGENT_LABELS[agent.data]}`
+    : `Coding: ${name}`;
 }
 
 /** Pixel-mode actions, under the plan's names or Anthropic's native ones. */

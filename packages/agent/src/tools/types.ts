@@ -5,6 +5,7 @@ import type { PolicyRun, ToolAnnotations, ToolFacts } from '../policy/index.js';
 import type { ArtifactServices } from './artifacts.js';
 import type { AttachmentServices } from './attachments.js';
 import type { BuiltinServices } from './builtin.js';
+import type { CoderServices } from './coder.js';
 import type { ComputerServices } from './computer.js';
 import type { ConnectorTools } from './connector.js';
 
@@ -129,6 +130,8 @@ export interface ToolContext {
   skills?: SkillServices;
   /** Sign-in requests on the computer; without them `request_login` is not offered. */
   logins?: LoginRequests;
+  /** Coding agents on the computer; without them the coder group offers no tools. */
+  coder?: CoderServices;
   /** Told when a connector needs its owner to sign in again. */
   needsLogin?(notice: LoginNotice): void;
 }

@@ -11,6 +11,7 @@ import {
   devicesExist,
   dueRoutineWorkspaces,
   forEachWorkspace,
+  githubInstallationWorkspaces,
   inWorkspace,
   pairingWorkspace,
   webhookWorkspaces,
@@ -278,6 +279,7 @@ describe('row-level security between organizations', () => {
     const lookups = [
       'openbots_device_workspaces',
       'openbots_devices_exist',
+      'openbots_github_installation_workspaces',
       'openbots_pairing_workspace',
     ];
     const functions = rowsOf<{ name: string; definer: boolean; owner: string }>(
@@ -294,12 +296,64 @@ describe('row-level security between organizations', () => {
     await t.db.delete(schema.devicePairings);
   });
 
+  it("finds a GitHub App installation's organizations without reading a connection's secrets", async () => {
+    await t.db.insert(schema.gitConnections).values([
+      {
+        workspaceId: orgB,
+        ownerId: owner,
+        kind: 'app',
+        installationId: '777',
+        accountLogin: 'acme',
+        secrets: Buffer.from('sealed'),
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      },
+      {
+        workspaceId: orgA,
+        ownerId: owner,
+        kind: 'app',
+        installationId: '777',
+        accountLogin: 'acme',
+      },
+    ]);
+    expect(await t.deps.db.select().from(schema.gitConnections)).toEqual([]);
+    expect(await githubInstallationWorkspaces(t.deps.db, '777')).toEqual([orgB, orgA]);
+    expect(await githubInstallationWorkspaces(t.deps.db, '778')).toEqual([]);
+    // The function's owner reads the columns it needs, and no other (0030).
+    const secrets = await failure(t.db, (tx) =>
+      as(tx, 'openbots_system', null, (q) => q(sql`select secrets from git_connections`)),
+    );
+    expect(secrets).toMatch(/permission denied/);
+    const ids = await as<{ workspace_id: string }>(t.db, 'openbots_system', null, (q) =>
+      q(sql`select workspace_id from git_connections where installation_id = '777'`),
+    );
+    expect((ids as { workspace_id: string }[]).length).toBe(2);
+    await t.db.delete(schema.gitConnections);
+  });
+
+  it('lets the app role keep used GitHub flow nonces with no organization set', async () => {
+    await as<{ n: number }>(t.db, APP_ROLE, null, async (q) => {
+      await q(sql`insert into github_state_nonces (nonce, expires_at) values ('n1', now())`);
+      const [row] = await q(sql`select count(*)::int as n from github_state_nonces`);
+      expect(row!.n).toBe(1);
+      await q(sql`delete from github_state_nonces`);
+    });
+  });
+
   it('lets the app role keep the install-wide relay identity with no organization set', async () => {
     await as<{ n: number }>(t.db, APP_ROLE, null, async (q) => {
       await q(sql`insert into instance_keys (signing_key, public_key) values ('\x01', '\x02')`);
       const [row] = await q(sql`select count(*)::int as n from instance_keys`);
       expect(row!.n).toBe(1);
       await q(sql`delete from instance_keys`);
+    });
+  });
+
+  it("lets the app role keep the install's settings with no organization set (I17)", async () => {
+    await as<{ n: number }>(t.db, APP_ROLE, null, async (q) => {
+      await q(sql`insert into instance_settings (key, value) values ('github_app', '\x01')`);
+      const [row] = await q(sql`select count(*)::int as n from instance_settings`);
+      expect(row!.n).toBe(1);
+      await q(sql`delete from instance_settings`);
     });
   });
 

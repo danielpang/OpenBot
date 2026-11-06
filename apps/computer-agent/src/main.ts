@@ -1,5 +1,6 @@
 // The control agent process inside the computer image (plan 9.3).
 import { existsSync } from 'node:fs';
+import path from 'node:path';
 import type { Server } from 'node:http';
 import { serve } from '@hono/node-server';
 import { chromium } from 'playwright-core';
@@ -7,7 +8,7 @@ import { createApp } from './app.js';
 import { BrowserPool } from './browser.js';
 import { loadConfig, SECRET_ENV_VARS } from './config.js';
 import { CookieSync, readCookieStore, writeCookieStore } from './cookies.js';
-import { dropToBot, layOut, takeToken } from './privileges.js';
+import { dropToBot, layOut, shareRepos, takeToken } from './privileges.js';
 import { createRun } from './proc.js';
 import {
   claimLegacyRemoval,
@@ -15,7 +16,9 @@ import {
   ScreenManager,
   shareDownloads,
 } from './screens.js';
-import { RUNAS_PATH, UNPRIVILEGED, Users } from './users.js';
+import { coderSessions } from './coder.js';
+import { REPOS_REL } from './coder-paths.js';
+import { CODERS_GID, RUNAS_PATH, UNPRIVILEGED, Users } from './users.js';
 import { Wallpaper } from './wallpaper.js';
 import { attachWebSockets } from './ws.js';
 
@@ -49,6 +52,11 @@ if (!privileged) log('not root: every screen and command runs as the agent user'
 // As the bot user, which owns the home: the screens save downloads there.
 await shareDownloads(config.home).catch((err: unknown) =>
   log('downloads directory not shared', { error: String(err) }),
+);
+// As the bot user too, with the coders group it kept: the coding agents'
+// repositories (I2).
+await shareRepos(path.join(config.home, REPOS_REL), privileged ? CODERS_GID : undefined).catch(
+  (err: unknown) => log('repositories directory not shared', { error: String(err) }),
 );
 if (removeLegacy && (await removeLegacyProfiles(config.home))) {
   log('removed the Chromium profiles from before 8.4j');
@@ -98,7 +106,16 @@ const app = createApp({
 const server = serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) =>
   log('listening', { port: info.port, home: config.home }),
 ) as Server;
-const sockets = attachWebSockets(server, { token, home: config.home, screens, users, log });
+const sockets = attachWebSockets(server, {
+  token,
+  home: config.home,
+  screens,
+  users,
+  runtimeDir: config.runtimeDir,
+  stateDir: config.stateDir,
+  coders: coderSessions,
+  log,
+});
 wallpaper.start();
 cookies.start();
 

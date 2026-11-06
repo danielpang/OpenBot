@@ -1,5 +1,13 @@
 import { unwrap } from '@openbots/api-client';
-import type { PolicyDecision, ToolGroupName, ToolPolicy } from '@openbots/shared';
+import {
+  CODER_AGENT_LABELS,
+  CODER_AGENTS,
+  DEFAULT_CODER_ACTIONS,
+  type CoderAgent,
+  type PolicyDecision,
+  type ToolGroupName,
+  type ToolPolicy,
+} from '@openbots/shared';
 import { Button } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -8,6 +16,7 @@ import { api, capabilitiesQuery } from '../../app/api.js';
 import { blockedText, useManaged } from '../../app/deployment.js';
 import { SettingsPanel, SettingsRow, SettingsSubheading } from '../../app/settings-layout.js';
 import { botsQuery, type Bot } from '../bots/queries.js';
+import { codersQuery, reposQuery } from '../coders/api.js';
 import {
   botConnectorsQuery,
   botToolsQuery,
@@ -21,20 +30,26 @@ import { ErrorText } from './fields.js';
 import { useCatalogIcon } from './hooks.js';
 import { ConnectorIcon } from './icons.js';
 import {
+  CODER_ACTION_CLASSES,
+  CODER_ACTION_LABELS,
   computerEnabled,
   connectorEnabled,
   connectorTools,
   DECISION_LABELS,
   defaultText,
+  coderModelError,
   EDITED_GROUPS,
   GROUP_LABELS,
   GROUP_NOTES,
   groupTools,
+  invalidCoderModels,
   parseHosts,
   permissionItems,
   readPolicy,
   serializePolicy,
   setAllowlist,
+  setCoderModel,
+  setCoderPolicy,
   setComputerEnabled,
   setConnectorEnabled,
   setDecision,
@@ -48,7 +63,9 @@ import {
 // gets: run without asking, ask first, or never, for every tool group and
 // every tool. Each setting shows what it inherits, down to the policy
 // engine's own default (`GET /bots/{id}/tools`), so leaving it on Default is
-// a readable choice. The computer can be turned off for the Bot.
+// a readable choice. The computer can be turned off for the Bot. Coding
+// agents (CA9) get a default agent, a model per agent, the repositories they may use and a
+// decision per action class under their group.
 
 export function BotTools({ bot }: { bot: Bot }) {
   const connectors = useQuery(botConnectorsQuery(bot.id));
@@ -107,6 +124,7 @@ export function BotToolsForm({
   function submit(event: FormEvent) {
     event.preventDefault();
     if (mode === 'list' && hosts.errors.length) return;
+    if (invalidCoderModels(policy).length) return;
     save.mutate();
   }
 
@@ -144,6 +162,9 @@ export function BotToolsForm({
             }
           >
             {toolList(group)}
+            {group === 'coder' && computer && policy.groups?.coder !== 'deny' && (
+              <CoderSettings policy={policy} onChange={setPolicy} />
+            )}
           </SettingsRow>
         ))}
       </SettingsPanel>
@@ -281,6 +302,168 @@ export function BotToolsForm({
     </form>
   );
 }
+
+/** The Bot's coding agent settings (CA9): default agent, allowed repositories, action decisions. */
+function CoderSettings({
+  policy,
+  onChange,
+}: {
+  policy: ToolPolicy;
+  onChange(update: (p: ToolPolicy) => ToolPolicy): void;
+}) {
+  const repos = useQuery(reposQuery);
+  const coders = useQuery(codersQuery);
+  const coder = policy.coder ?? {};
+  // Only the agents this build runs; a stored default stays listed so it can be changed.
+  const runnable = coders.data?.agents
+    ? coders.data.agents.filter((a) => a.available !== false).map((a) => a.agent)
+    : coders.error
+      ? CODER_AGENTS
+      : [];
+  const agentChoices = CODER_AGENTS.filter(
+    (agent) => runnable.includes(agent) || agent === coder.defaultAgent,
+  );
+  // A model per agent the Bot can run; a stored one stays listed so it can be cleared.
+  const modelAgents = CODER_AGENTS.filter(
+    (agent) => runnable.includes(agent) || coder.models?.[agent] !== undefined,
+  );
+  const allowed = coder.allowedRepos ?? [];
+  const known = (repos.data?.repos ?? []).map((r) => r.fullName);
+  // A stored repository the owner has since forgotten stays listed, so it can be unticked.
+  const names = [...known, ...allowed.filter((name) => !known.includes(name))];
+
+  function toggleRepo(name: string, on: boolean) {
+    const next = on ? [...allowed, name] : allowed.filter((n) => n !== name);
+    onChange((p) => setCoderPolicy(p, { allowedRepos: next }));
+  }
+
+  function decideAction(
+    action: (typeof CODER_ACTION_CLASSES)[number],
+    d: PolicyDecision | undefined,
+  ) {
+    onChange((p) => {
+      const actions = { ...p.coder?.actions };
+      if (d) actions[action] = d;
+      else delete actions[action];
+      return setCoderPolicy(p, { actions });
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3" data-coder-settings>
+      <label className="flex flex-wrap items-center gap-2">
+        <span className="min-w-0 flex-1 text-foreground">Default agent</span>
+        <select
+          aria-label="Default coding agent"
+          value={coder.defaultAgent ?? ''}
+          onChange={(e) =>
+            onChange((p) =>
+              setCoderPolicy(p, {
+                defaultAgent: (e.target.value || undefined) as CoderAgent | undefined,
+              }),
+            )
+          }
+          className="h-8 max-w-64 rounded-md border bg-background px-2.5 text-xs text-foreground"
+        >
+          <option value="">Not set</option>
+          {agentChoices.map((agent) => (
+            <option key={agent} value={agent}>
+              {CODER_AGENT_LABELS[agent]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-foreground">Model</legend>
+        <span className="text-xs">Leave a field empty to use the agent&apos;s own default.</span>
+        <ul className="flex flex-col gap-2">
+          {modelAgents.map((agent) => {
+            const value = coder.models?.[agent] ?? '';
+            const problem = coderModelError(value);
+            return (
+              <li key={agent} className="flex flex-col gap-1" data-coder-model={agent}>
+                <label className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 text-xs text-foreground">
+                    {CODER_AGENT_LABELS[agent]}
+                  </span>
+                  <input
+                    type="text"
+                    aria-label={`${CODER_AGENT_LABELS[agent]} model`}
+                    aria-invalid={problem ? true : undefined}
+                    placeholder="the agent's default"
+                    value={value}
+                    maxLength={100}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={(e) => onChange((p) => setCoderModel(p, agent, e.target.value))}
+                    className="h-8 w-64 max-w-full rounded-md border bg-background px-2.5 font-mono text-xs text-foreground placeholder:font-sans"
+                  />
+                </label>
+                {problem && (
+                  <span className="text-xs text-destructive" role="alert">
+                    {problem}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-foreground">Allowed repositories</legend>
+        <span className="text-xs">
+          {allowed.length ? 'Only the ticked ones.' : 'None ticked: every repository you keep.'}
+        </span>
+        {names.length ? (
+          <ul className="flex flex-col gap-1" aria-label="Allowed repositories">
+            {names.map((name) => (
+              <li key={name}>
+                <label className="flex items-center gap-2 font-mono text-xs text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={allowed.includes(name)}
+                    onChange={(e) => toggleRepo(name, e.target.checked)}
+                  />
+                  {name}
+                </label>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="text-xs">No repositories yet. Add them on the Computer page.</span>
+        )}
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 text-foreground">What a session may do</legend>
+        <ul className="divide-y rounded-md border bg-background/50">
+          {CODER_ACTION_CLASSES.map((action) => (
+            <li key={action} className={TOOL_ROW} data-coder-action={action}>
+              <span className="min-w-0 flex-1 text-xs text-foreground">
+                {CODER_ACTION_LABELS[action]}
+              </span>
+              <DecisionSelect
+                label={`${CODER_ACTION_LABELS[action]} approval`}
+                value={coder.actions?.[action]}
+                inherited={DECISION_LABELS[DEFAULT_CODER_ACTIONS[action]]}
+                onChange={(d) => decideAction(action, d)}
+              />
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs" data-coder-actions-note>
+          {CODER_ACTIONS_NOTE}
+        </p>
+      </fieldset>
+    </div>
+  );
+}
+
+/** Under the action classes: which agents ask, and that a push always does. */
+export const CODER_ACTIONS_NOTE =
+  'Codex works inside its own sandbox and does not ask for approvals; these settings apply to Claude Code and pi. Pushes always need your approval.';
 
 /** A collapsed list under a row, one tool per line. */
 function ToolDetails({ summary, children }: { summary: ReactNode; children: ReactNode }) {

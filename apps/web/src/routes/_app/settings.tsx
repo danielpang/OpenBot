@@ -27,6 +27,7 @@ function settingsTabs(me: ActiveMe, managed: boolean, localAuth: boolean) {
       : { to: '/settings/account', label: 'Account' },
     { to: '/settings/devices', label: 'Devices' },
     { to: '/settings/models', label: 'Models' },
+    { to: '/settings/coding-agents', label: 'Coding agents' },
     { to: '/settings/events', label: 'Events' },
     ...(isAdmin(me.role) && !managed ? [{ to: '/settings/limits', label: 'Limits' }] : []),
     ...(webExtensions().settingsTabs ?? [])

@@ -7,9 +7,11 @@ import {
   triggerNextRunAt,
 } from '@openbots/routines';
 import {
+  CODING_ROUTINE_TEMPLATES,
   handleFromName,
   RoutineTriggerSchema,
   withHandleSuffix,
+  type CodingRoutineTemplate,
   type EventTrigger,
   type MessagePart,
   type RoutineRunStatus,
@@ -41,6 +43,8 @@ import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
 import { insertRoutineEndpoint } from '../hooks/inbox.js';
+import { generateSigningSecret, generateToken, hashToken } from '../hooks/verify.js';
+import { encryptSecret, keyringFromConfig } from '../secrets.js';
 import { ownerActive } from '../membership.js';
 import { parseTriggerRule } from '../hooks/match.js';
 import { assertBotOwner } from '../ownership.js';
@@ -291,6 +295,150 @@ async function assertEndpointOf(db: Db, botId: string, trigger: RoutineTrigger) 
       ),
     );
   if (!endpoint) throw notFound('Webhook endpoint not found');
+}
+
+// Coding Routine templates (CA11, I19). A template is a GitHub trigger or a
+// weekly schedule plus a prompt; the owner picks the repository (and, for a
+// label trigger, the label). An event trigger waits on that repository and,
+// when a remembered repository of the owner's reaches it through a GitHub App
+// installation, on that installation only, so the App's own webhook routes
+// the delivery here with nothing to paste into GitHub: its endpoint has no
+// token. Without an installation the App never hears of the repository, so
+// the endpoint is a plain GitHub one, as any GitHub trigger made by hand:
+// a token and a GitHub signing secret, returned once, for the owner to add
+// as a webhook on the repository. The template decides the name, prompt and
+// trigger; what a client sends for them beside `template` is ignored.
+
+/** What the owner picks for a template: the repository's `owner/name`, and a label to wait for. */
+export interface TemplateParams {
+  repo: string;
+  label?: string;
+}
+
+/** The Routine a template makes for `params`, before validation; pure. */
+export function routineFromTemplate(
+  template: CodingRoutineTemplate,
+  params: TemplateParams,
+  repoConnectionInstallationId?: string | null,
+): Pick<RoutineInput, 'name' | 'trigger' | 'prompt'> {
+  const { trigger } = template;
+  const label = trigger.type === 'event' ? params.label?.trim() || trigger.label : undefined;
+  const prompt = template.prompt
+    .replaceAll('{{repo}}', params.repo)
+    .replaceAll('{{label}}', label ?? '');
+  const base =
+    label && trigger.type === 'event' && trigger.label && label !== trigger.label
+      ? template.name.replace(trigger.label, label)
+      : template.name;
+  const name = `${base} (${params.repo})`.slice(0, 120);
+  if (trigger.type === 'schedule') {
+    return {
+      name,
+      prompt,
+      trigger: {
+        type: 'schedule',
+        preset: { kind: trigger.preset, day: trigger.day, time: trigger.time },
+      },
+    };
+  }
+  return {
+    name,
+    prompt,
+    trigger: {
+      type: 'event',
+      source: 'github',
+      match: {
+        event: trigger.event,
+        repo: params.repo,
+        ...(label ? { label } : {}),
+        ...(repoConnectionInstallationId ? { installation_id: repoConnectionInstallationId } : {}),
+      },
+    },
+  };
+}
+
+/** The coding Routine template with this id; 400 for an unknown one. */
+export function codingTemplate(id: string): CodingRoutineTemplate {
+  const template = CODING_ROUTINE_TEMPLATES.find((t) => t.id === id);
+  if (!template) throw new DomainError(400, 'UNKNOWN_TEMPLATE', `No Routine template ${id}`);
+  return template;
+}
+
+/**
+ * The GitHub App installation through which one of the owner's remembered
+ * repositories is reached, if any (matched on `owner/name`, ignoring case).
+ */
+export async function repoInstallationId(
+  db: Db,
+  owner: Owner,
+  fullName: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ installationId: schema.gitConnections.installationId })
+    .from(schema.repos)
+    .innerJoin(schema.gitConnections, eq(schema.gitConnections.id, schema.repos.connectionId))
+    .where(
+      and(
+        eq(schema.repos.ownerId, owner.id),
+        eq(schema.repos.workspaceId, owner.workspaceId),
+        sql`lower(${schema.repos.fullName}) = lower(${fullName})`,
+        eq(schema.gitConnections.kind, 'app'),
+        isNotNull(schema.gitConnections.installationId),
+      ),
+    )
+    .orderBy(asc(schema.repos.createdAt))
+    .limit(1);
+  return row?.installationId ?? null;
+}
+
+/** What the owner adds on GitHub for a template Routine without an App installation; shown once. */
+export interface TemplateWebhook {
+  endpointId: string;
+  slug: string;
+  /** The endpoint's token, for the webhook's URL. */
+  token: string;
+  /** The secret GitHub signs deliveries with (the `github` signature preset). */
+  signingSecret: string;
+}
+
+/**
+ * `POST /bots/:id/routines` with a template. The template is authoritative:
+ * the name, prompt and trigger come from it and `params`, whatever else was
+ * sent for them; `skillId`, `enabled` and `timezone` are taken as sent. An
+ * event Routine on a repository with no App installation gets a token and a
+ * GitHub signing secret on its endpoint (see above), returned in `webhook`.
+ */
+export async function createRoutineFromTemplate(
+  deps: Pick<AppDeps, 'config' | 'db'>,
+  owner: Owner,
+  botId: string,
+  input: Partial<RoutineInput> & { template: { id: string; params: TemplateParams } },
+): Promise<{ routine: RoutineRow; webhook: TemplateWebhook | null }> {
+  const { template, name: _name, prompt: _prompt, trigger: _trigger, ...rest } = input;
+  const installationId = await repoInstallationId(deps.db, owner, template.params.repo);
+  const made = routineFromTemplate(codingTemplate(template.id), template.params, installationId);
+  return deps.db.transaction(async (tx) => {
+    const routine = await createRoutine(deps, owner, botId, { ...rest, ...made }, tx);
+    const trigger = routine.trigger as RoutineTrigger;
+    if (trigger.type !== 'event' || !trigger.endpoint_id || installationId) {
+      return { routine, webhook: null };
+    }
+    const token = generateToken();
+    const signingSecret = generateSigningSecret();
+    const [endpoint] = await tx
+      .update(schema.webhookEndpoints)
+      .set({
+        tokenHash: hashToken(token),
+        signature: { preset: 'github' },
+        signatureSecret: encryptSecret(signingSecret, keyringFromConfig(deps.config)),
+      })
+      .where(eq(schema.webhookEndpoints.id, trigger.endpoint_id))
+      .returning({ id: schema.webhookEndpoints.id, slug: schema.webhookEndpoints.slug });
+    return {
+      routine,
+      webhook: { endpointId: endpoint!.id, slug: endpoint!.slug, token, signingSecret },
+    };
+  });
 }
 
 /** The Bot's Routines with their latest run record, oldest first. */

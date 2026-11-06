@@ -2,6 +2,9 @@ import type {
   BrowserActionInput,
   BrowserActionName,
   BrowserResult,
+  CoderClientMessageInput,
+  CoderServerMessage,
+  CoderStartInput,
   CookieSyncResult,
   ExecEvent,
   ExecRequest,
@@ -80,6 +83,73 @@ export interface McpStdioProcess {
   close(): Promise<void>;
 }
 
+/**
+ * What `coder` starts (I3): a coding agent, or its login, as the `coder`
+ * user in the computer. The defaults (`user: 'coder'`, no args, no env, no
+ * pty, the credential helper on) are the agent's.
+ */
+export type CoderLaunch = Omit<CoderStartInput, 'type'>;
+
+type CoderFrame<T extends CoderServerMessage['type']> = Omit<
+  Extract<CoderServerMessage, { type: T }>,
+  'type'
+>;
+
+/** git asks for a credential through the helper; answer with `CoderProcess.credential`. */
+export type CoderCredentialRequest = CoderFrame<'credential_request'>;
+/** The permission MCP server relays an agent's prompt; answer with `CoderProcess.answer`. */
+export type CoderPermissionRequest = CoderFrame<'permission_request'>;
+export type CoderCredentialAnswer = Omit<
+  Extract<CoderClientMessageInput, { type: 'credential' }>,
+  'type'
+>;
+export type CoderPermissionAnswer = Omit<
+  Extract<CoderClientMessageInput, { type: 'answer' }>,
+  'type'
+>;
+export type CoderSignal = Extract<CoderClientMessageInput, { type: 'signal' }>['signal'];
+
+/** How a coding session's process ended. */
+export interface CoderExit {
+  code: number | null;
+  signal: string | null;
+  /** Set when it never ran or the connection to the agent dropped. */
+  error?: string;
+}
+
+export interface CoderHandlers {
+  stdout(data: string): void;
+  stderr(data: string): void;
+  credentialRequest(request: CoderCredentialRequest): void;
+  permissionRequest(request: CoderPermissionRequest): void;
+  /** Called once, when the process ends, fails to start, or the connection to it drops. */
+  exit(info: CoderExit): void;
+  /** The agent's own `error` frame, before the `exit` that follows it. */
+  error?(message: string): void;
+}
+
+/** A coding session's process in the computer, over `WS /coder`. */
+export interface CoderProcess {
+  /** Resolves once the agent says the process runs; rejects with an `AgentError` if it never does. */
+  started: Promise<{ pid: number; sessionDir: string }>;
+  /**
+   * Writes to its stdin (or its terminal, with `pty`); with `end`, closes
+   * stdin after it. Throws once it ended.
+   */
+  write(data: string, options?: { end?: boolean }): void;
+  /**
+   * Closes its stdin: `claude -p` and `codex exec` read a piped stdin to its
+   * end before they start, so a one-shot run calls this once it wrote all.
+   */
+  end(): void;
+  credential(answer: CoderCredentialAnswer): void;
+  answer(decision: CoderPermissionAnswer): void;
+  signal(signal: CoderSignal): void;
+  resize(cols: number, rows: number): void;
+  /** Closes the connection, which stops the process group; resolves once closed. */
+  close(): Promise<void>;
+}
+
 export type PageInfo = BrowserResult;
 export type PageSnapshot = BrowserResult & { snapshot: string };
 
@@ -135,8 +205,18 @@ export interface ComputerAgentClient {
     handlers: McpStdioHandlers,
     options?: { signal?: AbortSignal; timeoutMs?: number },
   ): Promise<McpStdioProcess>;
-  /** The WebSocket URL and headers the server's proxies dial (`/pty`, `/vnc/:n`). */
-  socket(path: `/pty${string}` | `/vnc/${number}`): {
+  /**
+   * Starts a coding session's process over `WS /coder` (I3) and resolves
+   * once the socket is open and `start` sent; `started` says when it runs.
+   * Rejects when the agent refuses the socket or cannot be reached.
+   */
+  coder(
+    start: CoderLaunch,
+    handlers: CoderHandlers,
+    options?: { signal?: AbortSignal; timeoutMs?: number },
+  ): Promise<CoderProcess>;
+  /** The WebSocket URL and headers the server's proxies dial (`/pty`, `/vnc/:n`, `/coder`). */
+  socket(path: `/pty${string}` | `/vnc/${number}` | `/coder${string}`): {
     url: string;
     headers: Record<string, string>;
   };
@@ -307,6 +387,8 @@ export function createAgentClient({
       ),
     mcpStdio: (launch, handlers, options) =>
       openMcpStdio(`${base.replace(/^http/, 'ws')}/mcp/stdio`, auth, launch, handlers, options),
+    coder: (start, handlers, options) =>
+      openCoder(`${base.replace(/^http/, 'ws')}/coder`, auth, start, handlers, options),
     socket: (path) => ({ url: `${base.replace(/^http/, 'ws')}${path}`, headers: { ...auth } }),
   };
 }
@@ -421,6 +503,162 @@ function openMcpStdio(
           new AgentError(502, reason ?? 'The computer closed the connection', 'MCP_STDIO_CLOSED'),
         );
       } else end({ exitCode: null, signal: null, error: 'The connection to the computer closed' });
+    });
+  });
+}
+
+/** How long a coding session's process has to start once the socket is open. */
+const CODER_START_MS = 30_000;
+
+function openCoder(
+  url: string,
+  headers: Record<string, string>,
+  launch: CoderLaunch,
+  handlers: CoderHandlers,
+  { signal, timeoutMs = CODER_START_MS }: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<CoderProcess> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(url, { headers });
+    let opened = false;
+    let refused = false;
+    let started = false;
+    let ended = false;
+    /** The agent's own reason, from an `error` frame, for the close that follows. */
+    let reason: string | undefined;
+    let markStarted!: (info: { pid: number; sessionDir: string }) => void;
+    let failStart!: (error: Error) => void;
+    const startedPromise = new Promise<{ pid: number; sessionDir: string }>((ok, no) => {
+      markStarted = ok;
+      failStart = no;
+    });
+    // Callers that only watch `exit` need not await `started`.
+    startedPromise.catch(() => {});
+    const closed = new Promise<void>((done) => ws.once('close', () => done()));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    /** Before the socket opened: the call itself fails. */
+    const refuse = (error: Error) => {
+      if (opened || refused) return;
+      refused = true;
+      signal?.removeEventListener('abort', abort);
+      failStart(error);
+      reject(error);
+      ws.terminate();
+    };
+    /** After it opened: the session ends, once. */
+    const end = (info: CoderExit) => {
+      if (ended || refused) return;
+      ended = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      if (!started)
+        failStart(new AgentError(502, info.error ?? 'The process did not start', 'CODER_FAILED'));
+      handlers.exit(info);
+    };
+    const abort = () => {
+      if (!opened) refuse(new AgentError(499, 'Cancelled', 'ABORTED'));
+      else {
+        end({ code: null, signal: null, error: 'Cancelled' });
+        ws.close(1000);
+      }
+    };
+    if (signal?.aborted) return abort();
+    signal?.addEventListener('abort', abort, { once: true });
+
+    const send = (frame: CoderClientMessageInput) => {
+      if (ended || ws.readyState !== ws.OPEN) throw new Error('The session is not running');
+      ws.send(JSON.stringify(frame));
+    };
+
+    ws.on('open', () => {
+      if (opened || refused) return;
+      opened = true;
+      ws.send(JSON.stringify({ type: 'start', ...launch } satisfies CoderClientMessageInput));
+      timer = setTimeout(() => {
+        if (started) return;
+        end({ code: null, signal: null, error: 'The computer did not start the process in time' });
+        ws.terminate();
+      }, timeoutMs);
+      resolve({
+        started: startedPromise,
+        write: (data, options) =>
+          send({ type: 'stdin', data, ...(options?.end ? { end: true } : {}) }),
+        end: () => send({ type: 'stdin', data: '', end: true }),
+        credential: (answer) => send({ type: 'credential', ...answer }),
+        answer: (decision) => send({ type: 'answer', ...decision }),
+        signal: (sig) => send({ type: 'signal', signal: sig }),
+        resize: (cols, rows) => send({ type: 'resize', cols, rows }),
+        async close() {
+          if (ws.readyState === ws.CLOSED) return;
+          ws.close(1000);
+          const late = setTimeout(() => ws.terminate(), 5_000);
+          await closed;
+          clearTimeout(late);
+        },
+      });
+    });
+    ws.on('unexpected-response', (_req, res) => {
+      res.resume();
+      refuse(
+        new AgentError(
+          res.statusCode ?? 502,
+          `The computer refused the session (${res.statusCode ?? 'no status'})`,
+          'CODER_REFUSED',
+        ),
+      );
+    });
+    ws.on('message', (raw: RawData) => {
+      let msg: CoderServerMessage;
+      try {
+        msg = JSON.parse(raw.toString()) as CoderServerMessage;
+      } catch {
+        return;
+      }
+      if (ended) return;
+      switch (msg.type) {
+        case 'started':
+          if (started) return;
+          started = true;
+          clearTimeout(timer);
+          markStarted({ pid: msg.pid, sessionDir: msg.session_dir });
+          return;
+        case 'stdout':
+          return handlers.stdout(msg.data);
+        case 'stderr':
+          return handlers.stderr(msg.data);
+        case 'credential_request': {
+          const { type: _, ...request } = msg;
+          return handlers.credentialRequest(request);
+        }
+        case 'permission_request': {
+          const { type: _, ...request } = msg;
+          return handlers.permissionRequest(request);
+        }
+        case 'exit':
+          return end({ code: msg.code, signal: msg.signal });
+        case 'error':
+          reason = msg.message;
+          handlers.error?.(msg.message);
+          if (!started) end({ code: null, signal: null, error: msg.message });
+          return;
+      }
+    });
+    ws.on('error', (error) => {
+      if (!opened)
+        refuse(
+          new AgentError(502, `The computer is unreachable: ${error.message}`, 'CODER_UNREACHABLE'),
+        );
+      else end({ code: null, signal: null, error: error.message });
+    });
+    ws.on('close', () => {
+      if (!opened)
+        refuse(new AgentError(502, 'The computer closed the connection', 'CODER_CLOSED'));
+      else
+        end({
+          code: null,
+          signal: null,
+          error: reason ?? 'The connection to the computer closed',
+        });
     });
   });
 }

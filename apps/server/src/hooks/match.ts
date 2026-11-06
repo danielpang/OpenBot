@@ -92,6 +92,10 @@ export function githubEvents(event: IncomingEvent): GithubEvent[] {
 function githubMatches(rule: Extract<EndpointMatch, { source: 'github' }>, event: IncomingEvent) {
   if (!githubEvents(event).includes(rule.event)) return false;
   const p = obj(event.payload);
+  // An App delivery names its installation; a rule that names one matches only it (I19).
+  if (rule.installation_id && str(obj(p['installation'])['id']) !== rule.installation_id) {
+    return false;
+  }
   if (rule.repo) {
     const repo = str(obj(p['repository'])['full_name']);
     if (!repo || !globMatches(rule.repo, repo)) return false;

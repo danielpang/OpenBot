@@ -268,3 +268,145 @@ export type McpStdioServerMessage =
   | { type: 'stderr'; data: string }
   | { type: 'exit'; exitCode: number | null; signal: string | null }
   | { type: 'error'; message: string };
+
+// --- WS /coder -----------------------------------------------------------------
+//
+// A coding agent session (I3): Claude Code, Codex or pi run as the `coder`
+// user (or `bot`, for the owner's own commands) in the session's worktree.
+// Shaped like WS /mcp/stdio: the first frame is `start`, then `stdin` frames
+// feed the process; the agent answers `started`, relays its output, and ends
+// with `exit` (or `error`). Two round trips run beside the output: the git
+// credential helper's requests (`credential_request`, answered by
+// `credential`) and the permission MCP server's prompts
+// (`permission_request`, answered by `answer`). Closing the socket stops the
+// process group, SIGTERM then SIGKILL, as mcp-stdio.ts does.
+
+/**
+ * Placeholders the agent replaces in `env` values and in the `args` before
+ * the first literal `--` (never after it, where the server puts the prompt)
+ * at start: the session's own directory under the coder state dir, the
+ * session id, and the home directory.
+ */
+export const CODER_ARG_PLACEHOLDERS = ['{{session_dir}}', '{{session_id}}', '{{home}}'] as const;
+export type CoderArgPlaceholder = (typeof CODER_ARG_PLACEHOLDERS)[number];
+
+export const CoderStartSchema = z.strictObject({
+  type: z.literal('start'),
+  /** `coding_sessions.id`: the session directory's name and the server's handle. */
+  session_id: z.string().min(8).max(128),
+  /**
+   * Who runs it: `coder` for the agents and their logins, `bot` for the
+   * owner's own commands, `runner` for the server's own git operations.
+   */
+  user: z.enum(['coder', 'bot', 'runner']).default('coder'),
+  command: z.string().min(1),
+  args: z.array(z.string()).max(256).default([]),
+  /** Relative to the home directory, or absolute under it: the worktree. */
+  cwd: z.string().optional(),
+  /**
+   * Added to the user's environment for this process only (the agent's
+   * config dir, the git identity); never logged. The agent sets
+   * `OPENBOTS_CODER_SESSION` itself, to a secret of its own.
+   */
+  env: z.record(EnvName, z.string()).default({}),
+  /** Runs under a pseudo-terminal (an interactive login), not pipes. */
+  pty: z.boolean().default(false),
+  cols: z.number().int().min(20).max(500).optional(),
+  rows: z.number().int().min(5).max(200).optional(),
+  /** Sets the credential helper up for the process; off for a login. */
+  git_credentials: z.boolean().default(true),
+});
+export type CoderStart = z.infer<typeof CoderStartSchema>;
+/** `start` as the server writes it, before defaults. */
+export type CoderStartInput = z.input<typeof CoderStartSchema>;
+
+export const CoderClientMessageSchema = z.discriminatedUnion('type', [
+  CoderStartSchema,
+  z.strictObject({
+    type: z.literal('stdin'),
+    data: z.string(),
+    /**
+     * Closes stdin after `data`. `claude -p` and `codex exec` read a piped
+     * stdin to its end before they start, so a one-shot run sends this.
+     */
+    end: z.boolean().optional(),
+  }),
+  /** The answer to a `credential_request`: a username and token, or why not. */
+  z.strictObject({
+    type: z.literal('credential'),
+    request_id: z.string().min(1).max(128),
+    username: z.string().optional(),
+    password: z.string().optional(),
+    denied: z.string().max(500).optional(),
+  }),
+  /** The answer to a `permission_request` from the permission MCP server. */
+  z.strictObject({
+    type: z.literal('answer'),
+    request_id: z.string().min(1).max(128),
+    decision: z.enum(['allow', 'deny']),
+    message: z.string().max(2_000).optional(),
+  }),
+  z.strictObject({ type: z.literal('signal'), signal: z.enum(['SIGINT', 'SIGTERM', 'SIGKILL']) }),
+  z.strictObject({
+    type: z.literal('resize'),
+    cols: z.number().int().min(20).max(500),
+    rows: z.number().int().min(5).max(200),
+  }),
+]);
+export type CoderClientMessage = z.infer<typeof CoderClientMessageSchema>;
+/** A client frame as the server writes it, before defaults. */
+export type CoderClientMessageInput = z.input<typeof CoderClientMessageSchema>;
+
+export type CoderServerMessage =
+  | { type: 'started'; pid: number; session_dir: string }
+  | { type: 'stdout'; data: string }
+  | { type: 'stderr'; data: string }
+  | {
+      type: 'credential_request';
+      request_id: string;
+      protocol: string;
+      host: string;
+      path?: string;
+      username?: string;
+    }
+  | { type: 'permission_request'; request_id: string; tool_name: string; input: unknown }
+  | { type: 'exit'; code: number | null; signal: string | null }
+  | { type: 'error'; message: string };
+
+/**
+ * What openbots-git-credential (I5) writes, as one JSON line, to the
+ * session's credential socket (`$OPENBOTS_CODER_CREDENTIAL_SOCKET`): git's
+ * credential `get`, with the secret the agent minted for that process
+ * (`$OPENBOTS_CODER_SESSION`). The agent checks the secret, never the
+ * server's session id, and asks the server with a `credential_request`.
+ */
+export const GitCredentialRequestSchema = z.strictObject({
+  secret: z.string().min(16).max(256),
+  protocol: z.string().min(1).max(32),
+  host: z.string().min(1).max(253),
+  path: z.string().max(2_000).optional(),
+  username: z.string().max(200).optional(),
+});
+export type GitCredentialRequest = z.infer<typeof GitCredentialRequestSchema>;
+
+export interface GitCredentialResponse {
+  username: string;
+  password: string;
+}
+
+// --- WS /pty query parameters (I15) ------------------------------------------
+//
+// Beside `cols` and `rows`, /pty takes `cwd` (relative to the home or
+// absolute under it), `user` (`bot`, the default, or `coder`, for a coding
+// session's terminal) and `preset` (text typed into the terminal without a
+// newline: the session's resume command, for the owner to run). The server
+// validates `cwd` against a session the owner has before it proxies them.
+
+export const PtyOpenSchema = z.object({
+  cols: z.coerce.number().int().min(1).max(1000).optional(),
+  rows: z.coerce.number().int().min(1).max(1000).optional(),
+  cwd: z.string().min(1).max(4_096).optional(),
+  user: z.enum(['bot', 'coder']).default('bot'),
+  preset: z.string().max(4_096).optional(),
+});
+export type PtyOpen = z.infer<typeof PtyOpenSchema>;

@@ -8,6 +8,8 @@ export const Route = createFileRoute('/_app/connectors')({
     ...(typeof search.connector === 'string' ? { connector: search.connector } : {}),
     ...(search.oauth === 'connected' || search.oauth === 'error' ? { oauth: search.oauth } : {}),
     ...(typeof search.message === 'string' ? { message: search.message } : {}),
+    ...(search.github_app === 'created' ? { github_app: 'created' as const } : {}),
+    ...(typeof search.connection === 'string' ? { connection: search.connection } : {}),
   }),
   component: Connectors,
 });

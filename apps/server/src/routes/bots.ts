@@ -132,6 +132,24 @@ const BotUsageSchema = z
     models: z
       .array(z.object({ model: z.string().nullable(), ...usageSums }))
       .openapi({ description: 'By model, most expensive first' }),
+    coding: z
+      .object({
+        sessions: z
+          .number()
+          .int()
+          .openapi({ description: 'Coding sessions started in the window' }),
+        inputTokens: z.number().int(),
+        outputTokens: z.number().int(),
+        costUsd: z.number().nullable().openapi({
+          description:
+            'What API billed sessions reported in US dollars; null when none did. Plan sessions are left out',
+        }),
+        onPlanSessions: z
+          .number()
+          .int()
+          .openapi({ description: 'Sessions billed to a plan sign-in, which cost nothing extra' }),
+      })
+      .openapi('BotCodingUsage'),
   })
   .openapi('BotUsage');
 
@@ -436,6 +454,7 @@ export const botRoutes = createRouter()
           totals: toSums(usage.totals),
           daily: usage.daily.map((d) => ({ date: d.date, ...toSums(d) })),
           models: usage.models.map((m) => ({ model: m.model, ...toSums(m) })),
+          coding: usage.coding,
         },
         200,
       );

@@ -87,6 +87,12 @@ const NAMED_RULES: Record<string, (args: Record<string, unknown>) => DefaultRule
   computer: () => onScreen('computer'),
   web_search: () => read('web_search only reads'),
   web_fetch: (args) => ({ ...read('web_fetch only reads'), fetchHost: hostOf(args.url) }),
+  // Starting a session runs; what the agent does inside it is judged action
+  // by action (`coderActionDecision`), and pushes and pull requests ask (I7, I9).
+  code_task: () =>
+    act(
+      'code_task starts a coding session; pushes, pull requests and risky commands ask inside it',
+    ),
 };
 
 /** Tools whose default depends on the call's arguments, said before any call is made. */

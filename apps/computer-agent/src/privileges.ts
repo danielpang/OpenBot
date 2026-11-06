@@ -4,7 +4,16 @@ import { MIN_TOKEN_LENGTH } from './config.js';
 import { MAX_SCREEN } from './protocol.js';
 import { cookieStoreDir } from './cookies.js';
 import { screenPaths } from './screens.js';
-import { BOT_ID, screenIdentity, STORE, type Identity } from './users.js';
+import { coderPaths, CODER_AGENT_DIRS } from './coder-paths.js';
+import {
+  BOT_ID,
+  CODER,
+  CODERS_GID,
+  RUNNER,
+  screenIdentity,
+  STORE,
+  type Identity,
+} from './users.js';
 
 // What the agent does as root, before it listens (S-7). The container starts
 // it as uid 0 with only CHOWN, SETUID and SETGID, under no-new-privileges.
@@ -65,7 +74,15 @@ export interface Layout {
 
 /**
  * As root: every screen's directories, each its own user's (`screenPaths`),
- * and the shared cookie store's, its own user's (`cookieStoreDir`).
+ * the shared cookie store's, its own user's (`cookieStoreDir`), and the
+ * coding agents' (I2): their config directories, the coder user's alone like
+ * the cookie store, the coder and runner users' homes, each its own user's,
+ * and the runtime directory their sessions' own directories go in
+ * (coder.ts). That one is root's and the coders group's, mode 1730: the
+ * agent (which keeps the group, `dropToBot`) and the coders group's users
+ * may make a directory there and enter it, nobody may list it, so a
+ * session id is never seen there, and the bot user's commands may not enter
+ * it at all.
  */
 export async function layOut({
   runtimeDir,
@@ -78,6 +95,13 @@ export async function layOut({
   await ensureDir(stateDir, ROOT, 0o711);
   await ensureDir(path.join(stateDir, 'screens'), ROOT, 0o711);
   await ensureDir(cookieStoreDir(stateDir), STORE, 0o700);
+  const coders = coderPaths(runtimeDir, stateDir);
+  await ensureDir(coders.stateDir, ROOT, 0o711);
+  for (const agent of CODER_AGENT_DIRS) await ensureDir(coders.configDir(agent), CODER, 0o700);
+  await ensureDir(coders.homeDir, CODER, 0o700);
+  // The runner's (the server's git operations), closed to the coder user.
+  await ensureDir(coders.runnerHomeDir, RUNNER, 0o700);
+  await ensureDir(coders.sessionsDir, { uid: ROOT.uid, gid: CODERS_GID }, 0o1730);
   for (let n = 0; n <= MAX_SCREEN; n++) {
     const paths = screenPaths(runtimeDir, stateDir, n);
     const id = screenIdentity(n);
@@ -90,9 +114,35 @@ export async function layOut({
 /** The part of `process` that changes users, so a test can watch the order. */
 export type Credentials = Required<Pick<NodeJS.Process, 'setgroups' | 'setegid' | 'seteuid'>>;
 
-/** Leaves root's effective uid for the bot user's; root stays the real and saved uid. */
+/**
+ * Leaves root's effective uid for the bot user's; root stays the real and
+ * saved uid. The agent keeps the coders group (and no other) so that it can
+ * make the repositories directory and each coding session's own directory
+ * the coders group's (`shareRepos`, coder.ts). Its children never inherit
+ * it: openbots-runas clears the groups of every program it starts.
+ */
 export function dropToBot(proc = process as Credentials): void {
-  proc.setgroups([]);
+  proc.setgroups([CODERS_GID]);
   proc.setegid(BOT_ID);
   proc.seteuid(BOT_ID);
+}
+
+/**
+ * As the bot user, which owns the home (root without CAP_DAC_OVERRIDE may not
+ * write there): makes the repositories directory (I2). The bot user owns it,
+ * `group` (the coders group, in the image) shares it, and setgid keeps every
+ * clone and worktree under it in that group, so the coder user's agents and
+ * the bot user's own commands both read and write them. Without `group` (a
+ * dev machine) it is just the agent user's.
+ */
+export async function shareRepos(dir: string, group?: number): Promise<void> {
+  await mkdir(dir, { mode: 0o700 }).catch((err: NodeJS.ErrnoException) => {
+    if (err.code !== 'EEXIST') throw err;
+  });
+  const s = await lstat(dir);
+  if (!s.isDirectory()) throw new Error(`${dir} is not a directory`);
+  if (group === undefined) return chmod(dir, 0o775);
+  // The owner may give a file to a group it is in; chmod then keeps setgid.
+  await chown(dir, s.uid, group);
+  await chmod(dir, 0o2775);
 }

@@ -1,15 +1,21 @@
 import { Button, cn } from '@openbots/ui';
 import { useMutation } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
 import { ErrorText } from '../models/error-text.js';
-import { updateComputerSettings, type Computer } from './api.js';
+import { updateComputerSettings, type Computer, type PtyAttach } from './api.js';
 import { FileBrowser } from './files.js';
 import { useComputer, useRestartComputer, useStartComputer, useWriteComputer } from './live.js';
+import { Repositories } from './repos.js';
 import { ComputerIcon } from './status-icon.js';
 import { ComputerTerminal } from './terminal.js';
 
 // The account-level Computer page (K1, K2, K7, plan 9.4): the computer's
 // status from `computer.status`, Start or Restart, how long it idles before it
-// stops, and while it runs a terminal and its files.
+// stops, and while it runs a terminal and its files, then the repositories
+// coding agents work on (GH3). `attach` opens the terminal in a directory,
+// as another user, with a command typed: Open terminal on a coding session
+// links here with it in the search (CA7), and a repository's Open terminal
+// sets it in place.
 
 const STATUS: Record<Computer['status'], string> = {
   creating: 'Setting up',
@@ -24,10 +30,21 @@ const STATUS: Record<Computer['status'], string> = {
 /** The steps that take a while, shown with an indeterminate progress bar. */
 const BUSY = new Set<Computer['status']>(['creating', 'updating', 'starting', 'stopping']);
 
-export function ComputerPage() {
+const attachKey = (attach: PtyAttach | undefined) =>
+  JSON.stringify([attach?.cwd ?? null, attach?.user ?? null, attach?.preset ?? null]);
+
+export function ComputerPage({ attach: linked }: { attach?: PtyAttach } = {}) {
   const { data, isPending, error, statusError } = useComputer();
   const start = useStartComputer();
   const restart = useRestartComputer();
+  // A repository's Open terminal replaces the linked attach until the link changes.
+  const [opened, setOpened] = useState<{ base: string; attach: PtyAttach }>();
+  const attach = opened && opened.base === attachKey(linked) ? opened.attach : linked;
+  const terminal = useRef<HTMLElement>(null);
+  const openTerminal = (cwd: string) => {
+    setOpened({ base: attachKey(linked), attach: { cwd } });
+    terminal.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  };
 
   if (isPending) return null;
   if (error) return <ErrorText error={error} />;
@@ -83,9 +100,15 @@ export function ComputerPage() {
       {computer && <IdleSetting computer={computer} />}
       {status === 'running' && (
         <>
-          <section className="flex flex-col gap-3">
+          <section ref={terminal} className="flex flex-col gap-3">
             <h2 className="font-medium">Terminal</h2>
-            <ComputerTerminal />
+            {attach?.cwd && (
+              <p className="truncate font-mono text-xs text-muted-foreground" data-terminal-cwd>
+                {attach.user ? `${attach.user} in ` : ''}
+                {attach.cwd}
+              </p>
+            )}
+            <ComputerTerminal attach={attach} />
           </section>
           <section className="flex flex-col gap-3">
             <h2 className="font-medium">Files</h2>
@@ -93,6 +116,7 @@ export function ComputerPage() {
           </section>
         </>
       )}
+      <Repositories running={status === 'running'} onOpenTerminal={openTerminal} />
     </div>
   );
 }

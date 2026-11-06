@@ -190,6 +190,41 @@
       "when": 1793678540530,
       "tag": "0026_device_key_per_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793902269893,
+      "tag": "0027_coders",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793907735836,
+      "tag": "0028_git_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793908411216,
+      "tag": "0029_github_app_installations",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793910610550,
+      "tag": "0030_github_app_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793912572521,
+      "tag": "0031_coding_session_diff",
+      "breakpoints": true
     }
   ]
 }

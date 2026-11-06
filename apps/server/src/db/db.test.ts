@@ -24,6 +24,14 @@ const SECTION_4_TABLES = [
   'connector_policy',
   'computers',
   'bot_screens',
+  // Coding agents (I6).
+  'coder_accounts',
+  'repos',
+  'repo_checkouts',
+  'coding_sessions',
+  'coder_logins',
+  // Git connections (I17).
+  'git_connections',
   'skills',
   'bot_skills',
   'routines',
@@ -45,8 +53,12 @@ const SECTION_4_TABLES = [
 
 const AUTH_TABLES = ['users', 'sessions', 'accounts', 'verifications', 'apikeys'];
 const WORKSPACE_TABLES = ['workspaces', 'workspace_members', 'invites'];
-/** The install's own, no organization's (the relay identity, MOBILE_AND_VM_PLAN.md 4.1). */
-const INSTALL_TABLES = ['instance_keys'];
+/**
+ * The install's own, no organization's: the relay identity (MOBILE_AND_VM_PLAN.md
+ * 4.1), the install's sealed settings, such as a self-hoster's GitHub App (I17),
+ * and the GitHub App flows' used nonces.
+ */
+const INSTALL_TABLES = ['instance_keys', 'instance_settings', 'github_state_nonces'];
 
 // postgres.js returns rows as an array; PGlite wraps them in `{ rows }`.
 function rowsOf<T>(result: unknown): T[] {
@@ -244,6 +256,39 @@ describe('database', () => {
     const computer = { workspaceId, ownerId, status: 'stopped' };
     await t.db.insert(schema.computers).values(computer);
     await expect(t.db.insert(schema.computers).values(computer)).rejects.toThrow();
+  });
+
+  it('keeps one connection per App installation per owner, and any number without one (I17)', async () => {
+    const app = { workspaceId, ownerId, kind: 'app', installationId: '42', accountLogin: 'acme' };
+    const [connection] = await t.db.insert(schema.gitConnections).values(app).returning();
+    expect(connection).toMatchObject({ provider: 'github', actAs: 'bot', status: 'connected' });
+    await expect(t.db.insert(schema.gitConnections).values(app)).rejects.toThrow();
+    const token = { workspaceId, ownerId, kind: 'token', accountLogin: 'acme' };
+    await t.db.insert(schema.gitConnections).values([token, token]);
+    await t.db.delete(schema.gitConnections);
+  });
+
+  it('keeps a repository when its connection is forgotten (GH4)', async () => {
+    const [connection] = await t.db
+      .insert(schema.gitConnections)
+      .values({ workspaceId, ownerId, kind: 'app', installationId: '7', accountLogin: 'acme' })
+      .returning();
+    const [repo] = await t.db
+      .insert(schema.repos)
+      .values({
+        workspaceId,
+        ownerId,
+        connectionId: connection!.id,
+        fullName: 'acme/relay',
+        remoteUrl: 'https://github.com/acme/relay.git',
+        foundPath: '/home/bot/src/relay',
+      })
+      .returning();
+    expect(repo).toMatchObject({ lastRemotePushAt: null, foundPath: '/home/bot/src/relay' });
+    await t.db.delete(schema.gitConnections).where(eq(schema.gitConnections.id, connection!.id));
+    const [kept] = await t.db.select().from(schema.repos).where(eq(schema.repos.id, repo!.id));
+    expect(kept!.connectionId).toBeNull();
+    await t.db.delete(schema.repos);
   });
 });
 

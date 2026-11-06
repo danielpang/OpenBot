@@ -5542,6 +5542,2548 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/coders': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The coding agents and how each is signed in on the computer */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description One per agent */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              agents: components['schemas']['CoderAccount'][];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coders/{agent}/login': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start signing an agent in with the vendor's own login
+     * @description Runs the login on the computer (starting it if needed) and fills in `url` (and `deviceCode`) as the CLI prints them: poll `GET` until it does. A sign-in already pending for the agent is returned instead of a second one. pi signs in in its own terminal: 409 says where, then `POST /coders/pi/check`.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          agent: 'claude' | 'codex' | 'pi';
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The sign-in */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              login: components['schemas']['CoderLogin'];
+            };
+          };
+        };
+        /** @description This build cannot run the agent (`CODER_UNSUPPORTED`) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The agent signs in in a terminal on the computer (pi): open it there, then check */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['CoderLoginInTerminal'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coders/{agent}/login/{loginId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** A sign-in: its link, code and status */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          agent: 'claude' | 'codex' | 'pi';
+          loginId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The sign-in */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              login: components['schemas']['CoderLogin'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such sign-in */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    /** Cancel a sign-in */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          agent: 'claude' | 'codex' | 'pi';
+          loginId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Cancelled */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such sign-in */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coders/{agent}/login/{loginId}/code': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Paste the code the vendor gave back into the sign-in
+     * @description The code goes to the login on the computer and is never stored.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          agent: 'claude' | 'codex' | 'pi';
+          loginId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['CoderLoginCode'];
+        };
+      };
+      responses: {
+        /** @description The sign-in */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              login: components['schemas']['CoderLogin'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such sign-in */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The sign-in already ended (`LOGIN_CLOSED`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coders/{agent}/check': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Ask the CLI on the computer whether the agent is signed in
+     * @description Runs the agent's own status check as `coder` (Codex: `codex login status`; pi: `pi auth check` for each of its providers), starting the computer if needed. Signed in, the card reads `subscription` for a plan or `api_key` (with no `providerId`) for a key the CLI holds itself, and pi's sign-ins a Bot is waiting on end signed in; not, it is left as it was.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          agent: 'claude' | 'codex' | 'pi';
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The agent */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              account: components['schemas']['CoderAccount'];
+            };
+          };
+        };
+        /** @description Claude Code has no check (`CODER_CHECK_UNSUPPORTED`), or this build cannot run the agent (`CODER_UNSUPPORTED`) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The computer could not start (`COMPUTER_UNAVAILABLE`) */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coders/{agent}/api-key': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Use a Settings > Models provider's key for the agent
+     * @description Claude Code takes an Anthropic key or an Anthropic compatible endpoint, Codex an OpenAI key or an OpenAI compatible endpoint, pi an Anthropic, OpenAI, Google or xAI key (`CODER_PROVIDER_KINDS`).
+     */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          agent: 'claude' | 'codex' | 'pi';
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['CoderApiKey'];
+        };
+      };
+      responses: {
+        /** @description The agent */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              account: components['schemas']['CoderAccount'];
+            };
+          };
+        };
+        /** @description The agent cannot use this provider (`CODER_PROVIDER_UNSUPPORTED`) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such provider */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coders/{agent}/sign-out': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Sign the agent out on the computer
+     * @description Empties the agent's config directory on the computer, starting it if needed.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          agent: 'claude' | 'codex' | 'pi';
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The agent */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              account: components['schemas']['CoderAccount'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The computer could not sign it out (`CODER_SIGN_OUT_FAILED`) */
+        502: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The computer could not start (`COMPUTER_UNAVAILABLE`) */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coding-sessions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The owner's coding sessions, newest first */
+    get: {
+      parameters: {
+        query?: {
+          botId?: string;
+          status?: 'queued' | 'starting' | 'running' | 'waiting' | 'settled' | 'failed' | 'stopped';
+          limit?: number;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The sessions */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              sessions: components['schemas']['CodingSession'][];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coding-sessions/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One coding session */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The session */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              session: components['schemas']['CodingSession'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such session */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coding-sessions/{id}/log': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The session's full event log
+     * @description Its last 2 MB, empty before the session wrote any. Kept on the server, so it reads while the computer is off.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The log */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/plain': string;
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such session */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coding-sessions/{id}/terminal': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Where Open terminal opens: the worktree, as coder, with the resume command
+     * @description Pass `cwd`, `user` and `preset` to `/api/v1/computer/pty` as query parameters; the proxy checks `cwd` against your sessions again.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The terminal */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['CodingSessionTerminal'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such session */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The session has no worktree (`NO_WORKTREE`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coding-sessions/{id}/stop': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Stop a session */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The session */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              session: components['schemas']['CodingSession'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such session */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The session already ended (`SESSION_ENDED`), is still running (`SESSION_RUNNING`), or its Bot runs another (`CODER_BUSY`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coding-sessions/{id}/continue': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Continue an ended session with another prompt
+     * @description Posts the prompt as your message in the session's chat (in its widget's thread), so the Bot continues the session with `code_task` from a run of its own. The session is returned as it is; it reopens when the Bot's run starts it.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['CodingSessionContinue'];
+        };
+      };
+      responses: {
+        /** @description The session */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              session: components['schemas']['CodingSession'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such session */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The session already ended (`SESSION_ENDED`), is still running (`SESSION_RUNNING`), or its Bot runs another (`CODER_BUSY`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coding-sessions/{id}/discard': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Remove an ended session's worktree and local branch from the computer */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The session */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              session: components['schemas']['CodingSession'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such session */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The session already ended (`SESSION_ENDED`), is still running (`SESSION_RUNNING`), or its Bot runs another (`CODER_BUSY`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/repos': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The remembered repositories and their state on the computer */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Pinned first, then by last use */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              repos: components['schemas']['Repo'][];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    /**
+     * Remember a repository by its git URL
+     * @description https or ssh; a GitHub remote is stored as `https://github.com/owner/name.git`. Cloned onto the computer when the account has one.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['RepoInput'];
+        };
+      };
+      responses: {
+        /** @description The repository */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              repo: components['schemas']['Repo'];
+            };
+          };
+        };
+        /** @description Not a git URL (`INVALID_REPO_URL`) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Already remembered (`REPO_EXISTS`), or too many (`REPO_LIMIT`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/repos/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Forget a repository; its clone stays on the computer unless `deleteFiles`
+     * @description With `deleteFiles=true` the clone is removed first, as `coder`, and only from under ~/repos.
+     */
+    delete: {
+      parameters: {
+        query?: {
+          deleteFiles?: 'true' | 'false';
+        };
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Forgotten; `note` says whether the clone stays on the computer */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['RepoForgotten'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such repository */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The computer is off (`COMPUTER_OFF`), or the clone is outside ~/repos (`NOT_DELETABLE`) or could not be removed (`DELETE_FAILED`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /** Turn cloning again on a new computer on or off, or pin the repository */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['RepoPatch'];
+        };
+      };
+      responses: {
+        /** @description The repository */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              repo: components['schemas']['Repo'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such repository */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  '/api/v1/repos/{id}/clone': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Clone the repository onto the computer again */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The repository */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              repo: components['schemas']['Repo'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such repository */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The account has no computer yet (`NO_COMPUTER`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/repos/{id}/update': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Fetch the repository on the computer */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The repository */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              repo: components['schemas']['Repo'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such repository */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The account has no computer yet (`NO_COMPUTER`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/repos/remember': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Remember repositories picked from a git connection's list
+     * @description Each is cloned onto the computer in the background (GH2). One already remembered is left as it is.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['RememberReposInput'];
+        };
+      };
+      responses: {
+        /** @description Every named repository */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              repos: components['schemas']['Repo'][];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description A name the connection does not list, or not the connection account's (`CONNECTION_NO_ACCESS`) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such connection */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Too many repositories (`REPO_LIMIT`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/repos/found': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Clones on the computer nobody remembered, from the last scan */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description By path */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              found: {
+                path: string;
+                remoteUrl: string;
+                fullName: string | null;
+              }[];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/repos/found/remember': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Remember a clone found on the computer, where it is */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            path: string;
+          };
+        };
+      };
+      responses: {
+        /** @description The repository */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              repo: components['schemas']['Repo'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No clone was found at that path */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Too many repositories (`REPO_LIMIT`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/repos/rescue': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Push unpushed work to rescue branches before the home is lost
+     * @description Queues rescue before loss (GH5); read the results with GET /repos/rescue/{requestId}.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Queued */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              /** Format: uuid */
+              requestId: string;
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/repos/rescue/{requestId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** A rescue's progress and results */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          requestId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Results once `done` */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['RepoRescueStatus'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such rescue, or it is more than ten minutes old */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/repos/scan': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Look for clones on the computer nobody remembered */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Queued: poll /repos/found for what it finds */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              /** @enum {boolean} */
+              queued: true;
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The account has no computer yet (`NO_COMPUTER`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The owner's git connections */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Oldest first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              connections: components['schemas']['GitConnection'][];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/token': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Connect GitHub with a pasted fine-grained token
+     * @description GitHub is asked whose token it is; the token is kept sealed and never returned. A session can push with it once its push is allowed, but cannot fetch with it: that needs the GitHub App.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['GitTokenInput'];
+        };
+      };
+      responses: {
+        /** @description The connection */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              connection: components['schemas']['GitConnection'];
+            };
+          };
+        };
+        /** @description GitHub did not accept the token (`GITHUB_TOKEN_INVALID`) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description GitHub failed or could not be reached */
+        502: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/github-app': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Whether this install has a GitHub App, and where it comes from */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The App, if any */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['GithubAppStatus'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    /**
+     * Forget the GitHub App the manifest flow made
+     * @description Admins only. The App stays on GitHub; delete it there too. Connections through it stop minting tokens.
+     */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Forgotten */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not an admin */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The App comes from GITHUB_APP_* (`GITHUB_APP_FROM_CONFIG`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/github-app/manifest': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start GitHub's manifest flow to make this install's own App
+     * @description Admins only, self-hosted only. The client posts `manifest` (as JSON, in a form field named `manifest`) to `url`. GitHub then redirects to the manifest callback. With `organization`, the App is made under that GitHub organization so it can be installed there; without, on the admin personal account, where only that account can install it.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: {
+        content: {
+          'application/json': components['schemas']['GithubAppManifestInput'];
+        };
+      };
+      responses: {
+        /** @description Where to post the manifest */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['GithubAppManifest'];
+          };
+        };
+        /** @description OPENBOTS_PUBLIC_URL is not https (`PUBLIC_URL_REQUIRED`), or a bad organization */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not an admin */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description An App already exists, or the deployment is managed */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/github-app/manifest/callback': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GitHub's redirect after the App was made: stores it */
+    get: {
+      parameters: {
+        query?: {
+          code?: string;
+          state?: string;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description To `/connectors?github_app=created` */
+        302: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Unknown, expired or used state, or no code */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/html': string;
+          };
+        };
+        /** @description Not signed in (managed) */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/html': string;
+          };
+        };
+        /** @description Started by another account, or the user is no longer an admin */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/html': string;
+          };
+        };
+        /** @description An App exists already */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/html': string;
+          };
+        };
+        /** @description GitHub failed */
+        502: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/html': string;
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/github-app/install': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Send the browser to the App's install page */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description To github.com/apps/<slug>/installations/new */
+        302: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description There is no App yet (`GITHUB_APP_MISSING`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/github-app/callback': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GitHub's redirect after the App was installed: makes the connection */
+    get: {
+      parameters: {
+        query?: {
+          installation_id?: string;
+          setup_action?: string;
+          state?: string;
+          code?: string;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description To `/connectors?connection=<id>` */
+        302: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Unknown, expired or used state, no installation or no code */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/html': string;
+          };
+        };
+        /** @description Not signed in (managed) */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/html': string;
+          };
+        };
+        /** @description Started by another account, or the installation is not the user's */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/html': string;
+          };
+        };
+        /** @description The App has no OAuth client */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/html': string;
+          };
+        };
+        /** @description GitHub failed */
+        502: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'text/html': string;
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/{id}/reauthorize': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Authorize again on GitHub, so the App connection's repositories are read again
+     * @description App connections only. GitHub sends the browser back to the install callback, which reads the repositories the owner reaches in the installation again.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description To github.com/login/oauth/authorize */
+        302: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such connection */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not an App connection (`NO_INSTALLATION`), or the App has no OAuth client */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/{id}/repositories': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Every repository the connection reaches (the picker, GH2) */
+    get: {
+      parameters: {
+        query?: {
+          q?: string;
+        };
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Filtered by `q` on the full name */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              repositories: components['schemas']['RemoteRepo'][];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such connection */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description GitHub failed or could not be reached */
+        502: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Forget the connection; its repositories stay remembered */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Forgotten */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such connection */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    /** Who opens pull requests through the connection (GH8) */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['GitConnectionUpdate'];
+        };
+      };
+      responses: {
+        /** @description The connection */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              connection: components['schemas']['GitConnection'];
+            };
+          };
+        };
+        /** @description Not an App connection (`ACT_AS_APP_ONLY`) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such connection */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The owner has no GitHub sign-in to open pull requests with (`ACT_AS_NEEDS_SIGN_IN`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    trace?: never;
+  };
+  '/api/v1/git-connections/{id}/sync': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** List the repositories again and refresh the status */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The connection */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['GitConnectionSync'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such connection */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description GitHub failed or could not be reached */
+        502: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/routines/templates': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The coding Routine templates (CA11), for `template` on create */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Templates */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              templates: components['schemas']['CodingRoutineTemplate'][];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/bots/{id}/routines': {
     parameters: {
       query?: never;
@@ -5615,10 +8157,10 @@ export interface paths {
             [name: string]: unknown;
           };
           content: {
-            'application/json': components['schemas']['Routine'];
+            'application/json': components['schemas']['CreatedRoutine'];
           };
         };
-        /** @description INVALID_SCHEDULE or EMPTY_ROUTINE */
+        /** @description INVALID_SCHEDULE, EMPTY_ROUTINE or UNKNOWN_TEMPLATE */
         400: {
           headers: {
             [name: string]: unknown;
@@ -8347,6 +10889,8 @@ export interface components {
           connector?: 'auto' | 'ask' | 'deny';
           /** @enum {string} */
           computer?: 'auto' | 'ask' | 'deny';
+          /** @enum {string} */
+          coder?: 'auto' | 'ask' | 'deny';
         };
         triggers?: {
           message?: {
@@ -8363,6 +10907,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8382,6 +10928,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8401,6 +10949,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8420,6 +10970,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8439,6 +10991,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8458,6 +11012,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8477,6 +11033,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8496,6 +11054,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8503,6 +11063,31 @@ export interface components {
           };
         };
         httpAllowlist?: string[];
+        coder?: {
+          enabled?: boolean;
+          /** @enum {string} */
+          defaultAgent?: 'claude' | 'codex' | 'pi';
+          actions?: {
+            /** @enum {string} */
+            push?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            pr?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            outside_worktree?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            install?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            destructive?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            other?: 'auto' | 'ask' | 'deny';
+          };
+          allowedRepos?: string[];
+          models?: {
+            claude?: string;
+            codex?: string;
+            pi?: string;
+          };
+        };
       };
       pinned: boolean;
       hidden: boolean;
@@ -8580,6 +11165,8 @@ export interface components {
           connector?: 'auto' | 'ask' | 'deny';
           /** @enum {string} */
           computer?: 'auto' | 'ask' | 'deny';
+          /** @enum {string} */
+          coder?: 'auto' | 'ask' | 'deny';
         };
         triggers?: {
           message?: {
@@ -8596,6 +11183,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8615,6 +11204,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8634,6 +11225,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8653,6 +11246,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8672,6 +11267,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8691,6 +11288,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8710,6 +11309,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8729,6 +11330,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8736,6 +11339,31 @@ export interface components {
           };
         };
         httpAllowlist?: string[];
+        coder?: {
+          enabled?: boolean;
+          /** @enum {string} */
+          defaultAgent?: 'claude' | 'codex' | 'pi';
+          actions?: {
+            /** @enum {string} */
+            push?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            pr?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            outside_worktree?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            install?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            destructive?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            other?: 'auto' | 'ask' | 'deny';
+          };
+          allowedRepos?: string[];
+          models?: {
+            claude?: string;
+            codex?: string;
+            pi?: string;
+          };
+        };
       };
     };
     UpdateBot: {
@@ -8785,6 +11413,8 @@ export interface components {
           connector?: 'auto' | 'ask' | 'deny';
           /** @enum {string} */
           computer?: 'auto' | 'ask' | 'deny';
+          /** @enum {string} */
+          coder?: 'auto' | 'ask' | 'deny';
         };
         triggers?: {
           message?: {
@@ -8801,6 +11431,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8820,6 +11452,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8839,6 +11473,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8858,6 +11494,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8877,6 +11515,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8896,6 +11536,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8915,6 +11557,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8934,6 +11578,8 @@ export interface components {
               connector?: 'auto' | 'ask' | 'deny';
               /** @enum {string} */
               computer?: 'auto' | 'ask' | 'deny';
+              /** @enum {string} */
+              coder?: 'auto' | 'ask' | 'deny';
             };
             tools?: {
               [key: string]: 'auto' | 'ask' | 'deny';
@@ -8941,6 +11587,31 @@ export interface components {
           };
         };
         httpAllowlist?: string[];
+        coder?: {
+          enabled?: boolean;
+          /** @enum {string} */
+          defaultAgent?: 'claude' | 'codex' | 'pi';
+          actions?: {
+            /** @enum {string} */
+            push?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            pr?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            outside_worktree?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            install?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            destructive?: 'auto' | 'ask' | 'deny';
+            /** @enum {string} */
+            other?: 'auto' | 'ask' | 'deny';
+          };
+          allowedRepos?: string[];
+          models?: {
+            claude?: string;
+            codex?: string;
+            pi?: string;
+          };
+        };
       };
       /** @description Make it the main Bot, which stops any other being it, or stop it being that */
       isMain?: boolean;
@@ -8996,6 +11667,17 @@ export interface components {
         /** @description Runs whose model has no pricing, which the estimate leaves out */
         unpricedRuns: number;
       }[];
+      coding: components['schemas']['BotCodingUsage'];
+    };
+    BotCodingUsage: {
+      /** @description Coding sessions started in the window */
+      sessions: number;
+      inputTokens: number;
+      outputTokens: number;
+      /** @description What API billed sessions reported in US dollars; null when none did. Plan sessions are left out */
+      costUsd: number | null;
+      /** @description Sessions billed to a plan sign-in, which cost nothing extra */
+      onPlanSessions: number;
     };
     Chat: {
       /** Format: uuid */
@@ -9678,7 +12360,7 @@ export interface components {
       /** @description The name in `tool_policy.tools`: `<connector>__<tool>` for MCP */
       name: string;
       /** @enum {string} */
-      group: 'conversation' | 'artifacts' | 'builtin' | 'connector' | 'computer';
+      group: 'conversation' | 'artifacts' | 'builtin' | 'connector' | 'computer' | 'coder';
       /**
        * Format: uuid
        * @description The owner's connector that provides it (MCP or built-in), if any
@@ -9805,6 +12487,318 @@ export interface components {
        */
       url?: string;
     };
+    CoderAccount: {
+      /** @enum {string} */
+      agent: 'claude' | 'codex' | 'pi';
+      /** @description The agent's name, like "Claude Code" */
+      label: string;
+      /** @enum {string} */
+      authKind: 'none' | 'subscription' | 'api_key';
+      /** @description The signed-in account as the agent names it: an email or plan */
+      accountLabel: string | null;
+      /** Format: date-time */
+      signedInAt: string | null;
+      /** @description The CLI on the computer */
+      version: string | null;
+      lastError: string | null;
+      /**
+       * Format: uuid
+       * @description The provider an api_key account uses
+       */
+      providerId: string | null;
+      /** @description This build can run the agent */
+      available: boolean;
+      /** @description Never signed in, or a plan sign-in lapsed on the computer (`lastError` says so): offer Sign in again. Never for an `api_key` account. */
+      needsSignIn: boolean;
+      /**
+       * @description What `lastError` is about: a lapsed sign-in, a provider key that was refused, or something else; null without one
+       * @enum {string|null}
+       */
+      lastErrorKind: 'sign_in' | 'key' | 'other' | null;
+    };
+    CoderLogin: {
+      /** Format: uuid */
+      id: string;
+      /** @enum {string} */
+      agent: 'claude' | 'codex' | 'pi';
+      /** @enum {string} */
+      status: 'pending' | 'awaiting_code' | 'signed_in' | 'failed' | 'expired' | 'cancelled';
+      /** @description Where the owner signs in */
+      url: string | null;
+      /** @description A code to enter at `url` (Codex) */
+      deviceCode: string | null;
+      accountLabel: string | null;
+      error: string | null;
+      /** Format: date-time */
+      expiresAt: string | null;
+    };
+    CoderLoginInTerminal: {
+      /** @enum {string} */
+      code: 'CODER_LOGIN_IN_TERMINAL';
+      message: string;
+      /** @description Open `/api/v1/computer/pty` with these as query parameters, sign in there, then `POST /coders/{agent}/check` */
+      terminal: {
+        cwd: string;
+        /** @enum {string} */
+        user: 'coder';
+        /** @description Typed into the terminal, not run */
+        preset: string;
+      };
+    };
+    CoderLoginCode: {
+      code: string;
+    };
+    CoderApiKey: {
+      /** Format: uuid */
+      providerId: string;
+    };
+    CodingSession: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      botId: string;
+      /** Format: uuid */
+      runId: string | null;
+      /** Format: uuid */
+      chatId: string | null;
+      /** Format: uuid */
+      messageId: string | null;
+      partIndex: number | null;
+      /** @enum {string} */
+      agent: 'claude' | 'codex' | 'pi';
+      /** Format: uuid */
+      repoId: string | null;
+      repoFullName: string | null;
+      branch: string | null;
+      base: string | null;
+      /** @enum {string} */
+      mode: 'plan' | 'edit' | 'pr';
+      /** @enum {string} */
+      status: 'queued' | 'starting' | 'running' | 'waiting' | 'settled' | 'failed' | 'stopped';
+      pushAllowed: boolean;
+      vendorSessionId: string | null;
+      usage: components['schemas']['CoderUsage'];
+      summary: string | null;
+      changedFiles: components['schemas']['CoderChangedFile'][];
+      commits: components['schemas']['CoderCommit'][];
+      prUrl: string | null;
+      /**
+       * Format: uuid
+       * @description The Artifact holding `git diff <base>...HEAD` once the session settled with commits (View diff); Discard leaves it
+       */
+      diffArtifactId: string | null;
+      error: string | null;
+      worktreePath: string | null;
+      /** Format: date-time */
+      startedAt: string | null;
+      /** Format: date-time */
+      finishedAt: string | null;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    /** @description Tokens, cost and billing */
+    CoderUsage: {
+      input_tokens: number;
+      output_tokens: number;
+      cost_usd?: number;
+      /** @enum {string} */
+      billed: 'subscription' | 'api' | 'unknown';
+    } | null;
+    /** @description A changed file */
+    CoderChangedFile: {
+      path: string;
+      added: number;
+      removed: number;
+      /** @enum {string} */
+      kind: 'edit' | 'create' | 'delete';
+    };
+    /** @description A commit */
+    CoderCommit: {
+      sha: string;
+      title: string;
+    };
+    CodingSessionTerminal: {
+      cwd: string;
+      /** @enum {string} */
+      user: 'coder';
+      /** @description Typed into the terminal, not run */
+      preset: string;
+    };
+    CodingSessionContinue: {
+      prompt: string;
+    };
+    Repo: {
+      /** Format: uuid */
+      id: string;
+      fullName: string;
+      remoteUrl: string;
+      defaultBranch: string;
+      keepCloned: boolean;
+      pinned: boolean;
+      description: string | null;
+      /** Format: date-time */
+      lastUsedAt: string | null;
+      /**
+       * Format: date-time
+       * @description The last commit on the remote default branch, from the last fetch
+       */
+      lastRemotePushAt: string | null;
+      /** @description A clone found on the computer that is not remembered yet (GH6) */
+      found: boolean;
+      checkout: components['schemas']['RepoCheckout'];
+    };
+    /** @description On the owner computer; null until it is cloned there */
+    RepoCheckout: {
+      /** @description `cloning`, `updating`, `ready`, `behind`, `dirty`, `missing` or `error` */
+      state: string;
+      path: string;
+      ahead: number;
+      behind: number;
+      headSha: string | null;
+      /** Format: date-time */
+      lastFetchAt: string | null;
+      error: string | null;
+      /**
+       * Format: date-time
+       * @description When the state last changed: a checkout `cloning` or `updating` for 30 minutes is stuck
+       */
+      updatedAt: string;
+    } | null;
+    RepoInput: {
+      remoteUrl: string;
+      /** @description The URL's own `owner/name`; another one is refused */
+      fullName?: string;
+      defaultBranch?: string;
+      keepCloned?: boolean;
+    };
+    RepoForgotten: {
+      filesDeleted: boolean;
+      path: string | null;
+      note: string;
+    };
+    RememberReposInput: {
+      fullNames: string[];
+      /** Format: uuid */
+      connectionId: string;
+    };
+    RepoRescueStatus: {
+      /** @enum {string} */
+      status: 'running' | 'done';
+      results: {
+        /** Format: uuid */
+        repoId: string;
+        fullName: string;
+        branch: string | null;
+        pushed: boolean;
+        note: string;
+      }[];
+    };
+    RepoPatch: {
+      keepCloned?: boolean;
+      pinned?: boolean;
+    };
+    GitConnection: {
+      /** Format: uuid */
+      id: string;
+      /** @enum {string} */
+      provider: 'github';
+      /** @enum {string} */
+      kind: 'app' | 'oauth' | 'token';
+      installationId: string | null;
+      accountLogin: string;
+      /** @enum {string|null} */
+      accountType: 'user' | 'organization' | null;
+      /**
+       * @description `bot` opens pull requests as the App, `owner` with the owner OAuth token
+       * @enum {string}
+       */
+      actAs: 'bot' | 'owner';
+      /** @enum {string} */
+      status: 'connected' | 'needs_reinstall' | 'revoked' | 'error';
+      /** Format: date-time */
+      lastSyncedAt: string | null;
+      repoCount: number;
+      error: string | null;
+      /**
+       * Format: date-time
+       * @description When an App connection's reach was last read with the owner's own GitHub authorization; null when it must be authorized again
+       */
+      repositoriesSyncedAt?: string | null;
+    };
+    GitTokenInput: {
+      token: string;
+    };
+    GithubAppStatus: {
+      /** @description This install has a GitHub App */
+      configured: boolean;
+      /**
+       * @description `config` from GITHUB_APP_*, `instance` made through the manifest flow
+       * @enum {string|null}
+       */
+      source: 'config' | 'instance' | null;
+      slug: string | null;
+      /** @description GET /git-connections/github-app/install leads somewhere */
+      installUrlAvailable: boolean;
+      /** @description POST /git-connections/github-app/manifest may make one (self-hosted, no App yet, an https public URL) */
+      manifestAvailable: boolean;
+      /** @description OPENBOTS_PUBLIC_URL is https, which GitHub needs to reach the install; without it there is no manifest flow */
+      publicUrlOk: boolean;
+    };
+    GithubAppManifest: {
+      /** Format: uri */
+      url: string;
+      manifest: {
+        [key: string]: unknown;
+      };
+    };
+    GithubAppManifestInput: {
+      /** @description The GitHub organization to make the App under */
+      organization?: string;
+    };
+    RemoteRepo: {
+      fullName: string;
+      private: boolean;
+      defaultBranch: string;
+      description: string | null;
+      /** Format: date-time */
+      pushedAt: string | null;
+      remembered: boolean;
+    };
+    GitConnectionUpdate: {
+      /** @enum {string} */
+      actAs: 'bot' | 'owner';
+    };
+    GitConnectionSync: {
+      connection: components['schemas']['GitConnection'];
+      /** @description The repository list can only grow after the owner authorizes again (GET /git-connections/{id}/reauthorize) */
+      needsReauthorize: boolean;
+    };
+    CodingRoutineTemplate: {
+      /** @enum {string} */
+      id: 'fix-labeled-issues' | 'review-pull-requests' | 'weekly-dependency-update';
+      name: string;
+      description: string;
+      trigger:
+        | {
+            /** @enum {string} */
+            type: 'event';
+            /** @enum {string} */
+            source: 'github';
+            /** @enum {string} */
+            event: 'label_added' | 'pr_opened';
+            label?: string;
+          }
+        | {
+            /** @enum {string} */
+            type: 'schedule';
+            /** @enum {string} */
+            preset: 'weekly';
+            day: number;
+            time: string;
+          };
+      /** @description `{{repo}}` and `{{label}}` are filled in on create */
+      prompt: string;
+    };
     Routine: {
       /** Format: uuid */
       id: string;
@@ -9911,17 +12905,32 @@ export interface components {
       resultMessageId: string | null;
       exception: string | null;
     } | null;
+    CreatedRoutine: components['schemas']['Routine'] & {
+      /** @description A template Routine on a repository without a GitHub App installation: the webhook the owner adds on the repository, shown once */
+      webhook?: {
+        /** Format: uuid */
+        endpointId: string;
+        /** @description The Payload URL to add on GitHub */
+        url: string;
+        /** @description Shown once; the URL works with it */
+        token: string;
+        /** @description The webhook secret to add on GitHub */
+        signingSecret: string;
+      };
+    };
     CreateRoutine: {
-      name: string;
-      trigger: components['schemas']['RoutineTriggerInput'];
+      /** @description Required without a template */
+      name?: string;
+      trigger?: components['schemas']['RoutineTriggerInput'];
       prompt?: string;
       /** Format: uuid */
       skillId?: string | null;
       enabled?: boolean;
       /** @description IANA name; defaults to UTC */
       timezone?: string;
+      template?: components['schemas']['RoutineFromTemplate'];
     };
-    /** @description A schedule needs only its preset; the server derives the cron */
+    /** @description Required without a template */
     RoutineTriggerInput:
       | {
           /** @enum {string} */
@@ -9972,9 +12981,18 @@ export interface components {
             [key: string]: unknown;
           };
         };
+    /** @description Fills the trigger, prompt and name from a coding template (`GET /routines/templates`). The template decides them: a name, trigger or prompt sent beside it is ignored. */
+    RoutineFromTemplate: {
+      /** @enum {string} */
+      id: 'fix-labeled-issues' | 'review-pull-requests' | 'weekly-dependency-update';
+      params: {
+        repo: string;
+        label?: string;
+      };
+    };
     UpdateRoutine: {
       name?: string;
-      trigger?: components['schemas']['RoutineTriggerInput'];
+      trigger?: components['schemas']['RoutineTriggerInput'] & unknown;
       prompt?: string;
       /** Format: uuid */
       skillId?: string | null;
@@ -10144,6 +13162,7 @@ export interface components {
             | 'label_added'
             | 'comment_contains';
           repo?: string;
+          installation_id?: string;
           label?: string;
           text?: string;
         }
@@ -10183,6 +13202,8 @@ export interface components {
         connector?: 'auto' | 'ask' | 'deny';
         /** @enum {string} */
         computer?: 'auto' | 'ask' | 'deny';
+        /** @enum {string} */
+        coder?: 'auto' | 'ask' | 'deny';
       };
       tools?: {
         [key: string]: 'auto' | 'ask' | 'deny';

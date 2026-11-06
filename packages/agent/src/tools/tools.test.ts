@@ -13,7 +13,7 @@ import {
   type BuiltinServices,
 } from './builtin.js';
 import { ConnectorNeedsLogin, type ConnectorToolEntry, type ConnectorTools } from './connector.js';
-import { everyToolDefault, toolFacts, toolsFor } from './index.js';
+import { everyToolDefault, TOOL_GROUPS, toolFacts, toolsFor } from './index.js';
 import { proposeRoutine } from './routines.js';
 import { SEARCH_TOOLS, TOOL_SEARCH_THRESHOLD } from './search.js';
 import type { LoginNotice, ToolContext } from './types.js';
@@ -316,7 +316,13 @@ describe('everyToolDefault (T5)', () => {
   it("lists every non-MCP tool with the engine's default, as a run would decide it", () => {
     const listed = new Map(everyToolDefault().map((t) => [t.name, t]));
     const groups = new Set([...listed.values()].map((t) => t.group));
-    expect([...groups].sort()).toEqual(['artifacts', 'builtin', 'computer', 'conversation']);
+    expect([...groups].sort()).toEqual([
+      'artifacts',
+      'builtin',
+      'coder',
+      'computer',
+      'conversation',
+    ]);
     for (const name of ['message_bot', 'use_skill', 'propose_routine', 'publish_artifact']) {
       expect(listed.get(name)?.decision, name).toBe('auto');
     }
@@ -345,6 +351,16 @@ describe('everyToolDefault (T5)', () => {
       const evaluation = policy.evaluate(run, name, {}) as { decision: string };
       expect(listedTool.decision, name).toBe(evaluation.decision);
     }
+  });
+});
+
+describe('coder tools (I9)', () => {
+  it('registers the coder group after the computer group, with code_task running by default', () => {
+    const names = TOOL_GROUPS.map((g) => g.name);
+    expect(names.slice(-2)).toEqual(['computer', 'coder']);
+    expect(everyToolDefault().filter((t) => t.group === 'coder')).toEqual([
+      expect.objectContaining({ name: 'code_task', decision: 'auto', byArguments: false }),
+    ]);
   });
 });
 

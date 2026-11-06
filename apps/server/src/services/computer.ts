@@ -16,7 +16,13 @@ import {
   type ComputerProvider,
   type ComputerRef,
 } from '@openbots/computer';
-import { COMPUTER_OFF, wsEvent, type ComputerStatus } from '@openbots/shared';
+import {
+  CODER_CONTROL_CHANNEL,
+  COMPUTER_OFF,
+  wsEvent,
+  type CoderControl,
+  type ComputerStatus,
+} from '@openbots/shared';
 import {
   and,
   asc,
@@ -40,6 +46,7 @@ import { assertBotOwner } from '../ownership.js';
 import { decryptSecretString, encryptSecret, keyringFromConfig } from '../secrets.js';
 import { recordAudit, SYSTEM_ACTOR, type AuditActor } from './audit.js';
 import { setState } from './bot-state.js';
+import { enqueueCoderJob } from './coder-jobs.js';
 import { MCP_CONTROL_CHANNEL, type McpControl } from './mcp-control.js';
 
 // The account's computer (plan 4.5, 9; K1 to K7). One `computers` row per
@@ -485,12 +492,26 @@ async function start(deps: AppDeps, owner: Owner, by: AuditActor): Promise<Start
     .where(eq(schema.botScreens.computerId, row.id));
   row = await setStatus(deps, row, 'running', { lastUsedAt: new Date(), spec: settledSpec(row) });
   await auditComputer(deps, row, by, 'computer.start', { durationMs: Date.now() - began });
+  queueRepoJobs(deps, row.id);
   // The hour's wallpaper (K5) on the computer's own clock (its TZ); the agent
   // keeps it current from here.
   agentFor(deps, row)
     .setWallpaper()
     .catch((error: unknown) => deps.logger.warn({ err: error }, 'wallpaper failed'));
   return { computer: row, durationMs: Date.now() - began, updated };
+}
+
+/**
+ * After a start (GH4, GH6): remembered repositories a new home volume lost
+ * are cloned again, then clones made by hand are listed. Queued, never
+ * waited on; a failure to queue does not fail the start.
+ */
+function queueRepoJobs(deps: AppDeps, computerId: string) {
+  enqueueCoderJob(deps, { kind: 'reconcile', computerId })
+    .then(() => enqueueCoderJob(deps, { kind: 'scan', computerId }))
+    .catch((error: unknown) =>
+      deps.logger.warn({ err: error, computerId }, 'queueing repository jobs failed'),
+    );
 }
 
 /** What `wakeComputer` did. */
@@ -668,6 +689,12 @@ async function stopMachine(
     })
     .catch((error: unknown) =>
       deps.logger.warn({ err: error, computerId: row.id }, 'stopping stdio connectors failed'),
+    );
+  // And its coding sessions, wherever their jobs run (I12).
+  await deps.infra.bus
+    .publish<CoderControl>(CODER_CONTROL_CHANNEL, { type: 'stop_all', computerId: row.id })
+    .catch((error: unknown) =>
+      deps.logger.warn({ err: error, computerId: row.id }, 'stopping coding sessions failed'),
     );
   try {
     await provider(deps).stop(refOf(deps, row));

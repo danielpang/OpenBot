@@ -1060,6 +1060,10 @@
                   "computer": {
                     "type": "string",
                     "enum": ["auto", "ask", "deny"]
+                  },
+                  "coder": {
+                    "type": "string",
+                    "enum": ["auto", "ask", "deny"]
                   }
                 }
               },
@@ -1093,6 +1097,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -1137,6 +1145,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -1177,6 +1189,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -1221,6 +1237,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -1261,6 +1281,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -1305,6 +1329,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -1345,6 +1373,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -1389,6 +1421,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -1411,6 +1447,80 @@
                   "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
                 },
                 "maxItems": 200
+              },
+              "coder": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "defaultAgent": {
+                    "type": "string",
+                    "enum": ["claude", "codex", "pi"]
+                  },
+                  "actions": {
+                    "type": "object",
+                    "properties": {
+                      "push": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "pr": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "outside_worktree": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "install": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "destructive": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "other": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      }
+                    }
+                  },
+                  "allowedRepos": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 200,
+                      "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+                    },
+                    "maxItems": 200
+                  },
+                  "models": {
+                    "type": "object",
+                    "properties": {
+                      "claude": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                      },
+                      "codex": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                      },
+                      "pi": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
@@ -1629,6 +1739,10 @@
                   "computer": {
                     "type": "string",
                     "enum": ["auto", "ask", "deny"]
+                  },
+                  "coder": {
+                    "type": "string",
+                    "enum": ["auto", "ask", "deny"]
                   }
                 }
               },
@@ -1662,6 +1776,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -1706,6 +1824,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -1746,6 +1868,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -1790,6 +1916,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -1830,6 +1960,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -1874,6 +2008,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -1914,6 +2052,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -1958,6 +2100,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -1980,6 +2126,80 @@
                   "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
                 },
                 "maxItems": 200
+              },
+              "coder": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "defaultAgent": {
+                    "type": "string",
+                    "enum": ["claude", "codex", "pi"]
+                  },
+                  "actions": {
+                    "type": "object",
+                    "properties": {
+                      "push": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "pr": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "outside_worktree": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "install": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "destructive": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "other": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      }
+                    }
+                  },
+                  "allowedRepos": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 200,
+                      "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+                    },
+                    "maxItems": 200
+                  },
+                  "models": {
+                    "type": "object",
+                    "properties": {
+                      "claude": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                      },
+                      "codex": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                      },
+                      "pi": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
@@ -2127,6 +2347,10 @@
                   "computer": {
                     "type": "string",
                     "enum": ["auto", "ask", "deny"]
+                  },
+                  "coder": {
+                    "type": "string",
+                    "enum": ["auto", "ask", "deny"]
                   }
                 }
               },
@@ -2160,6 +2384,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -2204,6 +2432,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -2244,6 +2476,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -2288,6 +2524,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -2328,6 +2568,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -2372,6 +2616,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -2412,6 +2660,10 @@
                             "enum": ["auto", "ask", "deny"]
                           },
                           "computer": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
                           }
@@ -2456,6 +2708,10 @@
                           "computer": {
                             "type": "string",
                             "enum": ["auto", "ask", "deny"]
+                          },
+                          "coder": {
+                            "type": "string",
+                            "enum": ["auto", "ask", "deny"]
                           }
                         }
                       },
@@ -2478,6 +2734,80 @@
                   "pattern": "^(\\*\\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
                 },
                 "maxItems": 200
+              },
+              "coder": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "defaultAgent": {
+                    "type": "string",
+                    "enum": ["claude", "codex", "pi"]
+                  },
+                  "actions": {
+                    "type": "object",
+                    "properties": {
+                      "push": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "pr": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "outside_worktree": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "install": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "destructive": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      },
+                      "other": {
+                        "type": "string",
+                        "enum": ["auto", "ask", "deny"]
+                      }
+                    }
+                  },
+                  "allowedRepos": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 200,
+                      "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+                    },
+                    "maxItems": 200
+                  },
+                  "models": {
+                    "type": "object",
+                    "properties": {
+                      "claude": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                      },
+                      "codex": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                      },
+                      "pi": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
@@ -2633,9 +2963,36 @@
               ]
             },
             "description": "By model, most expensive first"
+          },
+          "coding": {
+            "$ref": "#/components/schemas/BotCodingUsage"
           }
         },
-        "required": ["days", "since", "totals", "daily", "models"]
+        "required": ["days", "since", "totals", "daily", "models", "coding"]
+      },
+      "BotCodingUsage": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "integer",
+            "description": "Coding sessions started in the window"
+          },
+          "inputTokens": {
+            "type": "integer"
+          },
+          "outputTokens": {
+            "type": "integer"
+          },
+          "costUsd": {
+            "type": ["number", "null"],
+            "description": "What API billed sessions reported in US dollars; null when none did. Plan sessions are left out"
+          },
+          "onPlanSessions": {
+            "type": "integer",
+            "description": "Sessions billed to a plan sign-in, which cost nothing extra"
+          }
+        },
+        "required": ["sessions", "inputTokens", "outputTokens", "costUsd", "onPlanSessions"]
       },
       "Chat": {
         "type": "object",
@@ -4442,7 +4799,7 @@
           },
           "group": {
             "type": "string",
-            "enum": ["conversation", "artifacts", "builtin", "connector", "computer"]
+            "enum": ["conversation", "artifacts", "builtin", "connector", "computer", "coder"]
           },
           "connectorId": {
             "type": ["string", "null"],
@@ -4772,6 +5129,859 @@
         "required": ["action"],
         "additionalProperties": false
       },
+      "CoderAccount": {
+        "type": "object",
+        "properties": {
+          "agent": {
+            "type": "string",
+            "enum": ["claude", "codex", "pi"]
+          },
+          "label": {
+            "type": "string",
+            "description": "The agent's name, like \"Claude Code\""
+          },
+          "authKind": {
+            "type": "string",
+            "enum": ["none", "subscription", "api_key"]
+          },
+          "accountLabel": {
+            "type": ["string", "null"],
+            "description": "The signed-in account as the agent names it: an email or plan"
+          },
+          "signedInAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "version": {
+            "type": ["string", "null"],
+            "description": "The CLI on the computer"
+          },
+          "lastError": {
+            "type": ["string", "null"]
+          },
+          "providerId": {
+            "type": ["string", "null"],
+            "format": "uuid",
+            "description": "The provider an api_key account uses"
+          },
+          "available": {
+            "type": "boolean",
+            "description": "This build can run the agent"
+          },
+          "needsSignIn": {
+            "type": "boolean",
+            "description": "Never signed in, or a plan sign-in lapsed on the computer (`lastError` says so): offer Sign in again. Never for an `api_key` account."
+          },
+          "lastErrorKind": {
+            "type": ["string", "null"],
+            "enum": ["sign_in", "key", "other", null],
+            "description": "What `lastError` is about: a lapsed sign-in, a provider key that was refused, or something else; null without one"
+          }
+        },
+        "required": [
+          "agent",
+          "label",
+          "authKind",
+          "accountLabel",
+          "signedInAt",
+          "version",
+          "lastError",
+          "providerId",
+          "available",
+          "needsSignIn",
+          "lastErrorKind"
+        ]
+      },
+      "CoderLogin": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agent": {
+            "type": "string",
+            "enum": ["claude", "codex", "pi"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "awaiting_code", "signed_in", "failed", "expired", "cancelled"]
+          },
+          "url": {
+            "type": ["string", "null"],
+            "description": "Where the owner signs in"
+          },
+          "deviceCode": {
+            "type": ["string", "null"],
+            "description": "A code to enter at `url` (Codex)"
+          },
+          "accountLabel": {
+            "type": ["string", "null"]
+          },
+          "error": {
+            "type": ["string", "null"]
+          },
+          "expiresAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "agent",
+          "status",
+          "url",
+          "deviceCode",
+          "accountLabel",
+          "error",
+          "expiresAt"
+        ]
+      },
+      "CoderLoginInTerminal": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["CODER_LOGIN_IN_TERMINAL"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "terminal": {
+            "type": "object",
+            "properties": {
+              "cwd": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string",
+                "enum": ["coder"]
+              },
+              "preset": {
+                "type": "string",
+                "description": "Typed into the terminal, not run"
+              }
+            },
+            "required": ["cwd", "user", "preset"],
+            "description": "Open `/api/v1/computer/pty` with these as query parameters, sign in there, then `POST /coders/{agent}/check`"
+          }
+        },
+        "required": ["code", "message", "terminal"]
+      },
+      "CoderLoginCode": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 200
+          }
+        },
+        "required": ["code"],
+        "additionalProperties": false
+      },
+      "CoderApiKey": {
+        "type": "object",
+        "properties": {
+          "providerId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": ["providerId"],
+        "additionalProperties": false
+      },
+      "CodingSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "botId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runId": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          },
+          "chatId": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          },
+          "messageId": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          },
+          "partIndex": {
+            "type": ["integer", "null"]
+          },
+          "agent": {
+            "type": "string",
+            "enum": ["claude", "codex", "pi"]
+          },
+          "repoId": {
+            "type": ["string", "null"],
+            "format": "uuid"
+          },
+          "repoFullName": {
+            "type": ["string", "null"]
+          },
+          "branch": {
+            "type": ["string", "null"]
+          },
+          "base": {
+            "type": ["string", "null"]
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["plan", "edit", "pr"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "starting", "running", "waiting", "settled", "failed", "stopped"]
+          },
+          "pushAllowed": {
+            "type": "boolean"
+          },
+          "vendorSessionId": {
+            "type": ["string", "null"]
+          },
+          "usage": {
+            "$ref": "#/components/schemas/CoderUsage"
+          },
+          "summary": {
+            "type": ["string", "null"]
+          },
+          "changedFiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoderChangedFile"
+            }
+          },
+          "commits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoderCommit"
+            }
+          },
+          "prUrl": {
+            "type": ["string", "null"]
+          },
+          "diffArtifactId": {
+            "type": ["string", "null"],
+            "format": "uuid",
+            "description": "The Artifact holding `git diff <base>...HEAD` once the session settled with commits (View diff); Discard leaves it"
+          },
+          "error": {
+            "type": ["string", "null"]
+          },
+          "worktreePath": {
+            "type": ["string", "null"]
+          },
+          "startedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "botId",
+          "runId",
+          "chatId",
+          "messageId",
+          "partIndex",
+          "agent",
+          "repoId",
+          "repoFullName",
+          "branch",
+          "base",
+          "mode",
+          "status",
+          "pushAllowed",
+          "vendorSessionId",
+          "usage",
+          "summary",
+          "changedFiles",
+          "commits",
+          "prUrl",
+          "diffArtifactId",
+          "error",
+          "worktreePath",
+          "startedAt",
+          "finishedAt",
+          "createdAt"
+        ]
+      },
+      "CoderUsage": {
+        "type": ["object", "null"],
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cost_usd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "billed": {
+            "type": "string",
+            "enum": ["subscription", "api", "unknown"]
+          }
+        },
+        "required": ["input_tokens", "output_tokens", "billed"],
+        "additionalProperties": false,
+        "description": "Tokens, cost and billing"
+      },
+      "CoderChangedFile": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "added": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "removed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["edit", "create", "delete"]
+          }
+        },
+        "required": ["path", "added", "removed", "kind"],
+        "additionalProperties": false,
+        "description": "A changed file"
+      },
+      "CoderCommit": {
+        "type": "object",
+        "properties": {
+          "sha": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": ["sha", "title"],
+        "additionalProperties": false,
+        "description": "A commit"
+      },
+      "CodingSessionTerminal": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string",
+            "enum": ["coder"]
+          },
+          "preset": {
+            "type": "string",
+            "description": "Typed into the terminal, not run"
+          }
+        },
+        "required": ["cwd", "user", "preset"]
+      },
+      "CodingSessionContinue": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": ["prompt"],
+        "additionalProperties": false
+      },
+      "Repo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "remoteUrl": {
+            "type": "string"
+          },
+          "defaultBranch": {
+            "type": "string"
+          },
+          "keepCloned": {
+            "type": "boolean"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": ["string", "null"]
+          },
+          "lastUsedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "lastRemotePushAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "The last commit on the remote default branch, from the last fetch"
+          },
+          "found": {
+            "type": "boolean",
+            "description": "A clone found on the computer that is not remembered yet (GH6)"
+          },
+          "checkout": {
+            "$ref": "#/components/schemas/RepoCheckout"
+          }
+        },
+        "required": [
+          "id",
+          "fullName",
+          "remoteUrl",
+          "defaultBranch",
+          "keepCloned",
+          "pinned",
+          "description",
+          "lastUsedAt",
+          "lastRemotePushAt",
+          "found",
+          "checkout"
+        ]
+      },
+      "RepoCheckout": {
+        "type": ["object", "null"],
+        "properties": {
+          "state": {
+            "type": "string",
+            "description": "`cloning`, `updating`, `ready`, `behind`, `dirty`, `missing` or `error`"
+          },
+          "path": {
+            "type": "string"
+          },
+          "ahead": {
+            "type": "integer"
+          },
+          "behind": {
+            "type": "integer"
+          },
+          "headSha": {
+            "type": ["string", "null"]
+          },
+          "lastFetchAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "error": {
+            "type": ["string", "null"]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the state last changed: a checkout `cloning` or `updating` for 30 minutes is stuck"
+          }
+        },
+        "required": [
+          "state",
+          "path",
+          "ahead",
+          "behind",
+          "headSha",
+          "lastFetchAt",
+          "error",
+          "updatedAt"
+        ],
+        "description": "On the owner computer; null until it is cloned there"
+      },
+      "RepoInput": {
+        "type": "object",
+        "properties": {
+          "remoteUrl": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "fullName": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 200,
+            "description": "The URL's own `owner/name`; another one is refused"
+          },
+          "defaultBranch": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "keepCloned": {
+            "type": "boolean"
+          }
+        },
+        "required": ["remoteUrl"],
+        "additionalProperties": false
+      },
+      "RepoForgotten": {
+        "type": "object",
+        "properties": {
+          "filesDeleted": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": ["string", "null"]
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": ["filesDeleted", "path", "note"]
+      },
+      "RememberReposInput": {
+        "type": "object",
+        "properties": {
+          "fullNames": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 200
+            },
+            "minItems": 1,
+            "maxItems": 100
+          },
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": ["fullNames", "connectionId"],
+        "additionalProperties": false
+      },
+      "RepoRescueStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["running", "done"]
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "repoId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "fullName": {
+                  "type": "string"
+                },
+                "branch": {
+                  "type": ["string", "null"]
+                },
+                "pushed": {
+                  "type": "boolean"
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": ["repoId", "fullName", "branch", "pushed", "note"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["status", "results"]
+      },
+      "RepoPatch": {
+        "type": "object",
+        "properties": {
+          "keepCloned": {
+            "type": "boolean"
+          },
+          "pinned": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GitConnection": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider": {
+            "type": "string",
+            "enum": ["github"]
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["app", "oauth", "token"]
+          },
+          "installationId": {
+            "type": ["string", "null"]
+          },
+          "accountLogin": {
+            "type": "string"
+          },
+          "accountType": {
+            "type": ["string", "null"],
+            "enum": ["user", "organization", null]
+          },
+          "actAs": {
+            "type": "string",
+            "enum": ["bot", "owner"],
+            "description": "`bot` opens pull requests as the App, `owner` with the owner OAuth token"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["connected", "needs_reinstall", "revoked", "error"]
+          },
+          "lastSyncedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "repoCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "error": {
+            "type": ["string", "null"]
+          },
+          "repositoriesSyncedAt": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "When an App connection's reach was last read with the owner's own GitHub authorization; null when it must be authorized again"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "kind",
+          "installationId",
+          "accountLogin",
+          "accountType",
+          "actAs",
+          "status",
+          "lastSyncedAt",
+          "repoCount",
+          "error"
+        ]
+      },
+      "GitTokenInput": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 500
+          }
+        },
+        "required": ["token"],
+        "additionalProperties": false
+      },
+      "GithubAppStatus": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "This install has a GitHub App"
+          },
+          "source": {
+            "type": ["string", "null"],
+            "enum": ["config", "instance", null],
+            "description": "`config` from GITHUB_APP_*, `instance` made through the manifest flow"
+          },
+          "slug": {
+            "type": ["string", "null"]
+          },
+          "installUrlAvailable": {
+            "type": "boolean",
+            "description": "GET /git-connections/github-app/install leads somewhere"
+          },
+          "manifestAvailable": {
+            "type": "boolean",
+            "description": "POST /git-connections/github-app/manifest may make one (self-hosted, no App yet, an https public URL)"
+          },
+          "publicUrlOk": {
+            "type": "boolean",
+            "description": "OPENBOTS_PUBLIC_URL is https, which GitHub needs to reach the install; without it there is no manifest flow"
+          }
+        },
+        "required": [
+          "configured",
+          "source",
+          "slug",
+          "installUrlAvailable",
+          "manifestAvailable",
+          "publicUrlOk"
+        ]
+      },
+      "GithubAppManifest": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "manifest": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": ["url", "manifest"]
+      },
+      "GithubAppManifestInput": {
+        "type": "object",
+        "properties": {
+          "organization": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$",
+            "description": "The GitHub organization to make the App under"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RemoteRepo": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string"
+          },
+          "private": {
+            "type": "boolean"
+          },
+          "defaultBranch": {
+            "type": "string"
+          },
+          "description": {
+            "type": ["string", "null"]
+          },
+          "pushedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "remembered": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fullName",
+          "private",
+          "defaultBranch",
+          "description",
+          "pushedAt",
+          "remembered"
+        ]
+      },
+      "GitConnectionUpdate": {
+        "type": "object",
+        "properties": {
+          "actAs": {
+            "type": "string",
+            "enum": ["bot", "owner"]
+          }
+        },
+        "required": ["actAs"],
+        "additionalProperties": false
+      },
+      "GitConnectionSync": {
+        "type": "object",
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/GitConnection"
+          },
+          "needsReauthorize": {
+            "type": "boolean",
+            "description": "The repository list can only grow after the owner authorizes again (GET /git-connections/{id}/reauthorize)"
+          }
+        },
+        "required": ["connection", "needsReauthorize"]
+      },
+      "CodingRoutineTemplate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": ["fix-labeled-issues", "review-pull-requests", "weekly-dependency-update"]
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["event"]
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["github"]
+                  },
+                  "event": {
+                    "type": "string",
+                    "enum": ["label_added", "pr_opened"]
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type", "source", "event"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["schedule"]
+                  },
+                  "preset": {
+                    "type": "string",
+                    "enum": ["weekly"]
+                  },
+                  "day": {
+                    "type": "integer"
+                  },
+                  "time": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type", "preset", "day", "time"]
+              }
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "description": "`{{repo}}` and `{{label}}` are filled in on create"
+          }
+        },
+        "required": ["id", "name", "description", "trigger", "prompt"]
+      },
       "Routine": {
         "type": "object",
         "properties": {
@@ -5062,13 +6272,49 @@
           "exception"
         ]
       },
+      "CreatedRoutine": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Routine"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "webhook": {
+                "type": "object",
+                "properties": {
+                  "endpointId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "The Payload URL to add on GitHub"
+                  },
+                  "token": {
+                    "type": "string",
+                    "description": "Shown once; the URL works with it"
+                  },
+                  "signingSecret": {
+                    "type": "string",
+                    "description": "The webhook secret to add on GitHub"
+                  }
+                },
+                "required": ["endpointId", "url", "token", "signingSecret"],
+                "description": "A template Routine on a repository without a GitHub App installation: the webhook the owner adds on the repository, shown once"
+              }
+            }
+          }
+        ]
+      },
       "CreateRoutine": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 120
+            "maxLength": 120,
+            "description": "Required without a template"
           },
           "trigger": {
             "$ref": "#/components/schemas/RoutineTriggerInput"
@@ -5089,9 +6335,11 @@
             "minLength": 1,
             "maxLength": 64,
             "description": "IANA name; defaults to UTC"
+          },
+          "template": {
+            "$ref": "#/components/schemas/RoutineFromTemplate"
           }
         },
-        "required": ["name", "trigger"],
         "additionalProperties": false
       },
       "RoutineTriggerInput": {
@@ -5248,7 +6496,36 @@
             "additionalProperties": false
           }
         ],
-        "description": "A schedule needs only its preset; the server derives the cron"
+        "description": "Required without a template"
+      },
+      "RoutineFromTemplate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": ["fix-labeled-issues", "review-pull-requests", "weekly-dependency-update"]
+          },
+          "params": {
+            "type": "object",
+            "properties": {
+              "repo": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "required": ["repo"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "params"],
+        "additionalProperties": false,
+        "description": "Fills the trigger, prompt and name from a coding template (`GET /routines/templates`). The template decides them: a name, trigger or prompt sent beside it is ignored."
       },
       "UpdateRoutine": {
         "type": "object",
@@ -5259,7 +6536,14 @@
             "maxLength": 120
           },
           "trigger": {
-            "$ref": "#/components/schemas/RoutineTriggerInput"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RoutineTriggerInput"
+              },
+              {
+                "description": "A schedule needs only its preset; the server derives the cron"
+              }
+            ]
           },
           "prompt": {
             "type": "string",
@@ -5731,6 +7015,10 @@
                 "minLength": 1,
                 "maxLength": 200
               },
+              "installation_id": {
+                "type": "string",
+                "pattern": "^\\d{1,20}$"
+              },
               "label": {
                 "type": "string",
                 "minLength": 1,
@@ -5849,6 +7137,10 @@
                 "enum": ["auto", "ask", "deny"]
               },
               "computer": {
+                "type": "string",
+                "enum": ["auto", "ask", "deny"]
+              },
+              "coder": {
                 "type": "string",
                 "enum": ["auto", "ask", "deny"]
               }
@@ -12786,6 +14078,2757 @@
         }
       }
     },
+    "/api/v1/coders": {
+      "get": {
+        "tags": ["coders"],
+        "summary": "The coding agents and how each is signed in on the computer",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One per agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "agents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CoderAccount"
+                      }
+                    }
+                  },
+                  "required": ["agents"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coders/{agent}/login": {
+      "post": {
+        "tags": ["coders"],
+        "summary": "Start signing an agent in with the vendor's own login",
+        "description": "Runs the login on the computer (starting it if needed) and fills in `url` (and `deviceCode`) as the CLI prints them: poll `GET` until it does. A sign-in already pending for the agent is returned instead of a second one. pi signs in in its own terminal: 409 says where, then `POST /coders/pi/check`.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["claude", "codex", "pi"]
+            },
+            "required": true,
+            "name": "agent",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The sign-in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "login": {
+                      "$ref": "#/components/schemas/CoderLogin"
+                    }
+                  },
+                  "required": ["login"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "This build cannot run the agent (`CODER_UNSUPPORTED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The agent signs in in a terminal on the computer (pi): open it there, then check",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoderLoginInTerminal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coders/{agent}/login/{loginId}": {
+      "get": {
+        "tags": ["coders"],
+        "summary": "A sign-in: its link, code and status",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["claude", "codex", "pi"]
+            },
+            "required": true,
+            "name": "agent",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "loginId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sign-in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "login": {
+                      "$ref": "#/components/schemas/CoderLogin"
+                    }
+                  },
+                  "required": ["login"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such sign-in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["coders"],
+        "summary": "Cancel a sign-in",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["claude", "codex", "pi"]
+            },
+            "required": true,
+            "name": "agent",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "loginId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Cancelled"
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such sign-in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coders/{agent}/login/{loginId}/code": {
+      "post": {
+        "tags": ["coders"],
+        "summary": "Paste the code the vendor gave back into the sign-in",
+        "description": "The code goes to the login on the computer and is never stored.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["claude", "codex", "pi"]
+            },
+            "required": true,
+            "name": "agent",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "loginId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoderLoginCode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The sign-in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "login": {
+                      "$ref": "#/components/schemas/CoderLogin"
+                    }
+                  },
+                  "required": ["login"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such sign-in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The sign-in already ended (`LOGIN_CLOSED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coders/{agent}/check": {
+      "post": {
+        "tags": ["coders"],
+        "summary": "Ask the CLI on the computer whether the agent is signed in",
+        "description": "Runs the agent's own status check as `coder` (Codex: `codex login status`; pi: `pi auth check` for each of its providers), starting the computer if needed. Signed in, the card reads `subscription` for a plan or `api_key` (with no `providerId`) for a key the CLI holds itself, and pi's sign-ins a Bot is waiting on end signed in; not, it is left as it was.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["claude", "codex", "pi"]
+            },
+            "required": true,
+            "name": "agent",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "account": {
+                      "$ref": "#/components/schemas/CoderAccount"
+                    }
+                  },
+                  "required": ["account"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Claude Code has no check (`CODER_CHECK_UNSUPPORTED`), or this build cannot run the agent (`CODER_UNSUPPORTED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The computer could not start (`COMPUTER_UNAVAILABLE`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coders/{agent}/api-key": {
+      "put": {
+        "tags": ["coders"],
+        "summary": "Use a Settings > Models provider's key for the agent",
+        "description": "Claude Code takes an Anthropic key or an Anthropic compatible endpoint, Codex an OpenAI key or an OpenAI compatible endpoint, pi an Anthropic, OpenAI, Google or xAI key (`CODER_PROVIDER_KINDS`).",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["claude", "codex", "pi"]
+            },
+            "required": true,
+            "name": "agent",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoderApiKey"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "account": {
+                      "$ref": "#/components/schemas/CoderAccount"
+                    }
+                  },
+                  "required": ["account"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The agent cannot use this provider (`CODER_PROVIDER_UNSUPPORTED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such provider",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coders/{agent}/sign-out": {
+      "post": {
+        "tags": ["coders"],
+        "summary": "Sign the agent out on the computer",
+        "description": "Empties the agent's config directory on the computer, starting it if needed.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["claude", "codex", "pi"]
+            },
+            "required": true,
+            "name": "agent",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "account": {
+                      "$ref": "#/components/schemas/CoderAccount"
+                    }
+                  },
+                  "required": ["account"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The computer could not sign it out (`CODER_SIGN_OUT_FAILED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The computer could not start (`COMPUTER_UNAVAILABLE`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coding-sessions": {
+      "get": {
+        "tags": ["coders"],
+        "summary": "The owner's coding sessions, newest first",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false,
+            "name": "botId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["queued", "starting", "running", "waiting", "settled", "failed", "stopped"]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sessions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CodingSession"
+                      }
+                    }
+                  },
+                  "required": ["sessions"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coding-sessions/{id}": {
+      "get": {
+        "tags": ["coders"],
+        "summary": "One coding session",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "$ref": "#/components/schemas/CodingSession"
+                    }
+                  },
+                  "required": ["session"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coding-sessions/{id}/log": {
+      "get": {
+        "tags": ["coders"],
+        "summary": "The session's full event log",
+        "description": "Its last 2 MB, empty before the session wrote any. Kept on the server, so it reads while the computer is off.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The log",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coding-sessions/{id}/terminal": {
+      "get": {
+        "tags": ["coders"],
+        "summary": "Where Open terminal opens: the worktree, as coder, with the resume command",
+        "description": "Pass `cwd`, `user` and `preset` to `/api/v1/computer/pty` as query parameters; the proxy checks `cwd` against your sessions again.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The terminal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodingSessionTerminal"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session has no worktree (`NO_WORKTREE`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coding-sessions/{id}/stop": {
+      "post": {
+        "tags": ["coders"],
+        "summary": "Stop a session",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "$ref": "#/components/schemas/CodingSession"
+                    }
+                  },
+                  "required": ["session"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session already ended (`SESSION_ENDED`), is still running (`SESSION_RUNNING`), or its Bot runs another (`CODER_BUSY`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coding-sessions/{id}/continue": {
+      "post": {
+        "tags": ["coders"],
+        "summary": "Continue an ended session with another prompt",
+        "description": "Posts the prompt as your message in the session's chat (in its widget's thread), so the Bot continues the session with `code_task` from a run of its own. The session is returned as it is; it reopens when the Bot's run starts it.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodingSessionContinue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "$ref": "#/components/schemas/CodingSession"
+                    }
+                  },
+                  "required": ["session"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session already ended (`SESSION_ENDED`), is still running (`SESSION_RUNNING`), or its Bot runs another (`CODER_BUSY`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coding-sessions/{id}/discard": {
+      "post": {
+        "tags": ["coders"],
+        "summary": "Remove an ended session's worktree and local branch from the computer",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "$ref": "#/components/schemas/CodingSession"
+                    }
+                  },
+                  "required": ["session"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session already ended (`SESSION_ENDED`), is still running (`SESSION_RUNNING`), or its Bot runs another (`CODER_BUSY`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos": {
+      "get": {
+        "tags": ["repos"],
+        "summary": "The remembered repositories and their state on the computer",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pinned first, then by last use",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "repos": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Repo"
+                      }
+                    }
+                  },
+                  "required": ["repos"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["repos"],
+        "summary": "Remember a repository by its git URL",
+        "description": "https or ssh; a GitHub remote is stored as `https://github.com/owner/name.git`. Cloned onto the computer when the account has one.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepoInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "repo": {
+                      "$ref": "#/components/schemas/Repo"
+                    }
+                  },
+                  "required": ["repo"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a git URL (`INVALID_REPO_URL`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already remembered (`REPO_EXISTS`), or too many (`REPO_LIMIT`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{id}": {
+      "delete": {
+        "tags": ["repos"],
+        "summary": "Forget a repository; its clone stays on the computer unless `deleteFiles`",
+        "description": "With `deleteFiles=true` the clone is removed first, as `coder`, and only from under ~/repos.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["true", "false"]
+            },
+            "required": false,
+            "name": "deleteFiles",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Forgotten; `note` says whether the clone stays on the computer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepoForgotten"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such repository",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The computer is off (`COMPUTER_OFF`), or the clone is outside ~/repos (`NOT_DELETABLE`) or could not be removed (`DELETE_FAILED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["repos"],
+        "summary": "Turn cloning again on a new computer on or off, or pin the repository",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepoPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "repo": {
+                      "$ref": "#/components/schemas/Repo"
+                    }
+                  },
+                  "required": ["repo"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such repository",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{id}/clone": {
+      "post": {
+        "tags": ["repos"],
+        "summary": "Clone the repository onto the computer again",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "repo": {
+                      "$ref": "#/components/schemas/Repo"
+                    }
+                  },
+                  "required": ["repo"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such repository",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The account has no computer yet (`NO_COMPUTER`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/{id}/update": {
+      "post": {
+        "tags": ["repos"],
+        "summary": "Fetch the repository on the computer",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "repo": {
+                      "$ref": "#/components/schemas/Repo"
+                    }
+                  },
+                  "required": ["repo"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such repository",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The account has no computer yet (`NO_COMPUTER`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/remember": {
+      "post": {
+        "tags": ["repos"],
+        "summary": "Remember repositories picked from a git connection's list",
+        "description": "Each is cloned onto the computer in the background (GH2). One already remembered is left as it is.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RememberReposInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Every named repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "repos": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Repo"
+                      }
+                    }
+                  },
+                  "required": ["repos"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A name the connection does not list, or not the connection account's (`CONNECTION_NO_ACCESS`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such connection",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Too many repositories (`REPO_LIMIT`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/found": {
+      "get": {
+        "tags": ["repos"],
+        "summary": "Clones on the computer nobody remembered, from the last scan",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "By path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "found": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "remoteUrl": {
+                            "type": "string"
+                          },
+                          "fullName": {
+                            "type": ["string", "null"]
+                          }
+                        },
+                        "required": ["path", "remoteUrl", "fullName"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["found"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/found/remember": {
+      "post": {
+        "tags": ["repos"],
+        "summary": "Remember a clone found on the computer, where it is",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
+                },
+                "required": ["path"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The repository",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "repo": {
+                      "$ref": "#/components/schemas/Repo"
+                    }
+                  },
+                  "required": ["repo"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No clone was found at that path",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Too many repositories (`REPO_LIMIT`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/rescue": {
+      "post": {
+        "tags": ["repos"],
+        "summary": "Push unpushed work to rescue branches before the home is lost",
+        "description": "Queues rescue before loss (GH5); read the results with GET /repos/rescue/{requestId}.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": ["requestId"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/rescue/{requestId}": {
+      "get": {
+        "tags": ["repos"],
+        "summary": "A rescue's progress and results",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "requestId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Results once `done`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepoRescueStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such rescue, or it is more than ten minutes old",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/repos/scan": {
+      "post": {
+        "tags": ["repos"],
+        "summary": "Look for clones on the computer nobody remembered",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued: poll /repos/found for what it finds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "queued": {
+                      "type": "boolean",
+                      "enum": [true]
+                    }
+                  },
+                  "required": ["queued"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The account has no computer yet (`NO_COMPUTER`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections": {
+      "get": {
+        "tags": ["git-connections"],
+        "summary": "The owner's git connections",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Oldest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connections": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/GitConnection"
+                      }
+                    }
+                  },
+                  "required": ["connections"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/token": {
+      "post": {
+        "tags": ["git-connections"],
+        "summary": "Connect GitHub with a pasted fine-grained token",
+        "description": "GitHub is asked whose token it is; the token is kept sealed and never returned. A session can push with it once its push is allowed, but cannot fetch with it: that needs the GitHub App.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitTokenInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connection": {
+                      "$ref": "#/components/schemas/GitConnection"
+                    }
+                  },
+                  "required": ["connection"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "GitHub did not accept the token (`GITHUB_TOKEN_INVALID`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub failed or could not be reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/github-app": {
+      "get": {
+        "tags": ["git-connections"],
+        "summary": "Whether this install has a GitHub App, and where it comes from",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The App, if any",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubAppStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["git-connections"],
+        "summary": "Forget the GitHub App the manifest flow made",
+        "description": "Admins only. The App stays on GitHub; delete it there too. Connections through it stop minting tokens.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Forgotten"
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The App comes from GITHUB_APP_* (`GITHUB_APP_FROM_CONFIG`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/github-app/manifest": {
+      "post": {
+        "tags": ["git-connections"],
+        "summary": "Start GitHub's manifest flow to make this install's own App",
+        "description": "Admins only, self-hosted only. The client posts `manifest` (as JSON, in a form field named `manifest`) to `url`. GitHub then redirects to the manifest callback. With `organization`, the App is made under that GitHub organization so it can be installed there; without, on the admin personal account, where only that account can install it.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GithubAppManifestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Where to post the manifest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubAppManifest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "OPENBOTS_PUBLIC_URL is not https (`PUBLIC_URL_REQUIRED`), or a bad organization",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An App already exists, or the deployment is managed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/github-app/manifest/callback": {
+      "get": {
+        "tags": ["git-connections"],
+        "summary": "GitHub's redirect after the App was made: stores it",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "code",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "state",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "To `/connectors?github_app=created`"
+          },
+          "400": {
+            "description": "Unknown, expired or used state, or no code",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in (managed)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Started by another account, or the user is no longer an admin",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An App exists already",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub failed",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/github-app/install": {
+      "get": {
+        "tags": ["git-connections"],
+        "summary": "Send the browser to the App's install page",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "To github.com/apps/<slug>/installations/new"
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "There is no App yet (`GITHUB_APP_MISSING`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/github-app/callback": {
+      "get": {
+        "tags": ["git-connections"],
+        "summary": "GitHub's redirect after the App was installed: makes the connection",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{1,20}$"
+            },
+            "required": false,
+            "name": "installation_id",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "required": false,
+            "name": "setup_action",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "state",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "code",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "To `/connectors?connection=<id>`"
+          },
+          "400": {
+            "description": "Unknown, expired or used state, no installation or no code",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in (managed)",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Started by another account, or the installation is not the user's",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The App has no OAuth client",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub failed",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/{id}/reauthorize": {
+      "get": {
+        "tags": ["git-connections"],
+        "summary": "Authorize again on GitHub, so the App connection's repositories are read again",
+        "description": "App connections only. GitHub sends the browser back to the install callback, which reads the repositories the owner reaches in the installation again.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "To github.com/login/oauth/authorize"
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such connection",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not an App connection (`NO_INSTALLATION`), or the App has no OAuth client",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/{id}/repositories": {
+      "get": {
+        "tags": ["git-connections"],
+        "summary": "Every repository the connection reaches (the picker, GH2)",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Filtered by `q` on the full name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "repositories": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RemoteRepo"
+                      }
+                    }
+                  },
+                  "required": ["repositories"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such connection",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub failed or could not be reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/{id}": {
+      "patch": {
+        "tags": ["git-connections"],
+        "summary": "Who opens pull requests through the connection (GH8)",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitConnectionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connection": {
+                      "$ref": "#/components/schemas/GitConnection"
+                    }
+                  },
+                  "required": ["connection"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not an App connection (`ACT_AS_APP_ONLY`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such connection",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The owner has no GitHub sign-in to open pull requests with (`ACT_AS_NEEDS_SIGN_IN`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["git-connections"],
+        "summary": "Forget the connection; its repositories stay remembered",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Forgotten"
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such connection",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/{id}/sync": {
+      "post": {
+        "tags": ["git-connections"],
+        "summary": "List the repositories again and refresh the status",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitConnectionSync"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such connection",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub failed or could not be reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/routines/templates": {
+      "get": {
+        "tags": ["routines"],
+        "summary": "The coding Routine templates (CA11), for `template` on create",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "templates": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CodingRoutineTemplate"
+                      }
+                    }
+                  },
+                  "required": ["templates"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/bots/{id}/routines": {
       "get": {
         "tags": ["routines"],
@@ -12889,13 +16932,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Routine"
+                  "$ref": "#/components/schemas/CreatedRoutine"
                 }
               }
             }
           },
           "400": {
-            "description": "INVALID_SCHEDULE or EMPTY_ROUTINE",
+            "description": "INVALID_SCHEDULE, EMPTY_ROUTINE or UNKNOWN_TEMPLATE",
             "content": {
               "application/problem+json": {
                 "schema": {

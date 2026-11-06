@@ -3,6 +3,7 @@ import { index, integer, jsonb, pgEnum, pgTable, text, unique, uuid } from 'driz
 import { users } from './auth.js';
 import { bots } from './bots.js';
 import { chats, messages } from './chats.js';
+import { codingSessions } from './coders.js';
 import { createdAt, id, timestamptz } from './columns.js';
 import { routineRuns } from './prompts.js';
 import { workspaceId } from './workspace.js';
@@ -117,4 +118,13 @@ export const approvals = pgTable('approvals', {
   decidedAt: timestamptz('decided_at'),
   expiresAt: timestamptz('expires_at'),
   createdAt: createdAt(),
+  /**
+   * A coding session's request (I13): deciding it answers the session's
+   * agent over openbots:coder-control instead of resuming a run.
+   */
+  sessionId: uuid('session_id').references((): AnyPgColumn => codingSessions.id, {
+    onDelete: 'set null',
+  }),
+  /** The session request's `CoderActionClass`: push, pr, outside_worktree, install, destructive, other. */
+  actionClass: text('action_class'),
 });

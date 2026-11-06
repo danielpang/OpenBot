@@ -15,6 +15,25 @@ import { MAX_SCREEN } from './protocol.js';
 //   cookies 1900:1900        the agent's reads and writes of the shared
 //                            cookie store (cookies.ts), which no command and
 //                            no screen may read
+//   coder 1800:1800          every coding agent and every login (coder.ts,
+//                            I2): its config directories on the state
+//                            volume are closed to the bot user
+//   runner 1801:1800         the server's own git operations (clone, fetch,
+//                            scan, reconcile, rescue pushes; `user: 'runner'`
+//                            on WS /coder): not coder, so no coding session
+//                            can read their environment (/proc/<pid>/environ)
+//                            and the credential relay's secret in it; the
+//                            coders group, so it writes the repositories
+//   1000:1800                the owner's own commands in a coding session
+//                            (`user: 'bot'` on WS /coder, a session's
+//                            terminal): still the bot user, with the coders
+//                            group, which owns the repositories' files
+//
+// openbots-runas gives a program exactly one group, so "bot with the coders
+// group" is the primary gid, not a supplementary one. The repositories stay
+// shared between the two users because /home/bot/repos is setgid coders
+// (privileges.ts `shareRepos`), every session runs under umask 002, and the
+// server clones with core.sharedRepository=group.
 //
 // Run anywhere else (a dev machine, the tests) the agent is unprivileged:
 // `Users` without a helper starts programs as the agent itself.
@@ -27,12 +46,27 @@ export interface Identity {
 export const BOT_ID = 1000;
 export const SCREEN_ID_BASE = 2000;
 export const STORE_ID = 1900;
+/**
+ * The coder user's uid and the coders group's gid. Mirrors CODER_ID and
+ * CODERS_GID in @openbots/computer (packages/computer/src/types.ts), which
+ * depends on this package and so cannot be imported here.
+ */
+export const CODER_ID = 1800;
+export const CODERS_GID = 1800;
+/** The runner's uid. Mirrors RUNNER_ID in @openbots/computer (packages/computer/src/types.ts). */
+export const RUNNER_ID = 1801;
 /** Where the image installs the helper. */
 export const RUNAS_PATH = '/usr/local/libexec/openbots/runas';
 
 export const BOT: Identity = { uid: BOT_ID, gid: BOT_ID };
 /** The cookie store's own user: its directory is closed to the bot user and the screens. */
 export const STORE: Identity = { uid: STORE_ID, gid: STORE_ID };
+/** The coding agents' own user (I2). */
+export const CODER: Identity = { uid: CODER_ID, gid: CODERS_GID };
+/** The server's git operations' own user, with the coders group: never a coding session's uid. */
+export const RUNNER: Identity = { uid: RUNNER_ID, gid: CODERS_GID };
+/** The bot user with the coders group: the owner's commands in a coding session's worktree. */
+export const BOT_CODERS: Identity = { uid: BOT_ID, gid: CODERS_GID };
 
 /** Screen n's own user: its X server and every client the agent puts on it. */
 export function screenIdentity(n: number): Identity {

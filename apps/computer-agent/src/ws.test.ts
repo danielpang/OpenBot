@@ -1,5 +1,7 @@
+import { mkdir } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { connect, type AddressInfo } from 'node:net';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import type { PtyServerMessage, ScreenInfo } from './protocol.js';
@@ -97,6 +99,38 @@ describe.skipIf(!(await loadPty()))('WS /pty', () => {
     await until(() => exit !== undefined);
     expect(exit).toEqual({ type: 'exit', exitCode: 7 });
     expect(output).toContain('40 120');
+  });
+
+  it('opens in a worktree under the home and types the preset without running it (I15)', async () => {
+    const { url, home } = await startAgent();
+    await mkdir(path.join(home, 'repos/acme/app'), { recursive: true });
+    const preset = encodeURIComponent('echo PRE""SET\n');
+    const ws = open(url(`/pty?cwd=repos/acme/app&preset=${preset}`));
+    let output = '';
+    ws.on('message', (raw) => {
+      const msg = JSON.parse(raw.toString()) as PtyServerMessage;
+      if (msg.type === 'output') output += msg.data;
+    });
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 200 && !check(); i++) await new Promise((r) => setTimeout(r, 25));
+      expect(check()).toBe(true);
+    };
+    await new Promise((r) => ws.once('open', r));
+    // Typed: on the line, not run, since the newline was taken out.
+    await until(() => output.includes('echo PRE""SET'));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(output).not.toContain('PRESET');
+    ws.send(JSON.stringify({ type: 'input', data: '\r' }));
+    await until(() => output.includes('PRESET'));
+    ws.send(JSON.stringify({ type: 'input', data: 'pwd\r' }));
+    await until(() => output.includes(path.join(home, 'repos/acme/app')));
+  });
+
+  it('refuses a cwd outside the home before the upgrade', async () => {
+    const { url } = await startAgent();
+    expect(await upgradeStatus(open(url('/pty?cwd=/etc')))).toBe(403);
+    expect(await upgradeStatus(open(url('/pty?cwd=../..')))).toBe(403);
+    expect(await upgradeStatus(open(url('/pty?user=root')))).toBe(400);
   });
 
   it('kills the shell when the client goes away', async () => {
@@ -251,5 +285,93 @@ describe('ptySession', () => {
       if (before === undefined) delete process.env.OPENBOTS_AGENT_TOKEN;
       else process.env.OPENBOTS_AGENT_TOKEN = before;
     }
+  });
+
+  const recorder = () => {
+    const seen: { file?: string; args?: string[]; options?: Parameters<NodePty['spawn']>[2] } = {};
+    const writes: string[] = [];
+    let onData: ((data: string) => void) | undefined;
+    const nodePty: NodePty = {
+      spawn: (file, args, options) => {
+        Object.assign(seen, { file, args, options });
+        return {
+          onData: (l) => (onData = l),
+          onExit: () => {},
+          write: (d) => writes.push(d),
+          resize: () => {},
+          kill: () => {},
+        };
+      },
+    };
+    return { seen, writes, nodePty, data: (d: string) => onData?.(d) };
+  };
+  const fakeWs = () =>
+    ({ on: () => {}, readyState: 1, OPEN: 1, send: () => {} }) as unknown as WebSocket;
+  const runas = new Users('/usr/local/libexec/openbots/runas');
+
+  it("opens the coder user's shell, under umask 002, with the agents' config directories (I15)", () => {
+    const r = recorder();
+    ptySession(
+      fakeWs(),
+      new URL('http://agent/pty?user=coder'),
+      { home: '/home/bot', users: runas, stateDir: '/var/lib/openbots' },
+      r.nodePty,
+      '/home/bot/repos/acme/app/.worktrees/fix',
+    );
+    expect(r.seen.file).toBe('/usr/local/libexec/openbots/runas');
+    expect(r.seen.args).toEqual([
+      '1800',
+      '1800',
+      '--',
+      '/bin/sh',
+      '-c',
+      'umask 002 && exec "$0" "$@"',
+      '/bin/bash',
+      '-l',
+    ]);
+    expect(r.seen.options?.cwd).toBe('/home/bot/repos/acme/app/.worktrees/fix');
+    expect(r.seen.options?.env).toMatchObject({
+      HOME: '/var/lib/openbots/coders/home',
+      CLAUDE_CONFIG_DIR: '/var/lib/openbots/coders/claude',
+      CODEX_HOME: '/var/lib/openbots/coders/codex',
+      PI_CODING_AGENT_DIR: '/var/lib/openbots/coders/pi',
+    });
+  });
+
+  it("gives the bot user's shell in a worktree the coders group, and none without one", () => {
+    const inTree = recorder();
+    ptySession(
+      fakeWs(),
+      new URL('http://agent/pty'),
+      { home: '/home/bot', users: runas },
+      inTree.nodePty,
+      '/home/bot/repos/a',
+    );
+    expect(inTree.seen.args?.slice(0, 2)).toEqual(['1000', '1800']);
+    const plain = recorder();
+    ptySession(
+      fakeWs(),
+      new URL('http://agent/pty'),
+      { home: '/home/bot', users: runas },
+      plain.nodePty,
+    );
+    expect(plain.seen.args).toEqual(['1000', '1000', '--', '/bin/bash', '-l']);
+    expect(plain.seen.options?.cwd).toBe('/home/bot');
+  });
+
+  it('types the preset once the shell has printed, with no newline or control characters', async () => {
+    const r = recorder();
+    const preset = encodeURIComponent('claude --resume abc\r\nrm -rf ~\u001b[A');
+    ptySession(
+      fakeWs(),
+      new URL(`http://agent/pty?preset=${preset}`),
+      { home: '/home/bot' },
+      r.nodePty,
+    );
+    expect(r.writes).toEqual([]);
+    r.data('$ ');
+    r.data('more');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(r.writes).toEqual(['claude --resume abcrm -rf ~[A']);
   });
 });

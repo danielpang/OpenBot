@@ -21,6 +21,9 @@
 //   (2000+n):(2000+n)  screen n's Xvfb, window manager, x11vnc and Chromium
 //   1900:1900          the agent's reads and writes of the shared cookie
 //                      store, whose directory no command or screen may enter
+//   1800:1800          the coder user: every coding agent and its logins
+//   1000:1800          the bot user with the coders group, for the owner's
+//                      commands in a coding session's worktree
 //
 // --clear-display N removes whatever stands at screen N's X socket,
 // /tmp/.X11-unix/X(10+N), so that its Xvfb can listen there. The agent makes
@@ -46,6 +49,9 @@
 #define BOT_ID 1000
 #define SCREEN_ID_BASE 2000
 #define STORE_ID 1900
+#define CODER_ID 1800
+#define CODERS_GID 1800
+#define RUNNER_ID 1801
 #define MAX_SCREEN 89
 #define DISPLAY_BASE 10
 #define X11_DIR "/tmp/.X11-unix"
@@ -68,8 +74,10 @@ static int screen_id(unsigned long id) {
 }
 
 static int allowed(unsigned long uid, unsigned long gid) {
-  if (uid == BOT_ID) return gid == BOT_ID || screen_id(gid);
+  if (uid == BOT_ID) return gid == BOT_ID || gid == CODERS_GID || screen_id(gid);
   if (uid == STORE_ID) return gid == STORE_ID;
+  if (uid == CODER_ID) return gid == CODERS_GID;
+  if (uid == RUNNER_ID) return gid == CODERS_GID;
   return screen_id(uid) && gid == uid;
 }
 

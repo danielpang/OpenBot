@@ -7,6 +7,8 @@ import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
 import { publishEvent } from '../infra/index.js';
+import { publishCoderControl } from './coder-control.js';
+import { setApprovalStatus } from './coder-state.js';
 import { actOnWidget, getRunForOwner, resumeRun, type RunRow } from './runs.js';
 
 // Approvals (plan 4.3, 5.6, P1, T5). When the policy answers `ask`, the run
@@ -220,6 +222,7 @@ export async function decideApproval(
 ): Promise<{ approval: Approval; resumedRunId: string | null }> {
   const row = await getApprovalForOwner(deps.db, owner, approvalId);
   if (row.status !== 'pending') throw approvalClosed(row.status);
+  if (row.sessionId) return decideSessionApproval(deps, owner, row, input);
   const partIndex = row.messageId ? await approvalPartIndex(deps.db, row.messageId) : null;
   if (!row.messageId || partIndex === null) throw approvalClosed(row.status);
   const result = await actOnWidget(deps, owner, row.messageId, partIndex, {
@@ -232,6 +235,48 @@ export async function decideApproval(
     .where(eq(schema.approvals.id, approvalId));
   const note = (result.widget.state as ApprovalState).note ?? null;
   return { approval: toApproval(after!, note), resumedRunId: result.resumedRunId };
+}
+
+// A coding session's request (I13) has no approval widget and no paused
+// run: the session's job waits on the agent's prompt. The decision goes to
+// it over openbots:coder-control, and a push or PR approval also arms the
+// session's push credential.
+
+async function decideSessionApproval(
+  deps: ApprovalsDeps,
+  owner: Owner,
+  row: ApprovalRow,
+  input: { decision: 'approve' | 'deny'; note?: string | undefined },
+): Promise<{ approval: Approval; resumedRunId: string | null }> {
+  const status = input.decision === 'approve' ? 'approved' : 'denied';
+  const [decided] = await deps.db
+    .update(schema.approvals)
+    .set({ status, decidedBy: owner.id, decidedAt: new Date() })
+    .where(and(eq(schema.approvals.id, row.id), eq(schema.approvals.status, 'pending')))
+    .returning();
+  if (!decided) throw approvalClosed('closed');
+  await answerSession(deps, decided, status);
+  await announceDecision(deps, decided, { type: 'user', id: owner.id }, input.note);
+  return { approval: toApproval(decided, input.note), resumedRunId: null };
+}
+
+/** Tells the session's job the decision, and shows it on the session's widget. */
+async function answerSession(
+  deps: ApprovalsDeps,
+  row: ApprovalRow,
+  status: 'approved' | 'denied' | 'expired',
+) {
+  if (!row.sessionId) return;
+  const sessionId = row.sessionId;
+  const decision = status === 'approved' ? 'approved' : 'denied';
+  if (decision === 'approved' && (row.actionClass === 'push' || row.actionClass === 'pr')) {
+    await publishCoderControl(deps, { type: 'push_allowed', sessionId });
+  }
+  await publishCoderControl(deps, { type: 'approval', sessionId, approvalId: row.id, decision });
+  // The job updates the widget too; this covers a job that is gone.
+  await setApprovalStatus(deps, sessionId, row.id, status).catch((error: unknown) =>
+    deps.logger.warn({ err: error, sessionId }, 'session approval not shown'),
+  );
 }
 
 export async function getApprovalForOwner(
@@ -365,6 +410,8 @@ async function closeApproval(
     }
   }
   await announceDecision(deps, done.closed, { type: 'system', id: null }, state.note);
+  // A session's request expired or its run was cancelled: the agent hears no.
+  if (done.closed.sessionId) await answerSession(deps, done.closed, state.status);
   return { closed: done.closed, pendingRunId: done.pendingRunId };
 }
 
@@ -415,6 +462,30 @@ export async function closeApprovalsForRun(deps: ApprovalsDeps, runId: string) {
   for (const row of pending) {
     await closeApproval(deps, row, { status: 'denied', note: 'The run was cancelled' });
   }
+}
+
+/**
+ * A coding session ended (it settled, failed, stopped or hit its time
+ * limit): its requests still pending expire, with the events and the audit
+ * entry, so the owner's tray drops them. Returns how many it expired.
+ */
+export async function expireSessionApprovals(
+  deps: ApprovalsDeps,
+  sessionId: string,
+): Promise<number> {
+  const pending = await deps.db
+    .select()
+    .from(schema.approvals)
+    .where(and(eq(schema.approvals.sessionId, sessionId), eq(schema.approvals.status, 'pending')));
+  let expired = 0;
+  for (const row of pending) {
+    const closed = await closeApproval(deps, row, {
+      status: 'expired',
+      note: 'The coding session ended',
+    });
+    if (closed) expired++;
+  }
+  return expired;
 }
 
 /** The `approvals` queue handler: one delayed `expire` job per request. */

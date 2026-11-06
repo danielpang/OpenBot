@@ -46,3 +46,16 @@ export async function resolveInHome(home: string, requested: string): Promise<Ho
   }
   return { abs, rel: rel.split(path.sep).join('/') };
 }
+
+/**
+ * A working directory for a process (WS /coder, WS /pty): relative to the
+ * home or absolute under it, and in it once symlinks are followed.
+ */
+export async function resolveCwd(home: string, cwd: string | undefined): Promise<string> {
+  if (cwd === undefined || cwd === '') return home;
+  if (cwd.includes('\0')) throw new AgentError(400, 'BAD_PATH', 'The path contains NUL');
+  const rel = path.isAbsolute(cwd) ? path.relative(home, path.normalize(cwd)) : cwd;
+  if (escapes(rel)) throw outside();
+  const { abs } = await resolveInHome(home, encodeURIComponent(rel));
+  return abs;
+}

@@ -83,9 +83,25 @@ export function socketUrl(path: string, base = window.location.origin) {
   return url.toString();
 }
 
-/** The terminal: a login shell on the computer, sized in character cells. */
-export const ptyUrl = (cols: number, rows: number) =>
-  socketUrl(`/api/v1/computer/pty?cols=${cols}&rows=${rows}`);
+/** Where a terminal opens: a directory, as another user (`coder`), with a command typed (I15). */
+export interface PtyAttach {
+  cwd?: string;
+  user?: string;
+  preset?: string;
+}
+
+/**
+ * The terminal: a login shell on the computer, sized in character cells, in
+ * `cwd` as `user` with `preset` typed and ready when given (the server checks
+ * them against a coding session or a repository the owner has).
+ */
+export function ptyUrl(cols: number, rows: number, attach: PtyAttach = {}) {
+  const query = new URLSearchParams({ cols: String(cols), rows: String(rows) });
+  for (const key of ['cwd', 'user', 'preset'] as const) {
+    if (attach[key]) query.set(key, attach[key]);
+  }
+  return socketUrl(`/api/v1/computer/pty?${query.toString()}`);
+}
 
 /**
  * The Bot's screen as RFB over WebSocket (websockify on its display).

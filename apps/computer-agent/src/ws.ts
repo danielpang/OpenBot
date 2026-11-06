@@ -2,19 +2,31 @@ import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import { upgradeAuthorized } from './auth.js';
+import { coderSession, coderSessions, type CoderSessions } from './coder.js';
+import { coderConfigEnv, coderPaths } from './coder-paths.js';
 import { childEnv } from './config.js';
+import { AgentError } from './errors.js';
 import { mcpStdioSession, stopAllMcpStdio } from './mcp-stdio.js';
-import { PtyClientMessageSchema, ScreenNumberSchema, type PtyServerMessage } from './protocol.js';
+import { resolveCwd } from './paths.js';
+import {
+  PtyClientMessageSchema,
+  PtyOpenSchema,
+  ScreenNumberSchema,
+  type PtyServerMessage,
+} from './protocol.js';
+import { loadPty, type NodePty, type Pty } from './pty.js';
 import { acceptClient, authenticateToServer, ByteReader } from './rfb.js';
 import type { ScreenManager } from './screens.js';
-import { BOT, UNPRIVILEGED, type Users } from './users.js';
+import { BOT, BOT_CODERS, CODER, UNPRIVILEGED, type Users } from './users.js';
+
+export { loadPty, type NodePty } from './pty.js';
 
 // The WebSocket endpoints (plan 9.3). `/pty` is a terminal session on
 // node-pty; `/vnc/:n` is websockify: binary frames carrying RFB, bridged to
 // the screen's x11vnc on its unix socket (`ScreenManager.vnc`), which is what
 // noVNC speaks. The bridge logs in to x11vnc with the screen's password
 // (rfb.ts, S-7). `/mcp/stdio` runs a connector's stdio MCP server
-// (mcp-stdio.ts).
+// (mcp-stdio.ts), and `/coder` a coding session's process (coder.ts, I3).
 
 export interface WsDeps {
   token: string;
@@ -22,6 +34,12 @@ export interface WsDeps {
   screens: ScreenManager;
   shell?: string;
   users?: Users;
+  /** Scratch space and the state volume, for the coding sessions' directories. */
+  runtimeDir?: string;
+  stateDir?: string;
+  coders?: CoderSessions;
+  /** How long a coding session's credential request waits on the server (tests shorten it). */
+  credentialTimeoutMs?: number;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 }
 
@@ -41,11 +59,32 @@ export function attachWebSockets(server: Server, deps: WsDeps): { close: () => P
     if (!upgradeAuthorized(deps.token, req.headers, url))
       return reject(socket, 401, 'Unauthorized');
     if (url.pathname === '/pty') {
-      void loadPty().then((pty) => {
-        if (!pty) return reject(socket, 503, 'Service Unavailable');
-        wss.handleUpgrade(req, socket, head, (ws) => ptySession(ws, url, deps, pty));
-      });
+      void Promise.all([loadPty(), ptyCwd(deps.home, url)]).then(
+        ([pty, cwd]) => {
+          if (!pty) return reject(socket, 503, 'Service Unavailable');
+          wss.handleUpgrade(req, socket, head, (ws) => ptySession(ws, url, deps, pty, cwd));
+        },
+        (err: unknown) =>
+          err instanceof AgentError && err.status === 403
+            ? reject(socket, 403, 'Forbidden')
+            : reject(socket, 400, 'Bad Request'),
+      );
       return;
+    }
+    if (url.pathname === '/coder') {
+      return wss.handleUpgrade(req, socket, head, (ws) =>
+        coderSession(ws, {
+          home: deps.home,
+          ...(deps.runtimeDir ? { runtimeDir: deps.runtimeDir } : {}),
+          ...(deps.stateDir ? { stateDir: deps.stateDir } : {}),
+          ...(deps.users ? { users: deps.users } : {}),
+          ...(deps.coders ? { sessions: deps.coders } : {}),
+          ...(deps.credentialTimeoutMs !== undefined
+            ? { credentialTimeoutMs: deps.credentialTimeoutMs }
+            : {}),
+          ...(deps.log ? { log: deps.log } : {}),
+        }),
+      );
     }
     if (url.pathname === '/mcp/stdio') {
       return wss.handleUpgrade(req, socket, head, (ws) =>
@@ -75,44 +114,11 @@ export function attachWebSockets(server: Server, deps: WsDeps): { close: () => P
       new Promise((resolve) => {
         server.off('upgrade', onUpgrade);
         stopAllMcpStdio();
+        (deps.coders ?? coderSessions).stopAll();
         for (const client of wss.clients) client.terminate();
         wss.close(() => resolve());
       }),
   };
-}
-
-/** The part of node-pty's API used here, so typecheck does not need it installed. */
-export interface NodePty {
-  spawn(
-    file: string,
-    args: string[],
-    options: { name: string; cols: number; rows: number; cwd: string; env: Record<string, string> },
-  ): Pty;
-}
-
-interface Pty {
-  onData(listener: (data: string) => void): unknown;
-  onExit(listener: (e: { exitCode: number; signal?: number }) => void): unknown;
-  write(data: string): void;
-  resize(cols: number, rows: number): void;
-  kill(): void;
-}
-
-// Typed as string, not a literal, so tsc does not try to resolve it.
-const NODE_PTY: string = 'node-pty';
-let ptyModule: Promise<NodePty | undefined> | undefined;
-
-/**
- * node-pty, or undefined where it is not installed or its native binding did
- * not build. It is an optional dependency so a checkout without a C++
- * toolchain still installs; the image build checks that it loads.
- */
-export function loadPty(): Promise<NodePty | undefined> {
-  ptyModule ??= import(NODE_PTY).then(
-    (m: NodePty) => m,
-    () => undefined,
-  );
-  return ptyModule;
 }
 
 const dim = (value: string | null, fallback: number) => {
@@ -120,33 +126,94 @@ const dim = (value: string | null, fallback: number) => {
   return Number.isInteger(n) && n > 0 && n <= 1000 ? n : fallback;
 };
 
-/** One login shell per connection; it ends when either side closes. */
+/** `cols` and `rows` keep their old leniency (`dim`): out of range falls back to the default. */
+const PtyParamsSchema = PtyOpenSchema.pick({ cwd: true, user: true, preset: true });
+
+/**
+ * The working directory a `/pty` URL asks for (I15), resolved under the home;
+ * undefined when it names none. Refuses one outside the home (403) and
+ * parameters `PtyOpenSchema` does not take (400).
+ */
+export async function ptyCwd(home: string, url: URL): Promise<string | undefined> {
+  const open = PtyParamsSchema.safeParse(Object.fromEntries(url.searchParams));
+  if (!open.success) throw new AgentError(400, 'BAD_PTY', 'Not valid terminal parameters');
+  return open.data.cwd === undefined ? undefined : resolveCwd(home, open.data.cwd);
+}
+
+/** Control characters but tab: a preset is typed, never run, so no newline gets through. */
+// eslint-disable-next-line no-control-regex
+const PRESET_CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f]/g;
+
+/**
+ * One login shell per connection; it ends when either side closes. The URL
+ * may ask (I15) for a working directory (`cwd`, resolved by `ptyCwd`
+ * before the upgrade and passed here), the coder user's shell (`user=coder`,
+ * with every agent's config directory, for a coding session's terminal)
+ * and a `preset`: text typed at the prompt without a newline, the session's
+ * resume command, for the owner to run with Enter. A bot shell in a
+ * worktree has the coders group, as the session's own commands do.
+ */
 export function ptySession(
   ws: WebSocket,
   url: URL,
-  deps: Pick<WsDeps, 'home' | 'shell' | 'users'>,
+  deps: Pick<WsDeps, 'home' | 'shell' | 'users' | 'stateDir' | 'runtimeDir'>,
   nodePty: NodePty,
+  cwd?: string,
 ): void {
   const send = (msg: PtyServerMessage) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
   };
+  const open = PtyParamsSchema.safeParse(Object.fromEntries(url.searchParams));
+  const user = open.success ? open.data.user : 'bot';
+  const preset = open.success ? open.data.preset?.replace(PRESET_CONTROL, '') : undefined;
   let pty: Pty;
-  // The owner's terminal is the bot user's, on no screen.
-  const program = (deps.users ?? UNPRIVILEGED).command(BOT, deps.shell ?? '/bin/bash', ['-l']);
+  // The owner's terminal is the bot user's, on no screen, unless it asks for the coder's.
+  const identity = user === 'coder' ? CODER : cwd !== undefined ? BOT_CODERS : BOT;
+  const coders = coderPaths(
+    deps.runtimeDir ?? '/tmp/openbots',
+    deps.stateDir ?? '/var/lib/openbots',
+  );
+  const env =
+    user === 'coder'
+      ? { HOME: coders.homeDir, TERM: 'xterm-256color', ...coderConfigEnv(coders) }
+      : { HOME: deps.home, TERM: 'xterm-256color' };
+  const shell = deps.shell ?? '/bin/bash';
+  const program = (deps.users ?? UNPRIVILEGED).command(
+    identity,
+    ...((identity === BOT
+      ? [shell, ['-l']]
+      : // As in a coding session: what one user writes, the other may change.
+        ['/bin/sh', ['-c', 'umask 002 && exec "$0" "$@"', shell, '-l']]) as [string, string[]]),
+  );
   try {
     pty = nodePty.spawn(program.command, program.args, {
       name: 'xterm-256color',
       cols: dim(url.searchParams.get('cols'), 80),
       rows: dim(url.searchParams.get('rows'), 24),
-      cwd: deps.home,
-      env: childEnv({ HOME: deps.home, TERM: 'xterm-256color' }) as Record<string, string>,
+      cwd: cwd ?? deps.home,
+      env: childEnv(env) as Record<string, string>,
     });
   } catch (err) {
     ws.close(1011, err instanceof Error ? err.message.slice(0, 120) : 'pty failed');
     return;
   }
-  pty.onData((data) => send({ type: 'output', data }));
+  // Typed once the shell has drawn its first output, its prompt, so the
+  // line editor has it; a shell that prints nothing gets it after a second.
+  let typed = !preset;
+  const type = () => {
+    if (typed) return;
+    typed = true;
+    pty.write(preset!);
+  };
+  const presetTimer = preset ? setTimeout(type, 1000) : undefined;
+  presetTimer?.unref();
+  pty.onData((data) => {
+    send({ type: 'output', data });
+    if (!typed) setTimeout(type, 50).unref();
+  });
   pty.onExit(({ exitCode, signal }) => {
+    clearTimeout(presetTimer);
+    typed = true;
     send({ type: 'exit', exitCode, ...(signal ? { signal } : {}) });
     ws.close(1000);
   });
@@ -162,6 +229,8 @@ export function ptySession(
     else pty.resize(parsed.data.cols, parsed.data.rows);
   });
   ws.on('close', () => {
+    clearTimeout(presetTimer);
+    typed = true;
     try {
       pty.kill();
     } catch {
