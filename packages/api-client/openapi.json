@@ -6622,9 +6622,13 @@
           "since": {
             "type": ["string", "null"],
             "format": "date-time"
+          },
+          "error": {
+            "type": ["string", "null"],
+            "description": "Why the last attempt to link failed, while connecting; null otherwise"
           }
         },
-        "required": ["hostId", "relayUrl", "status", "since"]
+        "required": ["hostId", "relayUrl", "status", "since", "error"]
       }
     },
     "parameters": {}

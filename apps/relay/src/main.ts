@@ -49,6 +49,7 @@ const relay = await createRelay({
   port: config.port,
   host: config.host,
   trustProxy: config.trustProxy,
+  ...(config.clientIpHeader ? { clientIpHeader: config.clientIpHeader } : {}),
   logger,
   minClusterSize: config.minClusterSize,
   cluster: config.cluster,

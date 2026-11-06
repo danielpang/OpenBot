@@ -131,6 +131,9 @@ const RelaySchema = z
     relayUrl: z.string().nullable(),
     status: z.enum(['off', 'connecting', 'linked']),
     since: z.iso.datetime().nullable(),
+    error: z.string().nullable().openapi({
+      description: 'Why the last attempt to link failed, while connecting; null otherwise',
+    }),
   })
   .openapi('RelayStatus');
 
@@ -361,7 +364,13 @@ export const deviceRoutes = createRouter()
       if (relay) return c.json(relay.status(), 200);
       const { hostId } = await ensureInstanceKey({ db, config });
       return c.json(
-        { hostId, relayUrl: config.relayUrl ?? null, status: 'off' as const, since: null },
+        {
+          hostId,
+          relayUrl: config.relayUrl ?? null,
+          status: 'off' as const,
+          since: null,
+          error: null,
+        },
         200,
       );
     },

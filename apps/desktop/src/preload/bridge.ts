@@ -3,6 +3,7 @@ import {
   type ConnectionInfo,
   type ConnectOptions,
   type PairCode,
+  type PairRelayStatus,
   type PairRelayView,
   type PlatformInfo,
   type ProfilesView,
@@ -81,6 +82,8 @@ export interface AppBridge extends WebBridge {
     setRelay(url: string): Promise<PairRelayView>;
     /** A new code; the main process cancels the window's last unused one. */
     code(): Promise<PairCode>;
+    /** The server's link to its relay: the window shows the code once it is `linked`. */
+    relayStatus(): Promise<PairRelayStatus>;
     /** Hears the phone that used the window's code; returns the unsubscribe. */
     onPaired(listener: (name: string) => void): () => void;
     close(): void;
@@ -153,6 +156,7 @@ export function createAppBridge(ipcRenderer: IpcRendererLike, platform: Platform
       relay: () => invoke<PairRelayView>(DESKTOP_CHANNELS.pairRelay),
       setRelay: (url) => invoke<PairRelayView>(DESKTOP_CHANNELS.pairSetRelay, String(url)),
       code: () => invoke<PairCode>(DESKTOP_CHANNELS.pairCode),
+      relayStatus: () => invoke<PairRelayStatus>(DESKTOP_CHANNELS.pairRelayStatus),
       onPaired(listener) {
         const handler = (_event: unknown, ...args: unknown[]) => {
           const [name] = args;

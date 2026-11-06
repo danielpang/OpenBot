@@ -17,6 +17,15 @@ describe('config', () => {
     });
   });
 
+  it('reads the client address from fly-client-ip on Fly, or from the header it is given', () => {
+    expect(loadConfig({}).clientIpHeader).toBeUndefined();
+    expect(loadConfig({ FLY_MACHINE_ID: '3d8d9e1c2a5e78' }).clientIpHeader).toBe('fly-client-ip');
+    expect(loadConfig({ RELAY_CLIENT_IP_HEADER: 'cf-connecting-ip' }).clientIpHeader).toBe(
+      'cf-connecting-ip',
+    );
+    expect(() => loadConfig({ RELAY_CLIENT_IP_HEADER: 'X-Real-IP' })).toThrow(/lower case/);
+  });
+
   it('replays only on Fly or when asked', () => {
     expect(loadConfig({}).replay).toBe('off');
     expect(loadConfig({ FLY_MACHINE_ID: '3d8d9e1c2a5e78' }).replay).toBe('fly');

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   clockSkew,
@@ -5,6 +7,7 @@ import {
   pairedByThis,
   PAIRING_TTL_MS,
   parseRelayUrl,
+  RETIRED_SHARED_RELAY_URLS,
   sharedRelayUrl,
 } from './pairing.js';
 
@@ -40,6 +43,18 @@ describe('a relay address', () => {
 });
 
 describe('the shared relay', () => {
+  it('is the Fly app deploy/relay deploys, so no code names a relay that is not there', () => {
+    // Until the relay has a custom hostname (deploy/relay/README.md), it is the Fly app's own.
+    const flyToml = readFileSync(
+      fileURLToPath(new URL('../../../../deploy/relay/fly.toml', import.meta.url)),
+      'utf8',
+    );
+    const app = /^app\s*=\s*"([^"]+)"/m.exec(flyToml)?.[1];
+    expect(app).toBeTruthy();
+    expect(new URL(DEFAULT_SHARED_RELAY_URL).host).toBe(`${app}.fly.dev`);
+    expect(RETIRED_SHARED_RELAY_URLS).not.toContain(DEFAULT_SHARED_RELAY_URL);
+  });
+
   it('is the packaged build’s, else the default, and ignores the environment there', () => {
     const env = { OPENBOTS_SHARED_RELAY_URL: 'wss://dev.example' };
     const packageJson = { openbots: { relayUrl: 'wss://relay.build.example' } };

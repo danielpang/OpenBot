@@ -172,6 +172,7 @@ describe('the app bridge', () => {
     await bridge.pair.relay();
     await bridge.pair.setRelay('wss://mine.example');
     await bridge.pair.code();
+    await bridge.pair.relayStatus();
     bridge.pair.close();
     expect(ipcRenderer.invoke.mock.calls).toEqual([
       [DESKTOP_CHANNELS.profilesList],
@@ -190,6 +191,7 @@ describe('the app bridge', () => {
       [DESKTOP_CHANNELS.pairRelay],
       [DESKTOP_CHANNELS.pairSetRelay, 'wss://mine.example'],
       [DESKTOP_CHANNELS.pairCode],
+      [DESKTOP_CHANNELS.pairRelayStatus],
       [DESKTOP_CHANNELS.pairClose],
     ]);
   });

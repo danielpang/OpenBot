@@ -21,18 +21,19 @@ The wire contract is [docs/RELAY_PROTOCOL.md](../../docs/RELAY_PROTOCOL.md) (sec
 
 All settings come from the environment. Push needs all four of the key file, key id, team id and topic; with any of them missing the relay carries streams only and answers every push `unavailable`.
 
-| Variable                 | Default      | Meaning                                                                                                                                       |
-| ------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RELAY_PORT`             | `3200`       | The port to listen on                                                                                                                         |
-| `RELAY_HOST`             | `0.0.0.0`    | The address to listen on                                                                                                                      |
-| `RELAY_TRUST_PROXY`      | `false`      | `true` takes the client address from the last `x-forwarded-for` hop (the one your proxy adds). Set it only when a proxy you run sits in front |
-| `RELAY_APNS_KEY_FILE`    |              | Path to the APNs `.p8` key (token based authentication). It must be readable by the relay's user (1000 in the image)                          |
-| `RELAY_APNS_KEY`         |              | The `.p8` key itself, or its base64, instead of a file. Read once at start, then deleted from the process environment                         |
-| `RELAY_APNS_KEY_ID`      |              | The key's id, from the Apple developer account                                                                                                |
-| `RELAY_APNS_TEAM_ID`     |              | The Apple developer team id                                                                                                                   |
-| `RELAY_APNS_TOPIC`       |              | The app's bundle id                                                                                                                           |
-| `RELAY_APNS_ENVIRONMENT` | `production` | The APNs environment of a push frame that names none. Each frame normally names its own (`production` or `sandbox`)                           |
-| `RELAY_LOG_LEVEL`        | `info`       | A pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`                                                                  |
+| Variable                 | Default      | Meaning                                                                                                                                                                                                    |
+| ------------------------ | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RELAY_PORT`             | `3200`       | The port to listen on                                                                                                                                                                                      |
+| `RELAY_HOST`             | `0.0.0.0`    | The address to listen on                                                                                                                                                                                   |
+| `RELAY_TRUST_PROXY`      | `false`      | `true` takes the client address from the proxy's headers: `RELAY_CLIENT_IP_HEADER` when set, else the last `x-forwarded-for` hop (the one your proxy adds). Set it only when a proxy you run sits in front |
+| `RELAY_CLIENT_IP_HEADER` |              | A header that carries the client's address on its own, read before `x-forwarded-for`. On Fly it defaults to `fly-client-ip`, since Fly's proxy puts the app's own address last in `x-forwarded-for`        |
+| `RELAY_APNS_KEY_FILE`    |              | Path to the APNs `.p8` key (token based authentication). It must be readable by the relay's user (1000 in the image)                                                                                       |
+| `RELAY_APNS_KEY`         |              | The `.p8` key itself, or its base64, instead of a file. Read once at start, then deleted from the process environment                                                                                      |
+| `RELAY_APNS_KEY_ID`      |              | The key's id, from the Apple developer account                                                                                                                                                             |
+| `RELAY_APNS_TEAM_ID`     |              | The Apple developer team id                                                                                                                                                                                |
+| `RELAY_APNS_TOPIC`       |              | The app's bundle id                                                                                                                                                                                        |
+| `RELAY_APNS_ENVIRONMENT` | `production` | The APNs environment of a push frame that names none. Each frame normally names its own (`production` or `sandbox`)                                                                                        |
+| `RELAY_LOG_LEVEL`        | `info`       | A pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` or `silent`                                                                                                                               |
 
 For several machines, draining and metrics:
 

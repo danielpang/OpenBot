@@ -1,9 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { PairRelayView } from '../ipc.js';
-import { createPairFlow, relayChanged } from './pair-flow.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PairRelayStatus, PairRelayView } from '../ipc.js';
+import { createPairFlow, LINK_POLL_MS, LINK_WAIT_MS, relayChanged } from './pair-flow.js';
 
 const SHARED = 'wss://relay.openbots.example';
 const CODE = { link: 'openbots://pair#v=1', expiresAt: '2026-01-01T00:05:00.000Z', skewMs: 0 };
+
+// The link watch runs on timers, so every test here owns the clock.
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
 
 function fakeBridge(relay: Partial<PairRelayView> = {}) {
   let paired: ((name: string) => void) | null = null;
@@ -12,6 +16,7 @@ function fakeBridge(relay: Partial<PairRelayView> = {}) {
     relay: vi.fn(async () => view),
     setRelay: vi.fn(async (url: string) => ({ ...view, current: url })),
     code: vi.fn(async () => CODE),
+    relayStatus: vi.fn(async (): Promise<PairRelayStatus> => ({ status: 'linked', error: null })),
     onPaired: vi.fn((listener: (name: string) => void) => {
       paired = listener;
       return () => (paired = null);
@@ -53,6 +58,91 @@ describe('Pair your phone', () => {
     await local.start();
     local.changeRelay();
     expect(local.store.get()).toMatchObject({ step: 'relay', url: SHARED, code: null });
+  });
+});
+
+describe('the server’s link to the relay', () => {
+  it('holds the code back until the server is linked, then shows it', async () => {
+    const { bridge, pair } = fakeBridge();
+    pair.relayStatus
+      .mockResolvedValueOnce({ status: 'off', error: null })
+      .mockResolvedValueOnce({ status: 'connecting', error: null });
+    const flow = createPairFlow(bridge);
+    await flow.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flow.store.get()).toMatchObject({ step: 'code', code: CODE, link: 'waiting' });
+    await vi.advanceTimersByTimeAsync(LINK_POLL_MS);
+    expect(flow.store.get().link).toBe('waiting');
+    await vi.advanceTimersByTimeAsync(LINK_POLL_MS);
+    expect(flow.store.get()).toMatchObject({ link: 'linked', linkError: null });
+    flow.close();
+  });
+
+  it('says why when the server reports it cannot reach the relay, and recovers once it can', async () => {
+    const { bridge, pair } = fakeBridge({ current: 'wss://relay.openbots.dev' });
+    pair.relayStatus.mockResolvedValue({
+      status: 'connecting',
+      error: 'getaddrinfo ENOTFOUND relay.openbots.dev',
+    });
+    const flow = createPairFlow(bridge);
+    await flow.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flow.store.get()).toMatchObject({
+      step: 'code',
+      link: 'failed',
+      linkError:
+        'Your server could not connect to the relay at relay.openbots.dev: getaddrinfo ENOTFOUND relay.openbots.dev.',
+    });
+    pair.relayStatus.mockResolvedValue({ status: 'linked', error: null });
+    await vi.advanceTimersByTimeAsync(LINK_POLL_MS);
+    expect(flow.store.get()).toMatchObject({ link: 'linked', linkError: null });
+    flow.close();
+  });
+
+  it('gives a server that reports no reason 15 seconds before it says it has not connected', async () => {
+    const { bridge, pair } = fakeBridge();
+    pair.relayStatus.mockResolvedValue({ status: 'connecting', error: null });
+    const flow = createPairFlow(bridge);
+    await flow.start();
+    await vi.advanceTimersByTimeAsync(LINK_WAIT_MS - LINK_POLL_MS);
+    expect(flow.store.get().link).toBe('waiting');
+    await vi.advanceTimersByTimeAsync(LINK_POLL_MS);
+    expect(flow.store.get()).toMatchObject({
+      link: 'failed',
+      linkError: 'Your server has not connected to the relay at relay.openbots.example.',
+    });
+    flow.close();
+  });
+
+  it('keeps waiting through a status it could not read', async () => {
+    const { bridge, pair } = fakeBridge();
+    pair.relayStatus.mockRejectedValueOnce(new Error('Sign in to OpenBots first.'));
+    const flow = createPairFlow(bridge);
+    await flow.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flow.store.get()).toMatchObject({ link: 'waiting', linkError: null });
+    await vi.advanceTimersByTimeAsync(LINK_POLL_MS);
+    expect(flow.store.get().link).toBe('linked');
+    flow.close();
+  });
+
+  it('watches no link when the server has no relay, and stops when the window closes', async () => {
+    const { bridge, pair } = fakeBridge({ local: false, current: null });
+    const flow = createPairFlow(bridge);
+    await flow.start();
+    await vi.advanceTimersByTimeAsync(LINK_POLL_MS * 3);
+    expect(flow.store.get()).toMatchObject({ step: 'code', code: CODE, link: 'none' });
+    expect(pair.relayStatus).not.toHaveBeenCalled();
+
+    const watched = fakeBridge();
+    const linked = createPairFlow(watched.bridge);
+    await linked.start();
+    await vi.advanceTimersByTimeAsync(LINK_POLL_MS);
+    const asked = watched.pair.relayStatus.mock.calls.length;
+    expect(asked).toBeGreaterThan(0);
+    linked.close();
+    await vi.advanceTimersByTimeAsync(LINK_POLL_MS * 3);
+    expect(watched.pair.relayStatus.mock.calls.length).toBe(asked);
   });
 });
 

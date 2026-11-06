@@ -818,6 +818,7 @@ describe('devices and pairing', () => {
         relayUrl: null,
         status: 'off',
         since: null,
+        error: null,
       });
       const since = new Date().toISOString();
       t.deps.relay = {
@@ -826,6 +827,7 @@ describe('devices and pairing', () => {
           relayUrl: 'wss://relay.example.com',
           status: 'linked',
           since,
+          error: null,
         }),
         wake: () => {},
         push: () => Promise.reject(new Error('not used here')),

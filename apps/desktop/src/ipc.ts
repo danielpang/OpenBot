@@ -33,6 +33,7 @@ export const DESKTOP_CHANNELS = {
   pairRelay: 'openbots:pair:relay',
   pairSetRelay: 'openbots:pair:set-relay',
   pairCode: 'openbots:pair:code',
+  pairRelayStatus: 'openbots:pair:relay-status',
   pairClose: 'openbots:pair:close',
   /** main → renderer: a phone used the window's code. */
   pairPaired: 'openbots:pair:paired',
@@ -133,6 +134,13 @@ export interface PairRelayView {
   sharedUrl: string;
   /** The relay the server runs with, from `GET /api/v1/relay`; null for none. */
   current: string | null;
+}
+
+/** The server's link to its relay, from `GET /api/v1/relay`. */
+export interface PairRelayStatus {
+  status: 'off' | 'connecting' | 'linked';
+  /** Why the server's last attempt to link failed, while connecting; null otherwise. */
+  error: string | null;
 }
 
 /** A pairing code for the window's QR code. */

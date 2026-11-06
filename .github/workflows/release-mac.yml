@@ -78,6 +78,20 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
+      - name: Check the shared relay the app ships with answers
+        run: |
+          url="$(sed -n "s/^export const DEFAULT_SHARED_RELAY_URL = '\(.*\)';$/\1/p" apps/desktop/src/main/pairing.ts)"
+          case "$url" in
+            wss://*) ;;
+            *) echo "::error::apps/desktop/src/main/pairing.ts names no wss:// shared relay"; exit 1 ;;
+          esac
+          host="${url#wss://}"
+          if ! curl -fsS --max-time 15 "https://$host/healthz" >/dev/null; then
+            echo "::error::the shared relay $url does not answer; a phone pairing with this build could not reach it"
+            exit 1
+          fi
+          echo "$url answers"
+
       # The shell loads the web UI from the server, so the app bundles no web build.
       - name: Build the desktop shell
         run: pnpm exec turbo run build --filter=@openbots/desktop

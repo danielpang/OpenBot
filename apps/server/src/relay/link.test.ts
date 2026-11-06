@@ -1,3 +1,4 @@
+import type { AddressInfo } from 'node:net';
 import {
   createRelay,
   MemoryRegistry,
@@ -112,6 +113,7 @@ describe('relay link', () => {
       relayUrl: wsUrl(relay),
       status: 'off',
       since: null,
+      error: null,
     });
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(await hostPresence({ relayUrl: relay.url, hostId: instance.hostId })).toBe(false);
@@ -325,6 +327,31 @@ describe('relay link', () => {
     await waitFor(
       async () => !(await hostPresence({ relayUrl: relay.url, hostId: instance.hostId })),
     );
+  });
+
+  it('says why it cannot link, and keeps trying, when the relay cannot be reached', async () => {
+    // A port nothing listens on, as a relay whose name does not resolve or that is down.
+    const closed = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    await new Promise<void>((resolve) => closed.once('listening', () => resolve()));
+    const port = (closed.address() as AddressInfo).port;
+    await new Promise<void>((resolve) => closed.close(() => resolve()));
+    const l = await createRelayLink(
+      { ...deps, config: { ...deps.config, relayUrl: `ws://127.0.0.1:${port}` } },
+      { instance, timing: FAST },
+    );
+    links.push(l);
+    expect(l.status().error).toBeNull();
+    await pair();
+    l.wake();
+    await waitFor(() => l.status().error !== null);
+    expect(l.status()).toMatchObject({ status: 'connecting' });
+    expect(l.status().error).toMatch(/ECONNREFUSED/);
+    const seen = l.status().error;
+    // It stays while the link keeps trying, and goes once the link is off.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(l.status().error).toBe(seen);
+    await l.stop();
+    expect(l.status()).toMatchObject({ status: 'off', error: null });
   });
 
   it('dials /v1/host with its host id in the query', async () => {

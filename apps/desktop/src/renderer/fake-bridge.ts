@@ -130,6 +130,7 @@ export function fakeBridge(
         current: url,
       })),
       code: vi.fn(async () => ({ link: 'openbots://pair#v=1', expiresAt: '', skewMs: 0 })),
+      relayStatus: vi.fn(async () => ({ status: 'linked', error: null })),
       onPaired: vi.fn(() => () => undefined),
       close: vi.fn(),
     },

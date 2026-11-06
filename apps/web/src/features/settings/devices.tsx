@@ -390,7 +390,10 @@ function RelayStatus() {
   useEffect(
     () =>
       client?.on('relay.status', (event) => {
-        queryClient.setQueryData(relayQuery.queryKey, event.payload);
+        queryClient.setQueryData(relayQuery.queryKey, {
+          ...event.payload,
+          error: event.payload.error ?? null,
+        });
       }),
     [client, queryClient],
   );
@@ -423,6 +426,12 @@ function RelayStatus() {
                   ? `Relay: linked since ${new Date(data.since).toLocaleString()}`
                   : 'Relay: linked'}
           </p>
+          {data.error && (
+            <p className="text-sm text-destructive" data-relay-error>
+              The server could not connect to the relay: {data.error}. Phones cannot reach it
+              through the relay until it does. Check OPENBOTS_RELAY_URL on the server.
+            </p>
+          )}
           {data.relayUrl === null ? (
             <p className="text-sm text-muted-foreground">
               For a phone to reach this server without a public address, set OPENBOTS_RELAY_URL on

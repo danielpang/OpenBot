@@ -13,7 +13,8 @@ import {
 // ByteTransport the tunnel client runs over. When the host is offline (4404),
 // the host has too many streams (4429) or the id is malformed (4400), the
 // relay closes the socket instead, and `connectThroughRelay` rejects with a
-// RelayConnectError that carries the code.
+// RelayConnectError that carries the code. A socket that never opens (DNS,
+// refused, TLS) rejects with `unreachable` set and the relay's host named.
 
 export const RELAY_CLOSE_HOST_OFFLINE = 4404;
 export const RELAY_CLOSE_TOO_MANY = 4429;
@@ -25,11 +26,19 @@ export class RelayConnectError extends Error {
   /** The socket's close code: 4404 host offline, 4429 too many streams, 4400 malformed, or what the socket gave. */
   readonly code: number;
   readonly reason: string;
+  /** The socket never opened: the relay could not be reached at all (DNS, refused, TLS). */
+  readonly unreachable: boolean;
 
-  constructor(code: number, reason: string, message?: string) {
+  constructor(
+    code: number,
+    reason: string,
+    message?: string,
+    options: { unreachable?: boolean } = {},
+  ) {
     super(message ?? `the relay closed the stream (${code}${reason ? `, ${reason}` : ''})`);
     this.code = code;
     this.reason = reason;
+    this.unreachable = options.unreachable ?? false;
   }
 
   get hostOffline(): boolean {
@@ -60,6 +69,14 @@ export interface ConnectThroughRelayOptions {
 
 function trimSlash(url: string): string {
   return url.replace(/\/+$/, '');
+}
+
+function relayHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }
 
 /** Opens a stream to a host through the relay and resolves once the relay says `open`. */
@@ -112,8 +129,16 @@ export function connectThroughRelay(options: ConnectThroughRelayOptions): Promis
         ),
       timeoutMs,
     );
-    socket.onopen = () => {};
-    socket.onerror = () => {};
+    let opened = false;
+    let failure = '';
+    socket.onopen = () => {
+      opened = true;
+    };
+    socket.onerror = (event) => {
+      // React Native puts the platform's description here; browsers say nothing.
+      const message = (event as { message?: unknown } | null)?.message;
+      if (typeof message === 'string' && message !== '') failure = message;
+    };
     socket.onmessage = (event) => {
       if (settled) return;
       if (typeof event.data !== 'string') {
@@ -149,7 +174,21 @@ export function connectThroughRelay(options: ConnectThroughRelayOptions): Promis
       resolve(fromWebSocket(socket));
     };
     socket.onclose = (event) => {
-      fail(new RelayConnectError(event?.code ?? 1006, event?.reason ?? ''));
+      const code = event?.code ?? 1006;
+      const reason = event?.reason ?? '';
+      if (opened) {
+        fail(new RelayConnectError(code, reason));
+        return;
+      }
+      const detail = reason || failure || `code ${code}`;
+      fail(
+        new RelayConnectError(
+          code,
+          reason,
+          `could not reach the relay at ${relayHost(relayUrl)} (${detail})`,
+          { unreachable: true },
+        ),
+      );
     };
   });
 }

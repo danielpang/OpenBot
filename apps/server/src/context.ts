@@ -88,6 +88,8 @@ export interface RelayStatus {
   status: 'off' | 'connecting' | 'linked';
   /** When the status last changed, ISO 8601; null when it never has. */
   since: string | null;
+  /** Why the last attempt to link failed, while `connecting`; null otherwise. */
+  error: string | null;
 }
 
 /** A signed-in caller, with or without an organization; set by `requireAccount`. */

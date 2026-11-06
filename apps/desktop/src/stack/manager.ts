@@ -143,6 +143,8 @@ export interface StackManagerOptions {
    * with `setRelay`.
    */
   defaultRelayUrl?: string;
+  /** Shared relays that no longer serve; a `.env` naming one gets `defaultRelayUrl`. */
+  retiredRelayUrls?: readonly string[];
   exec?: Exec;
   spawn?: Spawn;
   files?: StackFiles;
@@ -335,11 +337,17 @@ export function generateDatabasePassword(): string {
 
 /**
  * The default relay (OPENBOTS_RELAY_URL) for a `.env` that has none, so the
- * phone can reach This Mac away from home without a setting. One the owner
- * set stays.
+ * phone can reach This Mac away from home without a setting, or that names a
+ * `retired` one. One the owner set stays.
  */
-export function withRelay(env: string, url: string | undefined): string {
-  if (!url || envValue(env, 'OPENBOTS_RELAY_URL')?.trim()) return env;
+export function withRelay(
+  env: string,
+  url: string | undefined,
+  retired: readonly string[] = [],
+): string {
+  if (!url) return env;
+  const current = envValue(env, 'OPENBOTS_RELAY_URL')?.trim();
+  if (current && !retired.includes(current)) return env;
   return setEnvValue(env, 'OPENBOTS_RELAY_URL', url);
 }
 
@@ -731,7 +739,7 @@ export function createStackManager(options: StackManagerOptions): StackManager {
       }
       fixed = await sandboxFor(cli, name, fixed);
       fixed = withImages(fixed, options.images);
-      fixed = withRelay(fixed, options.defaultRelayUrl);
+      fixed = withRelay(fixed, options.defaultRelayUrl, options.retiredRelayUrls);
       if (fixed !== current) await files.writeFile(paths.envFile, fixed);
       return fixed;
     }
@@ -748,7 +756,7 @@ export function createStackManager(options: StackManagerOptions): StackManager {
       sandbox: await freeSandbox(cli),
       images: options.images,
     });
-    const withDefaultRelay = withRelay(created, options.defaultRelayUrl);
+    const withDefaultRelay = withRelay(created, options.defaultRelayUrl, options.retiredRelayUrls);
     await files.writeFile(paths.envFile, withDefaultRelay);
     return withDefaultRelay;
   }
