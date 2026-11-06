@@ -12,6 +12,8 @@ const mockMobile = {
   error: null,
   refresh: jest.fn(),
 };
+let mockWide = false;
+jest.mock('./adaptive-layout', () => ({ useTabletLayout: () => mockWide }));
 let mockCount = 3;
 let mockSegment = 'bots';
 let mockTabsProps: Record<string, unknown>;
@@ -21,6 +23,10 @@ jest.mock('../../src/screens/inbox-data', () => ({ useInbox: () => ({ count: moc
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('expo-router', () => ({
   useSegments: () => ['(tabs)', mockSegment],
+  Slot: () => {
+    const { Text } = jest.requireActual<typeof ReactNative>('react-native');
+    return <Text testID="tablet-content">Tablet content</Text>;
+  },
   router: { replace: jest.fn() },
   Redirect: ({ href }: { href: string }) => {
     const { Text } = jest.requireActual<typeof ReactNative>('react-native');
@@ -47,6 +53,7 @@ jest.mock('expo-router/unstable-native-tabs', () => {
 });
 
 beforeEach(() => {
+  mockWide = false;
   mockCount = 3;
   mockSegment = 'bots';
   mockTriggers.length = 0;
@@ -54,6 +61,16 @@ beforeEach(() => {
 });
 
 describe('native tab navigation', () => {
+  it('uses sidebar-owned navigation on wide iPad windows and restores native tabs when narrowed', () => {
+    mockWide = true;
+    const view = render(<TabsLayout />);
+    expect(screen.getByTestId('tablet-content')).toBeTruthy();
+    expect(screen.queryByTestId('native-tabs')).toBeNull();
+    mockWide = false;
+    view.rerender(<TabsLayout />);
+    expect(screen.queryByTestId('tablet-content')).toBeNull();
+    expect(screen.getByTestId('native-tabs')).toBeTruthy();
+  });
   it('retains all destinations and the Inbox count without painting over system glass', () => {
     render(<TabsLayout />);
     expect(mockTriggers).toEqual(['bots', 'inbox', 'settings']);

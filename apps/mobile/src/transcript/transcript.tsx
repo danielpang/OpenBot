@@ -186,17 +186,19 @@ export function Transcript({
           onLayout={({ nativeEvent }) => setComposerHeight(nativeEvent.layout.height)}
           style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}
         >
-          {messages.error ? (
-            <View style={{ paddingHorizontal: 16 }}>
-              <ErrorNote error={messages.error} onRetry={refresh} />
-            </View>
-          ) : null}
-          <Composer
-            bots={bots}
-            onSend={messages.send}
-            sending={messages.sending}
-            threadRootId={threadRootId}
-          />
+          <View style={{ width: '100%', maxWidth: 960, alignSelf: 'center' }}>
+            {messages.error ? (
+              <View style={{ paddingHorizontal: 16 }}>
+                <ErrorNote error={messages.error} onRetry={refresh} />
+              </View>
+            ) : null}
+            <Composer
+              bots={bots}
+              onSend={messages.send}
+              sending={messages.sending}
+              threadRootId={threadRootId}
+            />
+          </View>
         </View>
       </View>
     </Animated.View>
@@ -237,6 +239,9 @@ const MessageRow = memo(
         style={{
           paddingHorizontal: 20,
           paddingVertical: 16,
+          width: '100%',
+          maxWidth: 960,
+          alignSelf: 'center',
           backgroundColor: highlighted ? c.accent : 'transparent',
         }}
       >

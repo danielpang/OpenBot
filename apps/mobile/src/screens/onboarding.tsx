@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
-import { Alert, Image, Linking, Platform, View } from 'react-native';
+import { Alert, Image, Linking, View } from 'react-native';
+import { defaultDeviceName } from '../components/adaptive-layout';
 import { router, useLocalSearchParams } from 'expo-router';
 import Constants from 'expo-constants';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -75,7 +76,7 @@ export function WelcomeScreen() {
       </View>
       <Card>
         <Label size={20} weight="600">
-          Pair your phone
+          Pair your device
         </Label>
         <Label muted>
           Open OpenBots on your computer and choose “Pair your phone”. Then scan its QR code.
@@ -145,8 +146,8 @@ export function ConnectScreen() {
       </Label>
       <Label muted>
         {mode === 'signin'
-          ? 'Sign in with your server account. A device API key will be stored in this phone’s Keychain.'
-          : 'Enter a server API key. Your key is stored in this phone’s Keychain.'}
+          ? 'Sign in with your server account. A device API key will be stored in this device’s Keychain.'
+          : 'Enter a server API key. Your key is stored in this device’s Keychain.'}
       </Label>
       {account && !cloudUrl ? (
         <ErrorNote error="OpenBots account sign-in is not configured in this build." />
@@ -245,7 +246,7 @@ export function PairScreen() {
   const { link } = useLocalSearchParams<{ link?: string }>();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(link ?? '');
-  const [deviceName, setDeviceName] = useState(Platform.OS === 'ios' ? 'My iPhone' : 'My phone');
+  const [deviceName, setDeviceName] = useState(defaultDeviceName);
   const [ownerName, setOwnerName] = useState('');
   const [manual, setManual] = useState(false);
   const scanHandled = useRef(false);
@@ -288,7 +289,7 @@ export function PairScreen() {
       if (result.setupNeeded)
         Alert.alert(
           'Finish setup on your computer',
-          'Your phone is paired. Complete the initial server setup on your computer to create your first Bot.',
+          'Your device is paired. Complete the initial server setup on your computer to create your first Bot.',
         );
       router.replace('/(tabs)/bots');
     } catch (e) {
@@ -300,7 +301,7 @@ export function PairScreen() {
   return (
     <Page>
       <Label size={30} weight="700">
-        Pair your phone
+        Pair your device
       </Label>
       {!scanned && !manual ? (
         <>
@@ -356,7 +357,7 @@ export function PairScreen() {
               <Label weight="600" size={20}>
                 {parsed.value.name}
               </Label>
-              <Label muted>This code grants your phone access to this OpenBots server.</Label>
+              <Label muted>This code grants your device access to this OpenBots server.</Label>
               <Label size={13} weight="600">
                 Connection options
               </Label>

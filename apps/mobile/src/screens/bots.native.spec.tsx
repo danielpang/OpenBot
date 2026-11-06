@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { BotsScreen } from './bots';
 
 const mockPush = jest.fn();
+const mockNavigate = jest.fn();
 const mockRefresh = jest.fn();
 const mockRefetch = jest.fn<() => Promise<unknown>>();
 const mockMobile = {
@@ -31,7 +32,12 @@ const mockBots = {
   error: new Error('Disconnected'),
   refetch: mockRefetch,
 };
-jest.mock('expo-router', () => ({ router: { push: (...args: unknown[]) => mockPush(...args) } }));
+jest.mock('expo-router', () => ({
+  router: {
+    push: (...args: unknown[]) => mockPush(...args),
+    navigate: (...args: unknown[]) => mockNavigate(...args),
+  },
+}));
 jest.mock('@openbots/api-client', () => ({ unwrap: jest.fn() }));
 jest.mock('@openbots/avatars', () => ({ generate: () => '<svg/>', newBotAvatar: () => ({}) }));
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }));
@@ -52,6 +58,14 @@ beforeEach(() => {
 });
 
 describe('background reconnection on the Bots home screen', () => {
+  it('reuses the roster as an iPad sidebar with selected rows and conversation navigation', () => {
+    render(<BotsScreen sidebar selected={{ kind: 'bot', id: 'bot-1' }} />);
+    const bot = screen.getByRole('button', { name: 'Open Chief of Staff' });
+    expect(bot.props.accessibilityState.selected).toBe(true);
+    fireEvent.press(bot);
+    expect(mockNavigate).toHaveBeenCalledWith('/bot/bot-1');
+    expect(mockPush).not.toHaveBeenCalled();
+  });
   it('keeps cached Bots tappable without showing a refresh spinner or transient error', () => {
     render(<BotsScreen />);
     expect(screen.getByText('OpenBots')).toBeTruthy();
