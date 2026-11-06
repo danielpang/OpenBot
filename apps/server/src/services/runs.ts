@@ -9,7 +9,7 @@ import {
   type ApprovalState,
   type FormState,
 } from '@openbots/widgets';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
@@ -384,6 +384,45 @@ export async function botsAtWork(db: Db, chatId: string, thread: string | null) 
           (r.state as RunState | null)?.pending?.reason === 'question'),
     )
     .map((r) => r.botId);
+}
+
+/**
+ * An owner message in a group ends the handoffs still queued from earlier Bot
+ * chains in its thread (or at the top level): runs a Bot's message started
+ * (they have a parent run) that no worker has picked up yet. Work queued
+ * before the owner moved on would otherwise run after their newer message.
+ * A Bot already running is left to its steering, which takes the message.
+ * The update only touches runs still queued, so a worker that claims one
+ * first keeps it. Returns the dropped runs.
+ */
+export async function dropQueuedHandoffs(
+  deps: Pick<AppDeps, 'db' | 'infra' | 'logger'>,
+  chatId: string,
+  thread: string | null,
+): Promise<RunRow[]> {
+  const queued = await deps.db
+    .select()
+    .from(schema.runs)
+    .where(
+      and(
+        eq(schema.runs.chatId, chatId),
+        eq(schema.runs.status, 'queued'),
+        isNotNull(schema.runs.parentRunId),
+      ),
+    );
+  const stale = queued.filter((r) => runThread(r) === thread).map((r) => r.id);
+  if (!stale.length) return [];
+  const dropped = await deps.db
+    .update(schema.runs)
+    .set({
+      status: 'cancelled',
+      error: 'Dropped: the owner sent a newer message',
+      finishedAt: new Date(),
+    })
+    .where(and(inArray(schema.runs.id, stale), eq(schema.runs.status, 'queued')))
+    .returning();
+  for (const row of dropped) await publishRunStatus(deps, row);
+  return dropped;
 }
 
 /** Moves a waiting run back to the queue with the answer for its pending tool call (plan 5.6). */

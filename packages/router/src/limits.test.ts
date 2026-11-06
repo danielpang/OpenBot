@@ -7,27 +7,27 @@ import {
 } from './limits.js';
 
 describe('loop guards', () => {
-  it('defaults to depth 6 and 20 Bot-triggered runs per 10 minutes', () => {
+  it('defaults to depth 4 and 10 Bot-triggered runs per 10 minutes', () => {
     expect(DEFAULT_CHAIN_LIMITS).toEqual({
-      maxChainDepth: 6,
-      botRunBudget: 20,
+      maxChainDepth: 4,
+      botRunBudget: 10,
       budgetWindowMs: 600_000,
     });
   });
 
   it('stops a chain deeper than the cap', () => {
-    expect(withinChainLimits({ depth: 6, botTriggered: true, recentBotRuns: 0 })).toEqual({
+    expect(withinChainLimits({ depth: 4, botTriggered: true, recentBotRuns: 0 })).toEqual({
       ok: true,
     });
-    expect(withinChainLimits({ depth: 7, botTriggered: true, recentBotRuns: 0 })).toEqual({
+    expect(withinChainLimits({ depth: 5, botTriggered: true, recentBotRuns: 0 })).toEqual({
       ok: false,
       reason: 'depth',
     });
   });
 
   it('stops Bot-triggered runs once the budget is spent, but never the owner', () => {
-    expect(withinChainLimits({ depth: 2, botTriggered: true, recentBotRuns: 19 }).ok).toBe(true);
-    expect(withinChainLimits({ depth: 2, botTriggered: true, recentBotRuns: 20 })).toEqual({
+    expect(withinChainLimits({ depth: 2, botTriggered: true, recentBotRuns: 9 }).ok).toBe(true);
+    expect(withinChainLimits({ depth: 2, botTriggered: true, recentBotRuns: 10 })).toEqual({
       ok: false,
       reason: 'budget',
     });
@@ -47,10 +47,10 @@ describe('loop guards', () => {
 
   it('says which guard tripped', () => {
     expect(loopStoppedDetail('depth', DEFAULT_CHAIN_LIMITS)).toBe(
-      'Stopped a Bot loop: the chain of Bot replies reached 6 steps.',
+      'Stopped a Bot loop: the chain of Bot replies reached 4 steps.',
     );
     expect(loopStoppedDetail('budget', DEFAULT_CHAIN_LIMITS)).toBe(
-      'Stopped a Bot loop: Bots started 20 runs in this chat in 10 minutes.',
+      'Stopped a Bot loop: Bots started 10 runs in this chat in 10 minutes.',
     );
   });
 });

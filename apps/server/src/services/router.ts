@@ -25,7 +25,7 @@ import {
 } from './chats.js';
 import { postMessage, setMentions, type ChatRow } from './messages.js';
 import { providerRegistry, smallModelFor } from './providers.js';
-import { botsAtWork, startRoutedRun, type RoutedRunOutcome } from './runs.js';
+import { botsAtWork, dropQueuedHandoffs, startRoutedRun, type RoutedRunOutcome } from './runs.js';
 
 // The router (plan 7; C4 to C6). `routeMessage` decides who answers a message
 // in a group or Bot-to-Bot chat with `routeTargets` from @openbots/router, asks
@@ -101,6 +101,11 @@ export async function routeMessage(
   // An owner's message may be for the Bot whose thread it is in (C7), or for
   // a Bot already at work there (plan 5.2), as their steering agrees.
   const byOwner = message.authorType === 'user' && chat.type === 'group';
+  // The owner has moved on: handoffs still queued from earlier Bot chains in
+  // this thread would answer an older message, so they are dropped before
+  // routing (their Bots are then no longer at work here). The row saying so
+  // is posted after it, so `shouldReply` still sees the owner's message last.
+  const dropped = byOwner ? await dropQueuedHandoffs(deps, chat.id, message.threadRootId) : [];
   const targets = await routeTargets(
     { type: chat.type, botIds: bots.map((b) => b.id) },
     message,
@@ -115,6 +120,7 @@ export async function routeMessage(
   if (undecided.asked > 0 && undecided.failed === undecided.asked) {
     await postUndecidedNotice(deps, chat);
   }
+  if (dropped.length) await postDroppedNotice(deps, chat, message, dropped);
   if (!targets.length) return [];
 
   // Loop guards (plan 7): one link deeper than the run that wrote the message,
@@ -214,6 +220,31 @@ async function postUndecidedNotice(deps: RouterDeps, chat: ChatRow) {
         kind: 'reply_undecided',
         text: `The Bots couldn't decide who should reply. ${fix}`,
         data: { fix, link: '/settings/models' },
+      },
+    ],
+  });
+}
+
+/** Says in a compact event row that an owner message dropped queued handoffs. */
+async function postDroppedNotice(
+  deps: RouterDeps,
+  chat: ChatRow,
+  message: Message,
+  dropped: { id: string; botId: string }[],
+) {
+  const n = dropped.length;
+  await postMessage(deps, chat.id, {
+    authorType: 'system',
+    threadRootId: message.threadRootId,
+    parts: [
+      {
+        type: 'event',
+        kind: 'handoffs_dropped',
+        text: `Dropped ${n} queued Bot ${n === 1 ? 'handoff' : 'handoffs'}: you sent a newer message.`,
+        data: {
+          runIds: dropped.map((r) => r.id),
+          botIds: [...new Set(dropped.map((r) => r.botId))],
+        },
       },
     ],
   });
