@@ -1,10 +1,10 @@
 # The release (apps/desktop/RELEASING.md). One version tag releases everything
 # together:
 #
-#   node scripts/release-version.mjs bump 1.2.0   # then commit
-#   git tag v1.2.0 && git push origin v1.2.0
+#   git fetch origin
+#   git tag v1.2.0 origin/main && git push origin v1.2.0
 #
-#   version    checks the tag against the package.json versions
+#   version    derives the version from the tag; each build stamps its checkout
 #   images     server, computer, sandbox-firewall, relay and standalone for
 #              linux/amd64 and linux/arm64, pushed to ghcr.io/<owner>/openbots, plus a
 #              `docker load` archive of each per architecture
@@ -83,9 +83,9 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # A tag must equal the version in package.json and apps/desktop/package.json;
-      # a dry run uses that version (and fails if the two differ).
-      - name: Check the release version
+      # Tagged releases use the tag regardless of committed manifest versions.
+      # Untagged dry runs retain the committed development version.
+      - name: Resolve the release version
         id: version
         env:
           EVENT: ${{ github.event_name }}
@@ -105,7 +105,7 @@ jobs:
             fi
           fi
           if [ -n "$tag" ]; then
-            node scripts/release-version.mjs check "$tag" >>"$GITHUB_OUTPUT"
+            node scripts/release-version.mjs from-tag "$tag" >>"$GITHUB_OUTPUT"
             echo "publish=true" >>"$GITHUB_OUTPUT"
           else
             node scripts/release-version.mjs current >>"$GITHUB_OUTPUT"

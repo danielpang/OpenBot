@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs';
 
 // The server's release version, as `GET /capabilities` reports it so a phone
 // can say "update your server". One tag releases everything
-// (scripts/release-version.mjs): `bump` writes the version into the root
-// package.json and the release check fails unless the tag equals it, so that
-// file is the stamp. The server image keeps the repository's root
+// (scripts/release-version.mjs): CI stamps the tag version into the root
+// package.json in the local Docker build context before building. No Git
+// metadata is needed at runtime. The server image keeps the repository's root
 // package.json at /app/package.json, three levels above this module in
 // src/ and in dist/ alike.
 

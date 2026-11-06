@@ -77,6 +77,8 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Stamp the release version into the build checkout
+        run: node scripts/release-version.mjs stamp "v$VERSION"
 
       - name: Check the shared relay the app ships with answers
         run: |

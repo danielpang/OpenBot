@@ -114,6 +114,15 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # Docker actions below use the local path context, so COPY includes these
+      # stamped manifests in both build and production-dependency stages.
+      - name: Stamp the release version into the build context
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/release-version.mjs stamp "v$VERSION"
 
       # Two architectures of the computer or standalone image, their build
       # cache and the uncompressed archives outgrow the runner's free disk.

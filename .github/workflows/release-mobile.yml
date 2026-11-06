@@ -47,13 +47,13 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Check the release version
+      - name: Stamp the tagged release version
         env:
           RELEASE_TAG: ${{ github.ref_name }}
           IS_TAG: ${{ github.ref_type == 'tag' }}
         run: |
           if [ "$IS_TAG" = true ]; then
-            node scripts/release-version.mjs check "$RELEASE_TAG" >>"$GITHUB_ENV"
+            node scripts/release-version.mjs stamp "$RELEASE_TAG" >>"$GITHUB_ENV"
           else
             node scripts/release-version.mjs current >>"$GITHUB_ENV"
           fi

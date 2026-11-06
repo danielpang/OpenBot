@@ -67,6 +67,6 @@ with the PRD IDs it touches in parentheses, for example
 
 Releases are tag driven. One `v<version>` tag publishes the server, computer and sandbox firewall
 images, builds the Mac app and makes a GitHub Release with the DMG, the compose bundle and the
-image archives (`.github/workflows/release.yml`). Bump the version first with
-`pnpm release:bump <version>`: the tag must match it. See
+image archives (`.github/workflows/release.yml`). CI derives the release version from the tag
+and stamps the build checkouts automatically. No package-version bump commit is required. See
 [apps/desktop/RELEASING.md](../apps/desktop/RELEASING.md) for the steps.

@@ -349,6 +349,47 @@ describe('release workflow', () => {
     }
   });
 
+  it('derives tagged versions without comparing committed manifests', () => {
+    const run = release.jobs.version!.steps!.find(
+      (s) => s.name === 'Resolve the release version',
+    )!.run!;
+    expect(run).toContain('release-version.mjs from-tag "$tag"');
+    expect(run).toContain('release-version.mjs current');
+    expect(run).not.toContain('release-version.mjs check');
+  });
+
+  it('stamps every fresh build checkout before packaging or creating Docker contexts', () => {
+    const stamp = step('Stamp the release version into the build checkout');
+    expect(stamp.run).toBe('node scripts/release-version.mjs stamp "v$VERSION"');
+    expect(macJob.env!.VERSION).toBe('${{ inputs.version }}');
+    expect(macJob.steps!.indexOf(stamp)).toBeLessThan(
+      macJob.steps!.indexOf(step('Build the desktop shell')),
+    );
+    const images = workflowFile('release-images.yml').jobs.image!;
+    const imageStamp = images.steps!.find(
+      (s) => s.name === 'Stamp the release version into the build context',
+    )!;
+    expect(imageStamp.env!.VERSION).toBe('${{ inputs.version }}');
+    expect(imageStamp.run).toContain('release-version.mjs stamp "v$VERSION"');
+    for (const build of images.steps!.filter((s) =>
+      s.uses?.startsWith('docker/build-push-action'),
+    )) {
+      expect(images.steps!.indexOf(imageStamp)).toBeLessThan(images.steps!.indexOf(build));
+      // A Git context would ignore checkout mutations. All builds must use path contexts.
+      expect(build.with!.context).toBe('${{ matrix.context }}');
+    }
+    const mobile = workflowFile('release-mobile.yml').jobs.mobile!;
+    const mobileStamp = mobile.steps!.find((s) => s.name === 'Stamp the tagged release version')!;
+    expect(mobileStamp.run).toContain('release-version.mjs stamp "$RELEASE_TAG"');
+    expect(mobileStamp.run).toContain('release-version.mjs current');
+    expect(mobileStamp.env!.IS_TAG).toBe("${{ github.ref_type == 'tag' }}");
+    for (const name of ['Build workspace packages', 'Build signed IPA with EAS']) {
+      expect(mobile.steps!.indexOf(mobileStamp)).toBeLessThan(
+        mobile.steps!.findIndex((s) => s.name === name),
+      );
+    }
+  });
+
   it('passes the Apple secrets to the tag build only', () => {
     expect(Object.keys(release.jobs.mac!.secrets ?? {}).sort()).toEqual([
       'APPLE_API_ISSUER',
@@ -428,7 +469,7 @@ describe('release workflow', () => {
     expect(dispatch.inputs.tag!.type).toBe('string');
     const version = release.jobs.version!;
     expect(version.outputs!.ref).toBe('${{ steps.version.outputs.ref }}');
-    const versionRun = version.steps!.find((s) => s.name === 'Check the release version')!.run!;
+    const versionRun = version.steps!.find((s) => s.name === 'Resolve the release version')!.run!;
     expect(versionRun).toContain('Only the newest tag');
     expect(versionRun).toContain('echo "ref=$(git rev-parse HEAD)"');
     // The tag comes in through the environment, never into the script's text.

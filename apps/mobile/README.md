@@ -161,7 +161,7 @@ The development-only `/dev/transcript-spike` route provides 500 messages with re
 
 See `.github/workflows/release-mobile.yml` and `eas.json`. Configure an EAS project, Apple app/team identifiers, App Store Connect credentials, and provisioning for `dev.openbots.mobile` plus `dev.openbots.mobile.notifications` (or your configured bundle prefix). The plugin supplies EAS extension metadata and shared Keychain/App Group entitlements. Configure the associated-domain file on `openbots.dev` for your team and app ID before relying on universal links; QR scans and the custom scheme work independently.
 
-The version bump script updates the root, desktop and mobile packages together. Release build numbers come from the workflow run and attempt. Missing release credentials produce only a JavaScript export; a partially configured signing environment fails rather than implying a signed build. No upload or submission happens during local development.
+Tagged CI releases derive their version from the Git tag and stamp the root, desktop and mobile packages in the build checkout before Expo export and EAS upload. No version-bump commit is required. Untagged manual builds use the committed package version; for a versioned local build, run `node scripts/release-version.mjs stamp vX.Y.Z` from the repository root in a disposable checkout first. Release build numbers come from the workflow run and attempt. Missing release credentials produce only a JavaScript export; a partially configured signing environment fails rather than implying a signed build. No upload or submission happens during local development.
 
 ## Remaining release work
 
