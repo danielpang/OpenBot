@@ -357,7 +357,13 @@ describe('coder runner', () => {
       'origin',
       'bot/fix-reconnect',
     ]);
-    expect(row).toMatchObject({ pushAllowed: true, prUrl: 'https://github.com/acme/relay/pull/7' });
+    expect(row).toMatchObject({
+      pushAllowed: true,
+      prUrl: 'https://github.com/acme/relay/pull/7',
+      // What the runner pushed: the worktree's HEAD.
+      pushedSha: 'abc1234',
+      branchExisted: false,
+    });
     expect(pulls.at(-1)).toMatchObject({
       url: '/repos/acme/relay/pulls',
       auth: 'Bearer ghp-runner-token',
@@ -1466,31 +1472,56 @@ describe('coder runner, across agents and accounts', () => {
     return (r.state as RunState).resume!.output as Record<string, unknown>;
   };
 
-  it('records the head it pushed when the remote branch is at one of its own commits', async () => {
+  it('records an approved push by the agent only when the remote head is a commit the session made', async () => {
     const sha = 'a'.repeat(40);
-    let ours = true;
+    let pushedNow = false;
+    let made = `${sha}\n`;
     w.coder.agent = (io) => {
+      pushedNow = true;
       io.stdout(fixture('claude-success.jsonl'));
       io.exit(0);
     };
     w.coder.git = (args) => {
       if (args.includes('ls-remote')) {
-        return { code: 0, stdout: `${sha}\trefs/heads/bot/fix-reconnect\n` };
+        // Not on the remote when the worktree is made; the agent pushes it.
+        return pushedNow
+          ? { code: 0, stdout: `${sha}\trefs/heads/bot/fix-reconnect\n` }
+          : { code: 2 };
       }
-      if (args.includes('merge-base')) return { code: ours ? 0 : 1 };
+      if (args.includes('rev-list') && args.includes('origin/main..HEAD')) {
+        return { code: 0, stdout: made };
+      }
       return defaultGit(args);
     };
     try {
       const pushed = await w.newSession({ pushAllowed: true });
-      expect((await run(pushed.sessionId)).pushedSha).toBe(sha);
-      // Someone else's commit on the remote branch: not recorded.
-      ours = false;
+      expect(await run(pushed.sessionId)).toMatchObject({ pushedSha: sha, branchExisted: false });
+      // The remote head is not one of the session's commits: not recorded.
+      pushedNow = false;
+      made = `${'c'.repeat(40)}\n`;
       const moved = await w.newSession({ pushAllowed: true });
       expect((await run(moved.sessionId)).pushedSha).toBeNull();
-      // No push approved: nothing is asked of the remote.
-      ours = true;
-      const local = await w.newSession();
-      expect((await run(local.sessionId)).pushedSha).toBeNull();
+    } finally {
+      w.coder.git = defaultGit;
+    }
+  });
+
+  it('refuses a new session on a branch that is already on the remote', async () => {
+    let launched = false;
+    w.coder.agent = (io) => {
+      launched = true;
+      io.exit(0);
+    };
+    w.coder.git = (args) =>
+      args.includes('ls-remote')
+        ? { code: 0, stdout: `${'d'.repeat(40)}\trefs/heads/bot/fix-reconnect\n` }
+        : defaultGit(args);
+    try {
+      const { sessionId } = await w.newSession();
+      const row = await run(sessionId);
+      expect(row).toMatchObject({ status: 'failed', branchExisted: null, worktreePath: null });
+      expect(row.error).toContain('The branch bot/fix-reconnect already exists on GitHub');
+      expect(launched).toBe(false);
     } finally {
       w.coder.git = defaultGit;
     }
@@ -1514,6 +1545,7 @@ describe('coder runner, across agents and accounts', () => {
       branch: string,
       prUrl: string | null,
       pushedSha: string | null = sha,
+      branchExisted: boolean | null = false,
     ) => {
       const s = await w.newSession({
         status: 'settled',
@@ -1521,6 +1553,7 @@ describe('coder runner, across agents and accounts', () => {
         worktreePath: `${REPO_PATH}/.worktrees/${branch.replace('/', '-')}`,
         pushAllowed: true,
         pushedSha,
+        branchExisted,
         prUrl,
       });
       await w.t.db
@@ -1587,6 +1620,15 @@ describe('coder runner, across agents and accounts', () => {
       );
       const unrecorded = await settledSession('bot/unrecorded', null, null);
       expect(deletes(await discard(unrecorded))).toBe(false);
+
+      // On the remote before the session (another session's, or an earlier push): it stays.
+      const before = await settledSession('bot/before', null, sha, true);
+      expect(deletes(await discard(before))).toBe(false);
+      expect(await feed(before)).toContain(
+        'The branch bot/before stays on GitHub: it was there before the session',
+      );
+      const older = await settledSession('bot/older', null, sha, null);
+      expect(deletes(await discard(older))).toBe(false);
 
       const url = 'https://github.com/acme/relay/pull/7';
       const kept = await settledSession('bot/kept', url);

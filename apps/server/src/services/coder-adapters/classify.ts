@@ -189,6 +189,23 @@ interface Verdict {
   paths: string[];
 }
 
+/** git subcommands whose plain arguments are paths (or revisions): a glob there names files. */
+const GIT_PATH_SUBCOMMANDS = new Set([
+  'add',
+  'rm',
+  'mv',
+  'diff',
+  'log',
+  'status',
+  'restore',
+  'show',
+  'grep',
+  'ls-files',
+  'blame',
+  'commit',
+  'checkout',
+]);
+
 function gitClass(args: Word[]): { action: CoderActionClass; dirs: Word[]; glob: boolean } {
   let action: CoderActionClass = 'other';
   const dirs: Word[] = [];
@@ -213,8 +230,13 @@ function gitClass(args: Word[]): { action: CoderActionClass; dirs: Word[]; glob:
     i++;
   }
   const sub = args[i]?.text;
-  // `git pu?h` names its subcommand only once the shell expands it.
-  const glob = args[i]?.glob === true;
+  // A glob is read only once the shell expands it: in a global option, the
+  // subcommand (`git pu?h`), a flag, or an argument of a subcommand whose
+  // arguments are not paths (`git remote set-ur? …`, a config key).
+  const pathArgs = sub !== undefined && GIT_PATH_SUBCOMMANDS.has(sub);
+  const glob =
+    args.slice(0, i + 1).some((w) => w.glob === true) ||
+    args.slice(i + 1).some((w) => w.glob === true && (!pathArgs || w.text.startsWith('-')));
   const rest = args.slice(i + 1).map((w) => w.text);
   const has = (...flags: string[]) => rest.some((a) => flags.includes(a));
   switch (sub) {
@@ -272,7 +294,8 @@ function ghClass(args: Word[]): { action: CoderActionClass; glob: boolean } {
   }
   return {
     action: ghAction(rest.map((w) => w.text)),
-    glob: rest.slice(0, 2).some((w) => w.glob === true),
+    // gh's arguments are names and values, not paths.
+    glob: rest.some((w) => w.glob === true),
   };
 }
 
@@ -463,7 +486,16 @@ function classifyCommand(
   }
   if (ALWAYS_INSTALL.has(name)) action = strictest(action, 'install');
   const verbs = INSTALL_VERBS[name];
-  if (verbs && args[0]?.glob) unmodelled = true;
+  // An install tool's or `python -m`'s arguments name verbs and packages, not paths.
+  if (verbs && args.some((w) => w.glob)) unmodelled = true;
+  if (/^python\d?(?:\.\d+)?$/.test(name)) {
+    const module = texts.indexOf('-m');
+    if (
+      module >= 0 ? args.some((w) => w.glob) : args.some((w) => w.glob && w.text.startsWith('-'))
+    ) {
+      unmodelled = true;
+    }
+  }
   if (verbs && texts.some((a) => verbs.has(a))) action = strictest(action, 'install');
   if (
     /^python\d?(?:\.\d+)?$/.test(name) &&

@@ -21,7 +21,7 @@ import {
   type CodingSessionProps,
   type CodingSessionState,
 } from '@openbots/widgets';
-import { and, count, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
@@ -50,6 +50,7 @@ import {
 } from './repos-checkout.js';
 import { allowedRepos, listRepos, toRepoRef } from './repos.js';
 import { actOnWidget } from './runs.js';
+import { remoteHead } from './session-git.js';
 import type { ComputerAgentClient } from '@openbots/computer';
 
 // Coding sessions for the API and the runtime (docs/TECHNICAL_PLAN.md 22.2,
@@ -272,6 +273,35 @@ export async function startCodingSession(
       )
       .limit(1);
     if (busy) throw botBusy(busy);
+    // A branch named for a new session that another of the owner's sessions
+    // works on: they would share its worktree, and one's Discard would take
+    // the other's branch. The runner checks the remote the same way.
+    if (!previous && input.branch !== undefined) {
+      const [taken] = await tx
+        .select({ id: schema.codingSessions.id })
+        .from(schema.codingSessions)
+        .where(
+          and(
+            eq(schema.codingSessions.ownerId, owner.id),
+            eq(schema.codingSessions.workspaceId, owner.workspaceId),
+            eq(schema.codingSessions.repoFullName, repo.fullName),
+            eq(schema.codingSessions.branch, branch),
+            // A discarded session no longer holds its branch.
+            or(
+              isNotNull(schema.codingSessions.worktreePath),
+              inArray(schema.codingSessions.status, CODING_SESSION_ACTIVE),
+            ),
+          ),
+        )
+        .limit(1);
+      if (taken) {
+        throw new DomainError(
+          409,
+          'BRANCH_IN_USE',
+          `Session ${taken.id} already works on ${branch}. Continue it with its session_id, or name a new bot/ branch.`,
+        );
+      }
+    }
     const [{ n: running } = { n: 0 }] = await tx
       .select({ n: count() })
       .from(schema.codingSessions)
@@ -677,10 +707,11 @@ export async function discardWorktree(deps: AppDeps, row: CodingSessionRow): Pro
 /**
  * The remote side of Discard: a branch the session pushed (its push was
  * approved and the remote has it) is deleted there as `runner`, unless a
- * pull request was opened from it. Only a `bot/` branch whose remote head is
- * still the commit the session last pushed (`pushed_sha`) is deleted, with a
- * lease on that commit, so work someone else pushed on it, or a branch from
- * before the `bot/` rule, stays. Returns what the feed says, or null when
+ * pull request was opened from it. Only a `bot/` branch the session created
+ * (`branch_existed` false) whose remote head is still the commit the runner
+ * saw it push (`pushed_sha`) is deleted, with a lease on that commit, so a
+ * branch that was there before, work someone else pushed on it, or a branch
+ * from before the `bot/` rule, stays. Returns what the feed says, or null when
  * there was nothing on the remote.
  */
 async function discardPushedBranch(
@@ -705,18 +736,16 @@ async function discardPushedBranch(
   // The session could write the checkout's config: checked before runner git runs there.
   await assertRunnable(ctx, repoDir, repo);
   const ref = `refs/heads/${branch}`;
-  const there = await runGit(ctx, ['-C', repoDir, 'ls-remote', '--exit-code', 'origin', ref]);
-  if (there.code !== 0) return null;
-  // The exact ref: a pattern also matches `refs/heads/<anything>/<branch>`.
-  const head = there.stdout
-    .split('\n')
-    .map((line) => line.split('\t'))
-    .find(([, name]) => name?.trim() === ref)?.[0]
-    ?.trim();
+  const head = await remoteHead(ctx, repoDir, branch);
   if (!head) return null;
   const stays = `The branch ${branch} stays on GitHub`;
   if (!branch.startsWith(SESSION_BRANCH_PREFIX)) {
     return `${stays}: only bot/ branches are deleted`;
+  }
+  if (row.branchExisted !== false) {
+    return row.branchExisted
+      ? `${stays}: it was there before the session`
+      : `${stays}: OpenBots has no record of creating it`;
   }
   if (!row.pushedSha) return `${stays}: OpenBots has no record of pushing it`;
   if (head !== row.pushedSha) {

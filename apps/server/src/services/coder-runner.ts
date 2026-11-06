@@ -91,7 +91,9 @@ import {
   commitLeftovers,
   diffArtifact,
   openPullRequest,
-  recordPushedHead,
+  recordAgentPush,
+  recordPushedSha,
+  remoteHead,
   sessionIdentity,
   type SessionIdentity,
 } from './session-git.js';
@@ -316,6 +318,8 @@ class SessionRunner {
   private rpc: CoderSession | null = null;
   private exited: Promise<CoderExit> | null = null;
   private pushAllowed: boolean;
+  /** The runner pushed the branch itself this time, and recorded what. */
+  private runnerPushed = false;
   private stopped = false;
   private timedOut = false;
   /** Pending permission prompts by approval id: the agent's request id. */
@@ -451,6 +455,22 @@ class SessionRunner {
     // A base that is the stored default branch was a placeholder: the remote's own wins.
     const base =
       !session.base || session.base === repo.defaultBranch ? checkout.defaultBranch : session.base;
+    // Whether the remote had the branch before this session: Discard deletes
+    // only a branch the session created. A new session on a branch someone
+    // already pushed (another session's, or the owner's) is refused.
+    let branchExisted = session.branchExisted;
+    if (branchExisted === null && (!continuing || !worktree)) {
+      const head = await remoteHead(this.git, checkout.path, branch);
+      if (head) {
+        throw new DomainError(
+          409,
+          'BRANCH_IN_USE',
+          `The branch ${branch} already exists on GitHub, so this session will not work on it. Name a new bot/ branch, or leave branch out.`,
+        );
+      }
+      // Unknown when git could not say: counted as there, so Discard leaves it.
+      branchExisted = head === undefined;
+    }
     if (!continuing || !worktree) {
       worktree = await ensureWorktree(this.git, checkout.path, branch, base);
     }
@@ -468,8 +488,9 @@ class SessionRunner {
       base,
       startedAt,
       logPath: this.logPath,
+      ...(branchExisted !== null ? { branchExisted } : {}),
     });
-    this.session = { ...session, worktreePath: worktree, branch, base, startedAt };
+    this.session = { ...session, worktreePath: worktree, branch, base, startedAt, branchExisted };
     const label = CODER_AGENT_LABELS[session.agent as CoderAgent] ?? session.agent;
     appendFeed(
       deps,
@@ -1159,8 +1180,10 @@ class SessionRunner {
       if (pr.note) summary = summary ? `${summary}\n\n${pr.note}` : pr.note;
       if (this.stopped) status = 'stopped';
     }
-    // A push this session made (the runner's above, or the agent's own): Discard's guard.
-    if (this.pushAllowed && this.git) await recordPushedHead(deps, this.git, session);
+    // A push the agent made with the owner's approval: Discard's guard (the runner's own is recorded above).
+    if (this.pushAllowed && !this.runnerPushed && this.git) {
+      await recordAgentPush(deps, this.git, this.session);
+    }
     const [row] = await deps.db
       .select({ usage: schema.codingSessions.usage })
       .from(schema.codingSessions)
@@ -1286,6 +1309,8 @@ class SessionRunner {
     this.pushAllowed = true;
     await setSessionStatus(deps, this.id, 'running', { pushAllowed: true });
     appendFeed(deps, this.id, feedLine('command', `$ git push -u origin ${branch}`));
+    // What the push sends: the worktree's HEAD, read before it.
+    const head = await runGit(this.git!, ['-C', session.worktreePath!, 'rev-parse', 'HEAD']);
     const pushed = await runGit(
       this.git!,
       ['-C', session.worktreePath!, 'push', '-u', 'origin', branch],
@@ -1295,6 +1320,11 @@ class SessionRunner {
       const why = (pushed.error ?? pushed.stderr).trim().split('\n').filter(Boolean).pop();
       appendFeed(deps, this.id, feedLine('error', `Push failed: ${why ?? `exit ${pushed.code}`}`));
       return { note: `The push of ${branch} failed: ${why ?? `exit ${pushed.code}`}` };
+    }
+    const sha = head.code === 0 ? head.stdout.trim() : '';
+    if (/^[0-9a-f]{7,64}$/.test(sha)) {
+      await recordPushedSha(deps, this.id, sha);
+      this.runnerPushed = true;
     }
     try {
       const url = await openPullRequest(deps, {

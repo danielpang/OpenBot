@@ -454,6 +454,50 @@ describe('coding agents', () => {
       ).rejects.toMatchObject({ message: 'Session branches start with bot/' });
     });
 
+    it("refuses a new session on a branch another of the owner's sessions holds", async () => {
+      await endAll();
+      const [other] = await t.db
+        .insert(schema.codingSessions)
+        .values({
+          workspaceId,
+          ownerId: danaId,
+          botId: bot.id,
+          agent: 'claude',
+          repoFullName: 'acme/relay',
+          branch: 'bot/taken',
+          base: 'main',
+          worktreePath: '/home/bot/repos/acme/relay/.worktrees/bot-taken',
+          mode: 'edit',
+          prompt: 'x',
+          status: 'settled',
+        })
+        .returning();
+      const run = await waitingRun();
+      const coder = await services(run.id);
+      const start = () =>
+        t.inOrganization(() =>
+          coder.start({
+            agent: 'claude',
+            repo: 'acme/relay',
+            prompt: 'x',
+            mode: 'edit',
+            branch: 'bot/taken',
+          }),
+        );
+      await expect(start()).rejects.toMatchObject({
+        status: 409,
+        code: 'BRANCH_IN_USE',
+        message: expect.stringContaining(other!.id),
+      });
+      // Once that session is discarded, the branch is free on the server's side.
+      await t.db
+        .update(schema.codingSessions)
+        .set({ worktreePath: null })
+        .where(eq(schema.codingSessions.id, other!.id));
+      const started = await start();
+      expect((await session(started.sessionId)).branch).toBe('bot/taken');
+    });
+
     it('continues an ended session on the same row and branch', async () => {
       await endAll();
       const [ended] = await t.db

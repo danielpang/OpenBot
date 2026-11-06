@@ -158,10 +158,16 @@ export const codingSessions = pgTable(
     status: text('status').notNull().default('queued'),
     pushAllowed: boolean('push_allowed').notNull().default(false),
     /**
-     * The commit the session last pushed its branch at. Discard deletes the
-     * remote branch only while its head is still this commit.
+     * The commit the session last pushed its branch at, from a push the
+     * runner observed. Discard deletes the remote branch only while its head
+     * is still this commit.
      */
     pushedSha: text('pushed_sha'),
+    /**
+     * Whether the remote had the branch when the session's worktree was
+     * made; null before it was. Discard deletes only a branch it did not.
+     */
+    branchExisted: boolean('branch_existed'),
     usage: jsonb('usage').$type<CoderUsage>(),
     summary: text('summary'),
     changedFiles: jsonb('changed_files').$type<CoderChangedFile[]>(),

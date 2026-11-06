@@ -100,36 +100,64 @@ export async function branchResult(
 }
 
 /**
- * After a push, by the runner or by the agent with the owner's approval:
- * the branch's head on the remote is recorded as the session's `pushed_sha`
- * when it is one of the worktree's own commits (HEAD or before it), so
- * Discard deletes the remote branch only while nobody moved it since. Left
- * as it was when the remote has no such branch or its head is not ours.
- * Never throws: a failure only keeps Discard from deleting the branch.
+ * The head of `branch` on the remote, from `git ls-remote` in `dir`: its
+ * SHA, null when the remote has no such branch, undefined when git could
+ * not say. The exact ref is read: a pattern also matches
+ * `refs/heads/<anything>/<branch>`.
  */
-export async function recordPushedHead(
+export async function remoteHead(
+  git: GitContext,
+  dir: string,
+  branch: string,
+): Promise<string | null | undefined> {
+  const ref = `refs/heads/${branch}`;
+  const listed = await runGit(git, ['-C', dir, 'ls-remote', '--exit-code', 'origin', ref]);
+  // `--exit-code`: 2 when nothing matched.
+  if (listed.code === 2) return null;
+  if (listed.code !== 0) return undefined;
+  const head = listed.stdout
+    .split('\n')
+    .map((line) => line.split('\t'))
+    .find(([, name]) => name?.trim() === ref)?.[0]
+    ?.trim();
+  return head || null;
+}
+
+/** Records the commit the session's branch was pushed at, for Discard's guard. */
+export async function recordPushedSha(
+  deps: Pick<AppDeps, 'db'>,
+  sessionId: string,
+  sha: string,
+): Promise<void> {
+  await deps.db
+    .update(schema.codingSessions)
+    .set({ pushedSha: sha, updatedAt: new Date() })
+    .where(eq(schema.codingSessions.id, sessionId));
+}
+
+/**
+ * After a session in which the owner approved a push and the agent may
+ * have pushed itself: the branch's head on the remote is recorded as the
+ * session's `pushed_sha` only when it is a commit the session made, one of
+ * `git rev-list origin/<base>..HEAD` in its worktree. Anything else (a head
+ * someone else pushed, or the base) leaves `pushed_sha` as it was. Never
+ * throws: a failure only keeps Discard from deleting the branch.
+ */
+export async function recordAgentPush(
   deps: Pick<AppDeps, 'db' | 'logger'>,
   git: GitContext,
-  session: Pick<CodingSessionRow, 'id' | 'worktreePath' | 'branch'>,
+  session: Pick<CodingSessionRow, 'id' | 'worktreePath' | 'branch' | 'base'>,
 ): Promise<string | null> {
-  const { worktreePath: wt, branch } = session;
-  if (!wt || !branch) return null;
+  const { worktreePath: wt, branch, base } = session;
+  if (!wt || !branch || !base) return null;
   try {
-    const ref = `refs/heads/${branch}`;
-    const remote = await runGit(git, ['-C', wt, 'ls-remote', '--exit-code', 'origin', ref]);
-    if (remote.code !== 0) return null;
-    const head = remote.stdout
-      .split('\n')
-      .map((line) => line.split('\t'))
-      .find(([, name]) => name?.trim() === ref)?.[0]
-      ?.trim();
+    const head = await remoteHead(git, wt, branch);
     if (!head || !/^[0-9a-f]{40,64}$/.test(head)) return null;
-    const ours = await runGit(git, ['-C', wt, 'merge-base', '--is-ancestor', head, 'HEAD']);
-    if (ours.code !== 0) return null;
-    await deps.db
-      .update(schema.codingSessions)
-      .set({ pushedSha: head, updatedAt: new Date() })
-      .where(eq(schema.codingSessions.id, session.id));
+    const made = await runGit(git, ['-C', wt, 'rev-list', `origin/${base}..HEAD`]);
+    if (made.code !== 0 || !made.stdout.split('\n').some((line) => line.trim() === head)) {
+      return null;
+    }
+    await recordPushedSha(deps, session.id, head);
     return head;
   } catch (error) {
     deps.logger.warn({ err: error, sessionId: session.id }, 'the pushed head was not recorded');

@@ -85,6 +85,9 @@ describe('classify', () => {
       'g*t push origin x',
       'git -C . pu[s]h',
       'npm i*',
+      'git remote set-ur? origin x',
+      'pip inst*ll x',
+      'python -m p?p install x',
     ]) {
       expect(classifyCommandLine(command, ROOT), command).toEqual({
         action: 'outside_worktree',
@@ -93,13 +96,21 @@ describe('classify', () => {
       });
     }
     // What it did read still counts when it is stricter.
-    for (const command of ['git status # ; git push', '{ git push; }']) {
+    for (const command of [
+      'git status # ; git push',
+      '{ git push; }',
+      'git push --forc* origin x',
+    ]) {
       expect(classifyCommandLine(command, ROOT), command).toEqual({
         action: 'push',
         title: `Run: ${command}`,
         detail: shape,
       });
     }
+    expect(classifyCommandLine('git config remote.origin.pushur? x', ROOT)).toMatchObject({
+      action: 'destructive',
+      detail: shape,
+    });
     expect(classifyCommandLine('gh p? create', ROOT)).toMatchObject({
       action: 'pr',
       detail: shape,
