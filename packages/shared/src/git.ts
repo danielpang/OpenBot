@@ -155,6 +155,23 @@ export const GitConnectionRepoAccessSchema = z.strictObject({
 });
 export type GitConnectionRepoAccess = z.infer<typeof GitConnectionRepoAccessSchema>;
 
+/**
+ * A repository by its full name on its host: `owner/name`, letters, digits,
+ * dots, dashes and underscores. Neither part is dots only, so a path made
+ * from it (`~/repos/<owner>/<name>`) stays where it says.
+ */
+export const REPO_FULL_NAME = /^(?!\.+\/)[A-Za-z0-9_.-]+\/(?!\.+$)[A-Za-z0-9_.-]+$/;
+
+/**
+ * `owner/name` as given, trimmed and without a trailing `.git`, or null when
+ * it is not one (REPO_FULL_NAME). The case is kept: compare with
+ * `toLowerCase()`, as GitHub does.
+ */
+export function normalizeFullName(raw: string): string | null {
+  const name = raw.trim().replace(/\.git$/, '');
+  return REPO_FULL_NAME.test(name) ? name : null;
+}
+
 /** How often the computer fetches every remembered repository while it is up. */
 export const REPO_FETCH_INTERVAL_MS = 15 * 60_000;
 

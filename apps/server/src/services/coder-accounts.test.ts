@@ -6,182 +6,28 @@ import { CODERS_QUEUE } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
-import { DomainError } from '../errors.js';
 import { ptyParams } from '../ws/computer.js';
 import { coderWorld, defaultGit, type CoderWorld } from './__fixtures__/coders/setup.js';
-import { adapterFor, registerCoderAdapter, type CoderAdapter } from './coder-adapters/index.js';
-import { enqueueCoderJob, type CoderJob } from './coder-jobs.js';
-import {
-  accountBilling,
-  coderProviderEnv,
-  createCoderWorker,
-  DIFF_MAX_CHARS,
-  DIFF_TRUNCATED,
-  type CoderProvider,
-} from './coder-runner.js';
-import {
-  CODEX_SIGN_IN_REFUSED,
-  runCoderLogin,
-  startLogin,
-  TERMINAL_LOGIN_INSTRUCTIONS,
-} from './coder-login.js';
-import {
-  codexStatus,
-  coderServices,
-  lastErrorKind,
-  needsSignIn,
-  PI_CHECK_PROVIDERS,
-  piCheckResult,
-  piSignIn,
-} from './coders.js';
+import { lastErrorKind, needsSignIn, planProviderOf, signInStyleOf } from './coder-accounts.js';
+import { CODEX_SIGN_IN_REFUSED } from './coder-adapters/codex.js';
+import { PI_SIGN_IN_INSTRUCTIONS } from './coder-adapters/pi.js';
+import { type CoderJob } from './coder-jobs.js';
+import { startLogin } from './coder-login.js';
+import { runCoderLogin } from './coder-login-driver.js';
+import { createCoderWorker } from './coder-runner.js';
+import { coderServices } from './coder-tool.js';
+import { DIFF_MAX_CHARS, DIFF_TRUNCATED } from './session-git.js';
 import type { RunState } from './runs.js';
 
-// Phase 3 of coding agents, server side: the Bot's model override and an
-// api_key account's provider key reach the CLI, the account's billing reaches
-// the parser, a settled session's diff becomes an Artifact, the Bot's usage
-// counts its coding sessions, pi signs in from the terminal, and the check
-// route reads a sign-in back from the CLI.
+// The owner's coding agent accounts and what they mean for a session: the
+// Bot's model override and an api_key account's provider key reach the CLI,
+// the account's billing reaches the parser, a settled session's diff becomes
+// an Artifact, the Bot's usage counts its coding sessions, pi signs in from
+// the terminal, and the check route reads a sign-in back from the CLI.
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), '__fixtures__/coders');
 
-const provider = (over: Partial<CoderProvider>): CoderProvider => ({
-  kind: 'anthropic',
-  protocol: 'native',
-  name: 'Anthropic',
-  baseUrl: null,
-  apiKey: 'sk-ant-test',
-  ...over,
-});
-
-describe('coderProviderEnv', () => {
-  it("puts the key in each vendor's variable", () => {
-    expect(coderProviderEnv('claude', provider({}))).toEqual({ ANTHROPIC_API_KEY: 'sk-ant-test' });
-    expect(coderProviderEnv('codex', provider({ kind: 'openai', apiKey: 'sk-oa' }))).toEqual({
-      OPENAI_API_KEY: 'sk-oa',
-      CODEX_API_KEY: 'sk-oa',
-    });
-    expect(coderProviderEnv('pi', provider({}))).toEqual({ ANTHROPIC_API_KEY: 'sk-ant-test' });
-    expect(coderProviderEnv('pi', provider({ kind: 'openai', apiKey: 'o' }))).toEqual({
-      OPENAI_API_KEY: 'o',
-    });
-    expect(coderProviderEnv('pi', provider({ kind: 'google', apiKey: 'g' }))).toEqual({
-      GEMINI_API_KEY: 'g',
-    });
-    expect(coderProviderEnv('pi', provider({ kind: 'xai', apiKey: 'x' }))).toEqual({
-      XAI_API_KEY: 'x',
-    });
-  });
-
-  it('passes a compatible endpoint where the CLI takes one, and refuses the rest', () => {
-    expect(
-      coderProviderEnv(
-        'codex',
-        provider({
-          kind: 'custom',
-          protocol: 'openai_compatible',
-          baseUrl: 'https://llm.example/v1',
-        }),
-      ),
-    ).toEqual({
-      OPENAI_API_KEY: 'sk-ant-test',
-      CODEX_API_KEY: 'sk-ant-test',
-      OPENAI_BASE_URL: 'https://llm.example/v1',
-    });
-    expect(
-      coderProviderEnv(
-        'claude',
-        provider({
-          kind: 'custom',
-          protocol: 'anthropic_compatible',
-          baseUrl: 'https://a.example',
-        }),
-      ),
-    ).toEqual({ ANTHROPIC_API_KEY: 'sk-ant-test', ANTHROPIC_BASE_URL: 'https://a.example' });
-    const refused = (fn: () => unknown) => {
-      try {
-        fn();
-      } catch (error) {
-        expect(error).toBeInstanceOf(DomainError);
-        return (error as DomainError).message;
-      }
-      throw new Error('not refused');
-    };
-    expect(refused(() => coderProviderEnv('claude', provider({ kind: 'openai' })))).toMatch(
-      /Claude Code takes an Anthropic key only/,
-    );
-    expect(refused(() => coderProviderEnv('codex', provider({})))).toMatch(/OpenAI key only/);
-    expect(
-      refused(() =>
-        coderProviderEnv(
-          'pi',
-          provider({ kind: 'custom', protocol: 'openai_compatible', baseUrl: 'https://x' }),
-        ),
-      ),
-    ).toMatch(/custom endpoint/);
-    expect(refused(() => coderProviderEnv('claude', provider({ apiKey: null })))).toMatch(
-      /no API key/,
-    );
-  });
-
-  it('reads billing from the account and sign-ins from the CLIs', () => {
-    expect(accountBilling({ authKind: 'subscription' })).toBe('subscription');
-    expect(accountBilling({ authKind: 'api_key' })).toBe('api');
-    expect(accountBilling(null)).toBe('unknown');
-    expect(codexStatus('Not logged in\n')).toBeNull();
-    expect(codexStatus('\u001b[32mLogged in using ChatGPT\u001b[0m\n')).toEqual({
-      authKind: 'subscription',
-      accountLabel: 'ChatGPT',
-    });
-    // An API key login: never the masked key or the status line.
-    expect(codexStatus('Logged in using an API key - sk-proj-***ABCD\n')).toEqual({
-      authKind: 'api_key',
-      accountLabel: 'API key through Codex',
-    });
-    expect(
-      piCheckResult('{"status":"not_ready","provider":"anthropic","reason":"x"}\n'),
-    ).toBeNull();
-    expect(piCheckResult('{"status":"ready","provider":"anthropic","authType":"oauth"}\n')).toEqual(
-      { authType: 'oauth' },
-    );
-  });
-
-  it("reads pi's checks as a plan for OAuth and as a key for the rest", () => {
-    const by = (id: string) => PI_CHECK_PROVIDERS.find((p) => p.id === id)!;
-    expect(piSignIn([])).toBeNull();
-    expect(piSignIn([{ provider: by('anthropic'), authType: 'oauth' }])).toEqual({
-      authKind: 'subscription',
-      accountLabel: 'Anthropic (Claude Pro/Max)',
-    });
-    expect(piSignIn([{ provider: by('openai'), authType: 'api_key' }])).toEqual({
-      authKind: 'api_key',
-      accountLabel: 'API key through pi (OpenAI)',
-    });
-    // A plan wins over a key; a key alone is named by its provider.
-    expect(
-      piSignIn([
-        { provider: by('xai'), authType: 'api_key' },
-        { provider: by('github-copilot'), authType: 'oauth' },
-      ]),
-    ).toEqual({ authKind: 'subscription', accountLabel: 'GitHub Copilot' });
-    const ids = PI_CHECK_PROVIDERS.map((p) => p.id);
-    for (const id of [
-      'anthropic',
-      'openai',
-      'openai-codex',
-      'google',
-      'xai',
-      'openrouter',
-      'github-copilot',
-      'amazon-bedrock',
-      'mistral',
-      'groq',
-      'deepseek',
-    ]) {
-      expect(ids).toContain(id);
-    }
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
+describe('accounts', () => {
   it('says which accounts need a sign-in, and what their last error is about', () => {
     const lapsed = 'Claude Code is not signed in on the computer';
     expect(needsSignIn({ authKind: 'subscription', lastError: lapsed })).toBe(true);
@@ -199,28 +45,30 @@ describe('coderProviderEnv', () => {
     );
     expect(lastErrorKind({ authKind: 'subscription', lastError: null })).toBeNull();
   });
+
+  it('says whose plan an account bills, and how each agent signs in', () => {
+    expect(planProviderOf('claude', 'subscription', 'dana@example.com')).toBe('anthropic');
+    expect(planProviderOf('codex', 'subscription', 'ChatGPT Plus')).toBe('openai');
+    expect(planProviderOf('claude', 'api_key', null)).toBeNull();
+    expect(planProviderOf('pi', 'none', null)).toBeNull();
+    // pi: from the plans its check put in the label; a Claude plan comes first.
+    expect(planProviderOf('pi', 'subscription', 'Anthropic (Claude Pro/Max)')).toBe('anthropic');
+    expect(planProviderOf('pi', 'subscription', 'OpenAI (ChatGPT Plus/Pro)')).toBe('openai');
+    expect(
+      planProviderOf('pi', 'subscription', 'OpenAI (ChatGPT Plus/Pro), Anthropic (Claude Pro/Max)'),
+    ).toBe('anthropic');
+    expect(planProviderOf('pi', 'subscription', 'GitHub Copilot')).toBe('other');
+    expect(planProviderOf('pi', 'api_key', 'API key through pi (Anthropic)')).toBeNull();
+    expect(signInStyleOf('claude')).toBe('link');
+    expect(signInStyleOf('codex')).toBe('device');
+    expect(signInStyleOf('pi')).toBe('terminal');
+  });
 });
 
-/** pi as the terminal-only sign-in the real adapter is: `login()` throws. */
-const terminalPi: CoderAdapter = {
-  ...adapterFor('claude'),
-  agent: 'pi',
-  versionArgs: ['pi', '--version'],
-  resumeCommand: (id) => `pi --session ${id}`,
-  login: () => {
-    throw new DomainError(
-      409,
-      'CODER_LOGIN_IN_TERMINAL',
-      'pi signs in from its own terminal: run /login there.',
-    );
-  },
-};
-
-describe('coding agents, Phase 3', () => {
+describe('coding agent accounts and their sessions', () => {
   let w: CoderWorld;
 
   beforeAll(async () => {
-    registerCoderAdapter(terminalPi);
     w = await coderWorld('phase3-owner@example.com');
     await w.t.deps.infra
       .queue<CoderJob>(CODERS_QUEUE)
@@ -232,26 +80,8 @@ describe('coding agents, Phase 3', () => {
     await w.close();
   });
 
-  const run = async (sessionId: string) => {
-    await w.t.inOrganization(() => enqueueCoderJob(w.t.deps, { kind: 'session', sessionId }));
-    return w.until(async () => {
-      const row = await w.session(sessionId);
-      expect(['settled', 'failed', 'stopped']).toContain(row.status);
-      return row;
-    });
-  };
-  const setAccount = (agent: string, set: Partial<typeof schema.coderAccounts.$inferInsert>) =>
-    w.t.db
-      .insert(schema.coderAccounts)
-      .values({ workspaceId: w.workspaceId, ownerId: w.ownerId, agent, ...set })
-      .onConflictDoUpdate({
-        target: [
-          schema.coderAccounts.workspaceId,
-          schema.coderAccounts.ownerId,
-          schema.coderAccounts.agent,
-        ],
-        set,
-      });
+  const run = (sessionId: string) => w.runToEnd(sessionId);
+  const setAccount: CoderWorld['setAccount'] = (agent, set) => w.setAccount(agent, set);
   const claudeSuccess = () => {
     w.coder.agent = (io) => {
       io.stdout(readFileSync(path.join(FIXTURES, 'claude-success.jsonl'), 'utf8'));
@@ -303,6 +133,16 @@ describe('coding agents, Phase 3', () => {
       agents: { agent: string; needsSignIn: boolean }[];
     };
     expect(cards.agents.find((a) => a.agent === 'claude')!.needsSignIn).toBe(false);
+    // An api_key account bills no plan; every card says how it signs in and whether Check works.
+    expect(cards.agents.find((a) => a.agent === 'claude')).toMatchObject({
+      planProvider: null,
+      checkAvailable: true,
+      signIn: 'link',
+    });
+    expect(cards.agents.find((a) => a.agent === 'pi')).toMatchObject({
+      checkAvailable: true,
+      signIn: 'terminal',
+    });
     await setAccount('claude', { authKind: 'subscription', providerId: null, lastError: null });
     await w.t.db.update(schema.bots).set({ toolPolicy: {} }).where(eq(schema.bots.id, w.bot.id));
   });
@@ -431,7 +271,7 @@ describe('coding agents, Phase 3', () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
       code: 'CODER_LOGIN_IN_TERMINAL',
-      message: TERMINAL_LOGIN_INSTRUCTIONS.pi,
+      message: PI_SIGN_IN_INSTRUCTIONS,
       terminal: { cwd: COMPUTER_HOME, user: 'coder', preset: 'pi' },
     });
     const [login] = await w.t.db
@@ -448,12 +288,17 @@ describe('coding agents, Phase 3', () => {
   });
 
   it('checks a sign-in with the CLI and records it', async () => {
-    expect((await w.call('POST', '/coders/claude/check')).status).toBe(400);
     const asked: string[][] = [];
     w.coder.agent = (io) => {
       const { command, args = [], env = {} } = io.call.launch;
-      asked.push([command, ...args, env.CODEX_HOME ?? env.PI_CODING_AGENT_DIR ?? '']);
-      if (command === 'codex' && args.join(' ') === 'login status') {
+      asked.push([
+        command,
+        ...args,
+        env.CODEX_HOME ?? env.PI_CODING_AGENT_DIR ?? env.CLAUDE_CONFIG_DIR ?? '',
+      ]);
+      if (command === 'claude' && args.join(' ') === 'auth status') {
+        io.stdout(`${JSON.stringify({ loggedIn: true, authMethod: 'claude.ai' }, null, 2)}\n`);
+      } else if (command === 'codex' && args.join(' ') === 'login status') {
         io.stdout('Logged in using ChatGPT\n');
       } else if (command === 'pi' && args[0] === 'auth') {
         const id = args[args.indexOf('--provider') + 1];
@@ -471,6 +316,16 @@ describe('coding agents, Phase 3', () => {
       }
       io.exit(0);
     };
+    // Claude Code answers `claude auth status` with JSON.
+    const claude = await w.call('POST', '/coders/claude/check');
+    expect(claude.status).toBe(200);
+    expect(((await claude.json()) as { account: unknown }).account).toMatchObject({
+      agent: 'claude',
+      authKind: 'subscription',
+      accountLabel: 'Claude account',
+    });
+    expect(asked).toContainEqual(['claude', 'auth', 'status', expect.stringMatching(/claude$/)]);
+
     await setAccount('codex', { authKind: 'none', lastError: 'Codex is not signed in' });
     const codex = await w.call('POST', '/coders/codex/check');
     expect(codex.status).toBe(200);

@@ -1,13 +1,15 @@
-import { appendFile, mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { appendFile, mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { CoderExit, CoderPermissionRequest, CoderProcess } from '@openbots/computer';
 import {
   CODER_AGENT_LABELS,
+  CODER_APPROVAL_TTL_ENV,
   CoderActionClassSchema,
   coderActionDecision,
   DEFAULT_MAX_CONCURRENT_SESSIONS,
   DEFAULT_MAX_TURNS,
   DEFAULT_SESSION_MINUTES,
+  NEEDS_LOGIN,
   resolveToolPolicy,
   type CoderActionClass,
   type CoderAgent,
@@ -30,7 +32,6 @@ import { and, count, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
 import { inWorkspace } from '../db/scope.js';
-import { GITHUB_API } from '../builtins/github.js';
 import { DomainError } from '../errors.js';
 import {
   announceApproval,
@@ -39,11 +40,21 @@ import {
   expireSessionApprovals,
   type ApprovalRow,
 } from './approvals.js';
-import { adapterFor, type CoderAdapter } from './coder-adapters/index.js';
-import type { CoderSessionSpec } from './coder-adapters/types.js';
+import { rateLimitResetMs } from './coder-adapters/common.js';
+import {
+  adapterFor,
+  type CoderAdapter,
+  type CoderSession,
+  type CoderSessionApproval,
+  type CoderSessionSpec,
+} from './coder-adapters/index.js';
 import { subscribeCoderControl } from './coder-control.js';
 import { enqueueCoderJob, type CoderJob } from './coder-jobs.js';
-import { runCoderLogin, signInErrorForOwner, startLogin } from './coder-login.js';
+import { signInErrorForOwner, startLogin } from './coder-login.js';
+import { runCoderLogin } from './coder-login-driver.js';
+import { accountBilling, coderProviderEnv, maskKey } from './coder-provider-env.js';
+import { interruptSession, LIVE } from './coder-recovery.js';
+import { resumeWaitingRun } from './coder-run-resume.js';
 import {
   appendFeed,
   applyEvent,
@@ -58,24 +69,34 @@ import {
   settleSession,
   type CodingSessionRow,
 } from './coder-state.js';
-import { createArtifact, writeArtifact } from './artifacts.js';
 import { agentFor, EXEC_TOUCH_MS, startComputer, touchComputer } from './computer.js';
-import { pullRequestToken, resolveGitCredential } from './git-credentials.js';
+import { resolveGitCredential } from './git-credentials.js';
 import { runSource } from './policy.js';
-import { providerConfig, type ProviderRow } from './providers.js';
+import { providerConfig } from './providers.js';
 import {
   assertRunnable,
   ensureCheckout,
   ensureWorktree,
   remoteOf,
   runGit,
+  sessionBranch,
   type GitContext,
   type RepoRow,
 } from './repos-checkout.js';
-import { reconcileComputer, refreshStates, runRescueJob, scanComputer } from './repos-jobs.js';
-import { resumeRun, type RunRow } from './runs.js';
+import { reconcileComputer, refreshStates } from './repos-refresh.js';
+import { runRescueJob } from './repos-rescue.js';
+import { scanComputer } from './repos-scan.js';
+import {
+  branchResult,
+  commitLeftovers,
+  diffArtifact,
+  openPullRequest,
+  sessionIdentity,
+  type SessionIdentity,
+} from './session-git.js';
 
-// The coding session runner (I12): the `coders` queue's one handler. A
+// The coding session runner (docs/TECHNICAL_PLAN.md 22.2; I12): the
+// `coders` queue's one handler. A
 // `session` job is one coding session, start to end, like a run job is one
 // run: it claims the row (queued to starting), makes the checkout current
 // and the session's worktree, starts the adapter's CLI in the computer over
@@ -93,44 +114,35 @@ import { resumeRun, type RunRow } from './runs.js';
 // While a session runs the computer is marked used every minute, so the idle
 // sweep leaves it up, and the session stops at its time limit. Sessions an
 // interrupted process leaves behind fail with a note at the next start
-// (`recoverInterruptedCoderSessions`); the owner continues them.
+// (`recoverInterruptedCoderSessions`, coder-recovery.ts); the owner
+// continues them. The runner's own git after the CLI ends is session-git.ts.
 //
-// `checkout` jobs make a checkout current (repos-checkout.ts) and `login`
-// jobs drive a vendor sign-in (coder-login.ts).
+// `checkout` jobs make a checkout current (repos-checkout.ts), `login` jobs
+// drive a vendor sign-in (coder-login-driver.ts), and the repository jobs
+// are repos-scan.ts, repos-refresh.ts and repos-rescue.ts.
 
-export const RESTART_NOTE =
-  'The server restarted during the session; continue it to pick up where it left off';
-/** `coding_sessions.error` when the CLI is not signed in: the machine-readable marker. */
-export const NEEDS_LOGIN = 'needs_login';
 /** What the widget says instead of NEEDS_LOGIN. */
 export const needsLoginText = (label: string) =>
   `${label} is not signed in on this computer. Sign in under Settings > Coding agents, then ask again.`;
 /** The pull request approval's tool name. */
 export const PR_TOOL = 'open_pull_request';
 
-/** The statuses a session runs in; a job finding one it does not run treats it as interrupted. */
-const LIVE: CodingSessionStatus[] = ['starting', 'running', 'waiting'];
 /** How long a stopped CLI has between SIGTERM and the socket closing. */
 const STOP_GRACE_MS = 5_000;
-/** How long the runner waits for the run to finish pausing before it resumes it. */
-const RUN_WAIT_MS = 30_000;
 /** A session over the account's limit tries again after this long. */
 const BUSY_RETRY_MS = 30_000;
 /** The stderr kept for an error message. */
 const STDERR_MAX = 16 * 1024;
-/** What a provider key reads as wherever the session's output is kept or shown. */
-export const KEY_MASK = '[key]';
-/** The feed line a Codex session starts with: it gets no OpenBots approvals. */
-export const CODEX_POSTURE =
-  'Codex works inside its own sandbox and does not ask for approvals; OpenBots still gates pushes.';
 /** `coding_sessions.error` and the account's `last_error` when an `api_key` account's key is refused. */
 export const keyRejectedText = (provider: string, label: string) =>
   `The ${provider} API key for ${label} was rejected. Check it under Settings > Models.`;
 /** What a provider answers a key it does not take with. */
 const KEY_REFUSED = /\b401\b|unauthori[sz]ed/i;
-/** The commit message of what a session left uncommitted. */
-export const leftoverCommitMessage = (label: string) =>
-  `${label}: changes from an OpenBots session`;
+
+/** How long a rate limited session waits when the vendor names no reset. */
+export const RATE_LIMIT_WAIT_MS = 60_000;
+/** The longest a session waits out a rate limit before it fails instead. */
+export const RATE_LIMIT_MAX_WAIT_MS = 30 * 60_000;
 
 export interface CoderRunnerOptions {
   /** How often a running session marks the computer used; EXEC_TOUCH_MS by default. */
@@ -141,6 +153,10 @@ export interface CoderRunnerOptions {
   runWaitMs?: number;
   /** The GitHub REST API base, for the pull request; tests stand in a fake. */
   githubApi?: string;
+  /** How long a rate limited session waits, whatever the vendor says; tests set it short. */
+  rateLimitWaitMs?: number;
+  /** The longest wait out of a rate limit; RATE_LIMIT_MAX_WAIT_MS by default. */
+  rateLimitMaxWaitMs?: number;
   /** Starts the vendor sign-in a session that is not signed in waits on; tests stand in a fake. */
   startLogin?: typeof startLogin;
 }
@@ -199,23 +215,7 @@ export function createCoderWorker(
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** A new session's branch when `code_task` named none: `bot/<words of the prompt>-<id>`. */
-export function defaultBranch(session: Pick<CodingSessionRow, 'id' | 'prompt'>): string {
-  const words = session.prompt
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-    .split(' ')
-    .slice(0, 5)
-    .join('-')
-    .slice(0, 40)
-    .replace(/-+$/, '');
-  return `bot/${words || 'session'}-${session.id.slice(0, 6)}`;
-}
-
-/** The policy's decision for every action class, for the adapter's pre-allowed tools. */
+/** The policy's decision for every action class, for the launch spec's `actions`. */
 function decisions(
   policy: ReturnType<typeof resolveToolPolicy>,
   source: RunSource,
@@ -245,7 +245,7 @@ export async function runSession(
   if (!existing) return;
   if (existing.status !== 'queued') {
     if (LIVE.includes(existing.status as CodingSessionStatus) && !live.has(sessionId)) {
-      await interruptSession(deps, existing, options);
+      await interruptSession(deps, existing, { runWaitMs: options.runWaitMs ?? 0 });
     }
     return;
   }
@@ -302,223 +302,17 @@ export async function runSession(
   }
 }
 
-/** A session left running by a process that is gone: failed with the note, its run told. */
-async function interruptSession(
-  deps: AppDeps,
-  row: CodingSessionRow,
-  options: CoderRunnerOptions = {},
-) {
-  await expireSessionApprovals(deps, row.id);
-  const state = await settleSession(deps, row.id, { status: 'failed', error: RESTART_NOTE });
-  if (row.runId) {
-    await resumeWaitingRun(deps, row.runId, widgetToolResult('coding_session', state), {
-      waitMs: options.runWaitMs ?? 0,
-    });
-  }
-}
-
-/**
- * Sessions an interrupted process left behind, at worker start (in-memory
- * infra, as `recoverInterruptedRuns`): a session that was running fails
- * with RESTART_NOTE and its run resumes with that (its log stays, since the
- * owner can continue it); a queued one, whose job died with the process, is
- * queued again. Logs whose session is gone are removed.
- */
-export async function recoverInterruptedCoderSessions(deps: AppDeps): Promise<number> {
-  const rows = await deps.db
-    .select()
-    .from(schema.codingSessions)
-    .where(inArray(schema.codingSessions.status, [...LIVE, 'queued']));
-  for (const row of rows) {
-    if (row.status === 'queued') {
-      await enqueueCoderJob(deps, { kind: 'session', sessionId: row.id });
-    } else {
-      await interruptSession(deps, row);
-    }
-  }
-  await removeOrphanLogs(deps).catch((error: unknown) =>
-    deps.logger.warn({ err: error }, 'coding session logs not swept'),
-  );
-  return rows.length;
-}
-
-/** Session logs on the server whose `coding_sessions` row is gone. */
-export async function removeOrphanLogs(deps: AppDeps): Promise<number> {
-  const dir = path.join(deps.config.filesDir, 'coders');
-  const names = await readdir(dir).catch(() => [] as string[]);
-  const ids = names
-    .map((name) => /^([0-9a-f-]{36})\.log$/i.exec(name)?.[1])
-    .filter((id): id is string => !!id);
-  if (!ids.length) return 0;
-  const known = new Set(
-    (
-      await deps.db
-        .select({ id: schema.codingSessions.id })
-        .from(schema.codingSessions)
-        .where(inArray(schema.codingSessions.id, ids))
-    ).map((row) => row.id),
-  );
-  let removed = 0;
-  for (const id of ids) {
-    if (known.has(id)) continue;
-    await rm(path.join(dir, `${id}.log`), { force: true });
-    removed++;
-  }
-  return removed;
-}
-
-/**
- * Resumes the run waiting on a session's widget with `output`. `code_task`
- * pauses its run after it posts the widget, so a session that ends quickly
- * can beat the pause: the run is given `waitMs` to get there.
- */
-export async function resumeWaitingRun(
-  deps: Pick<AppDeps, 'config' | 'db' | 'infra' | 'logger'>,
-  runId: string,
-  output: unknown,
-  { waitMs = RUN_WAIT_MS }: { waitMs?: number } = {},
-): Promise<RunRow | null> {
-  const deadline = Date.now() + waitMs;
-  for (;;) {
-    const [run] = await deps.db
-      .select({ status: schema.runs.status })
-      .from(schema.runs)
-      .where(eq(schema.runs.id, runId));
-    if (run?.status === 'waiting') {
-      return resumeRun(deps, runId, output).catch((error: unknown) => {
-        deps.logger.info({ err: error, runId }, 'coding session outcome not resumed');
-        return null;
-      });
-    }
-    if (!run || (run.status !== 'running' && run.status !== 'queued') || Date.now() >= deadline) {
-      deps.logger.info({ runId, status: run?.status }, 'no run waits on the coding session');
-      return null;
-    }
-    await sleep(250);
-  }
-}
-
-/**
- * For the services: a run that paused on a session which had already
- * ended (the race `resumeWaitingRun` waits out, past its wait) resumes now.
- */
-export async function resumeIfSessionEnded(deps: AppDeps, sessionId: string): Promise<void> {
-  const [row] = await deps.db
-    .select()
-    .from(schema.codingSessions)
-    .where(eq(schema.codingSessions.id, sessionId));
-  if (!row?.runId || !['settled', 'failed', 'stopped'].includes(row.status)) return;
-  if (!row.messageId || row.partIndex === null) return;
-  const [stored] = await deps.db
-    .select()
-    .from(schema.widgetStates)
-    .where(
-      and(
-        eq(schema.widgetStates.messageId, row.messageId),
-        eq(schema.widgetStates.partIndex, row.partIndex),
-      ),
-    );
-  if (!stored) return;
-  await resumeWaitingRun(
-    deps,
-    row.runId,
-    widgetToolResult('coding_session', stored.state as CodingSessionState),
-    { waitMs: 0 },
-  );
-}
-
 type ResultEvent = Extract<CoderEvent, { type: 'result' }>;
 
 type AccountRow = typeof schema.coderAccounts.$inferSelect;
 
-/** How a session's tokens are billed, from its account's `auth_kind`. */
-export function accountBilling(
-  account: Pick<AccountRow, 'authKind'> | null | undefined,
-): 'subscription' | 'api' | 'unknown' {
-  if (account?.authKind === 'subscription') return 'subscription';
-  if (account?.authKind === 'api_key') return 'api';
-  return 'unknown';
-}
-
-/** The provider fields the launch env is made from; `apiKey` is the opened secret. */
-export type CoderProvider = Pick<ProviderRow, 'kind' | 'protocol' | 'name'> & {
-  baseUrl: string | null;
-  apiKey: string | null;
-};
-
-const notUsable = (label: string, provider: Pick<CoderProvider, 'name'>, why: string) =>
-  new DomainError(
-    400,
-    'CODER_PROVIDER_UNSUPPORTED',
-    `${label} cannot use the ${provider.name} key: ${why}. Pick another provider under Settings > Coding agents, or sign in with a plan.`,
-  );
-
-/**
- * The variables that hand an \`api_key\` account's provider key to the CLI,
- * in the vendor's names: Claude Code reads ANTHROPIC_API_KEY (and
- * ANTHROPIC_BASE_URL), Codex OPENAI_API_KEY or CODEX_API_KEY (and
- * OPENAI_BASE_URL), pi one variable per provider (ANTHROPIC_API_KEY,
- * OPENAI_API_KEY, GEMINI_API_KEY, XAI_API_KEY) and no base URL, since pi
- * takes a custom endpoint only from its own models.json. Anything the CLI
- * cannot use is refused with the reason. The values go only into that
- * session's process; never log them.
- */
-export function coderProviderEnv(
-  agent: CoderAgent,
-  provider: CoderProvider,
-): Record<string, string> {
-  const label = CODER_AGENT_LABELS[agent];
-  const key = provider.apiKey?.trim();
-  if (!key) throw notUsable(label, provider, 'the provider has no API key');
-  const baseUrl = provider.baseUrl?.trim() || null;
-  const { kind, protocol } = provider;
-  const anthropic =
-    protocol === 'anthropic_compatible' || (protocol === 'native' && kind === 'anthropic');
-  const openai = protocol === 'openai_compatible' || (protocol === 'native' && kind === 'openai');
-  switch (agent) {
-    case 'claude':
-      if (!anthropic) throw notUsable(label, provider, 'Claude Code takes an Anthropic key only');
-      return { ANTHROPIC_API_KEY: key, ...(baseUrl ? { ANTHROPIC_BASE_URL: baseUrl } : {}) };
-    case 'codex':
-      if (!openai) throw notUsable(label, provider, 'Codex takes an OpenAI key only');
-      return {
-        OPENAI_API_KEY: key,
-        CODEX_API_KEY: key,
-        ...(baseUrl ? { OPENAI_BASE_URL: baseUrl } : {}),
-      };
-    case 'pi': {
-      if (protocol !== 'native') {
-        throw notUsable(label, provider, 'pi does not take a custom endpoint from the environment');
-      }
-      const names: Partial<Record<typeof kind, string>> = {
-        anthropic: 'ANTHROPIC_API_KEY',
-        openai: 'OPENAI_API_KEY',
-        google: 'GEMINI_API_KEY',
-        xai: 'XAI_API_KEY',
-      };
-      const name = names[kind];
-      if (!name) throw notUsable(label, provider, 'pi has no variable for this provider');
-      return { [name]: key };
-    }
-  }
-}
-
-/** The most of a branch's diff that goes into its Artifact. */
-export const DIFF_MAX_CHARS = 1024 * 1024;
-export const DIFF_TRUNCATED = '\n[openbots] The diff is longer than 1 MB; the rest is not shown\n';
-
 /** One session's job: everything it holds while the CLI runs. */
-/** A name fit for a git identity or trailer: one line, no angle brackets. */
-const oneLine = (text: string) =>
-  text
-    .replace(/[<>\r\n]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
 class SessionRunner {
   computerId: string | null = null;
   private session: CodingSessionRow;
   private proc: CoderProcess | null = null;
+  /** The adapter's protocol session, for a `jsonrpc` transport: it answers prompts, not `proc`. */
+  private rpc: CoderSession | null = null;
   private exited: Promise<CoderExit> | null = null;
   private pushAllowed: boolean;
   private stopped = false;
@@ -533,15 +327,21 @@ class SessionRunner {
   private ending = false;
   private result: ResultEvent | null = null;
   private errors: string[] = [];
+  /** The launch was retried once after a vendor rate limit. */
+  private retried = false;
+  /** Ends a rate limit wait early: the owner stopped the session. */
+  private wake: (() => void) | null = null;
+  /** The paths the agent's `file_change` events named: what the safety-net commit may stage. */
+  private touched = new Set<string>();
   private stderr = '';
   /** Stderr after its last newline: logged once the line is whole, so a key is never split. */
   private stderrPartial = '';
   /** The provider key in the session's environment, masked out of everything kept (`scrub`). */
   private secret: string | null = null;
   /** The `api_key` account's provider, for the launch and a refused key's message. */
-  private keyProvider: { kind: string; name: string } | null = null;
+  private keyProvider: { kind: string; name: string; baseUrl?: string } | null = null;
   /** The Bot's git identity and the owner's trailer, for the runner's own commit. */
-  private identity: Pick<CoderSessionSpec, 'gitIdentity' | 'coAuthor'> = {};
+  private identity: SessionIdentity = {};
   /** Events and prompts in arrival order. */
   private chain: Promise<unknown> = Promise.resolve();
   private logChain: Promise<unknown> = Promise.resolve();
@@ -585,7 +385,8 @@ class SessionRunner {
       await setSessionStatus(deps, this.id, 'starting');
       await this.prepare();
       if (this.stopped) return await this.finish({ code: null, signal: 'SIGTERM' });
-      const exit = await this.launch();
+      let exit = await this.launch();
+      if (await this.waitOutRateLimit()) exit = await this.launch();
       await this.finish(exit);
     } catch (error) {
       deps.logger.warn({ err: error, sessionId: this.id }, 'coding session failed');
@@ -601,7 +402,7 @@ class SessionRunner {
   private async prepare() {
     const { deps, session } = this;
     const [bot] = await deps.db.select().from(schema.bots).where(eq(schema.bots.id, session.botId));
-    if (!bot) throw new Error('The Bot is gone');
+    if (!bot) throw new DomainError(404, 'BOT_GONE', 'The Bot is gone');
     this.bot = bot;
     this.policy = resolveToolPolicy(bot.toolPolicy);
     const [run] = session.runId
@@ -623,7 +424,13 @@ class SessionRunner {
     const [repo] = session.repoId
       ? await deps.db.select().from(schema.repos).where(eq(schema.repos.id, session.repoId))
       : [];
-    if (!repo) throw new Error('The repository is no longer remembered; add it again first');
+    if (!repo) {
+      throw new DomainError(
+        404,
+        'REPO_FORGOTTEN',
+        'The repository is no longer remembered; add it again first',
+      );
+    }
     this.repo = repo;
 
     const { computer } = await startComputer(deps, this.owner, { type: 'bot', id: bot.id });
@@ -636,7 +443,7 @@ class SessionRunner {
     };
 
     const continuing = !!(session.vendorSessionId && session.worktreePath && session.branch);
-    const branch = session.branch ?? defaultBranch(session);
+    const branch = session.branch ?? sessionBranch(session.prompt);
     let worktree = session.worktreePath;
     const checkout = await ensureCheckout(deps, repo.id, computer.id, 'update');
     this.repoPath = checkout.path;
@@ -668,7 +475,8 @@ class SessionRunner {
       this.id,
       feedLine('text', `${continuing ? 'Continued' : 'Started'} ${label} in ${worktree}`),
     );
-    if (session.agent === 'codex') appendFeed(deps, this.id, feedLine('text', CODEX_POSTURE));
+    const posture = this.adapter?.posture;
+    if (posture) appendFeed(deps, this.id, feedLine('text', posture));
   }
 
   /** Starts the CLI and resolves when it ends. */
@@ -678,8 +486,8 @@ class SessionRunner {
     const agent = session.agent as CoderAgent;
     const model = this.policy.coder.models?.[agent];
     const keyEnv = await this.providerEnv();
-    this.identity = await this.gitIdentity();
-    const plan = adapter.launch({
+    this.identity = await sessionIdentity(deps, this.bot!, session.ownerId);
+    const spec: CoderSessionSpec = {
       sessionId: session.id,
       agent: session.agent as CoderAgent,
       mode: session.mode as CoderMode,
@@ -692,14 +500,22 @@ class SessionRunner {
       ...(session.vendorSessionId ? { resumeId: session.vendorSessionId } : {}),
       ...(model ? { model } : {}),
       ...(this.keyProvider ? { apiKeyProvider: this.keyProvider.kind } : {}),
+      ...(this.keyProvider?.baseUrl ? { apiKeyBaseUrl: this.keyProvider.baseUrl } : {}),
       maxTurns: DEFAULT_MAX_TURNS,
       actions: decisions(this.policy, this.source),
       ...this.identity,
-    });
-    const parser = adapter.parser({
+    };
+    const plan = adapter.launch(spec);
+    const parserOptions = {
       billing: accountBilling(this.account),
       worktreePath: session.worktreePath!,
-    });
+    };
+    // `jsonrpc`: the adapter's session speaks the CLI's protocol over stdin
+    // and stdout, made once the process runs; stdout before then waits for it.
+    const jsonrpc = adapter.transport === 'jsonrpc' && !!adapter.session;
+    const parser = jsonrpc ? null : adapter.parser(parserOptions);
+    const early: string[] = [];
+    this.rpc = null;
     let partial = '';
     let resolveExit!: (exit: CoderExit) => void;
     const exited = new Promise<CoderExit>((resolve) => (resolveExit = resolve));
@@ -709,7 +525,10 @@ class SessionRunner {
       // line, result or error made from it can carry it.
       const line = this.scrub(raw);
       this.log(line);
-      for (const event of parser.line(line)) this.enqueue(() => this.onEvent(event));
+      if (parser) {
+        for (const event of parser.line(line)) this.enqueue(() => this.onEvent(event));
+      } else if (this.rpc) this.rpc.onLine(line);
+      else early.push(line);
     };
     const onStderr = (data: string, flush = false) => {
       const text = this.stderrPartial + data;
@@ -727,10 +546,17 @@ class SessionRunner {
         command: plan.command,
         args: plan.args,
         // The provider key goes to this process only, never into a log line.
-        env: { ...plan.env, ...keyEnv },
+        // The permission relay waits on the owner as long as an approval lives.
+        env: {
+          ...plan.env,
+          ...keyEnv,
+          [CODER_APPROVAL_TTL_ENV]: String(approvalTtlMs(deps.config)),
+        },
         cwd: session.worktreePath!,
         pty: plan.pty ?? false,
         git_credentials: true,
+        // git may work in the checkout and the worktree although runner owns their config.
+        safe_directories: [this.repoPath!, session.worktreePath!],
       },
       {
         stdout: (data) => {
@@ -763,11 +589,17 @@ class SessionRunner {
         exit: (info) => resolveExit(info),
       },
     );
-    // Once it runs: the plan's stdin, then EOF, since `claude -p` and `codex
-    // exec` read a piped stdin to its end before they start. A terminal keeps its input.
+    // Once it runs: the plan's stdin, then EOF, since `claude -p` reads a
+    // piped stdin to its end before it starts. A terminal keeps its input,
+    // and a `jsonrpc` session's stdin stays open until its result.
     const proc = this.proc;
     void proc.started
       .then(() => {
+        if (jsonrpc) {
+          this.rpc = adapter.session!(spec, this.sessionIo(proc), parserOptions);
+          for (const line of early.splice(0)) this.rpc.onLine(line);
+          return;
+        }
         if (plan.stdin !== undefined) this.safely(() => proc.write(plan.stdin!));
         if (!plan.pty) this.safely(() => proc.end());
       })
@@ -792,7 +624,12 @@ class SessionRunner {
     const exit = await exited;
     if (partial.trim()) onLine(partial);
     if (this.stderrPartial) onStderr('', true);
-    for (const event of parser.end()) this.enqueue(() => this.onEvent(event));
+    if (parser) {
+      for (const event of parser.end()) this.enqueue(() => this.onEvent(event));
+    } else {
+      // Set once the process ran (TypeScript sees only the reset above).
+      (this.rpc as CoderSession | null)?.end();
+    }
     await this.chain;
     await this.logChain;
     return exit;
@@ -838,38 +675,13 @@ class SessionRunner {
       apiKey,
     });
     this.secret = apiKey?.trim() || null;
-    this.keyProvider = { kind: row.kind, name: row.name };
+    this.keyProvider = { kind: row.kind, name: row.name, ...(baseUrl ? { baseUrl } : {}) };
     return env;
   }
 
   /** Text with the session's provider key masked: everything kept or shown passes through this. */
   private scrub(text: string): string {
-    const key = this.secret;
-    return key && text.includes(key) ? text.split(key).join(KEY_MASK) : text;
-  }
-
-  /**
-   * Who the commits are by (GH8): the Bot as author and committer,
-   * `<Bot name> (OpenBots)` at `<bot handle>@openbots.local`, and the owner
-   * credited as co-author, with their name and address.
-   */
-  private async gitIdentity(): Promise<
-    Required<Pick<CoderSessionSpec, 'gitIdentity'>> & Pick<CoderSessionSpec, 'coAuthor'>
-  > {
-    const bot = this.bot!;
-    const [owner] = await this.deps.db
-      .select({ name: schema.users.name, email: schema.users.email })
-      .from(schema.users)
-      .where(eq(schema.users.id, this.session.ownerId))
-      .catch(() => []);
-    const gitIdentity = {
-      name: `${oneLine(bot.name)} (OpenBots)`,
-      email: `${bot.handle}@openbots.local`,
-    };
-    const name = owner ? oneLine(owner.name) || owner.email : '';
-    return owner?.email && !/[<>\s]/.test(owner.email)
-      ? { gitIdentity, coAuthor: { name, email: owner.email } }
-      : { gitIdentity };
+    return maskKey(text, this.secret);
   }
 
   private enqueue(fn: () => Promise<unknown>) {
@@ -909,6 +721,7 @@ class SessionRunner {
     // Kept as the CLI said it, for `finish` to read.
     if (event.type === 'result') this.result = event;
     if (event.type === 'error') this.errors.push(event.message);
+    if (event.type === 'file_change' && event.path) this.touched.add(event.path);
     // A plan sign-in's refusal reads as plain words in the feed and widget;
     // the vendor's own text stays in the session log.
     if (this.account?.authKind !== 'api_key') {
@@ -925,21 +738,52 @@ class SessionRunner {
     await applyEvent(this.deps, this.id, event);
   }
 
+  /** A prompt's answer: through the protocol session when there is one, else the agent socket. */
   private answer(requestId: string, decision: 'allow' | 'deny', message?: string) {
+    const rpc = this.rpc;
+    if (rpc) {
+      this.safely(() => rpc.answer(requestId, decision, message));
+      return;
+    }
     this.safely(() =>
       this.proc?.answer({ request_id: requestId, decision, ...(message ? { message } : {}) }),
     );
   }
 
+  /** What a `jsonrpc` session writes, emits and asks, in the runner's terms. */
+  private sessionIo(proc: CoderProcess) {
+    return {
+      write: (line: string) => {
+        this.log(`[stdin] ${this.scrub(line)}`);
+        this.safely(() => proc.write(`${line}\n`));
+      },
+      emit: (event: CoderEvent) => {
+        this.enqueue(() => this.onEvent(event));
+        // The turn is over: EOF, on which the CLI exits.
+        if (event.type === 'result') this.safely(() => proc.end());
+      },
+      approval: (request: CoderSessionApproval) => this.enqueue(() => this.onApproval(request)),
+    };
+  }
+
   private async onPermission(request: CoderPermissionRequest) {
-    const { deps } = this;
     const classed = this.adapter!.classify(request.tool_name, request.input, {
       worktreePath: this.session.worktreePath!,
     });
-    const decision = coderActionDecision(this.policy, this.source, classed.action);
+    await this.onApproval({ ...request, ...classed });
+  }
+
+  /**
+   * A classified prompt, from the agent socket or a protocol session: the
+   * policy answers `auto` and `deny` classes at once, and asks the owner
+   * otherwise.
+   */
+  private async onApproval(request: CoderSessionApproval) {
+    const { deps } = this;
+    const decision = coderActionDecision(this.policy, this.source, request.action);
     if (decision === 'auto') {
       this.answer(request.request_id, 'allow');
-      appendFeed(deps, this.id, feedLine('approval_request', `Allowed: ${classed.title}`));
+      appendFeed(deps, this.id, feedLine('approval_request', `Allowed: ${request.title}`));
       return;
     }
     if (decision === 'deny' || !this.session.runId) {
@@ -948,14 +792,14 @@ class SessionRunner {
         'deny',
         "The owner's settings for this Bot do not allow this. Carry on without it.",
       );
-      appendFeed(deps, this.id, feedLine('approval_request', `Not allowed: ${classed.title}`));
+      appendFeed(deps, this.id, feedLine('approval_request', `Not allowed: ${request.title}`));
       return;
     }
     await this.askOwner(
       {
-        action: classed.action,
-        title: classed.title,
-        ...(classed.detail ? { detail: classed.detail } : {}),
+        action: request.action,
+        title: request.title,
+        ...(request.detail ? { detail: request.detail } : {}),
         toolName: request.tool_name,
         input: request.input,
       },
@@ -1033,7 +877,6 @@ class SessionRunner {
     return row!;
   }
 
-  /** A message on the control channel for this session. */
   async control(msg: CoderControl): Promise<void> {
     const { deps } = this;
     switch (msg.type) {
@@ -1041,6 +884,7 @@ class SessionRunner {
         this.stopped = true;
         appendFeed(deps, this.id, feedLine('text', 'Stopped by the owner'));
         this.stopProcess();
+        this.wake?.();
         for (const resolve of this.waiters.values()) resolve('denied');
         return;
       case 'approval': {
@@ -1103,6 +947,66 @@ class SessionRunner {
     return true;
   }
 
+  /**
+   * The CLI's own words only: the result's error, error events and stderr.
+   * The model's summary is never read, since the model can write anything
+   * there (a session about 401 handling, say).
+   */
+  private cliSaid(): string {
+    return [this.result?.ok ? '' : this.result?.error, this.stderr, ...this.errors]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  /** The CLI ended on the vendor's rate limit (the adapter's `rateLimited`). */
+  private rateLimited(said: string): boolean {
+    return !this.result?.ok && !!said && (this.adapter?.rateLimited?.(said) ?? false);
+  }
+
+  /**
+   * A vendor rate limit ended the CLI: the session waits (`waiting`, the
+   * vendor's message in the feed) until the reset the message states, or
+   * RATE_LIMIT_WAIT_MS when it states none, then launches once more. True
+   * when it should; false when there is no limit, it was retried already,
+   * the reset is further off than a session waits, or the owner stopped it.
+   */
+  private async waitOutRateLimit(): Promise<boolean> {
+    const said = this.cliSaid();
+    if (this.stopped || this.timedOut || this.retried || !this.rateLimited(said)) return false;
+    const label = CODER_AGENT_LABELS[this.session.agent as CoderAgent] ?? this.session.agent;
+    const wait = this.options.rateLimitWaitMs ?? rateLimitResetMs(said) ?? RATE_LIMIT_WAIT_MS;
+    if (wait > (this.options.rateLimitMaxWaitMs ?? RATE_LIMIT_MAX_WAIT_MS)) return false;
+    const line = this.scrub(said.trim().split('\n').filter(Boolean).pop() ?? '');
+    const seconds = Math.ceil(wait / 1000);
+    await setSessionStatus(this.deps, this.id, 'waiting');
+    appendFeed(
+      this.deps,
+      this.id,
+      feedLine(
+        'text',
+        `${label} is rate limited (${line}); trying again in ${seconds} second${seconds === 1 ? '' : 's'}`,
+      ),
+    );
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, wait);
+      timer.unref?.();
+      this.timers.push(timer);
+      this.wake = resolve;
+    });
+    this.wake = null;
+    if (this.stopped) return false;
+    this.retried = true;
+    this.result = null;
+    this.errors = [];
+    this.stderr = '';
+    this.stderrPartial = '';
+    if (this.touch) clearInterval(this.touch);
+    await this.proc?.close().catch(() => {});
+    this.proc = null;
+    await setSessionStatus(this.deps, this.id, 'running');
+    return true;
+  }
+
   /** SIGTERM, then the socket closes, which kills the process group. */
   private stopProcess() {
     const proc = this.proc;
@@ -1143,44 +1047,7 @@ class SessionRunner {
     const wt = this.session.worktreePath;
     const base = this.session.base;
     if (!this.git || !wt || !base) return { files: [], commits: [] };
-    const range = `origin/${base}...HEAD`;
-    const [numstat, names, log] = await Promise.all([
-      runGit(this.git, ['-C', wt, 'diff', '--numstat', range]),
-      runGit(this.git, ['-C', wt, 'diff', '--name-status', '--no-renames', range]),
-      runGit(this.git, ['-C', wt, 'log', '--format=%H%x09%s', `origin/${base}..HEAD`]),
-    ]);
-    const kinds = new Map<string, CoderChangedFile['kind']>();
-    if (names.code === 0) {
-      for (const line of names.stdout.split('\n')) {
-        const [status, file] = line.split('\t');
-        if (!status || !file) continue;
-        kinds.set(file, status === 'A' ? 'create' : status === 'D' ? 'delete' : 'edit');
-      }
-    }
-    const files: CoderChangedFile[] = [];
-    if (numstat.code === 0) {
-      for (const line of numstat.stdout.split('\n')) {
-        const [added, removed, ...rest] = line.split('\t');
-        const file = rest.join('\t');
-        if (!file) continue;
-        files.push({
-          path: file,
-          // Binary files show `-`.
-          added: Number(added) || 0,
-          removed: Number(removed) || 0,
-          kind: kinds.get(file) ?? 'edit',
-        });
-      }
-    }
-    const commits: CoderCommit[] = [];
-    if (log.code === 0) {
-      for (const line of log.stdout.split('\n')) {
-        const tab = line.indexOf('\t');
-        if (tab <= 0) continue;
-        commits.push({ sha: line.slice(0, tab), title: line.slice(tab + 1) });
-      }
-    }
-    return { files, commits };
+    return branchResult(this.git, wt, base);
   }
 
   /** The CLI ended: the outcome, the pull request in `pr` mode, the settle and the resume. */
@@ -1191,9 +1058,7 @@ class SessionRunner {
     // The CLI's own words only: the result's error, error events and
     // stderr. The model's summary is never read, since the model can write
     // anything there (a session about 401 handling, say).
-    const said = [this.result?.ok ? '' : this.result?.error, this.stderr, ...this.errors]
-      .filter(Boolean)
-      .join('\n');
+    const said = this.cliSaid();
     const refusedOrSignedOut =
       !this.stopped &&
       !this.result?.ok &&
@@ -1247,7 +1112,7 @@ class SessionRunner {
     }
     const before = await this.refusal();
     if (before) return this.refused(before);
-    await this.commitLeftovers(label);
+    const leftovers = await this.commitLeftovers(label);
     const { files, commits } = await this.branchResult().catch((error: unknown) => {
       deps.logger.warn({ err: error, sessionId: this.id }, 'branch result unreadable');
       return { files: [] as CoderChangedFile[], commits: [] as CoderCommit[] };
@@ -1270,8 +1135,21 @@ class SessionRunner {
     } else if (this.result && !this.result.ok) {
       error = this.result.error ?? this.result.summary;
     }
-    const diffArtifactId = commits.length ? await this.diffArtifact() : null;
+    // Still rate limited after the one retry, or limited past what a session waits.
+    if (!this.stopped && !this.timedOut && this.rateLimited(said)) {
+      status = 'failed';
+      const line = said.trim().split('\n').filter(Boolean).pop() ?? '';
+      error = this.scrub(
+        `${label} hit the vendor's rate limit${this.retried ? ' again after waiting' : ''}: ${line}`.slice(
+          0,
+          2_000,
+        ),
+      );
+    }
+    const diffArtifactId =
+      commits.length && this.git ? await diffArtifact(deps, this.git, this.owner, session) : null;
     let summary = this.result?.summary ?? '';
+    if (leftovers) summary = summary ? `${summary}\n\n${leftovers}` : leftovers;
     let prUrl: string | undefined;
     if (status === 'settled' && session.mode === 'pr' && commits.length && !this.timedOut) {
       const pr = await this.pullRequest(summary, commits);
@@ -1302,96 +1180,33 @@ class SessionRunner {
   }
 
   /**
-   * The safety net under every `edit` and `pr` session, whatever the agent:
-   * what it left uncommitted is committed by the runner (`git add -A`, then
-   * one commit by the Bot with the owner's trailer), so the branch, its diff
-   * and a pull request carry it. Runs after `assertRunnable`; nothing when
-   * the tree is clean or the session only planned. A failure is logged and
-   * left: the changes stay in the worktree.
+   * The safety-net commit (session-git.ts) after an `edit` or `pr` session,
+   * once `assertRunnable` passed: what the agent changed and left
+   * uncommitted. Returns the note for the summary on what stays
+   * uncommitted. A failure is logged and left: the changes stay in the
+   * worktree.
    */
-  private async commitLeftovers(label: string): Promise<void> {
-    const { session } = this;
-    const wt = session.worktreePath;
-    if (!this.git || !wt || session.mode === 'plan') return;
+  private async commitLeftovers(label: string): Promise<string | null> {
+    const wt = this.session.worktreePath;
+    if (!this.git || !wt || this.session.mode === 'plan') return null;
     try {
-      const status = await runGit(this.git, ['-C', wt, 'status', '--porcelain']);
-      if (status.code !== 0 || !status.stdout.trim()) return;
-      const added = await runGit(this.git, ['-C', wt, 'add', '-A']);
-      if (added.code !== 0) throw new Error(added.stderr.trim() || `git add exited ${added.code}`);
-      const { gitIdentity, coAuthor } = this.identity;
-      const who = gitIdentity
-        ? ['-c', `user.name=${gitIdentity.name}`, '-c', `user.email=${gitIdentity.email}`]
-        : [];
-      const trailer = coAuthor
-        ? ['-m', `Co-Authored-By: ${coAuthor.name} <${coAuthor.email}>`]
-        : [];
-      const committed = await runGit(this.git, [
-        ...who,
-        '-C',
-        wt,
-        'commit',
-        '--no-verify',
-        '-m',
-        leftoverCommitMessage(label),
-        ...trailer,
-      ]);
-      if (committed.code !== 0) {
-        throw new Error(committed.stderr.trim() || `git commit exited ${committed.code}`);
+      const done = await commitLeftovers(this.git, wt, label, this.touched, this.identity);
+      if (done.committed) {
+        appendFeed(
+          this.deps,
+          this.id,
+          feedLine('text', `Committed the changes ${label} left uncommitted`),
+        );
       }
-      appendFeed(
-        this.deps,
-        this.id,
-        feedLine('text', `Committed the changes ${label} left uncommitted`),
-      );
+      if (!done.left.length) return null;
+      const secrets = done.secrets.length
+        ? ` (${done.secrets.join(', ')} may hold secrets, so they were not committed)`
+        : '';
+      const note = `Left uncommitted: ${done.left.join(', ')}${secrets}`;
+      appendFeed(this.deps, this.id, feedLine('text', note));
+      return note;
     } catch (error) {
       this.deps.logger.warn({ err: error, sessionId: this.id }, 'leftover changes not committed');
-    }
-  }
-
-  /**
-   * CA5 View diff: `git diff origin/<base>...HEAD` in the worktree (at most
-   * DIFF_MAX_CHARS, then a marker) as a code Artifact of the owner's, by the
-   * session's Bot. A continued session's settle writes a new version of the
-   * Artifact its last settle made, so they do not pile up; a new one only
-   * when that is gone. Null when git or the store says no; the session
-   * settles either way. Discard leaves the Artifact.
-   */
-  private async diffArtifact(): Promise<string | null> {
-    const { deps, session } = this;
-    const wt = session.worktreePath;
-    if (!this.git || !wt || !session.base || !session.branch) return null;
-    try {
-      const diff = await runGit(this.git, ['-C', wt, 'diff', `origin/${session.base}...HEAD`], {
-        headChars: DIFF_MAX_CHARS,
-      });
-      if (diff.code !== 0 && !diff.truncated) return null;
-      const content = diff.truncated ? `${diff.stdout}${DIFF_TRUNCATED}` : diff.stdout;
-      const author = session.runId ? { runId: session.runId } : { userId: session.ownerId };
-      const previous = session.diffArtifactId;
-      if (previous) {
-        const updated = await writeArtifact(deps, this.owner, previous, { content }, author).catch(
-          (error: unknown) => {
-            deps.logger.info({ err: error, sessionId: this.id }, 'the last diff Artifact is gone');
-            return null;
-          },
-        );
-        if (updated) return updated.artifact.id;
-      }
-      const { artifact } = await createArtifact(
-        deps,
-        this.owner,
-        {
-          title: `Diff: ${session.branch}`,
-          kind: 'code',
-          botId: session.botId,
-          chatId: session.chatId,
-          content,
-        },
-        author,
-      );
-      return artifact.id;
-    } catch (error) {
-      deps.logger.warn({ err: error, sessionId: this.id }, 'the diff Artifact was not made');
       return null;
     }
   }
@@ -1479,7 +1294,15 @@ class SessionRunner {
       return { note: `The push of ${branch} failed: ${why ?? `exit ${pushed.code}`}` };
     }
     try {
-      const url = await this.openPullRequest(summary, commits);
+      const url = await openPullRequest(deps, {
+        owner: this.owner,
+        repo: this.repo!,
+        session,
+        botName: this.bot!.name,
+        summary,
+        commits,
+        ...(this.options.githubApi ? { githubApi: this.options.githubApi } : {}),
+      });
       appendFeed(deps, this.id, feedLine('text', `Opened ${url}`));
       return { url };
     } catch (error) {
@@ -1487,53 +1310,6 @@ class SessionRunner {
       appendFeed(deps, this.id, feedLine('error', `The pull request was not opened: ${message}`));
       return { note: `Pushed ${branch}, but the pull request was not opened: ${message}` };
     }
-  }
-
-  /**
-   * POST /repos/{owner}/{name}/pulls through the repository's git connection
-   * (GH8): the App opens it with an installation token, or the owner with
-   * their OAuth token when the connection acts as them; with no connection,
-   * the owner's GitHub connector token.
-   */
-  private async openPullRequest(summary: string, commits: CoderCommit[]): Promise<string> {
-    const { deps, session } = this;
-    const { fullName } = remoteOf(this.repo!);
-    const token = await pullRequestToken(deps, this.owner, fullName);
-    if (!token) throw new Error('there is no GitHub token on the Connectors page');
-    const [owner, name] = fullName.split('/') as [string, string];
-    const firstLine = summary
-      .split('\n')
-      .find((line) => line.trim())
-      ?.trim();
-    const title =
-      commits.length === 1 || !firstLine
-        ? commits[commits.length - 1]!.title
-        : firstLine.slice(0, 200);
-    const body = `${summary.trim()}\n\nOpened by ${this.bot!.name} with OpenBots`.trim();
-    const base = (this.options.githubApi ?? GITHUB_API).replace(/\/+$/, '');
-    const res = await fetch(
-      `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls`,
-      {
-        method: 'POST',
-        headers: {
-          accept: 'application/vnd.github+json',
-          authorization: `Bearer ${token}`,
-          'x-github-api-version': '2022-11-28',
-          'user-agent': 'OpenBots',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ title, head: session.branch, base: session.base, body }),
-        signal: AbortSignal.timeout(30_000),
-      },
-    );
-    const data = (await res.json().catch(() => null)) as {
-      html_url?: string;
-      message?: string;
-    } | null;
-    if (!res.ok || !data?.html_url) {
-      throw new Error(`GitHub answered ${res.status}: ${data?.message ?? res.statusText}`);
-    }
-    return data.html_url;
   }
 
   /** The session's end: its pending approvals expire, then the row and the widget settle. */

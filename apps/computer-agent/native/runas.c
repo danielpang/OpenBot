@@ -49,6 +49,8 @@
 #define BOT_ID 1000
 #define SCREEN_ID_BASE 2000
 #define STORE_ID 1900
+// CODER_ID, CODERS_GID and RUNNER_ID copy packages/shared/src/coder-runtime.ts
+// (and BOT_ID, SCREEN_ID_BASE, STORE_ID apps/computer-agent/src/users.ts).
 #define CODER_ID 1800
 #define CODERS_GID 1800
 #define RUNNER_ID 1801

@@ -208,6 +208,62 @@ describe('WS /coder start', () => {
     await vi.waitFor(() => expect(existsSync(dir)).toBe(false));
   });
 
+  it("trusts exactly the start's safe directories when it names them", async () => {
+    const { url, home } = await startAgent();
+    const worktree = path.join(home, 'checkouts/fix');
+    await mkdir(worktree, { recursive: true });
+    const repo = path.join(home, 'repos/acme/app');
+    const s = open(url, {
+      type: 'start',
+      session_id: ID,
+      command: node,
+      args: ['-e', REPORT],
+      cwd: worktree,
+      safe_directories: [repo, worktree],
+    });
+    await s.next('exit');
+    const seen = JSON.parse(s.output()) as { git: Record<string, string> };
+    expect(seen.git).toMatchObject({
+      GIT_CONFIG_COUNT: '5',
+      GIT_CONFIG_KEY_3: 'safe.directory',
+      GIT_CONFIG_VALUE_3: repo,
+      GIT_CONFIG_KEY_4: 'safe.directory',
+      GIT_CONFIG_VALUE_4: worktree,
+    });
+
+    // An empty list trusts nothing, not even the inferred directories.
+    await mkdir(path.join(home, 'repos/acme/app/.worktrees/fix'), { recursive: true });
+    const none = open(url, {
+      type: 'start',
+      session_id: ID,
+      command: node,
+      args: ['-e', REPORT],
+      cwd: path.join(home, 'repos/acme/app/.worktrees/fix'),
+      safe_directories: [],
+    });
+    expect(await none.closed).toBe(1000);
+    const bare = JSON.parse(none.output()) as { git: Record<string, string> };
+    expect(Object.values(bare.git)).not.toContain('safe.directory');
+  });
+
+  it('refuses a safe directory that is relative, not normalised, or outside the home', async () => {
+    const { url, home } = await startAgent();
+    for (const dir of ['repos/acme/app', `${home}/repos/../../etc`, '/etc', home, `${home}/..`]) {
+      const s = open(url, {
+        type: 'start',
+        session_id: ID,
+        command: node,
+        args: ['-e', REPORT],
+        safe_directories: [path.join(home, 'repos/acme/app'), dir],
+      });
+      expect(await s.closed).toBe(1008);
+      expect(s.frames[0]).toEqual({
+        type: 'error',
+        message: 'A safe directory must be an absolute path under the home',
+      });
+    }
+  });
+
   it("runs the owner's command in the bot user's home, git config after the caller's, no helper for a login", async () => {
     const { url, home } = await startAgent();
     const s = open(url, {

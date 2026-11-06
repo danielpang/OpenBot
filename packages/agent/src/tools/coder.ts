@@ -1,4 +1,5 @@
 import {
+  normalizeFullName,
   CODER_AGENTS,
   CoderAgentSchema,
   CoderModeSchema,
@@ -145,8 +146,8 @@ export async function defaultCoderAgent(services: CoderServices): Promise<CoderA
 
 /** The Bot's repository a call names, by id or full name (any case). */
 function findRepo(repos: RepoRef[], name: string): RepoRef | undefined {
-  const wanted = name.replace(/\.git$/, '').toLowerCase();
-  return repos.find((r) => r.id === name || r.full_name.toLowerCase() === wanted);
+  const wanted = normalizeFullName(name)?.toLowerCase();
+  return repos.find((r) => r.id === name || (!!wanted && r.full_name.toLowerCase() === wanted));
 }
 
 function unknownRepo(name: string, repos: RepoRef[]): string {

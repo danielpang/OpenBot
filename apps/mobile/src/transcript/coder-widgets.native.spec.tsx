@@ -2,7 +2,6 @@ import React from 'react';
 import { Linking } from 'react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { sessionUsageText } from './coder-widgets';
 import { NativeWidget } from './widget';
 
 const mockPost = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -209,20 +208,10 @@ describe('coding session widget', () => {
     const first = session(
       settled({ input_tokens: 12000, output_tokens: 600, cost_usd: 0.4, billed: 'api' }),
     );
-    expect(screen.getByText('12,000 tokens in, 600 out, $0.40')).toBeTruthy();
+    expect(screen.getByText('12,000 in / 600 out tokens, $0.40')).toBeTruthy();
     first.unmount();
     session(settled({ input_tokens: 1, output_tokens: 2, billed: 'subscription' }));
-    expect(screen.getByText('On your Claude plan')).toBeTruthy();
-  });
-
-  it("says each agent's plan in the usage line", () => {
-    const usage = { input_tokens: 1, output_tokens: 2, billed: 'subscription' } as const;
-    expect(sessionUsageText(usage, 'claude')).toBe('On your Claude plan');
-    expect(sessionUsageText(usage, 'codex')).toBe('On your ChatGPT plan');
-    expect(sessionUsageText(usage, 'pi')).toBe('On your plan');
-    expect(sessionUsageText({ input_tokens: 5, output_tokens: 6, billed: 'unknown' }, 'pi')).toBe(
-      '5 tokens in, 6 out',
-    );
+    expect(screen.getByText('Billed to your Claude plan')).toBeTruthy();
   });
 
   it('has no diff link without a diff Artifact', () => {

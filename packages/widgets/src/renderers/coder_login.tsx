@@ -1,22 +1,18 @@
 import { CODER_AGENT_LABELS, type CoderAgent } from '@openbots/shared';
 import { Button, Input } from '@openbots/ui';
 import { useState, type FormEvent } from 'react';
+import { CODER_PLAN_WORDS } from '../kinds/coder-words.js';
 import type { CoderLoginProps, CoderLoginWidgetState } from '../kinds/coder_login.js';
+import { QrCode } from './qr-code.js';
 import type { WidgetRendererProps } from './types.js';
 
 // A coding agent sign-in (CA3): the agent's own login printed a link (and
 // for Codex a device code); the owner opens it on any device, signs in to
 // the vendor and pastes the code it shows back here. Use an API key and
 // Can't sign in answer the request instead. Once answered it stays,
-// disabled, saying how it ended. `CoderSignInSteps` is the link, code and
-// paste field on their own, which Settings > Coding agents shows too.
-
-/** The plan an agent's subscription sign-in uses, for the line under the title. */
-export const CODER_PLAN_WORDS: Record<CoderAgent, string | null> = {
-  claude: 'uses your Claude plan',
-  codex: 'uses your ChatGPT plan',
-  pi: null,
-};
+// disabled, saying how it ended. Show QR draws the link as a QR code, so a
+// phone can open it. `CoderSignInSteps` is the link, code and paste field on
+// their own, which Settings > Coding agents shows too.
 
 /** The sign-in statuses that still take a code: the CLI asks for it right after printing the link. */
 export const CODER_LOGIN_OPEN: readonly CoderLoginWidgetState['status'][] = [
@@ -64,6 +60,8 @@ export interface CoderSignInStepsProps {
   /** Sends the pasted code; absent where there is nothing to paste back. */
   onCode?: (code: string) => Promise<void> | void;
   disabled?: boolean;
+  /** Offers Show QR next to the link. */
+  qr?: boolean;
 }
 
 /**
@@ -78,8 +76,10 @@ export function CoderSignInSteps({
   deviceCode,
   onCode,
   disabled,
+  qr,
 }: CoderSignInStepsProps) {
   const [code, setCode] = useState('');
+  const [showQr, setShowQr] = useState(false);
   const trimmed = code.trim();
 
   function submit(event: FormEvent) {
@@ -101,11 +101,29 @@ export function CoderSignInSteps({
             {url}
           </code>
           <CopyButton text={url} />
+          {qr && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-pressed={showQr}
+              onClick={() => setShowQr((shown) => !shown)}
+            >
+              {showQr ? 'Hide QR' : 'Show QR'}
+            </Button>
+          )}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground" role="status">
           Waiting for {CODER_AGENT_LABELS[agent]} to show its sign-in link…
         </p>
+      )}
+      {qr && showQr && url && (
+        <QrCode
+          value={url}
+          alt={`QR code for signing in to ${CODER_AGENT_LABELS[agent]}`}
+          className="size-48"
+        />
       )}
       {deviceCode && (
         <div className="flex flex-col gap-1.5">
@@ -258,6 +276,7 @@ export function CoderLoginWidget({
             deviceCode={current.device_code ?? props.device_code}
             onCode={(code) => send({ type: 'code', code })}
             disabled={disabled}
+            qr
           />
           <div className="flex flex-wrap gap-2">
             <Button

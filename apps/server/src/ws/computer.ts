@@ -10,7 +10,7 @@ import { DomainError } from '../errors.js';
 import { authenticateHeaders } from '../middleware/auth.js';
 import { assertBotOwner } from '../ownership.js';
 import { SYSTEM_ACTOR } from '../services/audit.js';
-import { isCoderTerminalCwd } from '../services/coders.js';
+import { isCoderTerminalCwd } from '../services/coding-sessions.js';
 import {
   agentFor,
   ensureScreen,

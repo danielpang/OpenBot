@@ -2,8 +2,8 @@ import { CODERS_QUEUE } from '@openbots/shared';
 import type { AppDeps } from '../context.js';
 
 // The `coders` queue carries the coding sessions, checkouts and sign-ins
-// (design doc, I12), and the remembered repositories' jobs (I18,
-// repos-jobs.ts): a scan for clones nobody remembered, the reconcile after a
+// (docs/TECHNICAL_PLAN.md 22.2; I12), and the remembered repositories' jobs (I18,
+// repos-scan.ts, repos-refresh.ts, repos-rescue.ts): a scan for clones nobody remembered, the reconcile after a
 // computer start, rescue before loss, and the periodic fetch of each
 // checkout's state. One handler (services/coder-runner.ts) takes them all;
 // the routes, the timers and the `code_task` tool only enqueue.

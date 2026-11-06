@@ -18,7 +18,7 @@ import {
   stopSession,
   terminalFor,
   toSessionView,
-} from '../services/coders.js';
+} from '../services/coding-sessions.js';
 
 // Coding sessions (CA5 to CA7; I14): the owner's sessions across their Bots,
 // one session, its full log, where Open terminal opens, and Stop, Continue

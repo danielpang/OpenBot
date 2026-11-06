@@ -38,7 +38,7 @@ const BotStateSchema = z
       .nullable()
       .openapi({ description: 'One-line activity label shown on hover (I3)' }),
     runId: z.uuid().nullable(),
-    // Optional on the wire so clients built before Phase 4 still type-check; always sent.
+    // Always sent; optional in the schema so older clients' generated types still check.
     currentTool: z.string().nullable().optional().openapi({
       description:
         'The tool running while `working`; a computer tool shows a dot on the Preview button (I5)',

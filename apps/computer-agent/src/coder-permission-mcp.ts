@@ -2,6 +2,7 @@ import { realpathSync } from 'node:fs';
 import { connect } from 'node:net';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { coderApprovalTtlMs, DEFAULT_CODER_APPROVAL_TTL_MS } from '@openbots/shared';
 import {
   CODER_SOCKET_ENV,
   type PermissionRelayReply,
@@ -27,11 +28,22 @@ import {
 // `{"behavior":"deny","message":...}`. Anything that goes wrong denies.
 //
 // The MCP stdio transport is newline-delimited JSON-RPC 2.0 on stdin and
-// stdout; this speaks just enough of it, with no dependencies, since it runs
-// with the runtime's node from the agent's dist/.
+// stdout; this speaks just enough of it, with no dependencies beyond
+// @openbots/shared, since it runs with the runtime's node from the agent's
+// dist/.
 
-/** An approval waits this long for the owner, as the server's approvals do, then denies. */
-export const PERMISSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+/** An approval waits this long for the owner when the launch does not say, then denies. */
+export const PERMISSION_TIMEOUT_MS = DEFAULT_CODER_APPROVAL_TTL_MS;
+
+/**
+ * How long an approval waits for the owner: `OPENBOTS_APPROVAL_TTL_MS` from
+ * the session's environment, which the server's launch sets to mirror
+ * OPENBOTS_APPROVAL_TTL_MINUTES so a prompt expires with the server's
+ * approval, else PERMISSION_TIMEOUT_MS (24 hours).
+ */
+export function permissionTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return coderApprovalTtlMs(env);
+}
 
 export const TOOL_NAME = 'permission_prompt';
 
@@ -62,7 +74,7 @@ interface JsonRpcRequest {
 export function askOwner(
   file: string | undefined,
   request: PermissionRelayRequest,
-  timeoutMs = PERMISSION_TIMEOUT_MS,
+  timeoutMs = permissionTimeoutMs(),
 ): Promise<PermissionRelayReply> {
   return new Promise((resolve) => {
     if (!file) return resolve({ decision: 'deny', message: 'OpenBots cannot ask the owner here' });

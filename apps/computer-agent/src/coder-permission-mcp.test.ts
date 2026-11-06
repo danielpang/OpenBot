@@ -3,12 +3,18 @@ import { createServer, type Server } from 'node:net';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { askOwner, serve } from './coder-permission-mcp.js';
+import {
+  askOwner,
+  PERMISSION_TIMEOUT_MS,
+  permissionTimeoutMs,
+  serve,
+} from './coder-permission-mcp.js';
 
 let cleanups: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
   for (const c of cleanups.reverse()) await c();
   cleanups = [];
+  vi.unstubAllEnvs();
 });
 
 /** The agent's end of the session socket: records each request, answers with `answer`. */
@@ -162,6 +168,31 @@ describe('the permission MCP server (I11)', () => {
     const silent = await fakeRelay(() => undefined);
     expect(await askOwner(silent.socket, { tool_name: 'Bash', input: {} }, 50)).toEqual({
       decision: 'deny',
+      message: 'Nobody answered the approval in time',
+    });
+  });
+
+  it("waits as long as the launch's OPENBOTS_APPROVAL_TTL_MS says, else 24 hours", async () => {
+    expect(PERMISSION_TIMEOUT_MS).toBe(24 * 60 * 60 * 1000);
+    expect(permissionTimeoutMs({})).toBe(PERMISSION_TIMEOUT_MS);
+    expect(permissionTimeoutMs({ OPENBOTS_APPROVAL_TTL_MS: 'soon' })).toBe(PERMISSION_TIMEOUT_MS);
+    expect(permissionTimeoutMs({ OPENBOTS_APPROVAL_TTL_MS: '90000' })).toBe(90_000);
+    // Read from the session's environment when the prompt is asked, through the MCP server too.
+    vi.stubEnv('OPENBOTS_APPROVAL_TTL_MS', '50');
+    const silent = await fakeRelay(() => undefined);
+    expect(await askOwner(silent.socket, { tool_name: 'Bash', input: {} })).toEqual({
+      decision: 'deny',
+      message: 'Nobody answered the approval in time',
+    });
+    const server = mcp(silent.socket);
+    server.call({
+      jsonrpc: '2.0',
+      id: 9,
+      method: 'tools/call',
+      params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: {} } },
+    });
+    expect(text(await server.reply(9))).toEqual({
+      behavior: 'deny',
       message: 'Nobody answered the approval in time',
     });
   });

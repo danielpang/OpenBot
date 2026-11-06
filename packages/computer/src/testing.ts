@@ -518,6 +518,11 @@ export function mockDocker(): MockDocker {
         if (!docker.volumes.has(name)) throw notFound();
         return {};
       },
+      remove: async () => {
+        docker.calls.push({ op: 'removeVolume', args: [name] });
+        if (!docker.volumes.delete(name)) throw notFound();
+        return {};
+      },
     }),
     createVolume: async (options) => {
       docker.calls.push({ op: 'createVolume', args: [options] });

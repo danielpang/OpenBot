@@ -1,12 +1,8 @@
-import { randomUUID } from 'node:crypto';
-import { CODER_CONFIG_DIRS, COMPUTER_HOME, type ComputerAgentClient } from '@openbots/computer';
+import { COMPUTER_HOME } from '@openbots/computer';
 import {
   CODER_AGENT_LABELS,
-  CODER_CONTROL_CHANNEL,
-  CoderControlSchema,
   wsEvent,
   type CoderAgent,
-  type CoderControl,
   type CoderLoginStatus,
 } from '@openbots/shared';
 import {
@@ -18,38 +14,30 @@ import {
 import { and, desc, eq, inArray, lte, ne, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
-import { inWorkspace } from '../db/scope.js';
 import { DomainError, notFound } from '../errors.js';
 import { publishEvent } from '../infra/index.js';
-import { recordAudit, SYSTEM_ACTOR, type AuditActor } from './audit.js';
-import { adapterFor, type CoderLoginParse } from './coder-adapters/index.js';
+import { adapterFor } from './coder-adapters/index.js';
+import { publishCoderControl } from './coder-control.js';
 import { enqueueCoderJob } from './coder-jobs.js';
-import { resumeWaitingRun } from './coder-runner.js';
+import { resumeWaitingRun } from './coder-run-resume.js';
 import { mainBotOf, type BotRow } from './bots.js';
 import { botPairChat } from './chats.js';
-import { agentFor, startComputer } from './computer.js';
 import { announceMessage, storeMessage, type ChatRow } from './messages.js';
 import type { RunState } from './runs.js';
 
-// The sign-in driver (design doc, I4 and F2). Signing a coding agent in runs
-// the vendor's own login in a PTY on the computer as the `coder` user, so
-// the credentials land in the agent's config directory on the root-only
-// state volume and never pass through the server. `startLogin` records the
-// attempt (`coder_logins`), posts the `coder_login` widget when a Bot asked
-// (in the main Bot's transcript, like a site sign-in request, K8) and
-// enqueues the runner's `login` job, which calls `runCoderLogin`: it reads
-// the link and device code from the login's output through the adapter's
-// `parseLogin`, shows them on the row and the widget, and writes the code
-// the owner pastes back into the PTY. The code arrives over the coder
-// control channel (`stdin` for the login's id), so the API process that
-// takes it need not be the worker that runs the login, and it is never
-// stored. A pending login for the same agent is reused: a second asking run
-// joins it (`waiting_runs` in the widget's state), and every one of them
-// resumes with the outcome. An asking run that already waits on another
-// widget (the runner found the agent signed out while a `coding_session`
-// widget held the run, F7) is moved to wait on the sign-in instead. An
-// unanswered login expires after CODER_LOGIN_TTL_MS, at the driver's
-// timeout or lazily when read.
+// Coding agent sign-ins (docs/TECHNICAL_PLAN.md 22.5; I4). `startLogin`
+// records the attempt (`coder_logins`), posts the `coder_login` widget when a
+// Bot asked (in the main Bot's transcript, like a site sign-in request, K8)
+// and enqueues the runner's `login` job, which runs the vendor's own login
+// (coder-login-driver.ts). A pending login for the same agent is reused: a
+// second asking run joins it (`waiting_runs` in the widget's state), and
+// every one of them resumes with the outcome. An asking run that already
+// waits on another widget (the runner found the agent signed out while a
+// `coding_session` widget held the run, CA10) is moved to wait on the
+// sign-in instead. An unanswered login expires after CODER_LOGIN_TTL_MS, at
+// the driver's timeout or lazily when read. An agent that signs in in its
+// own terminal (pi) has no login to drive: its sign-ins end when Check finds
+// it signed in (`completeTerminalLogins`).
 
 type Owner = Pick<CurrentUser, 'id' | 'workspaceId'>;
 type LoginDeps = Pick<AppDeps, 'config' | 'db' | 'infra' | 'logger'>;
@@ -67,7 +55,7 @@ export const CODER_LOGIN_TTL_MS = 10 * 60_000;
 export const TERMINAL_LOGIN_TTL_MS = 24 * 60 * 60_000;
 
 /** A sign-in still waiting on the owner or the CLI. */
-const ACTIVE: CoderLoginStatus[] = ['pending', 'awaiting_code'];
+export const ACTIVE_LOGIN: CoderLoginStatus[] = ['pending', 'awaiting_code'];
 
 /** The widget's state as stored: the contract's, plus the runs waiting on it. */
 export type CoderLoginStoredState = CoderLoginWidgetState & { waiting_runs?: string[] };
@@ -97,26 +85,12 @@ export function toLoginView(row: CoderLoginRow): CoderLoginView {
   };
 }
 
-/** What the widget tells the owner to do, per agent. */
-const INSTRUCTIONS: Record<CoderAgent, string> = {
-  claude: 'Open this link on any device, sign in to Claude, then paste the code it gives you.',
-  codex: 'Open this link on any device, sign in to ChatGPT and enter the code shown here.',
-  pi: 'Open this link on any device and finish signing in, then paste the code if it gives you one.',
-};
+export { CODEX_SIGN_IN_REFUSED } from './coder-adapters/codex.js';
 
-/** What the owner is told for an agent that signs in in its own terminal (the widget and the 409). */
-export const TERMINAL_LOGIN_INSTRUCTIONS: Partial<Record<CoderAgent, string>> = {
-  pi: 'pi signs in from its own terminal. Open the Computer page, run pi, type /login and choose a provider. Then press Check under Settings > Coding agents.',
-};
-
-/** What the owner sees when Codex's sign-in is refused by OpenAI (a 401); the raw text is logged. */
-export const CODEX_SIGN_IN_REFUSED =
-  'Codex could not sign in to OpenAI. Sign in again under Settings > Coding agents.';
-
-/** A failed sign-in's error as the owner reads it: a vendor 401 in plain words. */
+/** A failed sign-in's error as the owner reads it: a vendor 401 in plain words, when the adapter has them. */
 export function signInErrorForOwner(agent: CoderAgent, raw: string): string {
-  if (agent === 'codex' && /\b401\b|unauthori[sz]ed/i.test(raw)) return CODEX_SIGN_IN_REFUSED;
-  return raw;
+  const refused = adapterFor(agent).signInRefused;
+  return refused && /\b401\b|unauthori[sz]ed/i.test(raw) ? refused : raw;
 }
 
 /** Where the owner signs an agent in by hand: a terminal as `coder`, the CLI typed. */
@@ -127,10 +101,9 @@ export interface CoderLoginTerminal {
 }
 
 /**
- * The agent has no headless sign-in (pi: `/login` is in its TUI only), so
- * the owner signs in in a terminal on the computer, then checks it
- * (`POST /coders/{agent}/check`). The adapter's `login()` throws this, or
- * any error with the code CODER_LOGIN_IN_TERMINAL.
+ * The agent has no headless sign-in (its adapter's `signIn.kind` is
+ * `terminal`), so the owner signs in in a terminal on the computer, then
+ * checks it (`POST /coders/{agent}/check`): the 409 Settings gets.
  */
 export class CoderLoginInTerminalError extends DomainError {
   constructor(
@@ -141,29 +114,15 @@ export class CoderLoginInTerminalError extends DomainError {
   }
 }
 
-/** The terminal sign-in an adapter's `login()` asks for, or null when it runs headless. */
+/** The terminal sign-in the agent asks for, or null when its login runs headless. */
 export function terminalLogin(agent: CoderAgent): CoderLoginInTerminalError | null {
-  try {
-    adapterFor(agent).login();
-    return null;
-  } catch (error) {
-    if (error instanceof CoderLoginInTerminalError) return error;
-    const coded = error as { code?: unknown; message?: unknown; terminal?: unknown };
-    if (coded?.code !== 'CODER_LOGIN_IN_TERMINAL') throw error;
-    const given = coded.terminal as Partial<CoderLoginTerminal> | undefined;
-    const label = CODER_AGENT_LABELS[agent];
-    return new CoderLoginInTerminalError(
-      TERMINAL_LOGIN_INSTRUCTIONS[agent] ??
-        (typeof coded.message === 'string' && coded.message
-          ? coded.message
-          : `${label} signs in from its own terminal. Open the terminal, finish the sign-in there, then check it.`),
-      {
-        cwd: typeof given?.cwd === 'string' ? given.cwd : COMPUTER_HOME,
-        user: 'coder',
-        preset: typeof given?.preset === 'string' ? given.preset : agent,
-      },
-    );
-  }
+  const signIn = adapterFor(agent).signIn;
+  if (signIn.kind !== 'terminal') return null;
+  return new CoderLoginInTerminalError(signIn.instructions, {
+    cwd: COMPUTER_HOME,
+    user: 'coder',
+    preset: signIn.preset,
+  });
 }
 
 /** Who asked for the sign-in: a Bot's run, or the owner from Settings (none). */
@@ -196,8 +155,6 @@ export async function startLogin(
   agent: CoderAgent,
   asker: LoginAsker = {},
 ): Promise<StartedLogin> {
-  // An agent this build has no adapter for answers CODER_UNSUPPORTED.
-  adapterFor(agent);
   // One that signs in in the terminal has nothing to drive here.
   const inTerminal = terminalLogin(agent);
   if (inTerminal && !asker.botId) throw inTerminal;
@@ -218,7 +175,7 @@ export async function startLogin(
           eq(schema.coderLogins.ownerId, owner.id),
           eq(schema.coderLogins.workspaceId, owner.workspaceId),
           eq(schema.coderLogins.agent, agent),
-          inArray(schema.coderLogins.status, ACTIVE),
+          inArray(schema.coderLogins.status, ACTIVE_LOGIN),
         ),
       )
       .orderBy(desc(schema.coderLogins.createdAt))
@@ -263,7 +220,7 @@ export async function startLogin(
     const checked = validateWidgetProps(KIND, {
       login_id: row.id,
       agent,
-      instructions: inTerminal?.message ?? INSTRUCTIONS[agent],
+      instructions: adapterFor(agent).signIn.instructions,
       waiting: [{ bot_id: bot.id, handle: bot.handle, name: bot.name }],
     } satisfies CoderLoginProps);
     if (!checked.ok) throw new Error(checked.error);
@@ -398,7 +355,7 @@ export async function moveRunToWaitingLogin(
     .innerJoin(schema.messages, eq(schema.messages.id, schema.coderLogins.messageId))
     .where(
       and(
-        inArray(schema.coderLogins.status, ACTIVE),
+        inArray(schema.coderLogins.status, ACTIVE_LOGIN),
         sql`${schema.widgetStates.state} -> 'waiting_runs' @> ${JSON.stringify([runId])}::jsonb`,
       ),
     )
@@ -492,7 +449,7 @@ export async function getLogin(
   agent?: CoderAgent,
 ): Promise<CoderLoginView> {
   let row = await ownLogin(deps.db, owner, loginId, agent);
-  if (ACTIVE.includes(row.status as CoderLoginStatus) && isPast(row)) {
+  if (ACTIVE_LOGIN.includes(row.status as CoderLoginStatus) && isPast(row)) {
     row = (await endLogin(deps, row, 'expired', { error: 'The sign-in expired' })) ?? row;
   }
   return toLoginView(row);
@@ -514,7 +471,7 @@ async function ownLogin(db: Db, owner: Owner, loginId: string, agent?: CoderAgen
   return row;
 }
 
-const isPast = (row: CoderLoginRow, now = Date.now()) =>
+export const isPast = (row: CoderLoginRow, now = Date.now()) =>
   row.expiresAt !== null && row.expiresAt.getTime() <= now;
 
 /** Marks the owner's sign-ins for `agent` that ran out of time as expired. */
@@ -527,7 +484,7 @@ async function expireStaleLogins(deps: LoginDeps, owner: Owner, agent: CoderAgen
         eq(schema.coderLogins.ownerId, owner.id),
         eq(schema.coderLogins.workspaceId, owner.workspaceId),
         eq(schema.coderLogins.agent, agent),
-        inArray(schema.coderLogins.status, ACTIVE),
+        inArray(schema.coderLogins.status, ACTIVE_LOGIN),
         lte(schema.coderLogins.expiresAt, new Date()),
       ),
     );
@@ -547,7 +504,7 @@ export async function submitLoginCode(
   agent?: CoderAgent,
 ): Promise<CoderLoginView> {
   const row = await ownLogin(deps.db, owner, loginId, agent);
-  if (!ACTIVE.includes(row.status as CoderLoginStatus) || isPast(row)) {
+  if (!ACTIVE_LOGIN.includes(row.status as CoderLoginStatus) || isPast(row)) {
     await getLogin(deps, owner, loginId);
     throw loginClosed();
   }
@@ -563,7 +520,7 @@ async function markCodeSubmitted(deps: LoginDeps, row: CoderLoginRow): Promise<C
   const [updated] = await deps.db
     .update(schema.coderLogins)
     .set({ status: 'awaiting_code', updatedAt: new Date() })
-    .where(and(eq(schema.coderLogins.id, row.id), inArray(schema.coderLogins.status, ACTIVE)))
+    .where(and(eq(schema.coderLogins.id, row.id), inArray(schema.coderLogins.status, ACTIVE_LOGIN)))
     .returning();
   await patchWidget(deps, updated ?? row, { status: 'awaiting_code', code_submitted: true });
   return updated ?? row;
@@ -575,11 +532,7 @@ export async function writeLoginCode(
   loginId: string,
   code: string,
 ): Promise<void> {
-  await deps.infra.bus.publish<CoderControl>(CODER_CONTROL_CHANNEL, {
-    type: 'stdin',
-    sessionId: loginId,
-    data: `${code.trim()}\r`,
-  });
+  await publishCoderControl(deps, { type: 'stdin', sessionId: loginId, data: `${code.trim()}\r` });
 }
 
 /**
@@ -621,7 +574,7 @@ export async function completeTerminalLogins(
         eq(schema.coderLogins.ownerId, owner.id),
         eq(schema.coderLogins.workspaceId, owner.workspaceId),
         eq(schema.coderLogins.agent, agent),
-        inArray(schema.coderLogins.status, ACTIVE),
+        inArray(schema.coderLogins.status, ACTIVE_LOGIN),
       ),
     );
   let ended = 0;
@@ -636,7 +589,7 @@ export async function completeTerminalLogins(
  * login process, and resumes the waiting runs. Returns null when it had
  * ended already.
  */
-async function endLogin(
+export async function endLogin(
   deps: LoginDeps,
   row: CoderLoginRow,
   status: Exclude<CoderLoginStatus, 'pending' | 'awaiting_code'>,
@@ -650,15 +603,13 @@ async function endLogin(
       ...(extra.account_label !== undefined ? { accountLabel: extra.account_label } : {}),
       updatedAt: new Date(),
     })
-    .where(and(eq(schema.coderLogins.id, row.id), inArray(schema.coderLogins.status, ACTIVE)))
+    .where(and(eq(schema.coderLogins.id, row.id), inArray(schema.coderLogins.status, ACTIVE_LOGIN)))
     .returning();
   if (!updated) return null;
   if (status !== 'signed_in') {
-    await deps.infra.bus
-      .publish<CoderControl>(CODER_CONTROL_CHANNEL, { type: 'stop', sessionId: row.id })
-      .catch((error: unknown) =>
-        deps.logger.warn({ err: error, loginId: row.id }, 'stopping a sign-in failed'),
-      );
+    await publishCoderControl(deps, { type: 'stop', sessionId: row.id }).catch((error: unknown) =>
+      deps.logger.warn({ err: error, loginId: row.id }, 'stopping a sign-in failed'),
+    );
   }
   const state = await patchWidget(deps, updated, { status, ...extra });
   if (state) await resumeWaiting(deps, state);
@@ -687,7 +638,7 @@ async function resumeWaiting(deps: LoginDeps, state: CoderLoginStoredState) {
  * Merges `patch` into the sign-in's widget state, when it has a widget, and
  * publishes it. Returns the new state.
  */
-async function patchWidget(
+export async function patchWidget(
   deps: LoginDeps,
   row: CoderLoginRow,
   patch: Partial<CoderLoginStoredState>,
@@ -772,372 +723,12 @@ export async function onCoderLoginAction(
     await deps.db
       .update(schema.coderLogins)
       .set({ status: 'awaiting_code', updatedAt: new Date() })
-      .where(and(eq(schema.coderLogins.id, row.id), inArray(schema.coderLogins.status, ACTIVE)));
+      .where(
+        and(eq(schema.coderLogins.id, row.id), inArray(schema.coderLogins.status, ACTIVE_LOGIN)),
+      );
     await writeLoginCode(deps, row.id, action.code);
     return;
   }
   const owner = { id: row.ownerId, workspaceId: row.workspaceId };
   await cancelLogin(deps, owner, row.id, action.type === 'cant' ? 'failed' : 'cancelled');
-}
-
-// The driver
-
-// eslint-disable-next-line no-control-regex
-const ANSI = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]|\r/g;
-
-/** Terminal output as plain text: escape sequences and carriage returns removed. */
-export function stripAnsi(text: string): string {
-  return text.replace(ANSI, '');
-}
-
-/** How much of the login's output a failure keeps for its error. */
-const TAIL_CHARS = 500;
-/** How long a signed-in CLI gets to write its credentials and exit before it is closed. */
-const SIGNED_IN_EXIT_MS = 10_000;
-
-/** Said when the CLI printed a link on a host its adapter does not sign in on. */
-export const UNEXPECTED_LOGIN_HOST = 'The sign-in printed a link on an unexpected host';
-
-/**
- * The sign-in's link only when it is an https link on one of the adapter's
- * `loginHosts`; `rejected` when it is a link anywhere else.
- */
-export function loginLink(
-  url: string | undefined,
-  hosts: readonly string[],
-): { url?: string; rejected?: true } {
-  if (!url) return {};
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return {};
-  }
-  const allowed = new Set(hosts.map((h) => h.toLowerCase()));
-  if (
-    parsed.protocol !== 'https:' ||
-    parsed.username ||
-    parsed.password ||
-    url.length > 2_000 ||
-    !allowed.has(parsed.hostname.toLowerCase())
-  ) {
-    return { rejected: true };
-  }
-  return { url };
-}
-
-type Outcome =
-  | { type: 'signed_in' }
-  | { type: 'exit'; error?: string }
-  | { type: 'cancelled' }
-  | { type: 'timeout' };
-
-/**
- * Runs one sign-in for the runner's `login` job: starts the computer if it
- * has to, runs the adapter's login in a PTY as `coder` with the agent's
- * config directory, and follows it until it signs in, fails, is cancelled
- * or runs out of time.
- */
-export async function runCoderLogin(deps: AppDeps, loginId: string): Promise<void> {
-  const [found] = await deps.db
-    .select()
-    .from(schema.coderLogins)
-    .where(eq(schema.coderLogins.id, loginId));
-  if (!found || !ACTIVE.includes(found.status as CoderLoginStatus)) return;
-  let row = found;
-  if (isPast(row)) {
-    await endLogin(deps, row, 'expired', { error: 'The sign-in expired' });
-    return;
-  }
-  const workspaceId = row.workspaceId;
-  const scoped = <T>(fn: () => Promise<T>) => inWorkspace(workspaceId, fn);
-  const owner = { id: row.ownerId, workspaceId };
-  const agentName = row.agent as CoderAgent;
-  const adapter = adapterFor(agentName);
-  // Signed in in the terminal: Check ends it, there is nothing to run.
-  if (terminalLogin(agentName)) return;
-  const plan = adapter.login();
-
-  let computer;
-  try {
-    ({ computer } = await startComputer(deps, owner, SYSTEM_ACTOR));
-  } catch (error) {
-    await endLogin(deps, row, 'failed', {
-      error: `The computer did not start: ${(error as Error).message}`,
-    });
-    return;
-  }
-  const agent = agentFor(deps, computer);
-  const config = CODER_CONFIG_DIRS[agentName];
-
-  let parse: CoderLoginParse = {};
-  let tail = '';
-  /** The codes the owner sent, kept out of any error text (the PTY echoes them). */
-  const codes: string[] = [];
-  let settle!: (outcome: Outcome) => void;
-  const outcome = new Promise<Outcome>((resolve) => (settle = resolve));
-  let exited!: () => void;
-  const exitedPromise = new Promise<void>((resolve) => (exited = resolve));
-  // Row and widget writes, one at a time and in order.
-  let writes: Promise<unknown> = Promise.resolve();
-  const persist = (fn: () => Promise<unknown>) => {
-    writes = writes
-      .then(() => scoped(fn))
-      .catch((error: unknown) =>
-        deps.logger.warn({ err: error, loginId }, 'saving the sign-in progress failed'),
-      );
-  };
-
-  const read = (data: string) => {
-    const text = stripAnsi(data);
-    tail = (tail + text).slice(-TAIL_CHARS * 4);
-    const before = parse;
-    parse = adapter.parseLogin(text, parse);
-    const link = loginLink(parse.url, adapter.loginHosts);
-    if (link.rejected) {
-      // Never shown to the owner: a tampered CLI or environment could phish.
-      settle({ type: 'exit', error: UNEXPECTED_LOGIN_HOST });
-      return;
-    }
-    const url = link.url;
-    const changed =
-      url !== loginLink(before.url, adapter.loginHosts).url ||
-      parse.deviceCode !== before.deviceCode ||
-      (parse.awaitingCode && !before.awaitingCode);
-    if (changed) {
-      const deviceCode = parse.deviceCode;
-      const awaitingCode = !!parse.awaitingCode;
-      persist(async () => {
-        const [current] = await deps.db
-          .select()
-          .from(schema.coderLogins)
-          .where(eq(schema.coderLogins.id, loginId));
-        if (!current) return;
-        // A code the owner already sent keeps the sign-in at awaiting_code.
-        const status: CoderLoginStatus =
-          awaitingCode || current.status === 'awaiting_code' ? 'awaiting_code' : 'pending';
-        const [updated] = await deps.db
-          .update(schema.coderLogins)
-          .set({
-            // The link and code stay on the row (and the widget) through awaiting_code.
-            url: url ?? current.url,
-            deviceCode: deviceCode ?? current.deviceCode,
-            status,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(eq(schema.coderLogins.id, loginId), inArray(schema.coderLogins.status, ACTIVE)),
-          )
-          .returning();
-        if (updated) {
-          row = updated;
-          await patchWidget(deps, updated, {
-            status,
-            ...(updated.url ? { url: updated.url } : {}),
-            ...(updated.deviceCode ? { device_code: updated.deviceCode } : {}),
-          });
-        }
-      });
-    }
-    if (parse.signedIn) settle({ type: 'signed_in' });
-    else if (parse.error) settle({ type: 'exit', error: parse.error });
-  };
-
-  let proc: Awaited<ReturnType<ComputerAgentClient['coder']>> | undefined;
-  const unsubscribe = await deps.infra.bus.subscribe<CoderControl>(CODER_CONTROL_CHANNEL, (raw) => {
-    const msg = CoderControlSchema.safeParse(raw);
-    if (!msg.success || !('sessionId' in msg.data) || msg.data.sessionId !== loginId) return;
-    if (msg.data.type === 'stdin') {
-      codes.push(msg.data.data.trim());
-      try {
-        proc?.write(msg.data.data);
-      } catch {
-        // It ended; the exit says how.
-      }
-    } else if (msg.data.type === 'stop') {
-      settle({ type: 'cancelled' });
-    }
-  });
-
-  const expiresIn = row.expiresAt ? row.expiresAt.getTime() - Date.now() : plan.timeoutMs;
-  const timer = setTimeout(() => settle({ type: 'timeout' }), Math.min(plan.timeoutMs, expiresIn));
-  try {
-    try {
-      proc = await agent.coder(
-        {
-          session_id: loginId,
-          user: 'coder',
-          pty: true,
-          command: plan.command,
-          args: plan.args,
-          env: { [config.env]: config.dir, ...(plan.env ?? {}) },
-          git_credentials: false,
-        },
-        {
-          stdout: read,
-          stderr: read,
-          credentialRequest: () => {},
-          permissionRequest: () => {},
-          exit: (info) => {
-            exited();
-            settle({ type: 'exit', ...(info.error ? { error: info.error } : {}) });
-          },
-        },
-      );
-    } catch (error) {
-      settle({ type: 'exit', error: (error as Error).message });
-    }
-    const result = await outcome;
-    clearTimeout(timer);
-    if (result.type === 'signed_in') {
-      // The CLI writes its credentials as it says so; give it the moment to exit.
-      await Promise.race([exitedPromise, new Promise((r) => setTimeout(r, SIGNED_IN_EXIT_MS))]);
-    }
-    await proc?.close().catch(() => {});
-    await writes;
-    await scoped(async () => {
-      if (result.type === 'signed_in') {
-        await signedIn(deps, row, agent, parse.accountLabel?.trim() || 'Signed in');
-      } else if (result.type === 'timeout') {
-        await endLogin(deps, row, 'expired', { error: 'The sign-in expired' });
-      } else if (result.type === 'exit') {
-        const said = redact(stripAnsi(tail).trim(), codes).slice(-TAIL_CHARS);
-        const raw = result.error ?? (said || 'The sign-in ended before it finished');
-        const error = signInErrorForOwner(agentName, raw);
-        if (error !== raw) {
-          deps.logger.warn({ loginId, agent: agentName, output: raw }, 'the sign-in was refused');
-        }
-        await endLogin(deps, row, 'failed', { error });
-      }
-      // Cancelled: cancelLogin moved the row and the widget already.
-    });
-  } finally {
-    clearTimeout(timer);
-    await unsubscribe();
-  }
-}
-
-function redact(text: string, codes: string[]) {
-  return codes.filter(Boolean).reduce((out, code) => out.split(code).join('…'), text);
-}
-
-/** The sign-in worked: the account row says so, and every waiting run resumes. */
-async function signedIn(
-  deps: AppDeps,
-  row: CoderLoginRow,
-  agent: ComputerAgentClient,
-  accountLabel: string,
-) {
-  const agentName = row.agent as CoderAgent;
-  const version = await coderVersion(agent, agentName).catch(() => null);
-  const now = new Date();
-  await deps.db
-    .insert(schema.coderAccounts)
-    .values({
-      workspaceId: row.workspaceId,
-      ownerId: row.ownerId,
-      agent: agentName,
-      authKind: 'subscription',
-      accountLabel,
-      signedInAt: now,
-      lastError: null,
-      ...(version ? { version } : {}),
-    })
-    .onConflictDoUpdate({
-      target: [
-        schema.coderAccounts.workspaceId,
-        schema.coderAccounts.ownerId,
-        schema.coderAccounts.agent,
-      ],
-      set: {
-        authKind: 'subscription',
-        accountLabel,
-        signedInAt: now,
-        lastError: null,
-        ...(version ? { version } : {}),
-        updatedAt: now,
-      },
-    });
-  await recordAudit(deps.db, {
-    workspaceId: row.workspaceId,
-    actor: { type: 'user', id: row.ownerId } satisfies AuditActor,
-    action: 'coder.sign_in',
-    targetType: 'coder_login',
-    targetId: row.id,
-    metadata: { agent: agentName },
-  });
-  await endLogin(deps, row, 'signed_in', { account_label: accountLabel });
-}
-
-/** `<cli> --version` on the computer, its first line. */
-export async function coderVersion(
-  agent: ComputerAgentClient,
-  agentName: CoderAgent,
-): Promise<string | null> {
-  const adapter = adapterFor(agentName);
-  // `versionArgs` may be the flags alone (`['--version']`): they go to the CLI the login runs.
-  const argv = adapter.versionArgs[0]?.startsWith('-')
-    ? [adapter.login().command, ...adapter.versionArgs]
-    : adapter.versionArgs;
-  const [command, ...args] = argv;
-  if (!command) return null;
-  const { code, stdout } = await runAsCoder(agent, command, args);
-  if (code !== 0) return null;
-  const line = stripAnsi(stdout).trim().split('\n')[0]?.trim();
-  return line ? line.slice(0, 100) : null;
-}
-
-/** How long a one-off command as `coder` (a version, a sign-out, a discard) may take. */
-const COMMAND_MS = 60_000;
-
-/**
- * Runs one command as `coder` over WS /coder and collects its output: for
- * the short jobs around the sessions (the CLI's version, signing out,
- * removing a worktree). The output is capped at `maxBytes`.
- */
-export function runAsCoder(
-  agent: ComputerAgentClient,
-  command: string,
-  args: string[],
-  { env = {}, maxBytes = 2_000_000 }: { env?: Record<string, string>; maxBytes?: number } = {},
-): Promise<{ code: number | null; stdout: string; stderr: string; error?: string }> {
-  return new Promise((resolve, reject) => {
-    let stdout = '';
-    let stderr = '';
-    const keep = (current: string, data: string) =>
-      current.length >= maxBytes ? current : (current + data).slice(0, maxBytes);
-    const timer = setTimeout(() => {
-      void opened.then((p) => p.close()).catch(() => {});
-    }, COMMAND_MS);
-    const opened = agent.coder(
-      {
-        session_id: randomUUID(),
-        user: 'coder',
-        command,
-        args,
-        env,
-        git_credentials: false,
-      },
-      {
-        stdout: (d) => (stdout = keep(stdout, d)),
-        stderr: (d) => (stderr = keep(stderr, d)),
-        credentialRequest: () => {},
-        permissionRequest: () => {},
-        exit: (info) => {
-          clearTimeout(timer);
-          void opened.then((p) => p.close()).catch(() => {});
-          resolve({
-            code: info.code,
-            stdout,
-            stderr,
-            ...(info.error ? { error: info.error } : {}),
-          });
-        },
-      },
-    );
-    opened.catch((error: unknown) => {
-      clearTimeout(timer);
-      reject(error instanceof Error ? error : new Error(String(error)));
-    });
-  });
 }

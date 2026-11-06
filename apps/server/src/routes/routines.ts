@@ -4,11 +4,10 @@ import {
   CODING_ROUTINE_TEMPLATES,
   RoutineRunStatusSchema,
   RoutineTriggerInputSchema,
+  REPO_FULL_NAME,
   RoutineTriggerSchema,
   type CodingRoutineTemplateId,
 } from '@openbots/shared';
-import { eq } from 'drizzle-orm';
-import { schema } from '../db/client.js';
 import { requireUser } from '../middleware/auth.js';
 import { endpointUrl } from './webhooks.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
@@ -92,11 +91,7 @@ const FromTemplateSchema = z
   .strictObject({
     id: TemplateIdSchema,
     params: z.strictObject({
-      repo: z
-        .string()
-        .trim()
-        .regex(/^[\w.-]+\/[\w.-]+$/, 'The repository as owner/name')
-        .max(200),
+      repo: z.string().trim().regex(REPO_FULL_NAME, 'The repository as owner/name').max(200),
       label: z.string().trim().min(1).max(100).optional(),
     }),
   })
@@ -295,13 +290,9 @@ export const routineRoutes = createRouter()
         });
         const routine = toRoutine({ routine: made.routine, lastRun: null });
         if (!made.webhook) return c.json(routine, 201);
-        const [bot] = await c.var.deps.db
-          .select({ id: schema.bots.id, handle: schema.bots.handle })
-          .from(schema.bots)
-          .where(eq(schema.bots.id, id));
-        const { endpointId, slug, token, signingSecret } = made.webhook;
+        const { endpointId, slug, token, signingSecret, bot } = made.webhook;
         // GitHub cannot set a header, so the token is the path's last segment.
-        const url = `${endpointUrl(c.var.deps.config, bot!, slug)}/${token}`;
+        const url = `${endpointUrl(c.var.deps.config, bot, slug)}/${token}`;
         return c.json({ ...routine, webhook: { endpointId, url, token, signingSecret } }, 201);
       }
       const row = await createRoutine(c.var.deps, c.var.user, id, {

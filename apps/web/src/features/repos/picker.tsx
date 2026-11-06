@@ -10,13 +10,13 @@ import {
 } from '@openbots/ui';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { reposQuery } from '../coders/api.js';
 import { ErrorText } from '../models/error-text.js';
 import {
   ago,
   gitConnectionsQuery,
   rememberRepos,
   remoteReposQuery,
+  reposQuery,
   type GitConnectionView,
 } from './api.js';
 

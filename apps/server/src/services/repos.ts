@@ -1,7 +1,12 @@
 import type { RepoRef } from '@openbots/agent';
 import { posix } from 'node:path';
 import { REPOS_DIR } from '@openbots/computer';
-import { DEFAULT_MAX_REPOS, type FoundRepo } from '@openbots/shared';
+import {
+  DEFAULT_MAX_REPOS,
+  normalizeFullName,
+  REPO_FULL_NAME,
+  type FoundRepo,
+} from '@openbots/shared';
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
@@ -10,15 +15,15 @@ import { recordAudit, userActor } from './audit.js';
 import { enqueueCoderJob } from './coder-jobs.js';
 import { agentFor, getComputer, runningComputer } from './computer.js';
 import { connectionAllows } from './git-connections.js';
-import { checkoutPathFor, REPO_FULL_NAME, runAsRunner } from './repos-checkout.js';
-import { startRescue } from './repos-jobs.js';
+import { checkoutPathFor, runAsRunner } from './repos-checkout.js';
+import { startRescue } from './repos-rescue.js';
 
 // The remembered repositories (GH2 to GH6; I18): added by URL, picked from a
 // git connection, or remembered from a clone found on the computer. A
 // repository is the owner's, not a Bot's; a Bot's `coder.allowedRepos`
 // narrows which of them it may use. Its state on the owner's computer is a
 // `repo_checkouts` row, written by the runner's `checkout` jobs and the
-// repository jobs (repos-jobs.ts): adding a repository, Clone and Update
+// repository jobs (repos-scan.ts, repos-refresh.ts, repos-rescue.ts): adding a repository, Clone and Update
 // only enqueue one and set the state they expect (`cloning`, `updating`) so
 // the page shows it at once. A found repository (GH6) is a `repos` row with
 // `found_path` set and no connection: listed, never cloned, never offered to
@@ -35,8 +40,6 @@ export interface RepoWithCheckout {
   /** On the owner's computer; null when it has none there yet (or no computer). */
   checkout: RepoCheckoutRow | null;
 }
-
-export { REPO_FULL_NAME };
 
 export const invalidRepoUrl = (message: string) =>
   new DomainError(400, 'INVALID_REPO_URL', message);
@@ -197,7 +200,7 @@ export interface AddRepoInput {
 }
 
 /**
- * Remembers a repository by its URL (GH3, Phase 1), within
+ * Remembers a repository by its URL (GH3), within
  * DEFAULT_MAX_REPOS, and clones it onto the owner's computer when there is
  * one: the `checkout` job starts the computer if it has to. A `fullName`
  * given has to be the URL's own.
@@ -429,7 +432,8 @@ export function allowedRepos<T extends { full_name: string }>(
   return repos.filter((r) => names.has(r.full_name.toLowerCase()));
 }
 
-// Phase 2: the picker, found clones, the per-repository toggles, rescue and scan.
+// The picker, found clones, the per-repository toggles, rescue and scan
+// (docs/TECHNICAL_PLAN.md 22.12).
 
 export interface RememberInput {
   /** `owner/name` on GitHub, as the picker lists them. */
@@ -454,7 +458,7 @@ export async function rememberRepos(
   input: RememberInput,
 ): Promise<RepoWithCheckout[]> {
   const names = [...new Set(input.fullNames.map((n) => n.trim()).filter(Boolean))];
-  const bad = names.find((n) => !REPO_FULL_NAME.test(n));
+  const bad = names.find((n) => normalizeFullName(n) === null);
   if (bad) throw new DomainError(400, 'VALIDATION_FAILED', `${bad} does not look like owner/name`);
   const [connection] = await deps.db
     .select({ id: schema.gitConnections.id, accountLogin: schema.gitConnections.accountLogin })

@@ -14,6 +14,7 @@ import {
 } from './git-credentials.js';
 import { connectionAllows, tokenForConnection } from './git-connections.js';
 import { createGithubAppService, useGithubAppService } from './github-app.js';
+import { credentialAsk } from './__fixtures__/credential-ask.js';
 
 // Git credentials through a git connection (GH7, I17). A GitHub App
 // connection mints a token narrowed to the session's repository: contents
@@ -100,15 +101,8 @@ describe('git credentials through a connection', () => {
     await t.close();
   });
 
-  const ask = (over: Partial<CredentialAsk> = {}): CredentialAsk => ({
-    ownerId,
-    workspaceId,
-    host: 'github.com',
-    path: 'acme/relay.git',
-    username: 'fetch',
+  const ask = credentialAsk(() => ({ ownerId, workspaceId }), {
     sessionId: '0d9c3b2a-1e4f-4a5b-8c7d-6e5f4a3b2c1d',
-    session: { pushAllowed: false, repoFullName: 'acme/relay' },
-    ...over,
   });
   const mintedFor = (password: string) => github.minted.find((m) => m.token === password);
 

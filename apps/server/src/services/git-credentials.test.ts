@@ -7,8 +7,8 @@ import {
   PUSH_NEEDS_APPROVAL,
   resolveGitCredential,
   runnerSessionIds,
-  type CredentialAsk,
 } from './git-credentials.js';
+import { credentialAsk } from './__fixtures__/credential-ask.js';
 
 // Git credentials (I5, GH7): with no git connection, the owner's GitHub
 // connector token, served to the runner's own git, and to a session only for
@@ -36,15 +36,8 @@ describe('git credentials', () => {
       body: JSON.stringify(body),
     });
 
-  const ask = (over: Partial<CredentialAsk> = {}): CredentialAsk => ({
-    ownerId,
-    workspaceId,
-    host: 'github.com',
-    path: 'acme/relay.git',
-    username: 'fetch',
+  const ask = credentialAsk(() => ({ ownerId, workspaceId }), {
     sessionId: '7a1e3c3a-9b0e-4a8e-8d7c-1b2c3d4e5f60',
-    session: { pushAllowed: false, repoFullName: 'acme/relay' },
-    ...over,
   });
 
   it('says so when the owner has no GitHub token', async () => {

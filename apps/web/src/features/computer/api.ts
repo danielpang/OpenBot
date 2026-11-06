@@ -1,5 +1,5 @@
 import { ApiError, unwrap, type components } from '@openbots/api-client';
-import { COMPUTER_OFF, type WsEventOf } from '@openbots/shared';
+import { COMPUTER_OFF, type RepoRescueResult, type WsEventOf } from '@openbots/shared';
 import { queryOptions } from '@tanstack/react-query';
 import { api } from '../../app/api.js';
 
@@ -32,6 +32,44 @@ export const startComputer = () => unwrap(api.POST('/api/v1/computer/start'));
 
 /** Stops the computer if it runs, then starts it again; its files are kept. */
 export const restartComputer = () => unwrap(api.POST('/api/v1/computer/restart'));
+
+// Reset (a fresh, empty home): local types and plain fetch until the client
+// is regenerated with the /computer/reset routes.
+
+/** What a reset's check found: what rescue pushed, what it could not save, and sessions it would stop. */
+export interface ResetCheck {
+  status: 'running' | 'done';
+  results: RepoRescueResult[];
+  unsaved: { fullName: string; branch: string; note: string }[];
+  runningSessions: { id: string; botId: string; repoFullName: string }[];
+}
+
+/** The server's 409 code when the reset's request id has no finished check. */
+export const RESET_NOT_PREPARED = 'RESET_NOT_PREPARED';
+
+async function send<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method,
+    credentials: 'include',
+    ...(body === undefined
+      ? {}
+      : { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }),
+  });
+  const answer = (await response.json().catch(() => undefined)) as unknown;
+  if (!response.ok) throw new ApiError(response.status, answer as never);
+  return answer as T;
+}
+
+/** Starts the check before a reset: rescue pushes unpushed work. Poll `resetCheck` with the id. */
+export const prepareReset = () =>
+  send<{ requestId: string }>('POST', '/api/v1/computer/reset/prepare');
+
+export const resetCheck = (requestId: string) =>
+  send<ResetCheck>('GET', `/api/v1/computer/reset/${encodeURIComponent(requestId)}`);
+
+/** Resets the computer to an empty home, after a finished check. */
+export const resetComputer = (requestId: string, resetSignIns: boolean) =>
+  send<unknown>('POST', '/api/v1/computer/reset', { requestId, confirm: true, resetSignIns });
 
 export type ComputerSettings = components['schemas']['ComputerSettings'];
 

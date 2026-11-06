@@ -2,8 +2,6 @@ import {
   CODER_AGENT_LABELS,
   CODING_SESSION_ENDED,
   type CoderActionClass,
-  type CoderAgent,
-  type CoderUsage,
   type CodingSessionStatus,
 } from '@openbots/shared';
 import {
@@ -17,11 +15,13 @@ import {
   Input,
 } from '@openbots/ui';
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import type {
-  CodingSessionApproval,
-  CodingSessionProps,
-  CodingSessionState,
-} from '../kinds/coding_session.js';
+import type { CodingSessionProps, CodingSessionState } from '../kinds/coding_session.js';
+import {
+  approvalStatusWords,
+  sessionErrorWords,
+  sessionStatusWords,
+  usageWords,
+} from '../kinds/coder-words.js';
 import type { WidgetRendererProps } from './types.js';
 
 // A coding session (CA5 to CA8): which agent works on which repository and
@@ -30,16 +30,6 @@ import type { WidgetRendererProps } from './types.js';
 // cost. Stop, Continue and Discard branch are the widget's own actions;
 // approvals, Open terminal and View log go through the app (`coder`), and
 // View diff opens the Artifact the diff was saved as in the app's viewer.
-
-const STATUS_WORDS: Record<CodingSessionStatus, string> = {
-  queued: 'Queued',
-  starting: 'Starting',
-  running: 'Running',
-  waiting: 'Waiting',
-  settled: 'Done',
-  failed: 'Failed',
-  stopped: 'Stopped',
-};
 
 const STATUS_DOT: Record<CodingSessionStatus, string> = {
   queued: 'bg-muted-foreground/50',
@@ -60,18 +50,6 @@ export const CODER_ACTION_WORDS: Record<CoderActionClass, string> = {
   other: 'Other',
 };
 
-const PLAN_WORDS: Record<CoderAgent, string> = {
-  claude: 'On your Claude plan',
-  codex: 'On your ChatGPT plan',
-  pi: 'On your plan',
-};
-
-const APPROVAL_WORDS: Record<Exclude<CodingSessionApproval['status'], 'pending'>, string> = {
-  approved: 'Approved',
-  denied: 'Denied',
-  expired: 'Expired unanswered',
-};
-
 /** 4:12, or 1:04:12 past an hour: the running clock. */
 export function sessionClock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -88,20 +66,6 @@ export function sessionDuration(ms: number): string {
   if (minutes < 60) return `${minutes} min`;
   const rest = minutes % 60;
   return rest ? `${Math.floor(minutes / 60)} h ${rest} min` : `${minutes / 60} h`;
-}
-
-/** Tokens and cost, or the plan when the vendor billed the owner's subscription. */
-export function usageWords(usage: CoderUsage, agent: CoderAgent): string {
-  if (usage.billed === 'subscription') return PLAN_WORDS[agent];
-  const tokens = `${usage.input_tokens.toLocaleString('en-US')} tokens in, ${usage.output_tokens.toLocaleString('en-US')} out`;
-  return usage.cost_usd !== undefined ? `${tokens}, $${usage.cost_usd.toFixed(2)}` : tokens;
-}
-
-/** What the session's error line says; a bare `needs_login` marker becomes a sentence. */
-export function sessionErrorWords(error: string): string {
-  return error.trim() === 'needs_login'
-    ? 'Not signed in. Sign in under Settings > Coding agents.'
-    : error;
 }
 
 /** The repository's own name, without its owner, as the header chip shows it. */
@@ -269,7 +233,7 @@ export function CodingSessionWidget({
           {repoName(props.repo)} · {props.branch}
         </span>
         <span className="ml-auto text-xs text-muted-foreground" role="status">
-          {STATUS_WORDS[status]}
+          {sessionStatusWords[status]}
           {time ? ` · ${time}` : ''}
         </span>
       </div>
@@ -324,7 +288,7 @@ export function CodingSessionWidget({
         <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
           {closedApprovals.map((a) => (
             <li key={a.id} data-approval={a.id}>
-              {a.title}: {APPROVAL_WORDS[a.status as keyof typeof APPROVAL_WORDS]}
+              {a.title}: {approvalStatusWords[a.status as keyof typeof approvalStatusWords]}
             </li>
           ))}
         </ul>

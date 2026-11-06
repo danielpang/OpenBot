@@ -1,5 +1,15 @@
 import type { CoderChangedFile, CoderCommit, CoderUsage } from '@openbots/shared';
-import { boolean, index, integer, jsonb, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { artifacts } from './artifacts.js';
 import { users } from './auth.js';
 import { bots } from './bots.js';
@@ -101,6 +111,8 @@ export const repoCheckouts = pgTable(
     behind: integer('behind').notNull().default(0),
     headSha: text('head_sha'),
     lastFetchAt: timestamptz('last_fetch_at'),
+    /** The checkout's size on disk, its worktrees included, as the last refresh measured it. */
+    diskBytes: bigint('disk_bytes', { mode: 'number' }),
     error: text('error'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

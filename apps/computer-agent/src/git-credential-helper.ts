@@ -3,11 +3,14 @@ import { connect } from 'node:net';
 import { pathToFileURL } from 'node:url';
 import { CODER_CREDENTIAL_SOCKET_ENV, CODER_SESSION_ENV } from './coder-paths.js';
 
-// openbots-git-credential (I5): git's credential helper in the computer, set
-// as `credential.helper` for the bot and coder users and, per session, in the
-// environment (coder.ts). The image installs it as a shell wrapper at
-// /usr/local/bin/openbots-git-credential that runs this file with the
-// runtime's node. git runs it as `openbots-git-credential get` with
+// openbots-git-credential (I5): git's credential helper in the computer.
+// docker/computer.Dockerfile installs it system-wide as `credential.helper`,
+// and a session with git credentials sets it again through the environment
+// (GIT_CONFIG_COUNT, coder-paths.ts `gitConfigEnv`) after clearing any other
+// helper, so a repository's own config cannot replace it. The image installs
+// it as a shell wrapper at /usr/local/bin/openbots-git-credential that runs
+// this file with the runtime's node. git runs it as
+// `openbots-git-credential get` with
 // `protocol=`, `host=`, `path=` and `username=` lines on stdin; it writes
 // them, as one JSON line with the session's secret from
 // OPENBOTS_CODER_SESSION, to the session's unix socket

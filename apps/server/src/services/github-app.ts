@@ -72,7 +72,6 @@ export const GITHUB_APP_PERMISSIONS = {
   checks: 'read',
 } as const;
 
-/** GitHub answered with an error status. */
 export class GithubApiError extends DomainError {
   constructor(
     readonly githubStatus: number,

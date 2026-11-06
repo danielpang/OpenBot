@@ -4,11 +4,16 @@ import { fileURLToPath } from 'node:url';
 import { CODER_PI_EXTENSION } from '@openbots/computer';
 import { DEFAULT_CODER_ACTIONS, type CoderEvent } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
-import { DomainError } from '../../errors.js';
-import { preamble } from './claude.js';
+import { terminalLogin } from '../coder-login.js';
+import { preamble } from './common.js';
 import { adapterFor, IGNORED_SESSION_ID } from './index.js';
-import { TERMINAL_LOGIN_INSTRUCTIONS } from '../coder-login.js';
-import { piAdapter, piLoginInTerminal } from './pi.js';
+import {
+  PI_CHECK_PROVIDERS,
+  PI_SIGN_IN_INSTRUCTIONS,
+  piAdapter,
+  piCheckResult,
+  piSignIn,
+} from './pi.js';
 import type { CoderSessionSpec } from './types.js';
 
 // The pi adapter against the fixtures in services/__fixtures__/coders: two
@@ -45,8 +50,8 @@ const valueOf = (args: string[], flag: string) => args[args.indexOf(flag) + 1];
 describe('pi adapter', () => {
   it('is registered', () => {
     expect(adapterFor('pi')).toBe(piAdapter);
-    expect(piAdapter.versionArgs).toEqual(['pi', '--version']);
-    expect(piAdapter.loginHosts).toEqual([]);
+    expect(piAdapter.command).toBe('pi');
+    expect(piAdapter.versionArgs).toEqual(['--version']);
     expect(piAdapter.resumeCommand(SESSION)).toBe(`pi --session ${SESSION}`);
     expect(piAdapter.resumeCommand('x; rm -rf ~')).toBe('pi');
   });
@@ -268,21 +273,63 @@ describe('pi adapter', () => {
   });
 
   it('signs in from the terminal only', () => {
-    let thrown: unknown;
-    try {
-      piAdapter.login();
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(DomainError);
-    expect(thrown).toMatchObject({
+    expect(piAdapter.signIn).toEqual({
+      kind: 'terminal',
+      instructions: PI_SIGN_IN_INSTRUCTIONS,
+      preset: 'pi',
+    });
+    // The 409 Settings gets says the same as the sign-in card.
+    expect(terminalLogin('pi')).toMatchObject({
       status: 409,
       code: 'CODER_LOGIN_IN_TERMINAL',
-      message: TERMINAL_LOGIN_INSTRUCTIONS.pi,
+      message: PI_SIGN_IN_INSTRUCTIONS,
+      terminal: { cwd: '/home/bot', user: 'coder', preset: 'pi' },
     });
-    // The adapter and the sign-in card say the same thing.
-    expect(piLoginInTerminal()).toBe(TERMINAL_LOGIN_INSTRUCTIONS.pi);
-    const state = { url: 'https://x' };
-    expect(piAdapter.parseLogin('anything', state)).toBe(state);
+    expect(terminalLogin('claude')).toBeNull();
+  });
+
+  it("reads pi's checks as a plan for OAuth and as a key for the rest", () => {
+    expect(
+      piCheckResult('{"status":"not_ready","provider":"anthropic","reason":"x"}\n'),
+    ).toBeNull();
+    expect(piCheckResult('{"status":"ready","provider":"anthropic","authType":"oauth"}\n')).toEqual(
+      { authType: 'oauth' },
+    );
+    const by = (id: string) => PI_CHECK_PROVIDERS.find((p) => p.id === id)!;
+    expect(piSignIn([])).toEqual({ signedIn: false });
+    expect(piSignIn([{ provider: by('anthropic'), authType: 'oauth' }])).toEqual({
+      signedIn: true,
+      authKind: 'subscription',
+      label: 'Anthropic (Claude Pro/Max)',
+    });
+    expect(piSignIn([{ provider: by('openai'), authType: 'api_key' }])).toEqual({
+      signedIn: true,
+      authKind: 'api_key',
+      label: 'API key through pi (OpenAI)',
+    });
+    // A plan wins over a key; a key alone is named by its provider.
+    expect(
+      piSignIn([
+        { provider: by('xai'), authType: 'api_key' },
+        { provider: by('github-copilot'), authType: 'oauth' },
+      ]),
+    ).toEqual({ signedIn: true, authKind: 'subscription', label: 'GitHub Copilot' });
+    const ids = PI_CHECK_PROVIDERS.map((p) => p.id);
+    for (const id of [
+      'anthropic',
+      'openai',
+      'openai-codex',
+      'google',
+      'xai',
+      'openrouter',
+      'github-copilot',
+      'amazon-bedrock',
+      'mistral',
+      'groq',
+      'deepseek',
+    ]) {
+      expect(ids).toContain(id);
+    }
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });

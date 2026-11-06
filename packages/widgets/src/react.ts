@@ -17,7 +17,6 @@ export {
 } from './renderers/artifact.js';
 export { chartTable, ChartWidget, niceTicks } from './renderers/chart.js';
 export {
-  CODER_PLAN_WORDS,
   CoderLoginWidget,
   CoderSignInSteps,
   CopyButton,
@@ -28,13 +27,13 @@ export {
   CodingSessionWidget,
   sessionClock,
   sessionDuration,
-  usageWords,
 } from './renderers/coding_session.js';
 export { addressList, EmailDraftWidget } from './renderers/email_draft.js';
 export { EventRow, EventWidget, type EventRowProps } from './renderers/event.js';
 export { FileCard, FileWidget, formatBytes } from './renderers/file.js';
 export { formValues, FormWidget } from './renderers/form.js';
 export { LoginRequestWidget } from './renderers/login_request.js';
+export { QrCode } from './renderers/qr-code.js';
 export { QuestionWidget } from './renderers/question.js';
 export { RoutineCreatedWidget } from './renderers/routine_created.js';
 export { browserTimezone, RoutineProposalWidget } from './renderers/routine_proposal.js';

@@ -123,4 +123,13 @@ describe('the pi extension', () => {
       reason: 'Nobody answered the approval in time',
     });
   });
+
+  it("waits as long as the launch's OPENBOTS_APPROVAL_TTL_MS says", async () => {
+    vi.stubEnv('OPENBOTS_APPROVAL_TTL_MS', '50');
+    const relay = await fakeRelay(() => undefined);
+    await expect(gateToolCall(bash, { socket: relay.socket })).resolves.toEqual({
+      block: true,
+      reason: 'Nobody answered the approval in time',
+    });
+  });
 });

@@ -16,7 +16,8 @@ import { api, capabilitiesQuery } from '../../app/api.js';
 import { blockedText, useManaged } from '../../app/deployment.js';
 import { SettingsPanel, SettingsRow, SettingsSubheading } from '../../app/settings-layout.js';
 import { botsQuery, type Bot } from '../bots/queries.js';
-import { codersQuery, reposQuery } from '../coders/api.js';
+import { codersQuery } from '../coders/api.js';
+import { reposQuery } from '../repos/api.js';
 import {
   botConnectorsQuery,
   botToolsQuery,

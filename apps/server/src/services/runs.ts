@@ -27,7 +27,7 @@ import {
 } from './approvals.js';
 import { setState } from './bot-state.js';
 import { onCoderLoginAction } from './coder-login.js';
-import { onCodingSessionAction } from './coders.js';
+import { onCodingSessionAction } from './coder-widget-actions.js';
 import { threadBotId } from './chats.js';
 import {
   onUserMessage,
@@ -450,7 +450,7 @@ const SETTLED_KINDS = new Set([
  */
 const SERVER_RESUMED_KINDS = new Set(['coding_session', 'coder_login']);
 
-/** Effects of the coding agent widgets (services/coders.ts, coder-login.ts), built in. */
+/** Effects of the coding agent widgets (coder-widget-actions.ts, coder-login.ts), built in. */
 const BUILTIN_HOOKS: Record<string, WidgetActionHook> = {
   coding_session: (deps, tx, context) => onCodingSessionAction(deps, tx, context),
   coder_login: async (deps, _tx, { props, action }) => ({

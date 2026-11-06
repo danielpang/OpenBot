@@ -2,9 +2,8 @@ import { CODING_ROUTINE_TEMPLATES, type CodingRoutineTemplate } from '@openbots/
 import { Button, cn, Input } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
-import { reposQuery } from '../coders/api.js';
-import { routineTemplatesQuery } from '../repos/api.js';
-import { useRoutineActions, type CreateRoutine } from './api.js';
+import { reposQuery } from '../repos/api.js';
+import { routineTemplatesQuery, useRoutineActions, type CreateRoutine } from './api.js';
 
 // Coding Routine templates (CA11, F6): New Routine offers "Start from a
 // template" above the manual form. Picking one asks for the repository (from

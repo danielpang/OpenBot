@@ -1,27 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { claudeAdapter, parseShell } from './claude.js';
+import { classifyCommandLine } from './classify.js';
+import { claudeAdapter } from './claude.js';
 
-// The permission prompt classifier reads a command the way the shell runs
-// it: each bypass below once read as `other` (auto) with the regex it
+// The permission prompt classifier all three adapters share reads a command
+// the way the shell runs it: each bypass below once read as `other` (auto) with the regex it
 // replaced, or would with an obvious variation.
 
 const ROOT = '/home/bot/repos/acme/app/.worktrees/bot-fix';
-const bash = (command: string) =>
-  claudeAdapter.classify('Bash', { command }, { worktreePath: ROOT }).action;
+const bash = (command: string) => classifyCommandLine(command, ROOT).action;
 
-describe('claude classify', () => {
-  it('splits words and compound commands as the shell does', () => {
-    const parsed = parseShell(`echo 'a; b' && git "pu"sh; ls | wc -l\nmake`);
-    expect(parsed.commands.map((c) => c.words.map((w) => w.text))).toEqual([
-      ['echo', 'a; b'],
-      ['git', 'push'],
-      ['ls'],
-      ['wc', '-l'],
-      ['make'],
-    ]);
-    expect(parsed.commands.map((c) => c.piped)).toEqual([false, false, false, true, false]);
-  });
-
+describe('classify', () => {
   it('reads git past its global options', () => {
     expect(bash('git push origin bot/fix')).toBe('push');
     expect(bash(`git -C ${ROOT} -c a=b push`)).toBe('push');

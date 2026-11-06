@@ -225,6 +225,13 @@
       "when": 1793912572521,
       "tag": "0031_coding_session_diff",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793932696917,
+      "tag": "0032_repo_checkout_disk",
+      "breakpoints": true
     }
   ]
 }

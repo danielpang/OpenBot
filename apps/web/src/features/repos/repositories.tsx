@@ -1,23 +1,27 @@
 import { Button, cn, Input, Spinner } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { addRepo, cloneRepo, reposQuery, updateRepo, type Repo } from '../coders/api.js';
 import { ErrorText } from '../models/error-text.js';
+import { useRealtime } from '../transcript/realtime.js';
 import {
+  addRepo,
   ago,
+  cloneRepo,
   forgetRepo,
   foundReposQuery,
   gitConnectionsQuery,
   patchRepo,
   rememberFound,
+  reposQuery,
   rescueStatus,
   scanRepos,
   startRescue,
+  updateRepo,
   type FoundRepo,
   type GitConnectionView,
-} from '../repos/api.js';
-import { RepoPicker } from '../repos/picker.js';
-import { useRealtime } from '../transcript/realtime.js';
+  type Repo,
+} from './api.js';
+import { RepoPicker } from './picker.js';
 
 // The Computer page's Repositories (GH3 to GH6): every repository the owner
 // keeps, with its state on the computer (Ready, Cloning, Updating, Behind by
@@ -94,6 +98,25 @@ const foundKey = (found: FoundRepo[] | undefined) =>
 const pinnedFirst = (repos: Repo[]) =>
   [...repos].sort((a, b) => Number(b.pinned) - Number(a.pinned));
 
+/** Disk use in human units with one decimal: 12.4 MB. */
+export function formatDisk(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = bytes / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit++;
+  }
+  return `${size.toFixed(1)} ${units[unit]}`;
+}
+
+/** What the checkouts take on disk together; null when none says. */
+export function diskTotal(repos: readonly Repo[]): number | null {
+  const sizes = repos.flatMap((r) => (typeof r.diskBytes === 'number' ? [r.diskBytes] : []));
+  return sizes.length ? sizes.reduce((a, b) => a + b, 0) : null;
+}
+
 export function Repositories({
   running,
   onOpenTerminal,
@@ -152,11 +175,19 @@ export function Repositories({
 
   const list = pinnedFirst(repos.data?.repos ?? []);
   const unremembered = found.data ?? [];
+  const total = diskTotal(list);
 
   return (
     <section className="flex flex-col gap-3" aria-label="Repositories">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="flex-1 font-medium">Repositories</h2>
+        <h2 className="flex flex-1 items-baseline gap-2 font-medium">
+          Repositories
+          {total !== null && (
+            <span className="text-xs font-normal text-muted-foreground" data-disk-total>
+              {formatDisk(total)} on disk
+            </span>
+          )}
+        </h2>
         {usable.length > 0 ? (
           <Button size="sm" onClick={addFromGithub}>
             Add from GitHub
@@ -381,6 +412,12 @@ function RepoRow({
           <p className="truncate font-mono text-xs text-muted-foreground">
             {repo.defaultBranch ?? 'default branch'} ·{' '}
             {repo.checkout?.path ?? 'not on this computer'}
+            {typeof repo.diskBytes === 'number' && (
+              <span data-disk>
+                {' · '}
+                {formatDisk(repo.diskBytes)}
+              </span>
+            )}
           </p>
           {pushed && (
             <p className="text-xs text-muted-foreground" data-last-push>

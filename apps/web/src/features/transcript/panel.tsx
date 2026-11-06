@@ -8,8 +8,8 @@ import { ThreadPanel } from './thread-panel.js';
 
 // Which right panel a Bot's transcript has open (PRD section 5): one at a
 // time, closable, remembered per Bot in local storage so coming back to the
-// Bot reopens it: the activity log, the artifact viewer (Phase 3) or the
-// computer preview (Phase 4) or a thread (Phase 5). A group keeps its panel
+// Bot reopens it: the activity log, the artifact viewer, the computer
+// preview or a thread. A group keeps its panel
 // under its chat id where a Bot uses its own id.
 
 export type BotPanel =

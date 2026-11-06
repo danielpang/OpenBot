@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { REPO_FULL_NAME } from './git.js';
 
 // Tool policy (plan 8, T5, P1): what a Bot may do without asking. Stored in
 // `bots.tool_policy` and edited in Bot Settings (`PATCH /bots/:id`
@@ -108,7 +109,7 @@ export type CoderActionClass = z.infer<typeof CoderActionClassSchema>;
 const RepoFullNameSchema = z
   .string()
   .trim()
-  .regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, { message: 'A repository like owner/name' })
+  .regex(REPO_FULL_NAME, { message: 'A repository like owner/name' })
   .max(200);
 
 /**

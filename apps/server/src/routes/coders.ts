@@ -1,5 +1,11 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { CoderAgentSchema, CoderAuthKindSchema, CoderLoginStatusSchema } from '@openbots/shared';
+import {
+  CoderAgentSchema,
+  CoderAuthKindSchema,
+  CoderLoginStatusSchema,
+  CoderPlanProviderSchema,
+  CoderSignInStyleSchema,
+} from '@openbots/shared';
 import { requireUser } from '../middleware/auth.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import {
@@ -16,7 +22,7 @@ import {
   setCoderApiKey,
   signOutCoder,
   type CoderAccountInfo,
-} from '../services/coders.js';
+} from '../services/coder-accounts.js';
 
 // Settings > Coding agents (CA2, CA3; I4, I14): one card per agent, the
 // sign-in that runs the vendor's own login on the computer, an API key from
@@ -48,6 +54,17 @@ const CoderAccountSchema = z
     lastErrorKind: z.enum(['sign_in', 'key', 'other']).nullable().openapi({
       description:
         'What `lastError` is about: a lapsed sign-in, a provider key that was refused, or something else; null without one',
+    }),
+    planProvider: z.enum(CoderPlanProviderSchema.options).nullable().openapi({
+      description:
+        'Whose plan a `subscription` account bills: `anthropic` for Claude Code, `openai` for Codex, and for pi the plan its check found (a Claude plan bills pi as extra usage, which the card says); null without a plan sign-in',
+    }),
+    checkAvailable: z.boolean().openapi({
+      description: 'POST /coders/{agent}/check can ask the CLI whether it is signed in',
+    }),
+    signIn: z.enum(CoderSignInStyleSchema.options).openapi({
+      description:
+        "How the agent signs in: a link to open, a link and a code to enter there (`device`), or in the computer's terminal",
     }),
   })
   .openapi('CoderAccount');
@@ -236,7 +253,7 @@ export const coderRoutes = createRouter()
       tags: ['coders'],
       summary: 'Ask the CLI on the computer whether the agent is signed in',
       description:
-        "Runs the agent's own status check as `coder` (Codex: `codex login status`; pi: `pi auth check` for each of its providers), starting the computer if needed. Signed in, the card reads `subscription` for a plan or `api_key` (with no `providerId`) for a key the CLI holds itself, and pi's sign-ins a Bot is waiting on end signed in; not, it is left as it was.",
+        "Runs the agent's own status check as `coder` (Claude Code: `claude auth status`; Codex: `codex login status`; pi: `pi auth check` for each of its providers), starting the computer if needed. Signed in, the card reads `subscription` for a plan or `api_key` (with no `providerId`) for a key or token the CLI holds itself, and the sign-ins a Bot is waiting on for an agent that signs in in its terminal (pi) end signed in; not, it is left as it was.",
       middleware: [requireUser] as const,
       security: authenticated,
       request: { params: agentParam },
@@ -244,7 +261,7 @@ export const coderRoutes = createRouter()
         200: accountBody,
         ...authProblems,
         400: problemResponse(
-          'Claude Code has no check (`CODER_CHECK_UNSUPPORTED`), or this build cannot run the agent (`CODER_UNSUPPORTED`)',
+          'The agent has no sign-in check (`CODER_CHECK_UNSUPPORTED`), or is not one this build runs (`CODER_UNSUPPORTED`)',
         ),
         503: problemResponse('The computer could not start (`COMPUTER_UNAVAILABLE`)'),
       },

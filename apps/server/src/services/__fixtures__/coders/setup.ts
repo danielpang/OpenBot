@@ -13,6 +13,7 @@ import { expect, vi } from 'vitest';
 import { schema } from '../../../db/client.js';
 import { useTestComputer, type TestComputer } from '../../../test-computer.js';
 import { createTestApp, type TestApp } from '../../../test-app.js';
+import { enqueueCoderJob } from '../../coder-jobs.js';
 import { setComputerProvider } from '../../computer.js';
 import { RUNNER_GIT_CONFIG } from '../../repos-checkout.js';
 import { storeMessage } from '../../messages.js';
@@ -55,6 +56,13 @@ export interface CoderIo {
   exit(code: number | null, signal?: string | null): void;
   /** Resolves when the runner signals the process. */
   signalled(): Promise<CoderSignal>;
+  /**
+   * Resolves with the first write to stdin, past or to come, that `match`
+   * accepts: what a protocol CLI (`codex app-server`) waits on.
+   */
+  written(match: (data: string) => boolean): Promise<string>;
+  /** Resolves once the runner closes stdin. */
+  stdinClosed(): Promise<void>;
 }
 
 export type GitAnswer = {
@@ -147,6 +155,18 @@ export function scriptedCoder() {
       const answers = new Map<string, (a: CoderPermissionAnswer) => void>();
       const credentials = new Map<string, (a: CoderCredentialAnswer) => void>();
       const signalWaiters: ((s: CoderSignal) => void)[] = [];
+      const writeWaiters: { match: (data: string) => boolean; resolve: (d: string) => void }[] = [];
+      const closeWaiters: (() => void)[] = [];
+      const wrote = (data: string) => {
+        for (const waiter of writeWaiters.filter((x) => x.match(data))) {
+          writeWaiters.splice(writeWaiters.indexOf(waiter), 1);
+          waiter.resolve(data);
+        }
+      };
+      const closed = () => {
+        call.stdinEnded = true;
+        for (const resolve of closeWaiters.splice(0)) resolve();
+      };
       let credentialSeq = 0;
       const io: CoderIo = {
         call,
@@ -169,17 +189,27 @@ export function scriptedCoder() {
           handlers.exit({ code, signal });
         },
         signalled: () => new Promise((resolve) => signalWaiters.push(resolve)),
+        written: (match) => {
+          const past = call.writes.find(match);
+          if (past !== undefined) return Promise.resolve(past);
+          return new Promise((resolve) => writeWaiters.push({ match, resolve }));
+        },
+        stdinClosed: () =>
+          call.stdinEnded
+            ? Promise.resolve()
+            : new Promise((resolve) => closeWaiters.push(resolve)),
       };
       const proc: CoderProcess = {
         started: Promise.resolve({ pid: 4242, sessionDir: '/var/lib/openbots/coders/sessions/x' }),
         write: (data, options) => {
           if (call.ended) throw new Error('The session is not running');
           call.writes.push(data);
-          if (options?.end) call.stdinEnded = true;
+          wrote(data);
+          if (options?.end) closed();
         },
         end: () => {
           if (call.ended) throw new Error('The session is not running');
-          call.stdinEnded = true;
+          closed();
         },
         credential: (answer) => {
           call.credentials.push(answer);
@@ -251,6 +281,13 @@ export interface CoderWorld {
   widget(id: string): Promise<CodingSessionState>;
   run(id: string): Promise<typeof schema.runs.$inferSelect>;
   until<T>(fn: () => Promise<T> | T): Promise<T>;
+  /** Enqueues the session's job and waits for it to end: settled, failed or stopped. */
+  runToEnd(sessionId: string): Promise<typeof schema.codingSessions.$inferSelect>;
+  /** Writes the owner's `coder_accounts` row for `agent`. */
+  setAccount(
+    agent: string,
+    set: Partial<typeof schema.coderAccounts.$inferInsert>,
+  ): Promise<unknown>;
   close(): Promise<void>;
 }
 
@@ -399,6 +436,26 @@ export async function coderWorld(
     },
     run: async (id) => (await t.db.select().from(schema.runs).where(eq(schema.runs.id, id)))[0]!,
     until: (fn) => vi.waitFor(fn, { timeout: 5_000, interval: 10 }),
+    runToEnd: async (sessionId) => {
+      await t.inOrganization(() => enqueueCoderJob(t.deps, { kind: 'session', sessionId }));
+      return world.until(async () => {
+        const row = await world.session(sessionId);
+        expect(['settled', 'failed', 'stopped']).toContain(row.status);
+        return row;
+      });
+    },
+    setAccount: (agent, set) =>
+      t.db
+        .insert(schema.coderAccounts)
+        .values({ workspaceId, ownerId, agent, ...set })
+        .onConflictDoUpdate({
+          target: [
+            schema.coderAccounts.workspaceId,
+            schema.coderAccounts.ownerId,
+            schema.coderAccounts.agent,
+          ],
+          set,
+        }),
     close: async () => {
       await computer.close();
       await t.close();
@@ -434,3 +491,28 @@ export const resultLine = (text: string, over: Record<string, unknown> = {}) => 
   usage: { input_tokens: 100, output_tokens: 20 },
   ...over,
 });
+
+/**
+ * A scripted `codex app-server`: the transcript's lines, each server request
+ * held until the runner answers it, then exit 0 once stdin closes, as the
+ * real one does. A transcript's responses carry the ids the adapter sends
+ * (1 `initialize`, 2 `thread/start`, 3 `turn/start`).
+ */
+export async function codexAppServer(io: CoderIo, transcript: string): Promise<void> {
+  const lines = transcript.split('\n').filter((l) => l.trim());
+  let chunk: string[] = [];
+  for (const line of lines) {
+    chunk.push(line);
+    const message = JSON.parse(line) as { id?: unknown; method?: unknown };
+    if (message.method === undefined || message.id === undefined) continue;
+    io.stdout(`${chunk.join('\n')}\n`);
+    chunk = [];
+    const id = JSON.stringify(message.id);
+    await io.written(
+      (data) => data.startsWith(`{"id":${id},"result"`) || data.startsWith(`{"id":${id},"error"`),
+    );
+  }
+  if (chunk.length) io.stdout(`${chunk.join('\n')}\n`);
+  await io.stdinClosed();
+  io.exit(0);
+}

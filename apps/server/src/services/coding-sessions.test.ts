@@ -16,16 +16,15 @@ import { useTestComputer, type TestComputer } from '../test-computer.js';
 import { createTestApp, type TestApp } from '../test-app.js';
 import { ptyParams } from '../ws/computer.js';
 import { scriptedCoder } from './__fixtures__/coders/setup.js';
-import { registerCoderAdapter, type CoderAdapter } from './coder-adapters/index.js';
+import { useCoderAdapter } from './__fixtures__/coders/adapters.js';
+import type { CoderAdapter } from './coder-adapters/index.js';
 import type { CoderJob } from './coder-jobs.js';
-import { runCoderLogin, startLogin, UNEXPECTED_LOGIN_HOST } from './coder-login.js';
+import { startLogin } from './coder-login.js';
+import { runCoderLogin, UNEXPECTED_LOGIN_HOST } from './coder-login-driver.js';
 import { sessionLogPath } from './coder-state.js';
-import {
-  coderContextFor,
-  coderServices,
-  resumeIfCoderWidgetDone,
-  sessionBranch,
-} from './coders.js';
+import { coderContextFor, coderServices } from './coder-tool.js';
+import { resumeIfCoderWidgetDone } from './coder-widget-actions.js';
+import { sessionBranch } from './repos-checkout.js';
 import { setComputerProvider } from './computer.js';
 import { listRepos, parseRepoUrl, updateRepo } from './repos.js';
 import { registerRunHooks, type RunState } from './runs.js';
@@ -41,24 +40,30 @@ import { registerRunHooks, type RunState } from './runs.js';
 /** A sign-in that prints a link, asks for a code, and signs in when it gets `good-code`. */
 const fakePi: CoderAdapter = {
   agent: 'pi',
-  versionArgs: ['fake-pi', '--version'],
-  loginHosts: ['pi.example'],
+  command: 'fake-pi',
+  versionArgs: ['--version'],
+  signIn: {
+    kind: 'pty',
+    instructions:
+      'Open this link on any device and finish signing in, then paste the code if it gives you one.',
+    hosts: ['pi.example'],
+    login: () => ({ command: 'fake-pi', args: ['login'], timeoutMs: 5_000 }),
+    parseLogin: (chunk, state) => {
+      const next = { ...state };
+      const url = /https:\/\/\S+/.exec(chunk)?.[0];
+      if (url && !next.url) next.url = url;
+      if (/paste the code/i.test(chunk)) next.awaitingCode = true;
+      const done = /signed in as (\S+)/i.exec(chunk);
+      if (done) {
+        next.signedIn = true;
+        next.accountLabel = done[1];
+      }
+      return next;
+    },
+  },
   launch: () => ({ command: 'fake-pi', args: [], env: {} }),
   parser: () => ({ line: () => [], end: () => [] }),
   resumeCommand: (id) => `fake-pi --session ${id}`,
-  login: () => ({ command: 'fake-pi', args: ['login'], timeoutMs: 5_000 }),
-  parseLogin: (chunk, state) => {
-    const next = { ...state };
-    const url = /https:\/\/\S+/.exec(chunk)?.[0];
-    if (url && !next.url) next.url = url;
-    if (/paste the code/i.test(chunk)) next.awaitingCode = true;
-    const done = /signed in as (\S+)/i.exec(chunk);
-    if (done) {
-      next.signedIn = true;
-      next.accountLabel = done[1];
-    }
-    return next;
-  },
   classify: () => ({ action: 'other', title: 'x' }),
 };
 
@@ -75,8 +80,10 @@ describe('coding agents', () => {
   const jobs: CoderJob[] = [];
   const controls: CoderControl[] = [];
 
+  let restoreAdapter: () => void;
+
   beforeAll(async () => {
-    registerCoderAdapter(fakePi);
+    restoreAdapter = useCoderAdapter(fakePi);
     t = await createTestApp({ OPENBOTS_DEPLOYMENT: 'managed', OPENBOTS_SIGNUP_MODE: 'open' });
     computer = await useTestComputer(t.ownerDeps);
     const inner = computer.provider;
@@ -104,6 +111,7 @@ describe('coding agents', () => {
     expect((await call(dana, 'POST', '/computer/start')).status).toBe(200);
   });
   afterAll(async () => {
+    restoreAdapter();
     await computer.close();
     await t.close();
   });
@@ -741,6 +749,9 @@ describe('coding agents', () => {
         providerId: null,
         available: true,
         needsSignIn: false,
+        planProvider: 'anthropic',
+        checkAvailable: true,
+        signIn: 'link',
       });
       expect(agents[1]).toMatchObject({
         agent: 'codex',

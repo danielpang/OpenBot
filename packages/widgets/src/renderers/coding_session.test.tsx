@@ -3,12 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CodingSessionProps, CodingSessionState } from '../kinds/coding_session.js';
-import {
-  CodingSessionWidget,
-  sessionClock,
-  sessionDuration,
-  usageWords,
-} from './coding_session.js';
+import { CodingSessionWidget, sessionClock, sessionDuration } from './coding_session.js';
 import type { CodingSessionHost } from './types.js';
 
 // The coding session card (CA5 to CA8): the header, the live feed, approvals
@@ -111,7 +106,7 @@ describe('<CodingSessionWidget>', () => {
     expect(host.querySelector('[data-dot]')?.className).toContain('bg-emerald-500');
     expect(host.textContent).toContain('Claude Code');
     expect(host.textContent).toContain('openbots-relay · bot/relay-reconnect');
-    expect(host.querySelector('[role="status"]')?.textContent).toBe('Running · 4:12');
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Working · 4:12');
     const feed = host.querySelector('[data-feed]')!;
     expect(feed.className).toContain('font-mono');
     expect(feed.textContent).toContain('Read apps/relay/src/server.ts');
@@ -128,7 +123,7 @@ describe('<CodingSessionWidget>', () => {
     expect(host.textContent).not.toMatch(/[–—]| - /);
     // The clock ticks.
     act(() => vi.advanceTimersByTime(2000));
-    expect(host.querySelector('[role="status"]')?.textContent).toBe('Running · 4:14');
+    expect(host.querySelector('[role="status"]')?.textContent).toBe('Working · 4:14');
   });
 
   it.each([
@@ -254,7 +249,7 @@ describe('<CodingSessionWidget>', () => {
     );
     expect(host.textContent).toContain('a1b2c3d');
     expect(host.textContent).toContain('relay: back off reconnects after a sleep');
-    expect(host.querySelector('[data-usage]')?.textContent).toBe('On your Claude plan');
+    expect(host.querySelector('[data-usage]')?.textContent).toBe('Billed to your Claude plan');
     const pr = [...host.querySelectorAll('a')].find((a) => a.textContent === 'Open PR')!;
     expect(pr.getAttribute('href')).toBe(settled.result!.pr_url);
     expect(button('Stop')).toBeUndefined();
@@ -340,7 +335,7 @@ describe('<CodingSessionWidget>', () => {
     );
     expect(host.textContent).toContain('Codex is not signed in');
     expect(host.querySelector('[data-usage]')?.textContent).toBe(
-      '12,345 tokens in, 2,300 out, $0.40',
+      '12,345 in / 2,300 out tokens, $0.40',
     );
   });
 
@@ -349,20 +344,11 @@ describe('<CodingSessionWidget>', () => {
     expect(buttons()).toEqual([]);
   });
 
-  it('formats times and usage', () => {
+  it('formats times', () => {
     expect(sessionClock(252_000)).toBe('4:12');
     expect(sessionClock(3_852_000)).toBe('1:04:12');
     expect(sessionDuration(45_000)).toBe('45s');
     expect(sessionDuration(360_000)).toBe('6 min');
     expect(sessionDuration(3_900_000)).toBe('1 h 5 min');
-    expect(usageWords({ input_tokens: 1, output_tokens: 2, billed: 'subscription' }, 'pi')).toBe(
-      'On your plan',
-    );
-    expect(
-      usageWords({ input_tokens: 1, output_tokens: 2, billed: 'subscription' }, 'claude'),
-    ).toBe('On your Claude plan');
-    expect(usageWords({ input_tokens: 1, output_tokens: 2, billed: 'subscription' }, 'codex')).toBe(
-      'On your ChatGPT plan',
-    );
   });
 });

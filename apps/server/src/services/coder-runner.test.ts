@@ -9,12 +9,14 @@ import {
   CODERS_QUEUE,
   DEFAULT_MAX_CONCURRENT_SESSIONS,
   EVENTS_CHANNEL,
+  NEEDS_LOGIN,
   type WsEvent,
 } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { schema } from '../db/client.js';
 import {
+  codexAppServer,
   coderWorld,
   defaultGit,
   defaultSystem,
@@ -36,18 +38,15 @@ import {
   SESSION_LOG_MAX,
   sessionLogPath,
 } from './coder-state.js';
+import { CODEX_POSTURE, CODEX_SIGN_IN_REFUSED } from './coder-adapters/codex.js';
+import { recoverInterruptedCoderSessions, RESTART_NOTE } from './coder-recovery.js';
 import {
-  CODEX_POSTURE,
   createCoderWorker,
   keyRejectedText,
-  leftoverCommitMessage,
-  NEEDS_LOGIN,
   needsLoginText,
-  recoverInterruptedCoderSessions,
-  RESTART_NOTE,
   type CoderRunnerOptions,
 } from './coder-runner.js';
-import { CODEX_SIGN_IN_REFUSED } from './coder-login.js';
+import { leftoverCommitMessage } from './session-git.js';
 import { FETCH_NEEDS_APP, PUSH_NEEDS_APPROVAL } from './git-credentials.js';
 import { CONFIG_REFUSED } from './repos-checkout.js';
 import type { RunState } from './runs.js';
@@ -103,10 +102,17 @@ describe('coder runner', () => {
       return row;
     });
 
-  /** The output the waiting run was resumed with. */
+  /**
+   * The output the waiting run was resumed with. The runner settles the
+   * session before it resumes the run, so the run can still be waiting
+   * when the session reads as ended.
+   */
   const resumedWith = async (runId: string) => {
-    const run = await w.run(runId);
-    expect(run.status).toBe('queued');
+    const run = await w.until(async () => {
+      const found = await w.run(runId);
+      expect(found.status).toBe('queued');
+      return found;
+    });
     return (run.state as RunState).resume!.output as Record<string, unknown>;
   };
 
@@ -165,7 +171,11 @@ describe('coder runner', () => {
       user: 'coder',
       command: 'claude',
       cwd: WORKTREE,
+      // git may work in the checkout and the worktree, and nowhere else another user owns.
+      safe_directories: [REPO_PATH, WORKTREE],
     });
+    // The permission relay waits on the owner as long as an approval lives.
+    expect(agent!.launch.env?.OPENBOTS_APPROVAL_TTL_MS).toBe(String(24 * 60 * 60_000));
     // The Bot commits, as itself; the owner is credited as co-author (GH8).
     expect(agent!.launch.env).toMatchObject({
       GIT_AUTHOR_NAME: 'Relay Bot (OpenBots)',
@@ -456,7 +466,7 @@ describe('coder runner', () => {
   /** The CLI is not signed in; its sign-in (`setup-token`) waits for the owner. */
   let signIn: CoderIo | null = null;
   const notSignedIn = (io: CoderIo) => {
-    if (io.call.launch.args?.includes('setup-token')) {
+    if (io.call.launch.args?.join(' ') === 'auth login --claudeai') {
       signIn = io;
       return;
     }
@@ -930,7 +940,7 @@ describe('coder runner over the fake agent', () => {
   });
 });
 
-// Phase 3 hardening: Codex can commit through its sandbox, the runner
+// Across agents and accounts (docs/TECHNICAL_PLAN.md 22.13): Codex can commit through its sandbox, the runner
 // commits what a session left, a refused API key is not a sign-in, the key
 // never reaches what is kept, and a continued session keeps one diff Artifact.
 describe('coder runner, across agents and accounts', () => {
@@ -941,6 +951,7 @@ describe('coder runner, across agents and accounts', () => {
     stopGraceMs: 20,
     // No sign-in is driven here: a session that needs one tells its run at once.
     startLogin: () => Promise.reject(new Error('not in these tests')),
+    rateLimitWaitMs: 20,
   };
 
   beforeAll(async () => {
@@ -953,26 +964,8 @@ describe('coder runner, across agents and accounts', () => {
     await w.close();
   });
 
-  const run = async (sessionId: string) => {
-    await w.t.inOrganization(() => enqueueCoderJob(w.t.deps, { kind: 'session', sessionId }));
-    return w.until(async () => {
-      const row = await w.session(sessionId);
-      expect(['settled', 'failed', 'stopped']).toContain(row.status);
-      return row;
-    });
-  };
-  const setAccount = (agent: string, set: Partial<typeof schema.coderAccounts.$inferInsert>) =>
-    w.t.db
-      .insert(schema.coderAccounts)
-      .values({ workspaceId: w.workspaceId, ownerId: w.ownerId, agent, ...set })
-      .onConflictDoUpdate({
-        target: [
-          schema.coderAccounts.workspaceId,
-          schema.coderAccounts.ownerId,
-          schema.coderAccounts.agent,
-        ],
-        set,
-      });
+  const run = (sessionId: string) => w.runToEnd(sessionId);
+  const setAccount: CoderWorld['setAccount'] = (agent, set) => w.setAccount(agent, set);
   const account = async (agent: string) =>
     (
       await w.t.db
@@ -1001,25 +994,62 @@ describe('coder runner, across agents and accounts', () => {
     w.coder.agentCalls().find((c) => c.launch.session_id === sessionId)!.launch;
   const fixture = (name: string) => readFileSync(path.join(FIXTURES, name), 'utf8');
   const codexSuccess = () => {
-    w.coder.agent = (io) => {
-      io.stdout(fixture('codex-success.jsonl'));
-      io.exit(0);
-    };
+    w.coder.agent = (io) => codexAppServer(io, fixture('codex-success.jsonl'));
   };
+  const callOf = (sessionId: string) =>
+    w.coder.agentCalls().find((c) => c.launch.session_id === sessionId)!;
+  /** What the runner wrote to a Codex session's stdin, one protocol message each. */
+  const framesOf = (sessionId: string) =>
+    callOf(sessionId).writes.map((data) => {
+      expect(data.endsWith('\n')).toBe(true);
+      return JSON.parse(data) as {
+        id?: number;
+        method?: string;
+        params?: Record<string, unknown>;
+        result?: unknown;
+      };
+    });
+  const CODEX_THREAD = '01a1ad70-3c2e-7a41-9b0d-5e8f2c4a6b10';
 
-  it("lets Codex write the checkout's .git and says it asks for no approvals", async () => {
+  it('runs Codex on app-server: the handshake in order, .git writable, and its posture', async () => {
     await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
     codexSuccess();
     const { sessionId } = await w.newSession({ agent: 'codex' });
-    expect((await run(sessionId)).status).toBe('settled');
-    const { args } = launchOf(sessionId);
-    expect(args!.slice(args!.indexOf('--add-dir'), args!.indexOf('--add-dir') + 2)).toEqual([
-      '--add-dir',
-      `${REPO_PATH}/.git`,
+    const row = await run(sessionId);
+    expect(row).toMatchObject({ status: 'settled', vendorSessionId: CODEX_THREAD });
+    const { command, args } = launchOf(sessionId);
+    expect(command).toBe('codex');
+    expect(args!.slice(0, 3)).toEqual(['app-server', '--listen', 'stdio://']);
+    expect(args).toContain(`sandbox_workspace_write.writable_roots=["${REPO_PATH}/.git"]`);
+    expect(args).toContain('approval_policy="on-request"');
+    expect(args).toContain('model_provider="openai"');
+    // initialize, initialized, thread/start, turn/start, then EOF after the result.
+    const frames = framesOf(sessionId);
+    expect(frames.map((f) => f.method)).toEqual([
+      'initialize',
+      'initialized',
+      'thread/start',
+      'turn/start',
     ]);
-    expect(args).toContain('--ignore-user-config');
-    const feed = (await w.widget(sessionId)).feed.map((l) => l.text);
+    expect(frames.map((f) => f.id)).toEqual([1, undefined, 2, 3]);
+    expect(frames[0]!.params).toMatchObject({
+      clientInfo: { name: 'openbots', title: 'OpenBots' },
+    });
+    expect(frames[2]!.params).toEqual({
+      cwd: WORKTREE,
+      approvalPolicy: 'on-request',
+      approvalsReviewer: 'user',
+      sandbox: 'workspace-write',
+    });
+    const turn = frames[3]!.params as { threadId: string; input: { text: string }[] };
+    expect(turn.threadId).toBe(CODEX_THREAD);
+    expect(turn.input[0]!.text.endsWith('\n\nFix the reconnect loop')).toBe(true);
+    expect(callOf(sessionId).stdinEnded).toBe(true);
+    const state = await w.widget(sessionId);
+    const feed = state.feed.map((l) => l.text);
     expect(feed.slice(0, 2)).toEqual([`Started Codex in ${WORKTREE}`, CODEX_POSTURE]);
+    expect(feed.some((t) => t.includes('npm test'))).toBe(true);
+    expect(row.usage).toMatchObject({ input_tokens: 48213, output_tokens: 1874 });
 
     // Claude Code's sessions get no such line.
     w.coder.agent = (io) => {
@@ -1031,11 +1061,124 @@ describe('coder runner, across agents and accounts', () => {
     expect((await w.widget(claude.sessionId)).feed.map((l) => l.text)).not.toContain(CODEX_POSTURE);
   });
 
+  /** The session's one `approvals` row, once it is there. */
+  const approvalOf = (sessionId: string) =>
+    w.until(async () => {
+      const [row] = await w.t.db
+        .select()
+        .from(schema.approvals)
+        .where(eq(schema.approvals.sessionId, sessionId));
+      expect(row).toBeDefined();
+      return row!;
+    });
+
+  it('asks the owner when Codex asks, and answers app-server with accept', async () => {
+    await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
+    w.coder.agent = (io) => codexAppServer(io, fixture('codex-approval.jsonl'));
+    const { sessionId, runId } = await w.newSession({ agent: 'codex' });
+    await w.t.inOrganization(() => enqueueCoderJob(w.t.deps, { kind: 'session', sessionId }));
+    const approval = await approvalOf(sessionId);
+    // An install asks; Codex's reason is the detail.
+    expect(approval).toMatchObject({
+      runId,
+      toolName: 'commandExecution',
+      actionClass: 'install',
+      status: 'pending',
+      reason: 'Run: npm install --save-dev vitest',
+      args: {
+        command: 'npm install --save-dev vitest',
+        cwd: WORKTREE,
+        reason: 'Install vitest from the npm registry, which needs the network',
+      },
+    });
+    await w.until(async () => {
+      const state = await w.widget(sessionId);
+      expect(state.status).toBe('waiting');
+      expect(state.approvals).toEqual([
+        expect.objectContaining({ id: approval.id, action_class: 'install', status: 'pending' }),
+      ]);
+    });
+    // Nothing is answered before the owner decides.
+    expect(framesOf(sessionId).some((f) => f.id === 0)).toBe(false);
+    const res = await w.call('POST', `/approvals/${approval.id}/decide`, { decision: 'approve' });
+    expect(res.status).toBe(200);
+    const row = await w.until(async () => {
+      const done = await w.session(sessionId);
+      expect(done.status).toBe('settled');
+      return done;
+    });
+    expect(framesOf(sessionId).filter((f) => f.id === 0)).toEqual([
+      { id: 0, result: { decision: 'accept' } },
+    ]);
+    // Over the protocol, never the agent socket.
+    expect(callOf(sessionId).answers).toEqual([]);
+    expect(row.summary).toContain('Installed vitest as a dev dependency.');
+    const state = await w.widget(sessionId);
+    expect(state.approvals[0]!.status).toBe('approved');
+    expect(state.feed.map((l) => l.text)).toEqual(
+      expect.arrayContaining(['Asks: Run: npm install --save-dev vitest', 'The owner approved']),
+    );
+  });
+
+  it('answers app-server with decline when the owner says no', async () => {
+    await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
+    w.coder.agent = (io) => codexAppServer(io, fixture('codex-approval.jsonl'));
+    const { sessionId } = await w.newSession({ agent: 'codex' });
+    await w.t.inOrganization(() => enqueueCoderJob(w.t.deps, { kind: 'session', sessionId }));
+    const approval = await approvalOf(sessionId);
+    const res = await w.call('POST', `/approvals/${approval.id}/decide`, { decision: 'deny' });
+    expect(res.status).toBe(200);
+    await w.until(async () => expect((await w.session(sessionId)).status).toBe('settled'));
+    expect(framesOf(sessionId).filter((f) => f.id === 0)).toEqual([
+      { id: 0, result: { decision: 'decline' } },
+    ]);
+    expect((await w.widget(sessionId)).feed.map((l) => l.text)).toContain('The owner said no');
+  });
+
+  it('answers an auto class at once, without an approval row', async () => {
+    await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
+    const transcript = fixture('codex-approval.jsonl')
+      .split('\n')
+      .map((line) =>
+        line.includes('requestApproval')
+          ? JSON.stringify({
+              id: 0,
+              method: 'item/commandExecution/requestApproval',
+              params: {
+                threadId: CODEX_THREAD,
+                turnId: 't',
+                itemId: 'call_1',
+                command: 'pnpm run build',
+              },
+            })
+          : line,
+      )
+      .join('\n');
+    w.coder.agent = (io) => codexAppServer(io, transcript);
+    const { sessionId } = await w.newSession({ agent: 'codex' });
+    expect((await run(sessionId)).status).toBe('settled');
+    expect(framesOf(sessionId).filter((f) => f.id === 0)).toEqual([
+      { id: 0, result: { decision: 'accept' } },
+    ]);
+    const rows = await w.t.db
+      .select()
+      .from(schema.approvals)
+      .where(eq(schema.approvals.sessionId, sessionId));
+    expect(rows).toEqual([]);
+    expect((await w.widget(sessionId)).feed.map((l) => l.text)).toContain(
+      'Allowed: Run: pnpm run build',
+    );
+  });
+
   it('commits what an edit session left uncommitted, as the Bot, and reports the commit', async () => {
     let committed = false;
     w.coder.git = (args) => {
       if (args.includes('status') && args.includes(WORKTREE)) {
-        return { code: 0, stdout: committed ? '' : ' M src/link.ts\n?? notes.md\n' };
+        // What the agent touched (src/link.ts), and what a command it ran left.
+        return {
+          code: 0,
+          stdout: committed ? '' : ' M src/link.ts\0?? notes.md\0?? .env.local\0',
+        };
       }
       if (args.includes('commit')) {
         committed = true;
@@ -1058,7 +1201,16 @@ describe('coder runner, across agents and accounts', () => {
       const calls = w.coder.calls.slice(before).filter((c) => c.launch.command === 'git');
       const add = calls.find((c) => gitArgs(c.launch.args).includes('-A'))!;
       const commit = calls.find((c) => gitArgs(c.launch.args).includes('commit'))!;
-      expect(gitArgs(add.launch.args)).toEqual(['-C', WORKTREE, 'add', '-A']);
+      // Only what the agent changed is staged; the rest stays, and the summary says so.
+      expect(gitArgs(add.launch.args)).toEqual([
+        '-C',
+        WORKTREE,
+        'add',
+        '-A',
+        '--',
+        ':(literal)src/link.ts',
+      ]);
+      expect(row.summary).toContain('Left uncommitted: notes.md, .env.local');
       const commitArgs = gitArgs(commit.launch.args);
       expect(commitArgs).toEqual(
         expect.arrayContaining([
@@ -1109,10 +1261,7 @@ describe('coder runner, across agents and accounts', () => {
   it('fails a Codex api_key session whose key is refused, without a sign-in', async () => {
     const providerId = await provider('openai', 'sk-oa-refused', 'OpenAI for Codex');
     await setAccount('codex', { authKind: 'api_key', providerId, lastError: null });
-    w.coder.agent = (io) => {
-      io.stdout(fixture('codex-needs-login.jsonl'));
-      io.exit(1);
-    };
+    w.coder.agent = (io) => codexAppServer(io, fixture('codex-needs-login.jsonl'));
     const { sessionId, runId } = await w.newSession({ agent: 'codex' });
     const row = await run(sessionId);
     const message = keyRejectedText('OpenAI for Codex', 'Codex');
@@ -1128,12 +1277,10 @@ describe('coder runner, across agents and accounts', () => {
 
   it('marks a Codex plan sign-in that lapsed as needs_login', async () => {
     await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
-    w.coder.agent = (io) => {
-      io.stdout(fixture('codex-needs-login.jsonl'));
-      io.exit(1);
-    };
+    w.coder.agent = (io) => codexAppServer(io, fixture('codex-needs-login.jsonl'));
     const { sessionId } = await w.newSession({ agent: 'codex' });
     const row = await run(sessionId);
+    // A turn that completed `failed` on OpenAI's 401, app-server's own words.
     expect(row).toMatchObject({ status: 'failed', error: NEEDS_LOGIN });
     // The owner reads plain words; OpenAI's own 401 text is in the log only.
     const state = await w.widget(sessionId);
@@ -1206,22 +1353,41 @@ describe('coder runner, across agents and accounts', () => {
     await setAccount('codex', { authKind: 'api_key', providerId, lastError: null });
     w.coder.agent = (io) => {
       const key = io.call.launch.env!.OPENAI_API_KEY!;
-      io.stdout(
-        jsonl(
-          { type: 'thread.started', thread_id: '01a1ad70-3c2e-7a41-9b0d-5e8f2c4a6b10' },
-          { type: 'turn.started' },
-          { type: 'item.completed', item: { type: 'agent_message', text: `My key is ${key}` } },
-          { type: 'turn.failed', error: { message: `Incorrect API key provided: ${key}` } },
-        ),
-      );
+      const turn = { threadId: CODEX_THREAD, turnId: 't-1' };
       // Split across chunks, so only a whole line can be masked.
       io.stderr(`using ${key.slice(0, 8)}`);
       io.stderr(`${key.slice(8)} now\nfatal: bad key ${key}`);
-      io.exit(2);
+      return codexAppServer(
+        io,
+        jsonl(
+          { id: 1, result: { userAgent: 'openbots/0.166.0', codexHome: '/x' } },
+          { id: 2, result: { thread: { id: CODEX_THREAD } } },
+          { id: 3, result: { turn: { id: 't-1', status: 'inProgress' } } },
+          {
+            method: 'item/completed',
+            params: { ...turn, item: { type: 'agentMessage', id: 'm', text: `My key is ${key}` } },
+          },
+          {
+            method: 'turn/completed',
+            params: {
+              threadId: CODEX_THREAD,
+              turn: {
+                id: 't-1',
+                status: 'failed',
+                error: { message: `Incorrect API key provided: ${key}`, codexErrorInfo: null },
+              },
+            },
+          },
+        ),
+      );
     };
     const { sessionId } = await w.newSession({ agent: 'codex' });
     const row = await run(sessionId);
-    expect(launchOf(sessionId).env?.OPENAI_API_KEY).toBe(secret);
+    const launched = launchOf(sessionId);
+    expect(launched.env?.OPENAI_API_KEY).toBe(secret);
+    // The key is read from the environment by a provider the session names, never argv.
+    expect(launched.args).toContain('model_provider="openbots"');
+    expect(launched.args!.join(' ')).not.toContain(secret);
     expect(row.error).toBe('Incorrect API key provided: [key]');
     const log = readFileSync(row.logPath!, 'utf8');
     expect(log).toContain('My key is [key]');
@@ -1290,10 +1456,108 @@ describe('coder runner, across agents and accounts', () => {
     }
   });
 
-  /** The output the waiting run was resumed with. */
+  /** The output the waiting run was resumed with, once the runner resumes it. */
   const resumedWith = async (runId: string) => {
-    const r = await w.run(runId);
-    expect(r.status).toBe('queued');
+    const r = await w.until(async () => {
+      const found = await w.run(runId);
+      expect(found.status).toBe('queued');
+      return found;
+    });
     return (r.state as RunState).resume!.output as Record<string, unknown>;
   };
+
+  it('discards a pushed branch on the remote too, unless a pull request keeps it', async () => {
+    w.coder.agent = (io) => io.exit(0);
+    w.coder.git = (args) =>
+      args.includes('ls-remote') ? { code: 0, stdout: 'abc\trefs/heads/x\n' } : defaultGit(args);
+    const settledSession = async (branch: string, prUrl: string | null) => {
+      const s = await w.newSession({
+        status: 'settled',
+        branch,
+        worktreePath: `${REPO_PATH}/.worktrees/${branch.replace('/', '-')}`,
+        pushAllowed: true,
+        prUrl,
+      });
+      await w.t.db
+        .update(schema.widgetStates)
+        .set({ state: { status: 'settled', feed: [], approvals: [] } })
+        .where(eq(schema.widgetStates.messageId, s.messageId));
+      // The widget names its own session, as `code_task` posts it.
+      const [message] = await w.t.db
+        .select()
+        .from(schema.messages)
+        .where(eq(schema.messages.id, s.messageId));
+      const parts = message!.parts as { props: Record<string, unknown> }[];
+      parts[0]!.props = { ...parts[0]!.props, session_id: s.sessionId, branch };
+      await w.t.db
+        .update(schema.messages)
+        .set({ parts: parts as (typeof schema.messages.$inferSelect)['parts'] })
+        .where(eq(schema.messages.id, s.messageId));
+      return s.sessionId;
+    };
+    const discard = async (sessionId: string) => {
+      const before = w.coder.calls.length;
+      expect((await w.call('POST', `/coding-sessions/${sessionId}/discard`)).status).toBe(200);
+      // The worktree goes after the action is stored.
+      await w.until(async () => expect((await w.session(sessionId)).worktreePath).toBeNull());
+      return w.coder.calls
+        .slice(before)
+        .filter((c) => c.launch.command === 'git')
+        .map((c) => ({ args: gitArgs(c.launch.args), user: c.launch.user }));
+    };
+    const feed = async (sessionId: string) =>
+      (await w.widget(sessionId)).feed.map((line) => line.text);
+    try {
+      const pushed = await settledSession('bot/gone', null);
+      const git = await discard(pushed);
+      expect(git).toContainEqual({
+        args: ['-C', REPO_PATH, 'push', 'origin', '--delete', 'bot/gone'],
+        user: 'runner',
+      });
+      expect(await feed(pushed)).toContain('Deleted the pushed branch bot/gone on GitHub');
+
+      const url = 'https://github.com/acme/relay/pull/7';
+      const kept = await settledSession('bot/kept', url);
+      const keptGit = await discard(kept);
+      expect(keptGit.some((g) => g.args.includes('--delete'))).toBe(false);
+      expect(await feed(kept)).toContain(
+        `The branch bot/kept stays on GitHub with its pull request ${url}`,
+      );
+    } finally {
+      w.coder.git = defaultGit;
+    }
+  });
+
+  it('waits out a vendor rate limit once, then fails if it holds', async () => {
+    await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
+    const limited =
+      'ERROR: unexpected status 429 Too Many Requests: rate_limit_exceeded. Please try again in 20s';
+    let launches = 0;
+    w.coder.agent = (io) => {
+      launches++;
+      if (launches === 1) {
+        io.stderr(`${limited}\n`);
+        return io.exit(1);
+      }
+      io.stdout(fixture('codex-success.jsonl'));
+      io.exit(0);
+    };
+    const { sessionId } = await w.newSession({ agent: 'codex' });
+    const row = await run(sessionId);
+    expect(launches).toBe(2);
+    expect(row.status).toBe('settled');
+    const feed = (await w.widget(sessionId)).feed.map((line) => line.text);
+    expect(
+      feed.some((text) => /Codex is rate limited .*trying again in 1 second$/.test(text)),
+    ).toBe(true);
+
+    w.coder.agent = (io) => {
+      io.stderr(`${limited}\n`);
+      io.exit(1);
+    };
+    const again = await w.newSession({ agent: 'codex' });
+    const failed = await run(again.sessionId);
+    expect(failed.status).toBe('failed');
+    expect(failed.error).toMatch(/^Codex hit the vendor's rate limit again after waiting: .*429/);
+  });
 });

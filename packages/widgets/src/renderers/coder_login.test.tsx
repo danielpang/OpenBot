@@ -45,9 +45,37 @@ function type(el: HTMLInputElement, value: string) {
 }
 
 describe('<CoderLoginWidget>', () => {
+  it('draws the sign-in link as a QR code with Show QR, and hides it again', async () => {
+    render(<CoderLoginWidget props={props} state={{ status: 'pending' }} onAction={vi.fn()} />);
+    expect(host.querySelector('img')).toBeNull();
+    const show = button('Show QR')!;
+    expect(show.getAttribute('aria-pressed')).toBe('false');
+    act(() => show.click());
+    await vi.waitFor(() => expect(host.querySelector('img')).not.toBeNull());
+    const img = host.querySelector('img')!;
+    expect(img.getAttribute('alt')).toBe('QR code for signing in to Claude Code');
+    const svg = decodeURIComponent(img.getAttribute('src')!.split(',')[1]!);
+    expect(svg).toMatch(/^<svg/);
+    expect(button('Hide QR')!.getAttribute('aria-pressed')).toBe('true');
+    act(() => button('Hide QR')!.click());
+    expect(host.querySelector('img')).toBeNull();
+    expect(button('Show QR')).toBeDefined();
+  });
+
+  it('offers no QR before the link shows', () => {
+    render(
+      <CoderLoginWidget
+        props={{ ...props, url: undefined }}
+        state={{ status: 'pending' }}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(button('Show QR')).toBeUndefined();
+  });
+
   it('shows the instructions, the link with Copy and Open link, and the code field', () => {
     render(<CoderLoginWidget props={props} state={{ status: 'pending' }} onAction={vi.fn()} />);
-    expect(host.textContent).toContain('Sign in to Claude Code uses your Claude plan');
+    expect(host.textContent).toContain('Sign in to Claude Code billed to your Claude plan');
     expect(host.textContent).toContain(props.instructions);
     expect(host.querySelector('[data-sign-in-url]')?.textContent).toBe(URL);
     expect(button('Copy')).toBeDefined();
@@ -78,7 +106,7 @@ describe('<CoderLoginWidget>', () => {
         onAction={vi.fn()}
       />,
     );
-    expect(host.textContent).toContain('uses your ChatGPT plan');
+    expect(host.textContent).toContain('billed to your ChatGPT plan');
     expect(host.querySelector('[data-device-code]')?.textContent).toBe('ABCD-1234');
     expect(host.querySelector('input[aria-label="Code"]')).toBeNull();
   });

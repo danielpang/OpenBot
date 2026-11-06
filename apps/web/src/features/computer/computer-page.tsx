@@ -2,15 +2,16 @@ import { Button, cn } from '@openbots/ui';
 import { useMutation } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { ErrorText } from '../models/error-text.js';
+import { Repositories } from '../repos/repositories.js';
 import { updateComputerSettings, type Computer, type PtyAttach } from './api.js';
 import { FileBrowser } from './files.js';
+import { ResetComputerDialog } from './reset-dialog.js';
 import { useComputer, useRestartComputer, useStartComputer, useWriteComputer } from './live.js';
-import { Repositories } from './repos.js';
 import { ComputerIcon } from './status-icon.js';
 import { ComputerTerminal } from './terminal.js';
 
 // The account-level Computer page (K1, K2, K7, plan 9.4): the computer's
-// status from `computer.status`, Start or Restart, how long it idles before it
+// status from `computer.status`, Start, Restart or Reset computer, how long it idles before it
 // stops, and while it runs a terminal and its files, then the repositories
 // coding agents work on (GH3). `attach` opens the terminal in a directory,
 // as another user, with a command typed: Open terminal on a coding session
@@ -37,6 +38,7 @@ export function ComputerPage({ attach: linked }: { attach?: PtyAttach } = {}) {
   const { data, isPending, error, statusError } = useComputer();
   const start = useStartComputer();
   const restart = useRestartComputer();
+  const [resetting, setResetting] = useState(false);
   // A repository's Open terminal replaces the linked attach until the link changes.
   const [opened, setOpened] = useState<{ base: string; attach: PtyAttach }>();
   const attach = opened && opened.base === attachKey(linked) ? opened.attach : linked;
@@ -82,6 +84,11 @@ export function ComputerPage({ attach: linked }: { attach?: PtyAttach } = {}) {
               Restart
             </Button>
           )}
+          {computer && status && !BUSY.has(status) && (
+            <Button variant="outline" onClick={() => setResetting(true)}>
+              Reset computer
+            </Button>
+          )}
         </div>
         {status && BUSY.has(status) && (
           <div
@@ -117,6 +124,7 @@ export function ComputerPage({ attach: linked }: { attach?: PtyAttach } = {}) {
         </>
       )}
       <Repositories running={status === 'running'} onOpenTerminal={openTerminal} />
+      <ResetComputerDialog open={resetting} onClose={() => setResetting(false)} />
     </div>
   );
 }

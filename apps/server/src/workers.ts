@@ -10,13 +10,15 @@ import {
 import { APPROVALS_QUEUE, expireDueApprovals, expiryHandler } from './services/approvals.js';
 import { AUDIT_TRIM_MS, trimAuditLog } from './services/audit.js';
 import { BOT_STATE_QUEUE, settleHandler } from './services/bot-state.js';
-import { createCoderWorker, recoverInterruptedCoderSessions } from './services/coder-runner.js';
+import { recoverInterruptedCoderSessions } from './services/coder-recovery.js';
+import { createCoderWorker } from './services/coder-runner.js';
 import { PAIRING_SWEEP_MS, expireDuePairings } from './services/devices.js';
 import { IDLE_SWEEP_MS, refreshSandboxImage, sweepIdleComputers } from './services/computer.js';
 import { expireDueLoginRequests, LOGINS_QUEUE, loginExpiryHandler } from './services/logins.js';
 import { MEMORIES_QUEUE, reembedHandler } from './services/memories.js';
 import { startRoutineScheduler } from './services/routines.js';
-import { queueRepoReconciles, queueRepoRefreshes, queueRepoScans } from './services/repos-jobs.js';
+import { queueRepoReconciles, queueRepoRefreshes } from './services/repos-refresh.js';
+import { queueRepoScans } from './services/repos-scan.js';
 import { RUNS_QUEUE } from './services/runs.js';
 import { startPushWorker } from './workers/push.js';
 import { createRunWorker, recoverInterruptedRuns } from './workers/runs.js';

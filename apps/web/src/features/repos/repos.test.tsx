@@ -4,15 +4,14 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { capabilitiesQuery } from '../../app/api.js';
-import { Repositories } from '../computer/repos.js';
 import { GithubCard } from '../tools/github-card.js';
-import { isStuck, STUCK_MS } from '../computer/repos.js';
 import type { GitConnectionView, GithubAppStatus, RemoteRepo } from './api.js';
+import { diskTotal, formatDisk, isStuck, Repositories, STUCK_MS } from './repositories.js';
 
-// Phase 2 of coding agents in the web app against a fake REST server: the
-// Connectors page's GitHub card (GH1, GH8), the repository picker (GH2), and
-// the Computer page's Repositories with found clones, Keep cloned, Pin,
-// Forget with its files, and rescue polling (GH3 to GH6).
+// Repositories and git connections in the web app against a fake REST
+// server: the Connectors page's GitHub card (GH1, GH8), the repository picker
+// (GH2), and the Computer page's Repositories with found clones, Keep cloned,
+// Pin, Forget with its files, and rescue polling (GH3 to GH6).
 
 const CONN = '00000000-0000-4000-8000-0000000000e1';
 
@@ -557,6 +556,27 @@ describe('the Repositories section (GH3 to GH6)', () => {
     expect(sent('PATCH', '/api/v1/repos/r2')).toEqual([{ pinned: true }]);
     // Pinned repositories come first.
     expect(host.querySelector('[data-repo]')!.getAttribute('data-repo')).toBe('danielpang/relay');
+    noDashes();
+  });
+
+  it('shows disk use per repository and the total in the header', async () => {
+    repos = [
+      repo('r1', 'danielpang/OpenBots', { diskBytes: Math.round(12.4 * 1024 * 1024) }),
+      repo('r2', 'danielpang/relay', {
+        checkout: checkout({ path: '/home/bot/repos/danielpang/relay' }),
+        diskBytes: 512 * 1024,
+      }),
+      repo('r3', 'danielpang/notes', { diskBytes: null }),
+    ];
+    render(<Repositories running onOpenTerminal={() => {}} />);
+    await until(() => !!row('danielpang/notes'), 'the list');
+    expect(row('danielpang/OpenBots').querySelector('[data-disk]')!.textContent).toBe(' · 12.4 MB');
+    expect(row('danielpang/relay').querySelector('[data-disk]')!.textContent).toBe(' · 512.0 KB');
+    expect(row('danielpang/notes').querySelector('[data-disk]')).toBeNull();
+    expect(host.querySelector('[data-disk-total]')!.textContent).toBe('12.9 MB on disk');
+    expect(formatDisk(900)).toBe('900 B');
+    expect(formatDisk(3 * 1024 ** 3)).toBe('3.0 GB');
+    expect(diskTotal([])).toBeNull();
     noDashes();
   });
 

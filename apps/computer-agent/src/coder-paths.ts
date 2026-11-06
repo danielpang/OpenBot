@@ -1,33 +1,33 @@
 import path from 'node:path';
+import {
+  CODER_CONFIG_ENV,
+  CODER_HOME_NAME,
+  CODER_STATE_NAME,
+  REPOS_REL,
+  RUNNER_HOME_NAME,
+  type CoderAgent,
+} from '@openbots/shared';
 
-// Where the coding agents keep their state in the computer (I2, I3). These
-// mirror the constants in @openbots/computer (packages/computer/src/types.ts:
-// CODER_STATE_DIR, CODER_CONFIG_DIRS, REPOS_DIR, GIT_CREDENTIAL_HELPER and
-// the OPENBOTS_CODER_* names), which depends on this package and so cannot be
-// imported here. The agent derives the directories from its own state and
-// runtime directories, so tests can point both at temporary ones.
+// Where the coding agents keep their state in the computer (I2, I3). The
+// names, paths and uids are defined once in @openbots/shared
+// (coder-runtime.ts), which @openbots/computer re-exports for the server. The
+// agent derives the directories from its own state and runtime directories,
+// so tests can point both at temporary ones.
 
-export const CODER_AGENT_DIRS = ['claude', 'codex', 'pi'] as const;
+export {
+  CODER_CONFIG_ENV,
+  CODER_CREDENTIAL_SOCKET_ENV,
+  CODER_HOME_NAME,
+  CODER_SESSION_DIR_ENV,
+  CODER_SESSION_ENV,
+  CODER_SOCKET_ENV,
+  GIT_CREDENTIAL_HELPER,
+  REPOS_REL,
+  RUNNER_HOME_NAME,
+} from '@openbots/shared';
+
+export const CODER_AGENT_DIRS = ['claude', 'codex', 'pi'] as const satisfies readonly CoderAgent[];
 export type CoderAgentDir = (typeof CODER_AGENT_DIRS)[number];
-
-/** The variable each agent reads its config directory from. */
-export const CODER_CONFIG_ENV: Record<CoderAgentDir, string> = {
-  claude: 'CLAUDE_CONFIG_DIR',
-  codex: 'CODEX_HOME',
-  pi: 'PI_CODING_AGENT_DIR',
-};
-
-export const CODER_SESSION_ENV = 'OPENBOTS_CODER_SESSION';
-export const CODER_SESSION_DIR_ENV = 'OPENBOTS_CODER_SESSION_DIR';
-export const CODER_SOCKET_ENV = 'OPENBOTS_CODER_SOCKET';
-/** The credential relay's socket, which git's helper asks (I5). */
-export const CODER_CREDENTIAL_SOCKET_ENV = 'OPENBOTS_CODER_CREDENTIAL_SOCKET';
-
-/** git's credential helper in the image (docker/computer.Dockerfile). */
-export const GIT_CREDENTIAL_HELPER = '/usr/local/bin/openbots-git-credential';
-
-/** The repositories, relative to the home (`REPOS_DIR`). */
-export const REPOS_REL = 'repos';
 
 /** The permission relay's socket in each session's directory (I11). */
 export const PERMISSION_SOCKET = 'permission.sock';
@@ -55,18 +55,12 @@ export interface PermissionRelayReply {
   message?: string;
 }
 
-/** The coder user's home under the coders state directory (`CoderPaths.homeDir`). */
-export const CODER_HOME_NAME = 'home';
-
-/** The runner user's home under the coders state directory (`CoderPaths.runnerHomeDir`). */
-export const RUNNER_HOME_NAME = 'runner-home';
-
 export interface CoderPaths {
   /** `<stateDir>/coders`: root's, 0711. */
   stateDir: string;
   /**
    * `<stateDir>/coders/home`: the coder user's HOME, its own and 0700
-   * (CODER_HOME, mirrored from @openbots/computer's CODER_STATE_DIR). The
+   * (CODER_HOME in the image). The
    * state directory itself is root's; Claude Code writes ~/.claude.json and
    * other tools ~/.config and ~/.cache, so HOME must be writable.
    */
@@ -83,7 +77,7 @@ export interface CoderPaths {
 }
 
 export function coderPaths(runtimeDir: string, stateDir: string): CoderPaths {
-  const state = path.join(stateDir, 'coders');
+  const state = path.join(stateDir, CODER_STATE_NAME);
   return {
     stateDir: state,
     homeDir: path.join(state, CODER_HOME_NAME),
@@ -131,7 +125,8 @@ export function gitConfigEnv(
 /**
  * The directories of a session's checkout that git must trust whoever owns
  * them: the working directory and, for a worktree under
- * `repos/<owner>/<name>/`, that repository, whose `.git` it shares.
+ * `repos/<owner>/<name>/`, that repository, whose `.git` it shares. This is
+ * the fallback for a start that names none (`safe_directories`).
  */
 export function sessionSafeDirectories(home: string, cwd: string): string[] {
   const rel = path.relative(home, cwd);
@@ -140,4 +135,11 @@ export function sessionSafeDirectories(home: string, cwd: string): string[] {
   const safe = [cwd];
   if (parts[0] === REPOS_REL && parts.length > 3) safe.push(path.join(home, ...parts.slice(0, 3)));
   return safe;
+}
+
+/** A directory the start names for safe.directory: absolute, normalised, inside the home. */
+export function isSafeDirectory(home: string, dir: string): boolean {
+  if (!path.isAbsolute(dir) || dir.includes('\0') || path.normalize(dir) !== dir) return false;
+  const rel = path.relative(home, dir);
+  return rel !== '' && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
 }

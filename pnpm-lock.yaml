@@ -1039,9 +1039,6 @@ importers:
       codemirror:
         specifier: ^6.0.2
         version: 6.0.2
-      qrcode:
-        specifier: 'catalog:'
-        version: 1.5.4
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -1070,9 +1067,6 @@ importers:
       '@tanstack/router-plugin':
         specifier: 'catalog:'
         version: 1.168.45(@tanstack/react-router@1.170.44(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(esbuild@0.28.2)(rolldown@1.2.13)(supports-color@10.2.2)(vite@8.3.4(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
-      '@types/qrcode':
-        specifier: 'catalog:'
-        version: 1.5.6
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
@@ -1624,6 +1618,9 @@ importers:
       '@openbots/ui':
         specifier: workspace:*
         version: link:../ui
+      qrcode:
+        specifier: 'catalog:'
+        version: 1.5.4
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -1631,6 +1628,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 22.20.5
+      '@types/qrcode':
+        specifier: 'catalog:'
+        version: 1.5.6
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0

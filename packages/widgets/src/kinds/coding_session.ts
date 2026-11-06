@@ -1,5 +1,6 @@
 import {
   CODER_FEED_MAX,
+  CODING_SESSION_ENDED,
   CoderActionClassSchema,
   CoderAgentSchema,
   CoderModeSchema,
@@ -101,8 +102,6 @@ const MAX_TOOL_FILES = 50;
 const MAX_TOOL_COMMITS = 20;
 const CONTINUE_EXCERPT = 200;
 
-const ENDED: readonly CodingSessionStatus[] = ['settled', 'failed', 'stopped'];
-
 function excerpt(text: string, max: number) {
   const line = text.replace(/\s+/g, ' ').trim();
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
@@ -122,7 +121,7 @@ export const codingSessionWidget = defineWidget({
   }),
   reduce: (state: CodingSessionState | undefined, action): CodingSessionState | string => {
     const current: CodingSessionState = state ?? { status: 'queued', feed: [], approvals: [] };
-    const ended = ENDED.includes(current.status);
+    const ended = CODING_SESSION_ENDED.includes(current.status);
     switch (action.type) {
       case 'stop':
         if (ended) return 'This session already ended';

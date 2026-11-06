@@ -1,75 +1,76 @@
 import type {
-  CodingRoutineTemplate,
   FoundRepo,
   GitActAs,
   GitConnectionView,
   RemoteRepo,
+  RepoCheckoutState,
   RepoRescueResult,
 } from '@openbots/shared';
 import { unwrap, type components } from '@openbots/api-client';
 import { queryOptions } from '@tanstack/react-query';
 import { api } from '../../app/api.js';
-import { request, type Repo } from '../coders/api.js';
 
-// Git connections and remembered repositories, Phase 2 (GH1 to GH6, GH8,
-// CA11): the GitHub App, the owner's connections, the repository picker,
-// clones found on the computer, rescue before loss, and the coding Routine
-// templates. Rescue, scan, forget and the templates go through the generated
-// client. The git connection routes and the repository list still go through
-// `request` with the shapes typed here, because their answers carry fields
-// (`publicUrlOk`, `needsReauthorize`, `Repo.checkout`) that `openapi.json`
-// has not caught up with; switch them to `api` once it has.
+// Remembered repositories and git connections (GH1 to GH6, GH8): the
+// repository list and its checkouts on the computer, the GitHub App, the
+// owner's connections, the repository picker, clones found on the computer,
+// and rescue before loss.
 
 export type { FoundRepo, GitConnectionView, RemoteRepo, RepoRescueResult };
 
-/** Whether this install has a GitHub App, and where it came from. */
-export interface GithubAppStatus {
-  configured: boolean;
-  /** `config` for GITHUB_APP_* settings, `instance` for one made through the manifest flow. */
-  source: 'config' | 'instance' | null;
-  slug: string | null;
-  /** GET /git-connections/github-app/install leads somewhere. */
-  installUrlAvailable: boolean;
-  /** POST /git-connections/github-app/manifest may make an App (self-hosted, none yet). */
-  manifestAvailable: boolean;
-  /** OPENBOTS_PUBLIC_URL is an https URL GitHub can reach; the manifest flow needs it. */
-  publicUrlOk: boolean;
-}
+/** A repository's checkout on the computer; `state` is the shared union, a plain string in `openapi.json`. */
+export type RepoCheckout = Omit<NonNullable<components['schemas']['RepoCheckout']>, 'state'> & {
+  state: RepoCheckoutState;
+};
+export type Repo = Omit<components['schemas']['Repo'], 'checkout'> & {
+  checkout: RepoCheckout | null;
+};
+export type AddRepo = components['schemas']['RepoInput'];
 
+/** Whether this install has a GitHub App, and where it came from. */
+export type GithubAppStatus = components['schemas']['GithubAppStatus'];
 export type RescueStatus = components['schemas']['RepoRescueStatus'];
 export type RepoForgotten = components['schemas']['RepoForgotten'];
-
 /** A sync answer; `needsReauthorize` when GitHub wants the owner to grant access again. */
-export interface SyncAnswer {
-  connection: GitConnectionView;
-  needsReauthorize?: boolean;
-}
+export type SyncAnswer = components['schemas']['GitConnectionSync'];
+
+const byId = (id: string) => ({ params: { path: { id } } });
+const asRepo = (repo: components['schemas']['Repo']) => repo as Repo;
+
+export const reposQuery = queryOptions({
+  queryKey: ['repos'],
+  queryFn: () => unwrap(api.GET('/api/v1/repos')).then((r) => ({ repos: r.repos.map(asRepo) })),
+});
+
+export const addRepo = (body: AddRepo) =>
+  unwrap(api.POST('/api/v1/repos', { body })).then((r) => asRepo(r.repo));
+
+export const cloneRepo = (id: string) =>
+  unwrap(api.POST('/api/v1/repos/{id}/clone', byId(id))).then((r) => asRepo(r.repo));
+
+export const updateRepo = (id: string) =>
+  unwrap(api.POST('/api/v1/repos/{id}/update', byId(id))).then((r) => asRepo(r.repo));
 
 /** The server's code when "Act as me" needs a GitHub sign-in the owner has not made. */
 export const ACT_AS_NEEDS_SIGN_IN = 'ACT_AS_NEEDS_SIGN_IN';
 
-const seg = encodeURIComponent;
-
 export const gitConnectionsQuery = queryOptions({
   queryKey: ['git-connections'],
-  queryFn: () =>
-    request<{ connections: GitConnectionView[] }>('GET', '/api/v1/git-connections').then(
-      (r) => r.connections,
-    ),
+  queryFn: () => unwrap(api.GET('/api/v1/git-connections')).then((r) => r.connections),
 });
 
 export const githubAppQuery = queryOptions({
   queryKey: ['git-connections', 'github-app'],
-  queryFn: () => request<GithubAppStatus>('GET', '/api/v1/git-connections/github-app'),
+  queryFn: () => unwrap(api.GET('/api/v1/git-connections/github-app')),
 });
 
 export const remoteReposQuery = (connectionId: string, q: string) =>
   queryOptions({
     queryKey: ['git-connections', connectionId, 'repositories', q],
     queryFn: () =>
-      request<{ repositories: RemoteRepo[] }>(
-        'GET',
-        `/api/v1/git-connections/${seg(connectionId)}/repositories${q ? `?q=${seg(q)}` : ''}`,
+      unwrap(
+        api.GET('/api/v1/git-connections/{id}/repositories', {
+          params: { path: { id: connectionId }, query: q ? { q } : {} },
+        }),
       ).then((r) => r.repositories),
   });
 
@@ -78,10 +79,10 @@ export const GITHUB_APP_INSTALL_PATH = '/api/v1/git-connections/github-app/insta
 
 /** Starts the manifest flow; `organization` makes the App on that organization instead of the viewer's account. */
 export const startAppManifest = (organization?: string) =>
-  request<{ url: string; manifest: unknown }>(
-    'POST',
-    '/api/v1/git-connections/github-app/manifest',
-    organization ? { organization } : {},
+  unwrap(
+    api.POST('/api/v1/git-connections/github-app/manifest', {
+      body: organization ? { organization } : {},
+    }),
   );
 
 /**
@@ -102,39 +103,39 @@ export function submitManifest(url: string, manifest: unknown) {
   form.submit();
 }
 
-export const removeGithubApp = () => request<void>('DELETE', '/api/v1/git-connections/github-app');
+export const removeGithubApp = () =>
+  unwrap(api.DELETE('/api/v1/git-connections/github-app')).then(() => undefined);
 
 export const updateConnection = (id: string, actAs: GitActAs) =>
-  request<{ connection: GitConnectionView }>('PATCH', `/api/v1/git-connections/${seg(id)}`, {
-    actAs,
-  }).then((r) => r.connection);
+  unwrap(api.PATCH('/api/v1/git-connections/{id}', { ...byId(id), body: { actAs } })).then(
+    (r) => r.connection,
+  );
 
 export const syncConnection = (id: string) =>
-  request<SyncAnswer>('POST', `/api/v1/git-connections/${seg(id)}/sync`);
+  unwrap(api.POST('/api/v1/git-connections/{id}/sync', byId(id)));
 
 /** Where the browser goes so GitHub can refresh what the connection may reach. */
-export const reauthorizePath = (id: string) => `/api/v1/git-connections/${seg(id)}/reauthorize`;
+export const reauthorizePath = (id: string) =>
+  `/api/v1/git-connections/${encodeURIComponent(id)}/reauthorize`;
 
 export const disconnect = (id: string) =>
-  request<void>('DELETE', `/api/v1/git-connections/${seg(id)}`);
+  unwrap(api.DELETE('/api/v1/git-connections/{id}', byId(id))).then(() => undefined);
 
 export const addTokenConnection = (token: string) =>
-  request<{ connection: GitConnectionView }>('POST', '/api/v1/git-connections/token', {
-    token,
-  }).then((r) => r.connection);
+  unwrap(api.POST('/api/v1/git-connections/token', { body: { token } })).then((r) => r.connection);
 
 export const rememberRepos = (connectionId: string, fullNames: string[]) =>
-  request<{ repos: Repo[] }>('POST', '/api/v1/repos/remember', { fullNames, connectionId }).then(
-    (r) => r.repos,
+  unwrap(api.POST('/api/v1/repos/remember', { body: { fullNames, connectionId } })).then((r) =>
+    r.repos.map(asRepo),
   );
 
 export const foundReposQuery = queryOptions({
   queryKey: ['repos', 'found'],
-  queryFn: () => request<{ found: FoundRepo[] }>('GET', '/api/v1/repos/found').then((r) => r.found),
+  queryFn: () => unwrap(api.GET('/api/v1/repos/found')).then((r) => r.found),
 });
 
 export const rememberFound = (path: string) =>
-  request<{ repo: Repo }>('POST', '/api/v1/repos/found/remember', { path }).then((r) => r.repo);
+  unwrap(api.POST('/api/v1/repos/found/remember', { body: { path } })).then((r) => asRepo(r.repo));
 
 /** Starts rescue before loss (GH5); poll `rescueStatus` with the request id until `done`. */
 export const startRescue = () => unwrap(api.POST('/api/v1/repos/rescue'));
@@ -142,8 +143,8 @@ export const startRescue = () => unwrap(api.POST('/api/v1/repos/rescue'));
 export const rescueStatus = (requestId: string) =>
   unwrap(api.GET('/api/v1/repos/rescue/{requestId}', { params: { path: { requestId } } }));
 
-export const patchRepo = (id: string, body: { keepCloned?: boolean; pinned?: boolean }) =>
-  request<{ repo: Repo }>('PATCH', `/api/v1/repos/${seg(id)}`, body).then((r) => r.repo);
+export const patchRepo = (id: string, body: components['schemas']['RepoPatch']) =>
+  unwrap(api.PATCH('/api/v1/repos/{id}', { ...byId(id), body })).then((r) => asRepo(r.repo));
 
 /** Queues a scan for clones nobody remembered; the server answers 202 and `/repos/found` changes later. */
 export const scanRepos = () => unwrap(api.POST('/api/v1/repos/scan')).then(() => undefined);
@@ -155,13 +156,6 @@ export const forgetRepo = (id: string, deleteFiles: boolean): Promise<RepoForgot
       params: { path: { id }, query: deleteFiles ? { deleteFiles: 'true' } : {} },
     }),
   );
-
-export const routineTemplatesQuery = queryOptions({
-  queryKey: ['routine-templates'],
-  queryFn: async () =>
-    (await unwrap(api.GET('/api/v1/routines/templates'))).templates as CodingRoutineTemplate[],
-  staleTime: Infinity,
-});
 
 /** "4 min ago", "3 days ago": how long since an ISO time. */
 export function ago(iso: string | null | undefined, now = Date.now()): string | null {

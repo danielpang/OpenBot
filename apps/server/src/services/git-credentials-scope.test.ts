@@ -6,6 +6,7 @@ import {
   runnerSessionIds,
   type CredentialAsk,
 } from './git-credentials.js';
+import { credentialAsk } from './__fixtures__/credential-ask.js';
 
 // The repository scope of the credential helper's answers fails closed: a
 // session's git is served only for its own repository, and only when git
@@ -23,16 +24,13 @@ const deps = { db: NO_ROWS, config: {}, logger: { warn() {} } } as unknown as Pa
 
 const PASSED = /Add a GitHub token|needs a GitHub App connection/;
 
-const ask = (over: Partial<CredentialAsk> = {}): CredentialAsk => ({
-  ownerId: '00000000-0000-4000-8000-000000000001',
-  workspaceId: '00000000-0000-4000-8000-000000000002',
-  host: 'github.com',
-  path: 'acme/app.git',
-  username: 'fetch',
-  sessionId: 'session-0001',
-  session: { pushAllowed: false, repoFullName: 'Acme/App' },
-  ...over,
-});
+const ask = credentialAsk(
+  () => ({
+    ownerId: '00000000-0000-4000-8000-000000000001',
+    workspaceId: '00000000-0000-4000-8000-000000000002',
+  }),
+  { repoFullName: 'Acme/App' },
+);
 
 const denied = async (over: Partial<CredentialAsk>) =>
   ((await resolveGitCredential(deps, ask(over))) as { denied?: string }).denied;

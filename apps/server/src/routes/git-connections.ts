@@ -2,13 +2,10 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { GitActAsSchema } from '@openbots/shared';
 import type { Context } from 'hono';
 import type { AppEnv, CurrentUser } from '../context.js';
-import { and, eq } from 'drizzle-orm';
-import { schema } from '../db/client.js';
-import { asDirectory, inWorkspace } from '../db/scope.js';
+import { inWorkspace } from '../db/scope.js';
 import { DomainError } from '../errors.js';
 import { authenticateHeaders, requireAdmin, requireUser } from '../middleware/auth.js';
 import { renderOAuthPage } from '../oauth-page.js';
-import { isOrgAdmin, type Role } from '../workspace.js';
 import {
   adminProblems,
   authenticated,
@@ -21,6 +18,7 @@ import {
   createTokenConnection,
   deleteConnection,
   getConnection,
+  isOrgAdminNow,
   listConnections,
   refreshRepositories,
   remoteRepos,
@@ -39,135 +37,18 @@ import {
 } from '../services/github-app.js';
 import { clearGithubApp, loadGithubApp } from '../services/github-app-store.js';
 
-// Git connections and remembered repositories, Phase 2 (GH1 to GH6, GH8;
-// I17 to I19). The route table the web and server engineers agree on. Every
-// path is under /api/v1 and needs a signed-in user unless it says otherwise;
-// another owner's connection or repository is 404. Shapes are from
-// `@openbots/shared` git.ts (`GitConnectionView`, `RemoteRepo`, `FoundRepo`,
-// `RepoRescueResult`) and routes/repos.ts (`Repo`, with its checkout).
-//
-// Connections
-//
-//   GET    /git-connections
-//          -> 200 { connections: GitConnectionView[] }
-//
-//   POST   /git-connections/token           body { token }
-//          -> 201 { connection: GitConnectionView }
-//          A pasted fine-grained token (kind `token`), checked with GitHub.
-//
-//   GET    /git-connections/github-app
-//          -> 200 { configured, source: 'config' | 'instance' | null, slug, installUrlAvailable,
-//                   manifestAvailable, publicUrlOk }
-//          Which button the Connectors page shows. `publicUrlOk` says whether
-//          OPENBOTS_PUBLIC_URL is https, which the manifest flow needs.
-//
-//   DELETE /git-connections/github-app
-//          -> 204
-//          Admins only. Forgets a stored App. 409 when it comes from GITHUB_APP_*.
-//
-//   POST   /git-connections/github-app/manifest   body { organization? }
-//          -> 200 { url, manifest }
-//          Admins only. Self-hosted only: starts GitHub's manifest flow (the client posts
-//          `manifest` to `url` in a form). With `organization` (a GitHub
-//          login) the App is made under that organization, so it can be
-//          installed there; without, on the admin's personal account, where
-//          only that account can install it (the App is private). 409 when
-//          an App already exists (stored, or GITHUB_APP_* set) or the
-//          deployment is managed.
-//
-//   GET    /git-connections/github-app/manifest/callback?code&state
-//          -> 302 to the Connectors page
-//          Exchanges `code` for the App and stores it sealed in
-//          instance_settings (`github_app`). `state` is checked first, and
-//          spent (single use); the user it names must still be an admin.
-//          409 when an App exists already: nothing is overwritten.
-//
-//   GET    /git-connections/github-app/install
-//          -> 302 to github.com/apps/<slug>/installations/new
-//          The server signs the `state`. 409 when there is no App yet.
-//
-//   GET    /git-connections/github-app/callback?installation_id&setup_action&state&code
-//          -> 302 to the Connectors page with `?connection=<id>`
-//          The App requests user authorization during install, so GitHub
-//          sends a `code`: exchanged for the user's token, the installation
-//          is bound only when that token lists it (403 otherwise), and the
-//          repositories that token reaches there, with push and admin,
-//          become the connection's whole reach (H1). The token is then
-//          revoked. Creates the owner's `app` connection, or updates it,
-//          and lists its repositories. Other owners, here or elsewhere, may
-//          connect the same installation, each held to their own access.
-//          With a `reauth` state (from /reauthorize) there is no
-//          `installation_id`: the connection's reach is read again.
-//
-//   GET    /git-connections/{id}/reauthorize
-//          -> 302 to github.com/login/oauth/authorize?client_id&state&redirect_uri
-//          An App connection only. The owner authorizes again, landing on the
-//          install callback with a `reauth` state bound to the connection.
-//
-//   GET    /git-connections/{id}/repositories?q=
-//          -> 200 { repositories: RemoteRepo[] }
-//          Every repository the connection reaches, filtered by `q` on the
-//          full name, with `remembered` set for those already in the list.
-//
-//   PATCH  /git-connections/{id}            body { actAs: GitActAs }
-//          -> 200 { connection: GitConnectionView }
-//          App connections only (400 otherwise). `owner` is 409
-//          ACT_AS_NEEDS_SIGN_IN while the owner has no GitHub sign-in.
-//
-//   POST   /git-connections/{id}/sync
-//          -> 200 { connection: GitConnectionView, needsReauthorize: boolean }
-//          Lists the repositories again and refreshes status. An App
-//          connection drops what the installation no longer reaches; it
-//          gains nothing without the owner's own authorization, so
-//          `needsReauthorize` is true for it (see /reauthorize).
-//
-//   DELETE /git-connections/{id}
-//          -> 204
-//          Forgets the connection. Its repositories keep their rows, with
-//          connection_id null (the foreign key sets it).
-//
-// Repositories (beside the Phase 1 routes in routes/repos.ts)
-//
-//   POST   /repos/remember                  body { fullNames: string[], connectionId: uuid }
-//          -> 200 { repos: Repo[] }
-//          Bulk from the picker; each is cloned in the background (GH2).
-//
-//   GET    /repos/found
-//          -> 200 { found: FoundRepo[] }
-//          Clones on the computer nobody remembered (GH6), from the last scan.
-//
-//   POST   /repos/found/remember            body { path: string }
-//          -> 200 { repo: Repo }
-//
-//   POST   /repos/rescue
-//          -> 200 { results: RepoRescueResult[] }
-//          Rescue before loss (GH5): pushes unpushed work to
-//          `rescueBranchName(now)` where the connection allows it.
-//
-//   PATCH  /repos/{id}                      body { keepCloned?: boolean, pinned?: boolean }
-//          -> 200 { repo: Repo }
-//
-//   POST   /repos/scan
-//          -> 202
-//          Queues a scan of /home/bot, `REPO_SCAN_DEPTH` levels deep.
-//
-// Webhook
-//
-//   POST   /api/v1/github/app/webhook       (`GITHUB_APP_WEBHOOK_PATH`)
-//          -> 202
-//          Unauthenticated. X-Hub-Signature-256 is checked against the App's
-//          webhook secret (`GithubAppService.verifyWebhook`); a bad or missing
-//          signature is 401. `installation` and `installation_repositories`
-//          update connections; the rest are matched to Routines by
-//          installation and repository (`GithubMatchSchema`).
+// Git connections and the GitHub App (docs/TECHNICAL_PLAN.md 22.12; GH1 to
+// GH8, I17 to I19). Every path is under /api/v1 and needs a signed-in user
+// unless its route says otherwise; another owner's connection is 404. The
+// OpenAPI document generated from these routes is the contract.
 //
 // The two GitHub callbacks are browser redirects from github.com. Their
 // `state` is signed and bound to the owner who started the flow, for 10
-// minutes, and single use (services/github-app.ts). The signed-in session must be that
-// owner's; on a self-hosted install, whose one owner is the only one who
-// can start a flow, the state alone suffices when the browser has no
-// session. A failure ends on the same small page connector sign-ins do
-// (oauth-page.ts).
+// minutes, and single use (services/github-app.ts). The signed-in session
+// must be that owner's; on a self-hosted install, whose one owner is the
+// only one who can start a flow, the state alone suffices when the browser
+// has no session. A failure ends on the same small page connector sign-ins
+// do (oauth-page.ts).
 
 const GitConnectionSchema = z
   .object({
@@ -298,7 +179,7 @@ async function callbackOwner(
       refused: failurePage(c, 401, 'Sign in to OpenBots in this browser, then try again.'),
     };
   }
-  if (admin && !(await isAdminNow(c, named.userId, named.workspaceId))) {
+  if (admin && !(await isOrgAdminNow(deps.db, named.userId, named.workspaceId))) {
     return { refused: failurePage(c, 403, 'Only an admin can add a GitHub App.') };
   }
   // Last, once everything else holds: the state is spent, so the link works once.
@@ -306,26 +187,6 @@ async function callbackOwner(
     return { refused: failurePage(c, 400, 'This link was used already. Start again.') };
   }
   return { owner: { id: named.userId, workspaceId: named.workspaceId }, state: named };
-}
-
-/** The user is, now, an admin (or owner) of the organization, and not suspended. */
-async function isAdminNow(c: Ctx, userId: string, workspaceId: string) {
-  const db = c.var.deps.db;
-  const [member] = await asDirectory(() =>
-    db
-      .select({
-        role: schema.workspaceMembers.role,
-        suspendedAt: schema.workspaceMembers.suspendedAt,
-      })
-      .from(schema.workspaceMembers)
-      .where(
-        and(
-          eq(schema.workspaceMembers.userId, userId),
-          eq(schema.workspaceMembers.workspaceId, workspaceId),
-        ),
-      ),
-  );
-  return Boolean(member && !member.suspendedAt && isOrgAdmin(member.role as Role));
 }
 
 function isHttps(url: string) {

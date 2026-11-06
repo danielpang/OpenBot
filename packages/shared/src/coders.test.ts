@@ -11,7 +11,6 @@ import {
   CoderFeedLineSchema,
   CodingSessionResultSchema,
   DEFAULT_CODER_ACTIONS,
-  isCoderTool,
 } from './coders.js';
 import { CoderAgentSchema, resolveToolPolicy } from './index.js';
 
@@ -87,12 +86,6 @@ describe('coding agents', () => {
       pr_url: 'https://github.com/openbots/relay/pull/1',
     };
     expect(CodingSessionResultSchema.parse(result)).toEqual(result);
-  });
-
-  it('knows its tool', () => {
-    expect(isCoderTool('code_task')).toBe(true);
-    expect(isCoderTool('bash')).toBe(false);
-    expect(isCoderTool(null)).toBe(false);
   });
 
   it('decides action classes by default, by the Bot, and by who started the run', () => {

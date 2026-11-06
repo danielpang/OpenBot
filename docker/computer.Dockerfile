@@ -97,6 +97,17 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund --cache /tmp/npm-cac
     && node_modules/@anthropic-ai/claude-code/bin/claude.exe --version \
     && node node_modules/@openai/codex/bin/codex.js --version \
     && node node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js --version
+# Each installed CLI must be exactly the pinned version: a lockfile drift or a
+# package that resolves to another build fails the image here, not on a Bot's
+# computer (design: Testing, "a CI check runs <cli> --version and fails when it
+# differs from the pin").
+RUN node -e ' \
+      const want = require("./package.json").dependencies; \
+      for (const name of Object.keys(want)) { \
+        const have = require(`./node_modules/${name}/package.json`).version; \
+        if (have !== want[name]) { console.error(`${name}: installed ${have}, pinned ${want[name]}`); process.exit(1); } \
+        console.log(`${name} ${have}`); \
+      }'
 
 # --- runtime --------------------------------------------------------------------
 FROM ${UBUNTU_IMAGE} AS runtime

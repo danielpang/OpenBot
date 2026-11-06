@@ -1,10 +1,12 @@
+import { CODER_ID, CODERS_GID, RUNNER_ID } from '@openbots/shared';
 import { MAX_SCREEN } from './protocol.js';
 
 // Who each program the agent starts runs as (S-7). In the computer image the
 // agent starts as root and drops its effective uid to the bot user
 // (privileges.ts); from then on every child goes through the setuid-free
 // helper `openbots-runas` (native/runas.c), which is the only way to another
-// uid. Keep the identities here in step with the helper's checks.
+// uid. Keep the identities here in step with the helper's checks; the coder,
+// coders and runner ids are @openbots/shared's (coder-runtime.ts).
 //
 //   bot 1000:1000            the terminal, and commands that name no screen
 //   1000:(2000+n)            commands for the Bot of screen n: still the bot
@@ -46,15 +48,8 @@ export interface Identity {
 export const BOT_ID = 1000;
 export const SCREEN_ID_BASE = 2000;
 export const STORE_ID = 1900;
-/**
- * The coder user's uid and the coders group's gid. Mirrors CODER_ID and
- * CODERS_GID in @openbots/computer (packages/computer/src/types.ts), which
- * depends on this package and so cannot be imported here.
- */
-export const CODER_ID = 1800;
-export const CODERS_GID = 1800;
-/** The runner's uid. Mirrors RUNNER_ID in @openbots/computer (packages/computer/src/types.ts). */
-export const RUNNER_ID = 1801;
+/** The coder user, the coders group and the runner, from @openbots/shared (coder-runtime.ts). */
+export { CODER_ID, CODERS_GID, RUNNER_ID };
 /** Where the image installs the helper. */
 export const RUNAS_PATH = '/usr/local/libexec/openbots/runas';
 

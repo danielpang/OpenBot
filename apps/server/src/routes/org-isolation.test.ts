@@ -73,6 +73,8 @@ const OWNER_GET_EXCEPTIONS = new Set([
   '/api/v1/git-connections/{id}/reauthorize',
   // A rescue's results live ten minutes in memory; this test starts none.
   '/api/v1/repos/rescue/{requestId}',
+  // Likewise a prepared reset's (fifteen minutes); this test prepares none.
+  '/api/v1/computer/reset/{requestId}',
 ]);
 
 /** Lists only owners and admins read; Carol is a member in B. */

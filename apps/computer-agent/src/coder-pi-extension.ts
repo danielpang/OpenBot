@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { askOwner, PERMISSION_TIMEOUT_MS } from './coder-permission-mcp.js';
+import { CODER_MODE_ENV } from '@openbots/shared';
 import { CODER_SOCKET_ENV, type PermissionRelayReply } from './coder-paths.js';
+import { askOwner, permissionTimeoutMs } from './coder-permission-mcp.js';
 
 // The OpenBots extension for pi (I11), at CODER_PI_EXTENSION
 // (/app/apps/computer-agent/dist/coder-pi-extension.js) in the image. The
@@ -20,11 +21,12 @@ import { CODER_SOCKET_ENV, type PermissionRelayReply } from './coder-paths.js';
 // the read tools may run; the rest are blocked here without asking anyone,
 // on top of the `--tools` allowlist the launch passes.
 //
-// No dependencies beyond node's built-ins: it runs from the agent's dist/
-// inside pi's process, as the coder user.
+// No dependencies beyond node's built-ins and @openbots/shared: it runs from
+// the agent's dist/ inside pi's process, as the coder user. Each call waits
+// for the owner as long as the Claude Code relay does (`permissionTimeoutMs`,
+// OPENBOTS_APPROVAL_TTL_MS from the session's environment).
 
-/** The variable the launch sets to the session's mode. */
-export const CODER_MODE_ENV = 'OPENBOTS_CODER_MODE';
+export { CODER_MODE_ENV };
 
 /** pi's built in tools that only read; the only ones a plan session may use. */
 export const PI_READ_TOOLS: ReadonlySet<string> = new Set(['read', 'grep', 'find', 'ls']);
@@ -59,7 +61,7 @@ export interface PiGateOptions {
 /** Decides one tool call: blocked in plan mode unless it reads, else the owner's answer. */
 export async function gateToolCall(
   event: PiToolCallEvent,
-  { socket, mode, timeoutMs = PERMISSION_TIMEOUT_MS }: PiGateOptions,
+  { socket, mode, timeoutMs = permissionTimeoutMs() }: PiGateOptions,
 ): Promise<PiBlock | undefined> {
   if (mode === 'plan' && !PI_READ_TOOLS.has(event.toolName)) {
     return {

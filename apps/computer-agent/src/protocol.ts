@@ -315,6 +315,13 @@ export const CoderStartSchema = z.strictObject({
   rows: z.number().int().min(5).max(200).optional(),
   /** Sets the credential helper up for the process; off for a login. */
   git_credentials: z.boolean().default(true),
+  /**
+   * The directories git may work in although another user owns them (its
+   * `safe.directory` entries): the repository and the session's worktree,
+   * each absolute under the home. Without it the agent infers them from
+   * `cwd` (a worktree under `repos/<owner>/<name>/` and that repository).
+   */
+  safe_directories: z.array(z.string().min(1).max(4_096)).max(16).optional(),
 });
 export type CoderStart = z.infer<typeof CoderStartSchema>;
 /** `start` as the server writes it, before defaults. */

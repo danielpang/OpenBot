@@ -1,13 +1,16 @@
-import type {
-  GitActAs,
-  GitConnectionRepoAccess,
-  GitConnectionView,
-  RemoteRepo,
+import {
+  normalizeFullName,
+  type GitActAs,
+  type GitConnectionRepoAccess,
+  type GitConnectionView,
+  type RemoteRepo,
 } from '@openbots/shared';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
-import { schema } from '../db/client.js';
+import { schema, type Db } from '../db/client.js';
+import { asDirectory } from '../db/scope.js';
 import { DomainError, notFound } from '../errors.js';
+import { isOrgAdmin, type Role } from '../workspace.js';
 import { decryptSecretString, encryptSecret, keyringFromConfig } from '../secrets.js';
 import { ownerOAuthToken } from './git-credentials.js';
 import { GithubApiError, githubAppFor, type GithubApp } from './github-app.js';
@@ -70,7 +73,9 @@ export const ACT_AS_NEEDS_SIGN_IN =
 export const connectionNoAccess = (message: string) =>
   new DomainError(403, 'CONNECTION_NO_ACCESS', message);
 
-const normalName = (fullName: string) => fullName.replace(/\.git$/, '').toLowerCase();
+/** `owner/name` in the form two names are compared in: no `.git`, lower case. */
+const normalName = (fullName: string) =>
+  (normalizeFullName(fullName) ?? fullName.trim()).toLowerCase();
 
 /** The repository's owner is the connection's account (an installation reaches no other). */
 const ofAccount = (row: Pick<ConnectionRow, 'accountLogin'>, fullName: string) =>
@@ -523,7 +528,7 @@ export async function connectionForRepo(
   deps: Pick<AppDeps, 'db'>,
   ask: { ownerId: string; workspaceId?: string; repoFullName: string },
 ): Promise<ConnectionRow | null> {
-  const fullName = ask.repoFullName.replace(/\.git$/, '').toLowerCase();
+  const fullName = normalName(ask.repoFullName);
   const [repo] = await deps.db
     .select({ connectionId: schema.repos.connectionId })
     .from(schema.repos)
@@ -578,7 +583,7 @@ export async function tokenForConnection(
 ): Promise<{ username: string; password: string } | null> {
   if (connection.kind === 'app') {
     if (!connection.installationId) throw connectionNoAccess(NO_INSTALLATION);
-    const fullName = scope.repoFullName.replace(/\.git$/, '');
+    const fullName = normalizeFullName(scope.repoFullName) ?? scope.repoFullName.trim();
     if (!ofAccount(connection, fullName)) {
       throw connectionNoAccess(
         `This connection reaches repositories of ${connection.accountLogin} only, not ${fullName}`,
@@ -617,4 +622,23 @@ export async function tokenForRepo(
   const connection = await connectionForRepo(deps, ask);
   if (!connection) return null;
   return tokenForConnection(deps, connection, ask);
+}
+
+/** The user is, now, an admin (or owner) of the organization, and not suspended. */
+export async function isOrgAdminNow(db: Db, userId: string, workspaceId: string): Promise<boolean> {
+  const [member] = await asDirectory(() =>
+    db
+      .select({
+        role: schema.workspaceMembers.role,
+        suspendedAt: schema.workspaceMembers.suspendedAt,
+      })
+      .from(schema.workspaceMembers)
+      .where(
+        and(
+          eq(schema.workspaceMembers.userId, userId),
+          eq(schema.workspaceMembers.workspaceId, workspaceId),
+        ),
+      ),
+  );
+  return Boolean(member && !member.suspendedAt && isOrgAdmin(member.role as Role));
 }

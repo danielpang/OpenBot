@@ -53,6 +53,9 @@ const account = (over: Partial<CoderAccount> & Pick<CoderAccount, 'agent'>): Cod
   providerId: null,
   needsSignIn: (over.authKind ?? 'none') === 'none',
   lastErrorKind: over.lastError ? 'other' : null,
+  planProvider: null,
+  checkAvailable: over.agent === 'pi',
+  signIn: ({ claude: 'link', codex: 'device', pi: 'terminal' } as const)[over.agent],
   ...over,
 });
 
@@ -195,8 +198,10 @@ describe('Settings > Coding agents (CA2)', () => {
       'Not signed in',
     );
     expect(card('pi').textContent).toContain('pi could not start: missing binary');
-    expect(card('pi').textContent).toContain("Anthropic's terms reserve");
-    expect(card('pi').textContent).toContain('ChatGPT plan');
+    expect(card('pi').textContent).toContain(
+      'pi signs in from its own terminal: run pi, type /login and pick a provider. A ChatGPT plan, a Claude plan, GitHub Copilot and the other providers pi lists all work; Anthropic bills a Claude plan used through pi as extra usage, not against the plan. You can also use an API key from Settings > Models.',
+    );
+    expect(card('pi').textContent).not.toContain("Anthropic's terms reserve");
     expect(buttonIn(card('claude'), 'Sign in')).toBeDefined();
     expect(buttonIn(card('claude'), 'Sign out')).toBeUndefined();
     expect(buttonIn(card('codex'), 'Sign out')).toBeDefined();
@@ -458,8 +463,13 @@ describe('Settings > Coding agents: Codex, pi and Check (CA3)', () => {
     expect(navigate).toHaveBeenCalledExactlyOnceWith(
       '/computer?cwd=%2Fhome%2Fcoder&user=coder&preset=pi',
     );
-    expect(card('pi').textContent).toContain(
-      'pi signs in inside its own terminal. Run /login there.',
+    // The cache write that carries the terminal reaches the card on React Query's next notify.
+    await until(
+      () =>
+        !!card('pi').textContent?.includes(
+          'pi signs in inside its own terminal. Run /login there.',
+        ),
+      'the terminal message',
     );
     expect(buttonIn(card('pi'), 'Open the terminal')).toBeDefined();
     await act(async () => buttonIn(card('pi'), 'Check')!.click());
@@ -476,28 +486,66 @@ describe('Settings > Coding agents: Codex, pi and Check (CA3)', () => {
     expect(card('pi').textContent).not.toMatch(/[–—]| - /);
   });
 
-  it('checks a signed in Codex and shows its version, and offers no Check on Claude Code', async () => {
+  it('offers Check where the view says, Claude Code included, and reads the new version', async () => {
     agents = agents.map((a) =>
       a.agent === 'claude' || a.agent === 'codex'
-        ? { ...a, authKind: 'subscription', accountLabel: 'dan@example.com', needsSignIn: false }
+        ? {
+            ...a,
+            authKind: 'subscription',
+            accountLabel: 'dan@example.com',
+            needsSignIn: false,
+            checkAvailable: a.agent === 'claude',
+          }
         : a,
     );
     const handle = server.handle;
     server.handle = async (request, path, body) => {
-      if (path === '/api/v1/coders/codex/check') {
-        agents = agents.map((a) => (a.agent === 'codex' ? { ...a, version: '2.1.0' } : a));
-        return Response.json({ account: agents[1] });
+      if (path === '/api/v1/coders/claude/check') {
+        agents = agents.map((a) => (a.agent === 'claude' ? { ...a, version: '2.1.0' } : a));
+        return Response.json({ account: agents[0] });
       }
       return handle(request, path, body);
     };
     render(<CodingAgentsSettings />);
-    await until(() => !!buttonIn(card('codex'), 'Check'), 'Check');
-    // The server answers 400 for Claude Code: there is nothing to check.
-    expect(buttonIn(card('claude'), 'Check')).toBeUndefined();
-    expect(card('codex').textContent).toContain('Version 1.0.0');
-    await act(async () => buttonIn(card('codex'), 'Check')!.click());
-    await until(() => card('codex').textContent!.includes('Version 2.1.0'), 'the new version');
-    expect(server.requests.some((r) => r.path === '/api/v1/coders/claude/check')).toBe(false);
+    await until(() => !!buttonIn(card('claude'), 'Check'), 'Check');
+    // `checkAvailable` false: no Check, whatever the agent.
+    expect(buttonIn(card('codex'), 'Check')).toBeUndefined();
+    expect(card('claude').textContent).toContain('Version 1.0.0');
+    await act(async () => buttonIn(card('claude'), 'Check')!.click());
+    await until(() => card('claude').textContent!.includes('Version 2.1.0'), 'the new version');
+    expect(server.requests.some((r) => r.path === '/api/v1/coders/codex/check')).toBe(false);
+  });
+
+  it('says what a signed-in plan bills, by the provider pi signed in to', async () => {
+    const signedIn = {
+      authKind: 'subscription',
+      accountLabel: 'dan@example.com',
+      needsSignIn: false,
+    } as const;
+    agents = [
+      account({ agent: 'claude', ...signedIn, planProvider: 'anthropic' }),
+      account({ agent: 'codex', ...signedIn, planProvider: 'openai' }),
+      account({ agent: 'pi', ...signedIn, planProvider: 'anthropic' }),
+    ];
+    render(<CodingAgentsSettings />);
+    await until(() => !!card('pi')?.querySelector('[data-plan]'), 'the plan line');
+    const plan = (agent: string) => card(agent).querySelector('[data-plan]')?.textContent;
+    expect(plan('claude')).toBe('Usage is billed to your Claude plan.');
+    expect(plan('codex')).toBe('Usage is billed to your ChatGPT plan.');
+    expect(plan('pi')).toBe('Usage is billed to your Claude plan as extra usage.');
+    act(() => root!.unmount());
+    host.remove();
+    agents = [account({ agent: 'pi', ...signedIn, planProvider: 'openai' })];
+    render(<CodingAgentsSettings />);
+    await until(() => !!card('pi')?.querySelector('[data-plan]'), 'the plan line');
+    expect(plan('pi')).toBe('Usage is billed to your ChatGPT plan.');
+    act(() => root!.unmount());
+    host.remove();
+    agents = [account({ agent: 'pi', ...signedIn, planProvider: 'other' })];
+    render(<CodingAgentsSettings />);
+    await until(() => !!card('pi')?.querySelector('[data-plan]'), 'the plan line');
+    expect(plan('pi')).toBe('Usage is billed to your plan.');
+    expect(host.textContent).not.toMatch(/[–—]| - /);
   });
 
   it('says a rejected key with a link to Settings > Models, and other errors as they are', async () => {

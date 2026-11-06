@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { codexAdapter, unwrapShell } from './codex.js';
 
-// Codex raises no permission prompts in `exec` mode; `classify` holds the
-// interface with Claude Code's classifier, a command read as Bash and a file
-// change as an Edit of each path.
+// Codex's app-server approvals (codex.ts) meet the shared classifier
+// (classify.ts): a command read as a command line and a file change as an
+// edit of each path, shown relative to the worktree.
 
 const context = { worktreePath: '/home/bot/repos/acme/relay/.worktrees/bot-fix-reconnect' };
 const classOf = (toolName: string, input: unknown) =>
@@ -30,6 +30,13 @@ describe('codex classify', () => {
     expect(
       classOf('file_change', { changes: [{ path: `${context.worktreePath}/src/a.ts` }] }),
     ).toBe('other');
+    expect(
+      codexAdapter.classify(
+        'fileChange',
+        { changes: [{ path: `${context.worktreePath}/src/a.ts` }, { path: 'b.ts' }] },
+        context,
+      ).title,
+    ).toBe('Edit src/a.ts, b.ts');
     expect(
       classOf('file_change', {
         changes: [{ path: `${context.worktreePath}/src/a.ts` }, { path: '/etc/hosts' }],

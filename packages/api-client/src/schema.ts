@@ -5222,6 +5222,219 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/computer/reset/prepare': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Rescue unpushed work before a reset
+     * @description The first step of a reset (GH5): queues the rescue job over every repository on the computer, which starts it if it is off and pushes unpushed commits and uncommitted changes to rescue branches. Poll GET /computer/reset/{requestId}, show what could not be saved and the coding sessions that would stop, then confirm with POST /computer/reset within fifteen minutes. Docker computers only (409 `RESET_UNSUPPORTED`).
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Rescue queued */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              /** Format: uuid */
+              requestId: string;
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The account has no computer yet */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The computer cannot be reset from here (`RESET_UNSUPPORTED`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No computer provider, or the computer could not start (`COMPUTER_UNAVAILABLE`) */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/computer/reset/{requestId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** A prepared reset's rescue, what it could not save, and the sessions it would stop */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          requestId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The rescue results once `done` */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ComputerResetStatus'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such reset, or it was prepared more than fifteen minutes ago */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/computer/reset': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Reset the computer: a fresh home, after the rescue
+     * @description Confirms a reset prepared with POST /computer/reset/prepare whose rescue is `done`, within fifteen minutes of the prepare. Stops the computer and every coding session on it, removes the container and its home volume (/home/bot: files, clones, worktrees), marks every checkout `missing` and clears the sessions' worktrees. The state volume, with the browser cookie store and the coding agents' sign-ins, is kept unless `resetSignIns`. Audited as `computer.reset`. Nothing is made until the next start, which creates a fresh computer; its reconcile job then clones every repository marked `keep_cloned` again, and the rescue branches stay on the remote. A coding session started after the prepare, so not shown to the owner, refuses the reset (409 `CODING_SESSION_RUNNING`): prepare again.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['ComputerReset'];
+        };
+      };
+      responses: {
+        /** @description Reset: stopped with no machine; the next start makes a fresh one */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Computer'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The account has no computer yet */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not prepared, the rescue still running or the prepare too old (`RESET_NOT_PREPARED`), a coding session the owner was not shown (`CODING_SESSION_RUNNING`), or a computer that cannot be reset from here (`RESET_UNSUPPORTED`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No computer provider, or the computer could not start (`COMPUTER_UNAVAILABLE`) */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/computer/files': {
     parameters: {
       query?: never;
@@ -5843,7 +6056,7 @@ export interface paths {
     put?: never;
     /**
      * Ask the CLI on the computer whether the agent is signed in
-     * @description Runs the agent's own status check as `coder` (Codex: `codex login status`; pi: `pi auth check` for each of its providers), starting the computer if needed. Signed in, the card reads `subscription` for a plan or `api_key` (with no `providerId`) for a key the CLI holds itself, and pi's sign-ins a Bot is waiting on end signed in; not, it is left as it was.
+     * @description Runs the agent's own status check as `coder` (Claude Code: `claude auth status`; Codex: `codex login status`; pi: `pi auth check` for each of its providers), starting the computer if needed. Signed in, the card reads `subscription` for a plan or `api_key` (with no `providerId`) for a key or token the CLI holds itself, and the sign-ins a Bot is waiting on for an agent that signs in in its terminal (pi) end signed in; not, it is left as it was.
      */
     post: {
       parameters: {
@@ -5867,7 +6080,7 @@ export interface paths {
             };
           };
         };
-        /** @description Claude Code has no check (`CODER_CHECK_UNSUPPORTED`), or this build cannot run the agent (`CODER_UNSUPPORTED`) */
+        /** @description The agent has no sign-in check (`CODER_CHECK_UNSUPPORTED`), or is not one this build runs (`CODER_UNSUPPORTED`) */
         400: {
           headers: {
             [name: string]: unknown;
@@ -12467,6 +12680,55 @@ export interface components {
       /** @description Minutes unused before it stops, 5 to 1440 */
       idleTimeoutMin?: number;
     };
+    ComputerResetStatus: {
+      /** @enum {string} */
+      status: 'running' | 'done';
+      results: {
+        /** Format: uuid */
+        repoId: string;
+        fullName: string;
+        branch: string | null;
+        pushed: boolean;
+        note: string;
+      }[];
+      /** @description Work the rescue could not push, which a reset loses */
+      unsaved: {
+        fullName: string;
+        branch: string | null;
+        /** @description Why it was not saved, in plain words */
+        note: string;
+      }[];
+      /** @description Set when the rescue failed outright: what it saved is unknown */
+      error: string | null;
+      /** @description Coding sessions a reset would stop; warn before confirming */
+      runningSessions: {
+        /** Format: uuid */
+        id: string;
+        /** Format: uuid */
+        botId: string;
+        agent: string;
+        repoFullName: string | null;
+        branch: string | null;
+        /** @enum {string} */
+        status: 'queued' | 'starting' | 'running' | 'waiting' | 'settled' | 'failed' | 'stopped';
+      }[];
+      /**
+       * Format: date-time
+       * @description Confirm the reset before this
+       */
+      expiresAt: string;
+    };
+    ComputerReset: {
+      /**
+       * Format: uuid
+       * @description From POST /computer/reset/prepare
+       */
+      requestId: string;
+      /** @enum {boolean} */
+      confirm: true;
+      /** @description Also remove the cookie store and the coding agents' sign-ins on the computer */
+      resetSignIns?: boolean;
+    };
     ComputerDirListing: {
       path: string;
       entries: components['schemas']['ComputerDirEntry'][];
@@ -12515,6 +12777,18 @@ export interface components {
        * @enum {string|null}
        */
       lastErrorKind: 'sign_in' | 'key' | 'other' | null;
+      /**
+       * @description Whose plan a `subscription` account bills: `anthropic` for Claude Code, `openai` for Codex, and for pi the plan its check found (a Claude plan bills pi as extra usage, which the card says); null without a plan sign-in
+       * @enum {string|null}
+       */
+      planProvider: 'anthropic' | 'openai' | 'other' | null;
+      /** @description POST /coders/{agent}/check can ask the CLI whether it is signed in */
+      checkAvailable: boolean;
+      /**
+       * @description How the agent signs in: a link to open, a link and a code to enter there (`device`), or in the computer's terminal
+       * @enum {string}
+       */
+      signIn: 'link' | 'device' | 'terminal';
     };
     CoderLogin: {
       /** Format: uuid */
@@ -12643,6 +12917,8 @@ export interface components {
        * @description The last commit on the remote default branch, from the last fetch
        */
       lastRemotePushAt: string | null;
+      /** @description The checkout on disk, its session worktrees included, in bytes, as the last refresh measured it; null before one did */
+      diskBytes: number | null;
       /** @description A clone found on the computer that is not remembered yet (GH6) */
       found: boolean;
       checkout: components['schemas']['RepoCheckout'];

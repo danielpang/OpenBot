@@ -2,7 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { requireUser } from '../middleware/auth.js';
 import { authenticated, authProblems, createRouter, problemResponse } from '../openapi.js';
 import { FoundRepoSchema, RepoRescueResultSchema } from '@openbots/shared';
-import { rescueStatus } from '../services/repos-jobs.js';
+import { rescueStatus } from '../services/repos-rescue.js';
 import {
   addRepoByUrl,
   cloneRepo,
@@ -23,7 +23,7 @@ import {
 // git connection's picker, remembered from a clone found on the computer,
 // cloned onto the owner's computer by the runner's `checkout` jobs, rescued
 // before loss, and forgotten again (the clone stays on disk unless asked).
-// Another owner's repository is 404. The route table is in git-connections.ts.
+// Another owner's repository is 404.
 
 const RepoCheckoutSchema = z
   .object({
@@ -56,6 +56,10 @@ const RepoSchema = z
     lastRemotePushAt: z.iso.datetime().nullable().openapi({
       description: 'The last commit on the remote default branch, from the last fetch',
     }),
+    diskBytes: z.number().int().nonnegative().nullable().openapi({
+      description:
+        'The checkout on disk, its session worktrees included, in bytes, as the last refresh measured it; null before one did',
+    }),
     found: z.boolean().openapi({
       description: 'A clone found on the computer that is not remembered yet (GH6)',
     }),
@@ -78,6 +82,7 @@ function toRepo({ repo, checkout }: RepoWithCheckout): z.infer<typeof RepoSchema
     description: repo.description,
     lastUsedAt: iso(repo.lastUsedAt),
     lastRemotePushAt: iso(repo.lastRemotePushAt),
+    diskBytes: checkout?.diskBytes ?? null,
     found: isFound(repo),
     checkout: checkout
       ? {

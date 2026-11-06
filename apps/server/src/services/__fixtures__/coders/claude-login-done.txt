@@ -1,8 +1,1 @@
-
-[32m✓[39m Long-lived authentication token created successfully!
-
-Your OAuth token (valid for 1 year):
-
-sk-ant-oat01-EXAMPLEONLYnotarealtoken
-
-Store this token securely.
+Login successful.

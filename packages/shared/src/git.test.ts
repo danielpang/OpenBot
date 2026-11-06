@@ -5,6 +5,8 @@ import {
   GITHUB_APP_EVENTS,
   GITHUB_APP_MANIFEST_EVENTS,
   GITHUB_APP_WEBHOOK_PATH,
+  normalizeFullName,
+  REPO_FULL_NAME,
   GitConnectionViewSchema,
   RemoteRepoSchema,
   RepoCheckoutStateSchema,
@@ -72,7 +74,7 @@ describe('git connections and repositories', () => {
     ).toBe(true);
   });
 
-  it('adds updating to the Phase 1 checkout states', () => {
+  it('adds updating to the checkout states', () => {
     expect(RepoCheckoutStateSchema.options).toEqual([
       'cloning',
       'updating',
@@ -137,5 +139,17 @@ describe('CODING_ROUTINE_TEMPLATES', () => {
     for (const { name, description, prompt } of CODING_ROUTINE_TEMPLATES) {
       expect(`${name} ${description} ${prompt}`).not.toMatch(new RegExp('[\\u2013\\u2014]| - '));
     }
+  });
+});
+
+describe('repository full names', () => {
+  it('takes owner/name, trims it and drops .git, and refuses dot-only parts', () => {
+    expect(normalizeFullName(' openbots/relay.git ')).toBe('openbots/relay');
+    expect(normalizeFullName('Open.Bots/re_lay-2')).toBe('Open.Bots/re_lay-2');
+    for (const bad of ['../relay', 'openbots/..', './x', 'a/.', 'a/b/c', 'a', 'a b/c', '']) {
+      expect(normalizeFullName(bad)).toBeNull();
+    }
+    expect(REPO_FULL_NAME.test('a/...')).toBe(false);
+    expect(REPO_FULL_NAME.test('a/.github')).toBe(true);
   });
 });

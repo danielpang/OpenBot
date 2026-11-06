@@ -77,7 +77,8 @@ import {
   transcriptMessage,
   type ChatHandles,
 } from '../services/chats.js';
-import { CODER_WIDGET_KINDS, coderServices, resumeIfCoderWidgetDone } from '../services/coders.js';
+import { coderServices } from '../services/coder-tool.js';
+import { CODER_WIDGET_KINDS, resumeIfCoderWidgetDone } from '../services/coder-widget-actions.js';
 import { computerAvailable, computerServices } from '../services/computer.js';
 import { attachmentServices, loadContextAttachments } from '../services/files.js';
 import {

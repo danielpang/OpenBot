@@ -7,24 +7,16 @@ import type { CoderAdapter } from './types.js';
 
 export * from './types.js';
 
-// The adapters this build knows. Phase 1 registers Claude Code; Codex and pi
-// follow in Phase 3 (design doc, Build plan).
-const ADAPTERS: Partial<Record<CoderAgent, CoderAdapter>> = { claude: claudeAdapter };
-ADAPTERS.codex = codexAdapter;
-ADAPTERS.pi = piAdapter;
-
-export function registerCoderAdapter(adapter: CoderAdapter): void {
-  ADAPTERS[adapter.agent] = adapter;
-}
+/** The adapter of every agent of CODER_AGENTS; tests swap one in through it. */
+export const CODER_ADAPTERS: Record<CoderAgent, CoderAdapter> = {
+  claude: claudeAdapter,
+  codex: codexAdapter,
+  pi: piAdapter,
+};
 
 export function adapterFor(agent: CoderAgent): CoderAdapter {
-  const adapter = ADAPTERS[agent];
-  if (!adapter) {
-    throw new DomainError(400, 'CODER_UNSUPPORTED', `${agent} is not available in this build yet`);
-  }
+  const adapter = Object.hasOwn(CODER_ADAPTERS, agent) ? CODER_ADAPTERS[agent] : undefined;
+  // Only a value that skipped validation gets here.
+  if (!adapter) throw new DomainError(400, 'CODER_UNSUPPORTED', `${agent} is not a coding agent`);
   return adapter;
-}
-
-export function hasCoderAdapter(agent: CoderAgent): boolean {
-  return agent in ADAPTERS;
 }

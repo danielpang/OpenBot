@@ -4,15 +4,17 @@ import { router } from 'expo-router';
 import {
   CODER_AGENT_LABELS,
   CODING_SESSION_ENDED,
-  type CoderAgent,
-  type CoderUsage,
   type CodingSessionStatus,
 } from '@openbots/shared';
-import type {
-  CoderLoginProps,
-  CoderLoginWidgetState,
-  CodingSessionProps,
-  CodingSessionState,
+import {
+  approvalStatusWords,
+  sessionErrorWords,
+  sessionStatusWords,
+  usageWords,
+  type CoderLoginProps,
+  type CoderLoginWidgetState,
+  type CodingSessionProps,
+  type CodingSessionState,
 } from '@openbots/widgets';
 import { Button, Field, Icon, Label, row } from '../components/ui';
 import { useTheme, type Theme } from '../theme';
@@ -20,7 +22,9 @@ import { useTheme, type Theme } from '../theme';
 // The coding agent widgets on the phone (CA3, CA5, CA6). The phone shows a
 // session read only (PRD M10): no terminal and no full log, only the last few
 // feed lines. What the phone is for is answering: approvals, Stop, and the
-// sign-in link and code. Continue is a thread reply in Phase 1.
+// sign-in link and code. To continue an ended session the owner replies in
+// its thread, and the Bot passes the reply on to the agent. The words come
+// from `@openbots/widgets`, so the phone says what the web widget says.
 
 /** Sends a widget action; resolves false when it failed. */
 type Act = (action: Record<string, unknown>) => Promise<boolean | void>;
@@ -28,16 +32,6 @@ type Decide = (approvalId: string, decision: 'approve' | 'deny') => Promise<bool
 
 /** How many feed lines the phone shows. */
 export const PHONE_FEED_LINES = 8;
-
-const STATUS_TEXT: Record<CodingSessionStatus, string> = {
-  queued: 'Queued',
-  starting: 'Starting',
-  running: 'Working',
-  waiting: 'Waiting for you',
-  settled: 'Done',
-  failed: 'Failed',
-  stopped: 'Stopped',
-};
 
 function statusColor(status: CodingSessionStatus, c: Theme) {
   if (status === 'running' || status === 'starting' || status === 'settled') return c.success;
@@ -50,39 +44,9 @@ function openLink(url: string) {
   void Linking.openURL(url).catch(() => undefined);
 }
 
-/** A session's error line; a bare `needs_login` marker becomes a sentence. */
-export function sessionErrorText(error: string) {
-  return error.trim() === 'needs_login'
-    ? 'Not signed in. Sign in under Settings > Coding agents.'
-    : error;
-}
-
-/** What a plan sign-in bills, by agent: the web widget's words. */
-const PLAN_WORDS: Record<CoderAgent, string> = {
-  claude: 'On your Claude plan',
-  codex: 'On your ChatGPT plan',
-  pi: 'On your plan',
-};
-
-/**
- * A settled session's usage line, as the web widget says it: the plan words
- * when the tokens went to a plan sign-in, else the tokens and any cost.
- */
-export function sessionUsageText(usage: CoderUsage, agent: CoderAgent): string {
-  if (usage.billed === 'subscription') return PLAN_WORDS[agent];
-  const tokens = `${usage.input_tokens.toLocaleString('en-US')} tokens in, ${usage.output_tokens.toLocaleString('en-US')} out`;
-  return usage.cost_usd !== undefined ? `${tokens}, $${usage.cost_usd.toFixed(2)}` : tokens;
-}
-
 function plural(count: number, one: string, many: string) {
   return `${count} ${count === 1 ? one : many}`;
 }
-
-const APPROVAL_STATUS: Record<string, string> = {
-  approved: 'Approved',
-  denied: 'Denied',
-  expired: 'Expired',
-};
 
 export function CodingSessionBody({
   props,
@@ -123,7 +87,7 @@ export function CodingSessionBody({
       <View
         style={[row.base, { gap: 8 }]}
         accessible
-        accessibilityLabel={`Status: ${STATUS_TEXT[status]}`}
+        accessibilityLabel={`Status: ${sessionStatusWords[status]}`}
       >
         <View
           testID="coding-session-status-dot"
@@ -134,7 +98,7 @@ export function CodingSessionBody({
             backgroundColor: statusColor(status, c),
           }}
         />
-        <Label size={14}>{STATUS_TEXT[status]}</Label>
+        <Label size={14}>{sessionStatusWords[status]}</Label>
       </View>
       {feed.length ? (
         <View
@@ -192,7 +156,7 @@ export function CodingSessionBody({
           </View>
         ) : (
           <Label key={approval.id} muted size={14}>
-            {approval.title}: {APPROVAL_STATUS[approval.status] ?? approval.status}
+            {approval.title}: {approvalStatusWords[approval.status]}
           </Label>
         ),
       )}
@@ -205,7 +169,7 @@ export function CodingSessionBody({
           </Label>
           {result.usage ? (
             <Label muted size={14}>
-              {sessionUsageText(result.usage, props.agent)}
+              {usageWords(result.usage, props.agent)}
             </Label>
           ) : null}
           {typeof diffId === 'string' && diffId ? (
@@ -231,7 +195,7 @@ export function CodingSessionBody({
           ) : null}
         </View>
       ) : null}
-      {state.error ? <Label size={14}>{sessionErrorText(state.error)}</Label> : null}
+      {state.error ? <Label size={14}>{sessionErrorWords(state.error)}</Label> : null}
       {!ended ? (
         <Button
           title="Stop"

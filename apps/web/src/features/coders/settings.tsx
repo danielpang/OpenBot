@@ -1,11 +1,13 @@
 import { CODER_AGENT_LABELS, coderProviderFits, type CoderAgent } from '@openbots/shared';
 import { Button } from '@openbots/ui';
-import { CODER_PLAN_WORDS, CoderSignInSteps } from '@openbots/widgets/react';
+import { CODER_PLAN_WORDS, coderPlanWords } from '@openbots/widgets';
+import { CoderSignInSteps } from '@openbots/widgets/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { capabilitiesQuery } from '../../app/api.js';
 import { providersQuery, type Provider } from '../models/api.js';
 import { ErrorText } from '../models/error-text.js';
+import { agentNote } from './agents.js';
 import {
   beginCoderLogin,
   cancelCoderLogin,
@@ -26,15 +28,13 @@ import { computerTerminalHref } from './session-host.js';
 // Models, or neither. Sign in runs the vendor's own login: the card shows
 // the link and code the login printed, as the transcript's sign-in widget
 // does, and polls until the login ends. Nothing typed here is a password.
-// pi signs in inside its own terminal UI: Sign in opens the Computer page's
-// terminal where the server says, and Check asks the computer afterwards.
+// An agent that signs in inside its own terminal UI (pi): Sign in opens the
+// Computer page's terminal where the server says, and Check asks the
+// computer afterwards.
 
 export const LOGIN_POLL_MS = 2_000;
 
 const OPEN_LOGIN = new Set<CoderLogin['status']>(['pending', 'awaiting_code']);
-
-const PI_NOTE =
-  "Anthropic's terms reserve signing in with a Claude plan for Claude Code and Claude.ai. pi can use your ChatGPT plan, which OpenAI supports, or an API key from Settings > Models.";
 
 /**
  * The providers with a key the agent can use (CODER_PROVIDER_KINDS); the
@@ -43,13 +43,6 @@ const PI_NOTE =
  */
 export function keyProviders(agent: CoderAgent, providers: readonly Provider[]): Provider[] {
   return providers.filter((p) => p.hasKey && coderProviderFits(agent, p));
-}
-
-/** Which agents take Check: Codex once signed in, pi always (it signs in in a terminal), Claude Code never. */
-export function offersCheck(account: Pick<CoderAccount, 'agent' | 'authKind'>): boolean {
-  if (account.agent === 'claude') return false;
-  if (account.agent === 'pi') return true;
-  return account.authKind !== 'none';
 }
 
 /** The card's status line. */
@@ -138,7 +131,7 @@ function CoderCard({
         : current,
     );
 
-  // A sign-in that happens in the terminal (pi): kept in the cache so it
+  // A sign-in that happens in the terminal: kept in the cache so it
   // still shows when the owner comes back from the Computer page.
   const terminalKey = ['coders', agent, 'terminal-login'] as const;
   const { data: inTerminal = null } = useQuery<TerminalLogin | null>({
@@ -148,9 +141,9 @@ function CoderCard({
     initialData: null,
   });
   const setInTerminal = (next: TerminalLogin | null) => queryClient.setQueryData(terminalKey, next);
-  // pi's terminal sign-in panel follows the account: it stays while pi is
-  // not signed in, across reloads, and goes once Check finds the sign-in.
-  const terminalPanel = agent === 'pi' && account.needsSignIn;
+  // The terminal sign-in panel follows the account: it stays while the agent
+  // is not signed in, across reloads, and goes once Check finds the sign-in.
+  const terminalPanel = account.signIn === 'terminal' && account.needsSignIn;
 
   const loginKey = ['coders', agent, 'login', login?.id ?? null] as const;
   const polled = useQuery({
@@ -231,6 +224,8 @@ function CoderCard({
   const choices = keyProviders(agent, providers);
   const plan = CODER_PLAN_WORDS[agent];
   const signedIn = account.authKind !== 'none';
+  const note = agentNote(account);
+  const billed = coderPlanWords(agent, account.planProvider);
 
   return (
     <article
@@ -247,7 +242,12 @@ function CoderCard({
           {accountWords(account, providers)}
         </span>
       </div>
-      {agent === 'pi' && <p className="text-xs text-muted-foreground">{PI_NOTE}</p>}
+      {account.authKind === 'subscription' && (
+        <p className="text-xs text-muted-foreground" data-plan>
+          Usage is {billed}.
+        </p>
+      )}
+      {note && <p className="text-xs text-muted-foreground">{note}</p>}
       <AccountError account={account} label={label} />
 
       {signingIn && current && (
@@ -395,7 +395,7 @@ function CoderCard({
           >
             Use API key
           </Button>
-          {!terminalPanel && offersCheck(account) && (
+          {!terminalPanel && account.checkAvailable && (
             <Button
               size="sm"
               variant="ghost"

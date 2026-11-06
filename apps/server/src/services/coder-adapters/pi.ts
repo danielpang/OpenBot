@@ -1,20 +1,29 @@
 import { CODER_PI_EXTENSION } from '@openbots/computer';
-import { CODER_FEED_LINE_MAX, type CoderEvent } from '@openbots/shared';
-import { DomainError } from '../../errors.js';
-import { TERMINAL_LOGIN_INSTRUCTIONS } from '../coder-login.js';
-import { claudeAdapter, preamble } from './claude.js';
+import { CODER_MODE_ENV, type CoderEvent } from '@openbots/shared';
+import { classifyCommandLine, classifyPathAccess } from './classify.js';
 import {
-  IGNORED_SESSION_ID,
+  gitIdentityEnv,
+  ignoredId,
+  isObject,
+  num,
+  oneLine,
+  preamble,
+  str,
+  type Json,
+} from './common.js';
+import {
   isVendorSessionId,
+  type CoderCheckContext,
   type CoderAdapter,
   type CoderLaunchPlan,
   type CoderOutputParser,
   type CoderParserOptions,
   type CoderSessionSpec,
+  type CoderSignInCheck,
 } from './types.js';
 
-// pi (design doc, "The three agents"; I10, I11), checked against the pinned
-// 1.5.0 (VENDOR-FACTS.md). The session runs `pi -p --mode json`, one JSON
+// pi (docs/TECHNICAL_PLAN.md 22.13; I10, I11), checked against the pinned
+// 1.5.0 (docs/CODING_AGENT_VENDORS.md). The session runs `pi -p --mode json`, one JSON
 // event per line: a `session` header with the session id, then agent, turn,
 // message and tool execution events. A finished assistant message arrives
 // whole in `message_end`; its `stopReason` says how the run ended, and pi
@@ -42,9 +51,6 @@ import {
 const EDIT_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'];
 /** What a plan session may use; the extension also blocks the rest in plan mode. */
 const PLAN_TOOLS = ['read', 'grep', 'find', 'ls'];
-
-/** The variable the extension reads the mode from (coder-pi-extension.ts). */
-export const CODER_MODE_ENV = 'OPENBOTS_CODER_MODE';
 
 /**
  * pi's provider ids for the provider kinds whose key it reads from the
@@ -95,35 +101,16 @@ function launch(spec: CoderSessionSpec): CoderLaunchPlan {
     `${preamble(spec)}\n\n${spec.prompt}`,
   ];
   const env: Record<string, string> = {
+    // The extension reads the mode from it (coder-pi-extension.ts).
     [CODER_MODE_ENV]: spec.mode,
     // The CLI is pinned in the image; it must not ask pi.dev for a newer one.
     PI_SKIP_VERSION_CHECK: '1',
+    ...gitIdentityEnv(spec),
   };
-  if (spec.gitIdentity) {
-    env.GIT_AUTHOR_NAME = spec.gitIdentity.name;
-    env.GIT_AUTHOR_EMAIL = spec.gitIdentity.email;
-    env.GIT_COMMITTER_NAME = spec.gitIdentity.name;
-    env.GIT_COMMITTER_EMAIL = spec.gitIdentity.email;
-  }
   return { command: 'pi', args, env };
 }
 
 // Parsing `--mode json`
-
-type Json = Record<string, unknown>;
-
-const isObject = (value: unknown): value is Json =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const str = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
-
-const num = (value: unknown): number =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
-
-const oneLine = (text: string, max = CODER_FEED_LINE_MAX) => {
-  const line = text.replace(/\s+/g, ' ').trim();
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
-};
 
 /** How pi's bash tool words a command that failed. */
 const EXIT_CODE = /(?:exit(?:ed with)? code|exit status)[:\s]+(\d+)/i;
@@ -269,8 +256,8 @@ export function piParser(options: CoderParserOptions = {}): CoderOutputParser {
     return [
       {
         type: 'usage',
-        input_tokens: Math.round(inputTokens),
-        output_tokens: Math.round(outputTokens),
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
         ...(cost !== undefined ? { cost_usd: cost } : {}),
         billed,
       },
@@ -300,7 +287,7 @@ export function piParser(options: CoderParserOptions = {}): CoderOutputParser {
           cwd = str(line.cwd) ?? cwd;
           const reported = str(line.id);
           if (reported === undefined) return [];
-          if (!isVendorSessionId(reported)) return [{ type: 'text', text: IGNORED_SESSION_ID }];
+          if (!isVendorSessionId(reported)) return [ignoredId()];
           sessionId = reported;
           return [];
         }
@@ -328,10 +315,9 @@ export function piParser(options: CoderParserOptions = {}): CoderOutputParser {
 
 // Classifying tool calls
 //
-// Every tool call reaches OpenBots through the extension, in pi's terms. The
-// classes are Claude Code's (claude.ts reads commands the way the shell
-// would and resolves paths against the worktree); pi's tools are mapped onto
-// the Claude Code tool that does the same thing.
+// Every tool call reaches OpenBots through the extension, in pi's terms.
+// classify.ts reads a command the way the shell would and resolves paths
+// against the worktree; pi's file tools are read as the access they make.
 
 /** pi's file tools and the Claude Code tool each one is classed as. */
 const PATH_TOOLS: Record<string, 'Read' | 'Edit' | 'Write'> = {
@@ -350,14 +336,14 @@ function classify(
 ): ReturnType<CoderAdapter['classify']> {
   const args = isObject(input) ? input : {};
   if (toolName === 'bash') {
-    return claudeAdapter.classify('Bash', { command: str(args.command) ?? '' }, context);
+    return classifyCommandLine(str(args.command) ?? '', context?.worktreePath);
   }
   const as = Object.hasOwn(PATH_TOOLS, toolName) ? PATH_TOOLS[toolName] : undefined;
   if (as) {
     // grep, find and ls default to the working directory, the worktree.
     const path = str(args.path);
-    const verdict = claudeAdapter.classify(as, path ? { file_path: path } : {}, context);
-    if (verdict.action !== 'other') return verdict;
+    const verdict = path ? classifyPathAccess(as, path, context?.worktreePath) : null;
+    if (verdict) return verdict;
     const target = path ?? str(args.pattern);
     return {
       action: 'other',
@@ -373,12 +359,128 @@ function classify(
 // owner signs in from the computer's terminal and the Settings card checks
 // with `pi auth check`.
 
+/** What the owner is told, on the sign-in widget and with the 409. */
+export const PI_SIGN_IN_INSTRUCTIONS =
+  'pi signs in from its own terminal. Open the Computer page, run pi, type /login and choose a provider. Then press Check under Settings > Coding agents.';
+
 /**
- * What the owner is told: the same words as the sign-in card's
- * (`TERMINAL_LOGIN_INSTRUCTIONS`). A getter, since coder-login.ts imports
- * the adapters and is not evaluated yet when this module is, in that order.
+ * The providers `pi auth check --provider <id> --json` is asked about: pi's
+ * built-in providers (`getBuiltinProviders()` of the pinned pi-ai), with the
+ * name the card shows, and the plan an OAuth sign-in to it is (`plan`). An id
+ * pi does not know answers `provider_not_found`.
  */
-export const piLoginInTerminal = (): string => TERMINAL_LOGIN_INSTRUCTIONS.pi!;
+export const PI_CHECK_PROVIDERS: { id: string; label: string; plan?: string }[] = [
+  { id: 'anthropic', label: 'Anthropic', plan: 'Anthropic (Claude Pro/Max)' },
+  { id: 'openai', label: 'OpenAI' },
+  { id: 'openai-codex', label: 'OpenAI', plan: 'OpenAI (ChatGPT Plus/Pro)' },
+  { id: 'google', label: 'Google Gemini' },
+  { id: 'google-vertex', label: 'Google Vertex AI' },
+  { id: 'xai', label: 'xAI' },
+  { id: 'openrouter', label: 'OpenRouter' },
+  { id: 'github-copilot', label: 'GitHub Copilot' },
+  { id: 'amazon-bedrock', label: 'Amazon Bedrock' },
+  { id: 'azure', label: 'Azure OpenAI' },
+  { id: 'ant-ling', label: 'Ant Ling' },
+  { id: 'baseten', label: 'Baseten' },
+  { id: 'cerebras', label: 'Cerebras' },
+  { id: 'cloudflare-ai-gateway', label: 'Cloudflare AI Gateway' },
+  { id: 'cloudflare-workers-ai', label: 'Cloudflare Workers AI' },
+  { id: 'deepseek', label: 'DeepSeek' },
+  { id: 'fireworks', label: 'Fireworks' },
+  { id: 'groq', label: 'Groq' },
+  { id: 'huggingface', label: 'Hugging Face' },
+  { id: 'kimi-coding', label: 'Kimi For Coding' },
+  { id: 'meta', label: 'Meta' },
+  { id: 'minimax', label: 'MiniMax' },
+  { id: 'minimax-cn', label: 'MiniMax (China)' },
+  { id: 'mistral', label: 'Mistral' },
+  { id: 'moonshotai', label: 'Moonshot AI' },
+  { id: 'moonshotai-cn', label: 'Moonshot AI (China)' },
+  { id: 'nvidia', label: 'NVIDIA NIM' },
+  { id: 'opencode', label: 'OpenCode Zen' },
+  { id: 'opencode-go', label: 'OpenCode Go' },
+  { id: 'qwen-token-plan', label: 'Qwen Token Plan' },
+  { id: 'qwen-token-plan-cn', label: 'Qwen Token Plan (China)' },
+  { id: 'qwen-token-plan-individual', label: 'Qwen Token Plan Individual' },
+  { id: 'radius', label: 'Radius' },
+  { id: 'together', label: 'Together AI' },
+  { id: 'typesafe', label: 'TypeSafe' },
+  { id: 'vercel-ai-gateway', label: 'Vercel AI Gateway' },
+  { id: 'xiaomi', label: 'Xiaomi MiMo' },
+  { id: 'xiaomi-token-plan-ams', label: 'Xiaomi MiMo Token Plan (Amsterdam)' },
+  { id: 'xiaomi-token-plan-cn', label: 'Xiaomi MiMo Token Plan (China)' },
+  { id: 'xiaomi-token-plan-sgp', label: 'Xiaomi MiMo Token Plan (Singapore)' },
+  { id: 'zai', label: 'ZAI Coding Plan' },
+  { id: 'zai-coding-cn', label: 'ZAI Coding Plan (China)' },
+];
+
+/** How many `pi auth check` processes run at once. */
+const PI_CHECK_PARALLEL = 6;
+
+/**
+ * What `pi auth check --provider <id> --json` says: `{status, provider,
+ * authType}` with `status` `ready` when the provider has credentials, and
+ * `authType` `oauth` (a plan sign-in through /login) or `api_key` (a key in
+ * auth.json or the environment). Null when it is not ready.
+ */
+export function piCheckResult(stdout: string): { authType: string } | null {
+  for (const line of stdout.split('\n')) {
+    const text = line.trim();
+    if (!text.startsWith('{')) continue;
+    try {
+      const parsed = JSON.parse(text) as { status?: unknown; authType?: unknown };
+      if (parsed.status !== 'ready') return null;
+      return { authType: typeof parsed.authType === 'string' ? parsed.authType : 'unknown' };
+    } catch {
+      // Not the JSON line.
+    }
+  }
+  return null;
+}
+
+/**
+ * What pi's checks add up to: any OAuth sign-in is a plan (`subscription`,
+ * named by its plans); otherwise ready keys are `api_key`, named by their
+ * providers. No credential or status text is kept.
+ */
+export function piSignIn(
+  ready: { provider: (typeof PI_CHECK_PROVIDERS)[number]; authType: string }[],
+): CoderSignInCheck {
+  const unique = (names: string[]) => [...new Set(names)].join(', ').slice(0, 200);
+  const plans = ready.filter((r) => r.authType === 'oauth');
+  if (plans.length) {
+    return {
+      signedIn: true,
+      authKind: 'subscription',
+      label: unique(plans.map((r) => r.provider.plan ?? r.provider.label)),
+    };
+  }
+  if (!ready.length) return { signedIn: false };
+  return {
+    signedIn: true,
+    authKind: 'api_key',
+    label: `API key through pi (${unique(ready.map((r) => r.provider.label))})`.slice(0, 200),
+  };
+}
+
+/** Asks pi about every provider of PI_CHECK_PROVIDERS, PI_CHECK_PARALLEL at a time. */
+async function checkSignIn(ctx: CoderCheckContext): Promise<CoderSignInCheck> {
+  const ready: { provider: (typeof PI_CHECK_PROVIDERS)[number]; authType: string }[] = [];
+  for (let i = 0; i < PI_CHECK_PROVIDERS.length; i += PI_CHECK_PARALLEL) {
+    const batch = PI_CHECK_PROVIDERS.slice(i, i + PI_CHECK_PARALLEL);
+    const answers = await Promise.all(
+      batch.map(async (provider) => {
+        const done = await ctx
+          .run(['auth', 'check', '--provider', provider.id, '--json'])
+          .catch(() => null);
+        const result = done ? piCheckResult(done.stdout) : null;
+        return result ? { provider, authType: result.authType } : null;
+      }),
+    );
+    for (const answer of answers) if (answer) ready.push(answer);
+  }
+  return piSignIn(ready);
+}
 
 /**
  * What pi says when it has no credential (`No API key found for ...`, then a
@@ -388,20 +490,21 @@ export const piLoginInTerminal = (): string => TERMINAL_LOGIN_INSTRUCTIONS.pi!;
 const NOT_SIGNED_IN =
   /no api key found|use \/login|not signed in|not logged in|credentials_not_configured|\b401\b|authentication_error|invalid (?:x-)?api[ -]key|unauthorized/i;
 
+/** A provider's 429 in the last assistant message's `errorMessage` (`stopReason` error). */
+const RATE_LIMITED = /\b429\b|rate[ _-]?limit|too many requests/i;
+
 export const piAdapter: CoderAdapter = {
   agent: 'pi',
-  // The whole argv: `coderVersion` runs it as is, since there is no login command to borrow.
-  versionArgs: ['pi', '--version'],
-  loginHosts: [],
+  command: 'pi',
+  versionArgs: ['--version'],
+  signIn: { kind: 'terminal', instructions: PI_SIGN_IN_INSTRUCTIONS, preset: 'pi' },
   launch,
   parser: (options) => piParser(options),
   // Only a UUID reaches the terminal's preset.
   resumeCommand: (vendorSessionId) =>
     isVendorSessionId(vendorSessionId) ? `pi --session ${vendorSessionId}` : 'pi',
-  login: () => {
-    throw new DomainError(409, 'CODER_LOGIN_IN_TERMINAL', piLoginInTerminal());
-  },
-  parseLogin: (_chunk, state) => state,
   classify,
   needsLogin: (text) => NOT_SIGNED_IN.test(text),
+  rateLimited: (text) => RATE_LIMITED.test(text),
+  checkSignIn,
 };

@@ -17,6 +17,7 @@ import {
   CREDENTIAL_SOCKET,
   GIT_CREDENTIAL_HELPER,
   gitConfigEnv,
+  isSafeDirectory,
   PERMISSION_SOCKET,
   sessionSafeDirectories,
   type CoderPaths,
@@ -66,7 +67,8 @@ import {
 // close: processes of the same uid can read each other's environment
 // (/proc/<pid>/environ), so a process of one coder session can take the
 // secret of another session running at the same time as the same user.
-// Per-session uids would close that later.
+// Per-session uids would close that (docs/SECURITY.md S-24, TECHNICAL_PLAN
+// 22.13).
 //
 // The server's own git operations (clone, fetch, scan, reconcile, rescue
 // pushes) carry credentials for any of the owner's repositories, so they run
@@ -120,7 +122,6 @@ export class CoderSessions {
     if (this.live.get(id) === session) this.live.delete(id);
   }
 
-  /** Stops every session (agent shutdown). */
   stopAll(): void {
     for (const session of [...this.live.values()]) session.stop();
   }
@@ -457,6 +458,10 @@ export function coderSession(ws: WebSocket, deps: CoderDeps): void {
     sessionId = msg.session_id;
     const id = msg.session_id;
     const cwd = await resolveCwd(deps.home, msg.cwd);
+    if (msg.safe_directories?.some((dir) => !isSafeDirectory(deps.home, dir))) {
+      throw new StartError('A safe directory must be an absolute path under the home', 1008);
+    }
+    const safe = msg.safe_directories ?? sessionSafeDirectories(deps.home, cwd);
     const dir = path.join(paths.sessionsDir, id);
     const socket = path.join(dir, PERMISSION_SOCKET);
     const credentialSocket = path.join(dir, CREDENTIAL_SOCKET);
@@ -502,7 +507,7 @@ export function coderSession(ws: WebSocket, deps: CoderDeps): void {
       ...gitConfigEnv(
         childEnv(extra),
         msg.git_credentials ? GIT_CREDENTIAL_HELPER : undefined,
-        sessionSafeDirectories(deps.home, cwd),
+        safe,
       ),
     });
     // umask 002, for every user (the runner's clones too): what one user

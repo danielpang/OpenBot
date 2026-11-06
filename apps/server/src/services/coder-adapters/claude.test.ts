@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { CODER_PERMISSION_MCP } from '@openbots/computer';
 import { DEFAULT_CODER_ACTIONS, type CoderEvent } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
-import { claudeAdapter, preamble } from './claude.js';
+import { ptySignIn } from '../__fixtures__/coders/adapters.js';
+import { claudeAdapter, claudeStatus } from './claude.js';
+import { preamble } from './common.js';
 import { adapterFor, IGNORED_SESSION_ID } from './index.js';
 import type { CoderLoginParse, CoderSessionSpec } from './types.js';
 
@@ -52,10 +54,11 @@ describe('claude adapter', () => {
     expect(claudeAdapter.resumeCommand(VENDOR)).toBe(`claude --resume ${VENDOR}`);
     // Only a UUID reaches the terminal's preset.
     expect(claudeAdapter.resumeCommand('x; rm -rf ~')).toBe('claude');
-    expect(claudeAdapter.loginHosts).toEqual([
+    expect(ptySignIn(claudeAdapter).hosts).toEqual([
+      'claude.com',
       'claude.ai',
-      'console.anthropic.com',
       'platform.claude.com',
+      'console.anthropic.com',
       'anthropic.com',
     ]);
   });
@@ -258,26 +261,64 @@ describe('claude adapter', () => {
     expect(paid[0]).toMatchObject({ type: 'usage', billed: 'api', cost_usd: 0.5 });
   });
 
-  it('plans the sign-in and reads the link, the paste prompt and success', () => {
-    expect(claudeAdapter.login()).toEqual({
+  it('plans the sign-in and reads the link, the paste prompt, a refused code and success', () => {
+    const signIn = ptySignIn(claudeAdapter);
+    expect(signIn.login()).toEqual({
       command: 'claude',
-      args: ['setup-token'],
+      args: ['auth', 'login', '--claudeai'],
+      env: { BROWSER: '/bin/true' },
       timeoutMs: 600_000,
     });
     let state: CoderLoginParse = {};
-    state = claudeAdapter.parseLogin(fixture('claude-login.txt'), state);
-    expect(state.url).toMatch(/^https:\/\/claude\.ai\/oauth\/authorize\?code=true&/);
-    expect(state.url).toMatch(/state=abc123$/);
+    // The verified output: an OSC 8 link around the same text, then the prompt.
+    state = signIn.parseLogin(fixture('claude-login.txt'), state);
+    expect(state.url).toMatch(/^https:\/\/claude\.com\/cai\/oauth\/authorize\?code=true&/);
+    expect(state.url).toMatch(/&state=[\w-]+$/);
+    expect(state.url).not.toContain('\u001b');
     expect(state.awaitingCode).toBe(true);
     expect(state.signedIn).toBeUndefined();
     // A later link does not replace the first.
-    state = claudeAdapter.parseLogin('see https://example.com/other', state);
-    expect(state.url).toMatch(/^https:\/\/claude\.ai\//);
-    state = claudeAdapter.parseLogin(fixture('claude-login-done.txt'), state);
+    state = signIn.parseLogin('see https://example.com/other', state);
+    expect(state.url).toMatch(/^https:\/\/claude\.com\//);
+    // A code without its `#state` is refused, and the prompt waits again: not an end.
+    state = signIn.parseLogin(
+      'Invalid code. Please make sure the full code was copied.\r\nPaste code here if prompted > ',
+      state,
+    );
+    expect(state.notice).toBe('Invalid code. Please make sure the full code was copied.');
+    expect(state.error).toBeUndefined();
+    expect(state.awaitingCode).toBe(true);
+    state = signIn.parseLogin(fixture('claude-login-done.txt'), state);
     expect(state.signedIn).toBe(true);
     expect(state.awaitingCode).toBe(false);
-    // The token is a success sign only; it is kept nowhere in the parse.
-    expect(JSON.stringify(state)).not.toContain('sk-ant-oat01');
+    expect(state.notice).toBeUndefined();
+    expect(signIn.parseLogin('Login failed: the code expired\n', {}).error).toBe(
+      'the code expired',
+    );
+  });
+
+  it('reads `claude auth status`', () => {
+    const status = (over: object) =>
+      JSON.stringify({ apiProvider: 'firstParty', ...over }, null, 2);
+    expect(claudeStatus(status({ loggedIn: false, authMethod: 'none' }))).toEqual({
+      signedIn: false,
+    });
+    expect(claudeStatus(status({ loggedIn: true, authMethod: 'claude.ai' }))).toEqual({
+      signedIn: true,
+      authKind: 'subscription',
+      label: 'Claude account',
+    });
+    expect(
+      claudeStatus(status({ loggedIn: true, authMethod: 'claude.ai', email: 'dana@example.com' })),
+    ).toMatchObject({ label: 'dana@example.com' });
+    expect(claudeStatus(status({ loggedIn: true, authMethod: 'oauth_token' }))).toEqual({
+      signedIn: true,
+      authKind: 'api_key',
+      label: 'Token from the environment',
+    });
+    expect(claudeStatus('not json')).toBeNull();
+    expect(claudeAdapter.needsLogin!('Not logged in · Please run /login')).toBe(true);
+    expect(claudeAdapter.needsLogin!('Failed to authenticate. API Error: 401')).toBe(true);
   });
 
   it('classes a push and an edit outside the worktree', () => {

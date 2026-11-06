@@ -842,6 +842,116 @@ describe('the Computer page', () => {
   });
 });
 
+describe('Reset computer', () => {
+  function resetServer(answer: 'ok' | 'not-prepared' = 'ok') {
+    let polls = 0;
+    const handle = server.handle;
+    server.handle = async (request) => {
+      const { pathname } = new URL(request.url, 'http://localhost');
+      if (pathname === '/api/v1/computer/reset/prepare') {
+        return Response.json({ requestId: 'r1' }, { status: 202 });
+      }
+      if (pathname === '/api/v1/computer/reset/r1') {
+        polls += 1;
+        return Response.json(
+          polls < 2
+            ? { status: 'running', results: [], unsaved: [], runningSessions: [] }
+            : {
+                status: 'done',
+                results: [
+                  {
+                    repoId: '00000000-0000-4000-8000-0000000000a1',
+                    fullName: 'danielpang/OpenBots',
+                    branch: 'openbots/rescue/2026-11-05T10-30',
+                    pushed: true,
+                    note: 'Pushed 2 commits and the uncommitted changes.',
+                  },
+                ],
+                unsaved: [
+                  {
+                    fullName: 'danielpang/notes',
+                    branch: 'drafts',
+                    note: 'The connection cannot push to this repository.',
+                  },
+                ],
+                runningSessions: [{ id: 's1', botId: BOT, repoFullName: 'danielpang/OpenBots' }],
+              },
+        );
+      }
+      if (pathname === '/api/v1/computer/reset') {
+        return answer === 'ok'
+          ? new Response(null, { status: 202 })
+          : Response.json(
+              {
+                title: 'Conflict',
+                code: 'RESET_NOT_PREPARED',
+                detail: 'Check for unpushed work first.',
+              },
+              { status: 409 },
+            );
+      }
+      if (pathname === '/api/v1/repos') return Response.json({ repos: [] });
+      return handle(request);
+    };
+  }
+
+  it(
+    'checks for unpushed work, shows what was saved and what was not, then resets',
+    { timeout: 15_000 },
+    async () => {
+      resetServer();
+      render(<ComputerPage />);
+      await until(() => !!button('Reset computer'), 'Reset computer');
+      expect(button('Restart')).toBeDefined();
+      click(button('Reset computer'));
+      await until(
+        () => !!document.body.textContent?.includes('Checking for unpushed work'),
+        'the check',
+      );
+      expect(button('Reset')!.disabled).toBe(true);
+      await until(() => !!document.querySelector('[data-reset="checked"]'), 'the results');
+      const dialog = document.querySelector('[data-reset]')!;
+      expect(
+        dialog.querySelector('[data-reset-pushed="danielpang/OpenBots"]')!.textContent,
+      ).toContain('openbots/rescue/2026-11-05T10-30');
+      expect(
+        dialog.querySelector('[data-reset-unsaved="danielpang/notes"]')!.textContent,
+      ).toContain('The connection cannot push to this repository.');
+      expect(dialog.textContent).toContain('1 coding session is running. Reset stops it.');
+      expect(document.body.textContent).toContain(
+        'The computer starts again with an empty home. Repositories marked keep cloned are cloned again.',
+      );
+      expect(document.body.textContent).not.toMatch(/[–—]| - /);
+      click(dialog.querySelector('input[name="resetSignIns"]'));
+      click(button('Reset'));
+      await until(() => posts('/api/v1/computer/reset').length === 1, 'the reset');
+      expect(JSON.parse(posts('/api/v1/computer/reset')[0]!)).toEqual({
+        requestId: 'r1',
+        confirm: true,
+        resetSignIns: true,
+      });
+      expect(posts('/api/v1/computer/reset/prepare')).toHaveLength(1);
+      await until(() => !document.querySelector('[data-reset]'), 'the dialog to close');
+    },
+  );
+
+  it('says so plainly when the server has no finished check', { timeout: 15_000 }, async () => {
+    resetServer('not-prepared');
+    render(<ComputerPage />);
+    await until(() => !!button('Reset computer'), 'Reset computer');
+    click(button('Reset computer'));
+    await until(() => !!document.querySelector('[data-reset="checked"]'), 'the results');
+    click(button('Reset'));
+    await until(
+      () => !!document.body.textContent?.includes('The check is out of date.'),
+      'the error',
+    );
+    expect(button('Reset')!.disabled).toBe(true);
+    click(button('Check again'));
+    await until(() => posts('/api/v1/computer/reset/prepare').length === 2, 'a new check');
+  });
+});
+
 describe('terminal attach (CA7, I15)', () => {
   it('opens the terminal in a directory, as another user, with a command typed', async () => {
     render(

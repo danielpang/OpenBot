@@ -399,6 +399,8 @@ export interface TemplateWebhook {
   token: string;
   /** The secret GitHub signs deliveries with (the `github` signature preset). */
   signingSecret: string;
+  /** The Routine's Bot, which the endpoint's URL is spelled with. */
+  bot: { id: string; handle: string };
 }
 
 /**
@@ -434,9 +436,13 @@ export async function createRoutineFromTemplate(
       })
       .where(eq(schema.webhookEndpoints.id, trigger.endpoint_id))
       .returning({ id: schema.webhookEndpoints.id, slug: schema.webhookEndpoints.slug });
+    const [bot] = await tx
+      .select({ id: schema.bots.id, handle: schema.bots.handle })
+      .from(schema.bots)
+      .where(eq(schema.bots.id, botId));
     return {
       routine,
-      webhook: { endpointId: endpoint!.id, slug: endpoint!.slug, token, signingSecret },
+      webhook: { endpointId: endpoint!.id, slug: endpoint!.slug, token, signingSecret, bot: bot! },
     };
   });
 }

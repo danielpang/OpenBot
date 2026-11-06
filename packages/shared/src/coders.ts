@@ -53,6 +53,21 @@ export const CoderAuthKindSchema = z.enum(['none', 'subscription', 'api_key']);
 export type CoderAuthKind = z.infer<typeof CoderAuthKindSchema>;
 
 /**
+ * Whose plan a `subscription` account bills (Settings > Coding agents): pi
+ * signed in to a Claude plan bills it as extra usage, which the card says.
+ * Null for an account with no plan sign-in.
+ */
+export const CoderPlanProviderSchema = z.enum(['anthropic', 'openai', 'other']);
+export type CoderPlanProvider = z.infer<typeof CoderPlanProviderSchema>;
+
+/**
+ * How an agent signs in: a link to open (Claude Code), a link and a code to
+ * enter there (Codex), or in the computer's terminal (pi).
+ */
+export const CoderSignInStyleSchema = z.enum(['link', 'device', 'terminal']);
+export type CoderSignInStyle = z.infer<typeof CoderSignInStyleSchema>;
+
+/**
  * `coding_sessions.status`: `queued` until the runner claims it, `starting`
  * while the checkout and worktree are made, `running` while the agent works,
  * `waiting` on an approval or a vendor rate limit, then one of the ends:
@@ -69,6 +84,12 @@ export const CodingSessionStatusSchema = z.enum([
   'stopped',
 ]);
 export type CodingSessionStatus = z.infer<typeof CodingSessionStatusSchema>;
+
+/**
+ * `coding_sessions.error` when the CLI is not signed in: a machine-readable
+ * marker, which the widgets word as "Not signed in" (coder-words.ts).
+ */
+export const NEEDS_LOGIN = 'needs_login';
 
 /** The statuses a session ends in; only these take Continue or Discard. */
 export const CODING_SESSION_ENDED: readonly CodingSessionStatus[] = [
@@ -179,25 +200,17 @@ export type CoderFeedLine = z.infer<typeof CoderFeedLineSchema>;
 /** The widget keeps the last this many feed lines (I12). */
 export const CODER_FEED_MAX = 200;
 
-// Limits (plan "Operational notes"), per account in `limits` later.
+// Limits (docs/TECHNICAL_PLAN.md 22.11): constants for now, per account in
+// `limits` later.
 
 /** A session's own time limit, in minutes, unless the account sets another. */
 export const DEFAULT_SESSION_MINUTES = 60;
-export const SESSION_MINUTES_RANGE = { min: 5, max: 240 } as const;
 /** Agent turns per session (Claude Code's `--max-turns`, and the others' equivalent). */
 export const DEFAULT_MAX_TURNS = 200;
 /** Sessions running at once per account; the next one queues. */
 export const DEFAULT_MAX_CONCURRENT_SESSIONS = 3;
 /** Remembered repositories per account (GH4). */
 export const DEFAULT_MAX_REPOS = 50;
-
-/** The coder tool group (plan 5.4, I9). */
-export const CODER_TOOL_NAMES = ['code_task'] as const;
-export type CoderToolName = (typeof CODER_TOOL_NAMES)[number];
-
-export function isCoderTool(toolName: string | null | undefined): toolName is CoderToolName {
-  return !!toolName && (CODER_TOOL_NAMES as readonly string[]).includes(toolName);
-}
 
 /**
  * What a session asks before, unless the Bot's `coder.actions` says
@@ -256,17 +269,17 @@ export const CoderLoginStatusSchema = z.enum([
 ]);
 export type CoderLoginStatus = z.infer<typeof CoderLoginStatusSchema>;
 
-export const CoderLoginStateSchema = z.object({
-  status: CoderLoginStatusSchema,
+/** A sign-in's state as the `coder_login` widget keeps it. */
+export interface CoderLoginState {
+  status: CoderLoginStatus;
   /** Where the owner signs in, as the agent's login printed it. */
-  url: z.string().optional(),
+  url?: string;
   /** A device code to enter at `url` (Codex's device auth). */
-  device_code: z.string().optional(),
+  device_code?: string;
   /** The account signed in, as the agent names it: an email or plan. */
-  account_label: z.string().optional(),
-  error: z.string().optional(),
-});
-export type CoderLoginState = z.infer<typeof CoderLoginStateSchema>;
+  account_label?: string;
+  error?: string;
+}
 
 /** One changed file of a session's branch against its base. */
 export const CoderChangedFileSchema = z.strictObject({

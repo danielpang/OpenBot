@@ -1,3 +1,4 @@
+import { normalizeFullName } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
@@ -9,8 +10,8 @@ import {
   TOKEN_USERNAME,
 } from './git-connections.js';
 
-// Git credentials for the computer (I5, GH7, design doc "Pushing and
-// credentials"). git on the computer asks openbots-git-credential, which asks
+// Git credentials for the computer (I5, GH7; docs/TECHNICAL_PLAN.md 22.4
+// and 22.12). git on the computer asks openbots-git-credential, which asks
 // the agent, which sends a `credential_request` over the session's socket;
 // the runner answers it from here. The token never touches the computer's
 // disk and is never logged: it travels in the one `credential` frame.
@@ -36,7 +37,7 @@ import {
 
 type CredentialsDeps = Pick<AppDeps, 'db' | 'config' | 'logger'> & Partial<Pick<AppDeps, 'net'>>;
 
-/** The git hosts Phase 1 has a credential for; the API host is not one (the PR call skips the helper). */
+/** The git hosts OpenBots has a credential for; the API host is not one (the PR call skips the helper). */
 const GITHUB_HOSTS = new Set(['github.com']);
 
 /** The username in a remote's fetch url and push url (repos-checkout.ts sets both). */
@@ -105,11 +106,9 @@ async function tokenForConnection(
   }
 }
 
+/** The `owner/name` a credential path names, lower case; null when it names none. */
 const repoOfPath = (path: string) =>
-  path
-    .replace(/^\/+/, '')
-    .replace(/\.git\/?$/, '')
-    .toLowerCase();
+  normalizeFullName(path.replace(/^\/+|\/+$/g, ''))?.toLowerCase() ?? null;
 
 /**
  * Answers one `credential_request`: a username and token, or why not.
@@ -124,10 +123,10 @@ export async function resolveGitCredential(
   const runner = runnerSessionIds.get(ask.sessionId);
   // git reaches its own repository only, and must say which it asks for.
   const own = runner ? runner.repoFullName : ask.session?.repoFullName;
-  if (!ask.path || !own || repoOfPath(ask.path) !== repoOfPath(own)) {
+  const repoFullName = own ? repoOfPath(own) : null;
+  if (!ask.path || !repoFullName || repoOfPath(ask.path) !== repoFullName) {
     return { denied: OWN_REPOSITORY_ONLY };
   }
-  const repoFullName = repoOfPath(own);
   const isPush = ask.username === PUSH_USERNAME;
   const isFetch = ask.username === FETCH_USERNAME;
   const pushAllowed = runner
@@ -151,6 +150,9 @@ export async function resolveGitCredential(
   }
   if (connection?.kind === 'app') {
     // GitHub holds the read token to reads; the write token waits for the push.
+    // Once the push is approved a fetch gets the write token too, on purpose:
+    // the session may write to the repository by then, so a separate read
+    // token would narrow nothing.
     let served = await tokenForConnection(deps, connection, {
       repoFullName,
       write: pushAllowed,
@@ -249,7 +251,7 @@ export async function ownerOAuthToken(
  * an App connection an installation token with `pull_requests: write`, so
  * the App opens it, unless the connection acts as the owner and the owner
  * signed in with OAuth; through a token or OAuth connection its token; with
- * no connection the GitHub connector's, as in Phase 1.
+ * no connection the GitHub connector's.
  */
 export async function pullRequestToken(
   deps: CredentialsDeps,

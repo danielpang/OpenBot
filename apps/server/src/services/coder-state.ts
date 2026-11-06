@@ -80,7 +80,6 @@ export async function readSessionLog(
   }
 }
 
-/** Deletes a session's log, if it has one. */
 export async function removeSessionLog(
   deps: LogDeps,
   session: Pick<CodingSessionRow, 'id'>,
@@ -310,7 +309,6 @@ export function appendFeed(deps: StateDeps, sessionId: string, line: CoderFeedLi
   s.timer.unref?.();
 }
 
-/** Writes any buffered feed lines now. */
 export function flushFeed(deps: StateDeps, sessionId: string): Promise<CodingSessionState | null> {
   return serial(sessionId, () => write(deps, sessionId, (state) => state));
 }

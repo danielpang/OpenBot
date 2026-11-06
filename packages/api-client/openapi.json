@@ -1492,7 +1492,7 @@
                     "items": {
                       "type": "string",
                       "maxLength": 200,
-                      "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+                      "pattern": "^(?!\\.+\\/)[A-Za-z0-9_.-]+\\/(?!\\.+$)[A-Za-z0-9_.-]+$"
                     },
                     "maxItems": 200
                   },
@@ -2171,7 +2171,7 @@
                     "items": {
                       "type": "string",
                       "maxLength": 200,
-                      "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+                      "pattern": "^(?!\\.+\\/)[A-Za-z0-9_.-]+\\/(?!\\.+$)[A-Za-z0-9_.-]+$"
                     },
                     "maxItems": 200
                   },
@@ -2779,7 +2779,7 @@
                     "items": {
                       "type": "string",
                       "maxLength": 200,
-                      "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+                      "pattern": "^(?!\\.+\\/)[A-Za-z0-9_.-]+\\/(?!\\.+$)[A-Za-z0-9_.-]+$"
                     },
                     "maxItems": 200
                   },
@@ -5078,6 +5078,130 @@
         },
         "additionalProperties": false
       },
+      "ComputerResetStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["running", "done"]
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "repoId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "fullName": {
+                  "type": "string"
+                },
+                "branch": {
+                  "type": ["string", "null"]
+                },
+                "pushed": {
+                  "type": "boolean"
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": ["repoId", "fullName", "branch", "pushed", "note"],
+              "additionalProperties": false
+            }
+          },
+          "unsaved": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fullName": {
+                  "type": "string"
+                },
+                "branch": {
+                  "type": ["string", "null"]
+                },
+                "note": {
+                  "type": "string",
+                  "description": "Why it was not saved, in plain words"
+                }
+              },
+              "required": ["fullName", "branch", "note"]
+            },
+            "description": "Work the rescue could not push, which a reset loses"
+          },
+          "error": {
+            "type": ["string", "null"],
+            "description": "Set when the rescue failed outright: what it saved is unknown"
+          },
+          "runningSessions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "botId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "agent": {
+                  "type": "string"
+                },
+                "repoFullName": {
+                  "type": ["string", "null"]
+                },
+                "branch": {
+                  "type": ["string", "null"]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "queued",
+                    "starting",
+                    "running",
+                    "waiting",
+                    "settled",
+                    "failed",
+                    "stopped"
+                  ]
+                }
+              },
+              "required": ["id", "botId", "agent", "repoFullName", "branch", "status"]
+            },
+            "description": "Coding sessions a reset would stop; warn before confirming"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Confirm the reset before this"
+          }
+        },
+        "required": ["status", "results", "unsaved", "error", "runningSessions", "expiresAt"]
+      },
+      "ComputerReset": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "From POST /computer/reset/prepare"
+          },
+          "confirm": {
+            "type": "boolean",
+            "enum": [true]
+          },
+          "resetSignIns": {
+            "type": "boolean",
+            "description": "Also remove the cookie store and the coding agents' sign-ins on the computer"
+          }
+        },
+        "required": ["requestId", "confirm"],
+        "additionalProperties": false
+      },
       "ComputerDirListing": {
         "type": "object",
         "properties": {
@@ -5176,6 +5300,20 @@
             "type": ["string", "null"],
             "enum": ["sign_in", "key", "other", null],
             "description": "What `lastError` is about: a lapsed sign-in, a provider key that was refused, or something else; null without one"
+          },
+          "planProvider": {
+            "type": ["string", "null"],
+            "enum": ["anthropic", "openai", "other", null],
+            "description": "Whose plan a `subscription` account bills: `anthropic` for Claude Code, `openai` for Codex, and for pi the plan its check found (a Claude plan bills pi as extra usage, which the card says); null without a plan sign-in"
+          },
+          "checkAvailable": {
+            "type": "boolean",
+            "description": "POST /coders/{agent}/check can ask the CLI whether it is signed in"
+          },
+          "signIn": {
+            "type": "string",
+            "enum": ["link", "device", "terminal"],
+            "description": "How the agent signs in: a link to open, a link and a code to enter there (`device`), or in the computer's terminal"
           }
         },
         "required": [
@@ -5189,7 +5327,10 @@
           "providerId",
           "available",
           "needsSignIn",
-          "lastErrorKind"
+          "lastErrorKind",
+          "planProvider",
+          "checkAvailable",
+          "signIn"
         ]
       },
       "CoderLogin": {
@@ -5546,6 +5687,11 @@
             "format": "date-time",
             "description": "The last commit on the remote default branch, from the last fetch"
           },
+          "diskBytes": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "description": "The checkout on disk, its session worktrees included, in bytes, as the last refresh measured it; null before one did"
+          },
           "found": {
             "type": "boolean",
             "description": "A clone found on the computer that is not remembered yet (GH6)"
@@ -5564,6 +5710,7 @@
           "description",
           "lastUsedAt",
           "lastRemotePushAt",
+          "diskBytes",
           "found",
           "checkout"
         ]
@@ -6511,7 +6658,7 @@
               "repo": {
                 "type": "string",
                 "maxLength": 200,
-                "pattern": "^[\\w.-]+\\/[\\w.-]+$"
+                "pattern": "^(?!\\.+\\/)[A-Za-z0-9_.-]+\\/(?!\\.+$)[A-Za-z0-9_.-]+$"
               },
               "label": {
                 "type": "string",
@@ -13718,6 +13865,214 @@
         }
       }
     },
+    "/api/v1/computer/reset/prepare": {
+      "post": {
+        "tags": ["computer"],
+        "summary": "Rescue unpushed work before a reset",
+        "description": "The first step of a reset (GH5): queues the rescue job over every repository on the computer, which starts it if it is off and pushes unpushed commits and uncommitted changes to rescue branches. Poll GET /computer/reset/{requestId}, show what could not be saved and the coding sessions that would stop, then confirm with POST /computer/reset within fifteen minutes. Docker computers only (409 `RESET_UNSUPPORTED`).",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Rescue queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "requestId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": ["requestId"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The account has no computer yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The computer cannot be reset from here (`RESET_UNSUPPORTED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No computer provider, or the computer could not start (`COMPUTER_UNAVAILABLE`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/computer/reset/{requestId}": {
+      "get": {
+        "tags": ["computer"],
+        "summary": "A prepared reset's rescue, what it could not save, and the sessions it would stop",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "requestId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rescue results once `done`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComputerResetStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such reset, or it was prepared more than fifteen minutes ago",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/computer/reset": {
+      "post": {
+        "tags": ["computer"],
+        "summary": "Reset the computer: a fresh home, after the rescue",
+        "description": "Confirms a reset prepared with POST /computer/reset/prepare whose rescue is `done`, within fifteen minutes of the prepare. Stops the computer and every coding session on it, removes the container and its home volume (/home/bot: files, clones, worktrees), marks every checkout `missing` and clears the sessions' worktrees. The state volume, with the browser cookie store and the coding agents' sign-ins, is kept unless `resetSignIns`. Audited as `computer.reset`. Nothing is made until the next start, which creates a fresh computer; its reconcile job then clones every repository marked `keep_cloned` again, and the rescue branches stay on the remote. A coding session started after the prepare, so not shown to the owner, refuses the reset (409 `CODING_SESSION_RUNNING`): prepare again.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComputerReset"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Reset: stopped with no machine; the next start makes a fresh one",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Computer"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The account has no computer yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Not prepared, the rescue still running or the prepare too old (`RESET_NOT_PREPARED`), a coding session the owner was not shown (`CODING_SESSION_RUNNING`), or a computer that cannot be reset from here (`RESET_UNSUPPORTED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No computer provider, or the computer could not start (`COMPUTER_UNAVAILABLE`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/computer/files": {
       "get": {
         "tags": ["computer"],
@@ -14423,7 +14778,7 @@
       "post": {
         "tags": ["coders"],
         "summary": "Ask the CLI on the computer whether the agent is signed in",
-        "description": "Runs the agent's own status check as `coder` (Codex: `codex login status`; pi: `pi auth check` for each of its providers), starting the computer if needed. Signed in, the card reads `subscription` for a plan or `api_key` (with no `providerId`) for a key the CLI holds itself, and pi's sign-ins a Bot is waiting on end signed in; not, it is left as it was.",
+        "description": "Runs the agent's own status check as `coder` (Claude Code: `claude auth status`; Codex: `codex login status`; pi: `pi auth check` for each of its providers), starting the computer if needed. Signed in, the card reads `subscription` for a plan or `api_key` (with no `providerId`) for a key or token the CLI holds itself, and the sign-ins a Bot is waiting on for an agent that signs in in its terminal (pi) end signed in; not, it is left as it was.",
         "security": [
           {
             "session": []
@@ -14461,7 +14816,7 @@
             }
           },
           "400": {
-            "description": "Claude Code has no check (`CODER_CHECK_UNSUPPORTED`), or this build cannot run the agent (`CODER_UNSUPPORTED`)",
+            "description": "The agent has no sign-in check (`CODER_CHECK_UNSUPPORTED`), or is not one this build runs (`CODER_UNSUPPORTED`)",
             "content": {
               "application/problem+json": {
                 "schema": {

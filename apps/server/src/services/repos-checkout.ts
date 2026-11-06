@@ -1,12 +1,14 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { posix } from 'node:path';
 import type { ComputerAgentClient } from '@openbots/computer';
 import { REPOS_DIR } from '@openbots/computer';
+import { REPO_FULL_NAME } from '@openbots/shared';
 import { eq } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
 import { SYSTEM_ACTOR } from './audit.js';
 import { agentFor, startComputer } from './computer.js';
+import { parseRepoUrl, type ParsedRepoUrl } from './repos.js';
 import {
   FETCH_USERNAME,
   PUSH_USERNAME,
@@ -248,42 +250,25 @@ export async function git(ctx: GitContext, args: string[], options?: RunnerOptio
 }
 
 /**
- * A repository by its full name on its host: `owner/name`, as the policy
- * spells it. Neither part is dots only, so a path made from it (`~/repos/..`)
- * stays where it says.
+ * `owner/name` and the host of a remembered repository: its stored full
+ * name, on the host its remote names (`parseRepoUrl`), github.com when the
+ * remote cannot be read. Throws when neither says which repository it is.
  */
-export const REPO_FULL_NAME = /^(?!\.+\/)[A-Za-z0-9_.-]+\/(?!\.+$)[A-Za-z0-9_.-]+$/;
-
-/** `owner/name` and the host, from the full name or the remote url. */
 export function remoteOf(repo: Pick<RepoRow, 'fullName' | 'remoteUrl'>): {
   host: string;
   fullName: string;
 } {
-  const url = repo.remoteUrl.trim();
-  let host = 'github.com';
-  let path = '';
-  const scp = /^[\w.-]+@([\w.-]+):(.+)$/.exec(url);
-  if (scp) {
-    host = scp[1]!;
-    path = scp[2]!;
-  } else {
-    try {
-      const parsed = new URL(url);
-      host = parsed.hostname;
-      path = parsed.pathname;
-    } catch {
-      // Not a url: the full name has to say which repository it is.
-    }
+  let parsed: ParsedRepoUrl | null = null;
+  try {
+    parsed = parseRepoUrl(repo.remoteUrl);
+  } catch {
+    // Not a remote: the full name has to say which repository it is.
   }
-  const fromUrl = path
-    .replace(/^\/+/, '')
-    .replace(/\.git\/?$/, '')
-    .replace(/\/+$/, '');
-  const fullName = repo.fullName?.trim() || fromUrl;
-  if (!REPO_FULL_NAME.test(fullName)) {
-    throw new Error(`Cannot tell the repository from ${url}`);
+  const fullName = repo.fullName?.trim() || parsed?.fullName;
+  if (!fullName || !REPO_FULL_NAME.test(fullName)) {
+    throw new Error(`Cannot tell the repository from ${repo.remoteUrl.trim()}`);
   }
-  return { host: host.toLowerCase(), fullName };
+  return { host: parsed?.host ?? 'github.com', fullName };
 }
 
 /**
@@ -389,7 +374,7 @@ export function refusedKeys(
 }
 
 /** One short read of a checkout: a config file, a directory listing. */
-const SHORT_MS = 60_000;
+export const SHORT_MS = 60_000;
 
 /** The computer's `runner` user (computer-agent): the one owner of a checkout's config. */
 export const RUNNER_UID = 1801;
@@ -551,6 +536,24 @@ export function branchSlug(branch: string): string {
   );
 }
 
+/**
+ * A new session's branch when `code_task` named none:
+ * `bot/<the first five words of the prompt>-<4 random characters>`.
+ */
+export function sessionBranch(prompt: string): string {
+  const slug = prompt
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 5)
+    .join('-')
+    .slice(0, 40)
+    .replace(/-+$/, '');
+  return `bot/${slug || 'task'}-${randomBytes(3).toString('hex').slice(0, 4)}`;
+}
+
 /** The worktree a session on `branch` works in. */
 export function worktreePathFor(repoPath: string, branch: string): string {
   return posix.join(repoPath, '.worktrees', branchSlug(branch));
@@ -558,6 +561,11 @@ export function worktreePathFor(repoPath: string, branch: string): string {
 
 // One checkout operation at a time per (repository, computer) in this process.
 const locks = new Map<string, Promise<unknown>>();
+
+/** For tests: forgets every checkout lock, as a fresh process would have none. */
+export function resetCheckoutLocks(): void {
+  locks.clear();
+}
 
 /** Runs `fn` alone among this process's operations on the checkout. */
 export function withCheckoutLock<T>(
@@ -770,4 +778,80 @@ export async function ensureWorktree(
   }
   await lockDown(ctx, repoPath);
   return path;
+}
+
+// The repository jobs' common ground (repos-scan.ts, repos-refresh.ts,
+// repos-rescue.ts): a running computer, a git context on it, and what is on
+// its disk.
+
+type ComputerRow = typeof schema.computers.$inferSelect;
+
+/** A computer that is up, with its owner and agent client. */
+export interface RunningComputer {
+  computer: ComputerRow;
+  owner: { id: string; workspaceId: string };
+  agent: ComputerAgentClient;
+}
+
+/** The computer when it is running, never starting it. */
+export async function runningOn(
+  deps: AppDeps,
+  computerId: string,
+): Promise<RunningComputer | null> {
+  const [computer] = await deps.db
+    .select()
+    .from(schema.computers)
+    .where(eq(schema.computers.id, computerId));
+  if (computer?.status !== 'running') return null;
+  return {
+    computer,
+    owner: { id: computer.ownerId, workspaceId: computer.workspaceId },
+    agent: agentFor(deps, computer),
+  };
+}
+
+/** The runner's git context on `on`, for `repo` (no credential is served without one). */
+export function gitContextOn(deps: AppDeps, on: RunningComputer, repo?: RepoRow): GitContext {
+  let repoFullName: string | null = null;
+  if (repo) {
+    try {
+      repoFullName = remoteOf(repo).fullName;
+    } catch {
+      // A remote git cannot name: no credential is served for it.
+    }
+  }
+  return { deps, agent: on.agent, owner: on.owner, repoFullName };
+}
+
+/** Whether the checkout is on disk; throws when the computer could not be asked. */
+export async function onDisk(ctx: GitContext, path: string): Promise<boolean> {
+  const run = await runAsRunner(ctx, 'test', ['-e', posix.join(path, '.git')], {
+    timeoutMs: SHORT_MS,
+  });
+  if (run.error) throw new Error(run.error);
+  return run.code === 0;
+}
+
+/** `git worktree list --porcelain`: each worktree's path and branch (null when detached). */
+export function parseWorktreeList(stdout: string): { path: string; branch: string | null }[] {
+  const out: { path: string; branch: string | null }[] = [];
+  for (const line of stdout.split('\n')) {
+    if (line.startsWith('worktree ')) out.push({ path: line.slice(9).trim(), branch: null });
+    else if (line.startsWith('branch ') && out.length) {
+      out[out.length - 1]!.branch = line
+        .slice(7)
+        .trim()
+        .replace(/^refs\/heads\//, '');
+    }
+  }
+  return out;
+}
+
+/** The sessions' worktrees of a checkout: every worktree but the main one. */
+export async function worktreesOf(ctx: GitContext, path: string) {
+  const list = await runGit(ctx, ['-C', path, 'worktree', 'list', '--porcelain'], {
+    timeoutMs: SHORT_MS,
+  });
+  if (list.code !== 0) return [];
+  return parseWorktreeList(list.stdout).filter((w) => posix.normalize(w.path) !== path);
 }
