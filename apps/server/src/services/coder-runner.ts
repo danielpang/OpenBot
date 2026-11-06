@@ -878,6 +878,17 @@ class SessionRunner {
       })
       .returning();
     register(row!.id);
+    // In the transcript first, so the entry is there by the time the widget
+    // and the status show the request. The approval's id stands in for the
+    // agent's own: what the drawer decides by.
+    await recordEntry(deps, session.id, {
+      type: 'approval_request',
+      request_id: row!.id,
+      action_class: input.action,
+      title: this.scrub(input.title),
+      ...(input.detail ? { detail: this.scrub(input.detail) } : {}),
+      tool_name: input.toolName,
+    });
     await setSessionStatus(deps, this.id, 'waiting');
     await audit(deps.db, {
       workspaceId: session.workspaceId,
@@ -902,15 +913,6 @@ class SessionRunner {
       status: 'pending',
     });
     appendFeed(deps, session.id, feedLine('approval_request', `Asks: ${input.title}`));
-    // The approval's id stands in for the agent's own: what the drawer decides by.
-    await recordEntry(deps, session.id, {
-      type: 'approval_request',
-      request_id: row!.id,
-      action_class: input.action,
-      title: this.scrub(input.title),
-      ...(input.detail ? { detail: this.scrub(input.detail) } : {}),
-      tool_name: input.toolName,
-    });
     await announceApproval(deps, row!);
     const early = this.early.get(row!.id);
     if (early) {

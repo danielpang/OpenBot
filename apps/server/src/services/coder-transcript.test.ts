@@ -135,31 +135,40 @@ describe('coder transcript', () => {
       await recordEntry(deps, sessionId, { type: 'text', text: 'Working' });
       await recordEntry(deps, sessionId, { type: 'text', text: 'Still working' });
     });
-    // Nothing yet: the batch waits for its flush.
-    expect(forSession(sessionId)).toEqual([]);
     await w.t.inOrganization(() => setSessionStatus(deps, sessionId, 'running'));
+    // The first batch may go out at once and the rest with the flush the
+    // status change forces; every entry is published, in order, and all of
+    // them before the status change they led to.
     const published = forSession(sessionId);
+    const batches = published.filter((e) => e.type === 'coding_session.events');
+    expect(batches.length).toBeGreaterThan(0);
     expect(published.map((e) => e.type)).toEqual([
-      'coding_session.events',
+      ...batches.map(() => 'coding_session.events'),
       'coding_session.updated',
     ]);
-    expect(published[0]).toMatchObject({ user_id: w.ownerId, workspace_id: w.workspaceId });
-    const { entries } = published[0]!.payload as unknown as { entries: CodingSessionEntry[] };
+    for (const batch of batches) {
+      expect(batch).toMatchObject({ user_id: w.ownerId, workspace_id: w.workspaceId });
+    }
+    const entries = batches.flatMap(
+      (batch) => (batch.payload as unknown as { entries: CodingSessionEntry[] }).entries,
+    );
     expect(entries.map((e) => [e.seq, e.event.type])).toEqual([
       [1, 'prompt'],
       [2, 'text'],
       [3, 'text'],
     ]);
-    expect(published[1]).toMatchObject({
+    expect(published.at(-1)).toMatchObject({
       user_id: w.ownerId,
       workspace_id: w.workspaceId,
       payload: { session: { id: sessionId, status: 'running', title: 'Fix the reconnect loop' } },
     });
 
-    // On its own, a batch goes out within the flush interval.
+    // On its own, a batch goes out within the flush interval, and a flush
+    // with nothing new publishes nothing.
+    const before = published.length;
     await w.t.inOrganization(() => recordEntry(deps, sessionId, { type: 'text', text: 'More' }));
-    await w.until(() => expect(forSession(sessionId)).toHaveLength(3));
+    await w.until(() => expect(forSession(sessionId)).toHaveLength(before + 1));
     await w.t.inOrganization(() => flushTranscript(deps, sessionId));
-    expect(forSession(sessionId)).toHaveLength(3);
+    expect(forSession(sessionId)).toHaveLength(before + 1);
   });
 });

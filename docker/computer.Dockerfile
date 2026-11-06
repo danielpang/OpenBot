@@ -100,7 +100,8 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund --cache /tmp/npm-cac
 # Each installed CLI must be exactly the pinned version: a lockfile drift or a
 # package that resolves to another build fails the image here, not on a Bot's
 # computer (design: Testing, "a CI check runs <cli> --version and fails when it
-# differs from the pin").
+# differs from the pin"). The template literals are for node, not the shell.
+# hadolint ignore=SC2016
 RUN node -e ' \
       const want = require("./package.json").dependencies; \
       for (const name of Object.keys(want)) { \
