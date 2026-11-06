@@ -7,9 +7,9 @@
 //   then only the addressed Bots answer (C5: "@bot directs only the mentioned
 //   Bots"). Only the owner's `@everyone` wakes the group: a Bot must name the
 //   Bots it needs, so one Bot message cannot fan out to every other Bot and
-//   each of their replies fan out again. An owner's reply that mentions nobody in a thread about one Bot's
-//   item (its result, approval request or question) addresses that Bot alone
-//   (C7). A message that addresses nobody: from a Bot it reaches nobody
+//   each of their replies fan out again. An owner's reply that mentions
+//   nobody in a thread about one Bot's item (its result, approval request or
+//   question) addresses that Bot alone (C7). A message that addresses nobody: from a Bot it reaches nobody
 //   (Bots reach Bots only by mention or DM); from the owner it goes to every
 //   Bot whose `shouldReply` says yes (`bot_message`), and to a Bot already at
 //   work in that thread (or top level) without asking. Messages from the

@@ -400,18 +400,8 @@ export async function dropQueuedHandoffs(
   chatId: string,
   thread: string | null,
 ): Promise<RunRow[]> {
-  const queued = await deps.db
-    .select()
-    .from(schema.runs)
-    .where(
-      and(
-        eq(schema.runs.chatId, chatId),
-        eq(schema.runs.status, 'queued'),
-        isNotNull(schema.runs.parentRunId),
-      ),
-    );
-  const stale = queued.filter((r) => runThread(r) === thread).map((r) => r.id);
-  if (!stale.length) return [];
+  // The run's thread, as `runThread` reads it.
+  const runThreadSql = sql`${schema.runs.state} -> 'input' ->> 'threadRootId'`;
   const dropped = await deps.db
     .update(schema.runs)
     .set({
@@ -419,9 +409,18 @@ export async function dropQueuedHandoffs(
       error: 'Dropped: the owner sent a newer message',
       finishedAt: new Date(),
     })
-    .where(and(inArray(schema.runs.id, stale), eq(schema.runs.status, 'queued')))
+    .where(
+      and(
+        eq(schema.runs.chatId, chatId),
+        eq(schema.runs.status, 'queued'),
+        isNotNull(schema.runs.parentRunId),
+        // Never started: a run resumed after an approval or answer is queued again, but keeps it.
+        isNull(schema.runs.startedAt),
+        thread ? sql`${runThreadSql} = ${thread}` : sql`${runThreadSql} is null`,
+      ),
+    )
     .returning();
-  for (const row of dropped) await publishRunStatus(deps, row);
+  await Promise.all(dropped.map((row) => publishRunStatus(deps, row)));
   return dropped;
 }
 

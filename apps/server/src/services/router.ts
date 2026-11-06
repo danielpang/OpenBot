@@ -10,7 +10,7 @@ import {
 } from '@openbots/router';
 import { ModelConfigSchema, parseMentions, PRIORITY, type MessagePart } from '@openbots/shared';
 import type { LanguageModel } from 'ai';
-import { and, count, desc, eq, gt, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, count, desc, eq, gt, isNotNull, isNull, ne, or } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { toMessage, type Message } from '../schemas.js';
@@ -101,11 +101,15 @@ export async function routeMessage(
   // An owner's message may be for the Bot whose thread it is in (C7), or for
   // a Bot already at work there (plan 5.2), as their steering agrees.
   const byOwner = message.authorType === 'user' && chat.type === 'group';
-  // The owner has moved on: handoffs still queued from earlier Bot chains in
-  // this thread would answer an older message, so they are dropped before
-  // routing (their Bots are then no longer at work here). The row saying so
-  // is posted after it, so `shouldReply` still sees the owner's message last.
-  const dropped = byOwner ? await dropQueuedHandoffs(deps, chat.id, message.threadRootId) : [];
+  // An owner message that names no Bot (or `@everyone`) redirects the
+  // thread: handoffs still queued from earlier Bot chains there would answer
+  // an older message, so they are dropped before routing (their Bots are then
+  // no longer at work here). One naming Bots leaves chains alone, and a named
+  // Bot with a queued run is steered by it as before. The row saying so is
+  // posted once the runs have started, so they and `shouldReply` see the
+  // owner's message last.
+  const redirects = byOwner && (message.mentionEveryone || message.mentions.length === 0);
+  const dropped = redirects ? await dropQueuedHandoffs(deps, chat.id, message.threadRootId) : [];
   const targets = await routeTargets(
     { type: chat.type, botIds: bots.map((b) => b.id) },
     message,
@@ -120,7 +124,20 @@ export async function routeMessage(
   if (undecided.asked > 0 && undecided.failed === undecided.asked) {
     await postUndecidedNotice(deps, chat);
   }
-  if (dropped.length) await postDroppedNotice(deps, chat, message, dropped);
+  try {
+    return await startTargets(deps, chat, message, targets);
+  } finally {
+    if (dropped.length) await postDroppedNotice(deps, chat, message, dropped);
+  }
+}
+
+/** Starts the runs for `routeMessage`'s targets under the loop guards (plan 7). */
+async function startTargets(
+  deps: RouterDeps,
+  chat: ChatRow,
+  message: Message,
+  targets: { botId: string; trigger: RouteTrigger }[],
+): Promise<RoutedTarget[]> {
   if (!targets.length) return [];
 
   // Loop guards (plan 7): one link deeper than the run that wrote the message,
@@ -225,7 +242,10 @@ async function postUndecidedNotice(deps: RouterDeps, chat: ChatRow) {
   });
 }
 
-/** Says in a compact event row that an owner message dropped queued handoffs. */
+/**
+ * Says in a compact event row that an owner message dropped queued handoffs.
+ * The handoffs are gone whatever happens here, so a failure is only logged.
+ */
 async function postDroppedNotice(
   deps: RouterDeps,
   chat: ChatRow,
@@ -233,21 +253,25 @@ async function postDroppedNotice(
   dropped: { id: string; botId: string }[],
 ) {
   const n = dropped.length;
-  await postMessage(deps, chat.id, {
-    authorType: 'system',
-    threadRootId: message.threadRootId,
-    parts: [
-      {
-        type: 'event',
-        kind: 'handoffs_dropped',
-        text: `Dropped ${n} queued Bot ${n === 1 ? 'handoff' : 'handoffs'}: you sent a newer message.`,
-        data: {
-          runIds: dropped.map((r) => r.id),
-          botIds: [...new Set(dropped.map((r) => r.botId))],
+  try {
+    await postMessage(deps, chat.id, {
+      authorType: 'system',
+      threadRootId: message.threadRootId,
+      parts: [
+        {
+          type: 'event',
+          kind: 'handoffs_dropped',
+          text: `Dropped ${n} queued Bot ${n === 1 ? 'handoff' : 'handoffs'} after a newer owner message.`,
+          data: {
+            runIds: dropped.map((r) => r.id),
+            botIds: [...new Set(dropped.map((r) => r.botId))],
+          },
         },
-      },
-    ],
-  });
+      ],
+    });
+  } catch (error) {
+    deps.logger.warn({ err: error, chatId: chat.id }, 'handoffs dropped notice failed');
+  }
 }
 
 /** Runs a Bot's message started in the chat since `since` (they have a parent run). */
@@ -260,6 +284,8 @@ async function botRunsSince(db: Db, chatId: string, since: Date): Promise<number
         eq(schema.runs.chatId, chatId),
         isNotNull(schema.runs.parentRunId),
         gt(schema.runs.createdAt, since),
+        // A handoff dropped before it ran did no work.
+        or(isNotNull(schema.runs.startedAt), ne(schema.runs.status, 'cancelled')),
       ),
     );
   return row?.n ?? 0;
@@ -338,15 +364,15 @@ export async function routeBotReply(
     .map((p) => p.text)
     .join('\n');
   if (!text.trim()) return [];
-  const { handles, everyone } = parseMentions(text);
+  // A Bot's `@everyone` wakes nobody (routeTargets), so it is not stored either.
+  const { handles } = parseMentions(text);
   const bots = await chatBots(deps.db, chat);
   const mentions = bots
     .filter((b) => b.id !== row.authorId && handles.includes(b.handle.toLowerCase()))
     .map((b) => b.id);
-  const message =
-    mentions.length || everyone
-      ? await setMentions(deps.db, row.id, mentions, everyone)
-      : toMessage(row);
+  const message = mentions.length
+    ? await setMentions(deps.db, row.id, mentions, false)
+    : toMessage(row);
   return routeMessage(deps, message, options);
 }
 

@@ -723,11 +723,37 @@ describe('router', () => {
       );
       expect(notice).toMatchObject({ authorType: 'system', threadRootId: null });
       expect((notice!.parts as MessagePart[])[0]).toMatchObject({
-        text: 'Dropped 1 queued Bot handoff: you sent a newer message.',
+        text: 'Dropped 1 queued Bot handoff after a newer owner message.',
         data: { runIds: [here.id], botIds: [helper.id] },
       });
       // Posted after routing: shouldReply saw the owner's message last.
       expect(notice!.seq).toBeGreaterThan(owner.seq);
+    });
+
+    it('leaves handoffs alone when the owner names a Bot, and never drops one that started', async () => {
+      const { bot: lead } = await newBot('Lead2', [[{ text: 'Starting.' }]]);
+      const { bot: helper } = await newBot('Helper2');
+      const { bot: designer } = await newBot('Designer2', [[{ text: 'Sure.' }]]);
+      const chat = await group([lead, helper, designer]);
+      await say(chat.id, '@lead2 start');
+      await settled(chat.id);
+      const [leadRun] = await runsIn(chat.id);
+      const pending = await queuedHandoff(helper.id, chat.id, leadRun!.id);
+      // Queued again after an approval or answer: it started before, so it is kept.
+      const resumed = await queuedHandoff(helper.id, chat.id, leadRun!.id);
+      await t.db
+        .update(schema.runs)
+        .set({ startedAt: new Date() })
+        .where(eq(schema.runs.id, resumed.id));
+
+      await say(chat.id, '@designer2 quick question');
+      let byId = new Map((await runsIn(chat.id)).map((r) => [r.id, r]));
+      expect(byId.get(pending.id)?.status).toBe('queued');
+
+      await say(chat.id, 'Change of plan');
+      byId = new Map((await runsIn(chat.id)).map((r) => [r.id, r]));
+      expect(byId.get(pending.id)?.status).toBe('cancelled');
+      expect(byId.get(resumed.id)?.status).toBe('queued');
     });
 
     it("never drops a handoff for a Bot's message", async () => {
