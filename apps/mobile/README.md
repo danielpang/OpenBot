@@ -1,4 +1,4 @@
-# OpenBots for iOS
+# OpenBots for iPhone and iPad
 
 Expo SDK 55 / React Native companion to the OpenBots server. The app lives in the pnpm workspace and uses the existing API client, event/widget schemas, avatars and Noise tunnel. Requires iOS 17 or later. No analytics or crash collection is configured.
 
@@ -95,6 +95,25 @@ The command above targets Apple silicon. For an Intel Mac, use `-architectureVar
 Verified locally with Xcode 26.4: installing its matching iOS 26.4 runtime restored destination discovery, including the existing iPhone 17 Pro on iOS 26.2. OpenBots then built, installed and rendered its welcome screen on that existing simulator.
 
 Wait for installation to finish, then choose an available simulator in Expo's device picker. If the download command itself reports `Unable to connect to simulator`, use Xcode's Components settings. This destination error happens before compilation; changing the app's deployment target or Apple signing team does not install the missing component.
+
+## iPad workspace
+
+The same universal Expo app runs on iPhone and iPad: there is no second app, Metro server, bundle identifier, or duplicated API/transport layer. `ios.supportsTablet` targets both device families, and `requireFullScreen: false` keeps iPad multitasking available.
+
+- At **820pt window width and above on iPad**, a persistent 320pt sidebar shows Bots/groups, search, creation, Inbox with its pending count, and Settings. Conversations, Bot details, Artifacts and previews open alongside it using the existing routes. Deep-linked Bot/chat selections are highlighted in the shared roster.
+- Below 820pt, including narrow Split View/Stage Manager windows, navigation returns to the existing native tabs and full-width conversation stack. iPhone always keeps the compact experience. Resizing a conversation does not remount its navigator or composer.
+- Forms are capped at 760pt and transcript/composer content at 960pt for readability on large displays. Pairing defaults the device name to **My iPad** on tablets.
+
+To run on an iPad simulator, use the existing Expo commands and select an iPad in the picker:
+
+```sh
+pnpm --filter @openbots/mobile ios --device
+pnpm --filter @openbots/mobile dev
+```
+
+For an existing Metro session, the iPhone and iPad development clients can use the same server. Release/EAS builds use the same profiles described above. Regenerate native configuration with `pnpm --filter @openbots/mobile prebuild` when updating an older installed build.
+
+Automated tests cover the width boundary, iPhone fallback, sidebar routing/selection, offline and onboarding gates, and keeping conversation content mounted during resizing. An Xcode Debug simulator build and installation were also verified for iPad Pro 11-inch (M5), iOS 26.4. Authenticated iPad flows, keyboard behavior and physical-device acceptance still require the checks in [DEVICE-VALIDATION.md](DEVICE-VALIDATION.md).
 
 ## Liquid Glass
 

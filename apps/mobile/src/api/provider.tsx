@@ -18,6 +18,7 @@ import {
   type ReactNode,
 } from 'react';
 import { AppState, View, Text, Pressable, StyleSheet } from 'react-native';
+import { defaultDeviceName } from '../components/adaptive-layout';
 import { router, type Href } from 'expo-router';
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
@@ -539,7 +540,7 @@ export function MobileProvider({ children }: { children: ReactNode }) {
       setLocked(false);
       await hosts.save(saved, { apiKey: apiKey.trim() });
     },
-    async signIn(address, email, password, name = 'My iPhone', kind = 'server') {
+    async signIn(address, email, password, name = defaultDeviceName(), kind = 'server') {
       const result = await signInAndPair({ address, email, password, deviceName: name });
       result.host.kind = kind;
       await hosts.save(result.host, result.secrets);

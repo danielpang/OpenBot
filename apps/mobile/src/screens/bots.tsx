@@ -19,7 +19,13 @@ import { Button, Empty, ErrorNote, Field, Icon, Label, Page, Section, row } from
 import { useTheme } from '../theme';
 import { groupTitle, useBots, useChats, type Bot } from './data';
 
-export function BotsScreen() {
+export function BotsScreen({
+  sidebar = false,
+  selected,
+}: {
+  sidebar?: boolean;
+  selected?: { kind: 'bot' | 'chat'; id?: string };
+}) {
   const c = useTheme();
   const mobile = useMobile();
   const bots = useBots();
@@ -49,24 +55,37 @@ export function BotsScreen() {
       chat.type === 'group' &&
       groupTitle(chat, bots.data).toLowerCase().includes(search.toLowerCase()),
   );
+  function openConversation(kind: 'bot' | 'chat', id: string) {
+    const href = kind === 'bot' ? (`/bot/${id}` as const) : (`/chat/${id}` as const);
+    if (sidebar) router.navigate(href);
+    else router.push(href);
+  }
   function botRow(bot: Bot) {
+    const active =
+      selected?.kind === 'bot'
+        ? selected.id === bot.id
+        : selected?.kind === 'chat' && selected.id === bot.chatId;
     return (
       <Pressable
         key={bot.id}
         accessibilityRole="button"
         accessibilityLabel={`Open ${bot.name}`}
-        onPress={() => router.push(`/bot/${bot.id}`)}
+        accessibilityState={{ selected: !!active }}
+        onPress={() => openConversation('bot', bot.id)}
         style={({ pressed }) => ({
           flexDirection: 'row',
           alignItems: 'center',
           gap: 14,
           paddingVertical: 13,
+          paddingHorizontal: sidebar ? 10 : 0,
+          borderRadius: 12,
+          backgroundColor: active ? c.accent : 'transparent',
           opacity: pressed ? 0.6 : 1,
         })}
       >
         <BotAvatar bot={bot} />
         <View style={{ flex: 1, gap: 3 }}>
-          <Label weight="600" size={18}>
+          <Label weight="600" size={sidebar ? 16 : 18}>
             {bot.name}
           </Label>
           <Label muted size={14}>
@@ -80,7 +99,7 @@ export function BotsScreen() {
   return (
     <Page scroll={false}>
       <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
+        contentInsetAdjustmentBehavior={sidebar ? 'never' : 'automatic'}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -88,11 +107,15 @@ export function BotsScreen() {
             onRefresh={() => void refreshManually()}
           />
         }
-        contentContainerStyle={{ padding: 22, paddingBottom: 50, gap: 28 }}
+        contentContainerStyle={{
+          padding: sidebar ? 14 : 22,
+          paddingBottom: 50,
+          gap: sidebar ? 20 : 28,
+        }}
       >
         <View style={row.between}>
-          <View>
-            <Label size={32} weight="700">
+          <View style={{ flex: 1 }}>
+            <Label size={sidebar ? 24 : 32} weight="700">
               OpenBots
             </Label>
             <View style={[row.base, { gap: 6 }]}>
@@ -146,8 +169,23 @@ export function BotsScreen() {
               <Pressable
                 key={chat.id}
                 accessibilityRole="button"
-                onPress={() => router.push(`/chat/${chat.id}`)}
-                style={[row.base, { paddingVertical: 10 }]}
+                accessibilityLabel={`Open ${groupTitle(chat, bots.data)}`}
+                accessibilityState={{
+                  selected: selected?.kind === 'chat' && selected.id === chat.id,
+                }}
+                onPress={() => openConversation('chat', chat.id)}
+                style={[
+                  row.base,
+                  {
+                    paddingVertical: 10,
+                    paddingHorizontal: sidebar ? 10 : 0,
+                    borderRadius: 12,
+                    backgroundColor:
+                      selected?.kind === 'chat' && selected.id === chat.id
+                        ? c.accent
+                        : 'transparent',
+                  },
+                ]}
               >
                 <View style={{ backgroundColor: c.muted, padding: 15, borderRadius: 20 }}>
                   <Icon name="people-outline" />

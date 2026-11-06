@@ -27,6 +27,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     bundleIdentifier: process.env.OPENBOTS_IOS_BUNDLE_ID ?? 'dev.openbots.mobile',
     buildNumber: process.env.OPENBOTS_IOS_BUILD_NUMBER ?? '1',
     supportsTablet: true,
+    // Keep Split View and resizable iPad windows available.
+    requireFullScreen: false,
     associatedDomains: ['applinks:openbots.dev'],
     infoPlist: {
       ITSAppUsesNonExemptEncryption: true,

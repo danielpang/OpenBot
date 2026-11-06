@@ -20,6 +20,16 @@ View Activity, run/enable/disable a Routine, preview an Artifact, and open the B
 
 Use VoiceOver, large Dynamic Type, light/dark mode, reduced motion, hardware keyboard, native dictation, a small-screen phone and an iPad. Verify readable errors, retry, keyboard avoidance, touch targets and focus after navigation. Open from notifications when terminated and when app-locked; cancelling authentication must never issue a decision request.
 
+## iPad workspace acceptance
+
+Use the same Expo development client and Metro server as iPhone. Run on an iPad Pro/Air and iPad mini; record model, OS, window width, commit and build number. This is a manual acceptance checklist, not a claim of completed device validation.
+
+- Pair via QR/pasted link and password sign-in. Confirm the proposed device name is **My iPad**, secure storage works, and the sidebar is absent during onboarding and app lock.
+- At window widths of at least 820pt, verify the shared searchable Bot/group roster, selected conversation highlight, creation sheet, Inbox pending count and Settings. Narrow below 820pt and widen again; repeat with portrait/landscape rotation, Split View and Stage Manager. Mini portrait can intentionally use the compact layout.
+- With a multiline unsent draft, attachments and older messages scrolled into view, resize the conversation without losing draft, scroll position or focus. Open threads, Bot details, group membership, preview and Artifacts, then navigate back. Check selected rows when entering from notifications or universal links.
+- Disconnect/reconnect and switch saved servers. Settings must remain reachable without a client; never show a different host's roster or transcript. Test app lock while a conversation is visible.
+- Check sidebar and detail safe areas, hardware/floating/docked keyboards, pointer targets, VoiceOver order, large Dynamic Type, both appearance modes and Reduce Transparency. The final message and send control must remain reachable.
+
 ## Chat composer / keyboard pass
 
 - Tap the compact Message field: the composer should follow the keyboard with no jump or extra home-indicator gap. Repeat with predictive text and dictation enabled.

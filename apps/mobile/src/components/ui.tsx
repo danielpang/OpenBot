@@ -173,7 +173,17 @@ export function Page({
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
       style={{ backgroundColor: c.background }}
-      contentContainerStyle={[{ padding: 22, gap: 28, paddingBottom: 48 }, style]}
+      contentContainerStyle={[
+        {
+          padding: 22,
+          gap: 28,
+          paddingBottom: 48,
+          width: '100%',
+          maxWidth: 760,
+          alignSelf: 'center',
+        },
+        style,
+      ]}
     >
       {children}
     </ScrollView>

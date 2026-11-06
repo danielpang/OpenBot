@@ -1,5 +1,7 @@
 import { ActivityIndicator } from 'react-native';
-import { Redirect, useSegments, router } from 'expo-router';
+import { Redirect, Slot, useSegments, router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTabletLayout } from '../../src/components/adaptive-layout';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useMobile } from '../../src/api/provider';
 import { Button, ErrorNote, Label, Page } from '../../src/components/ui';
@@ -7,6 +9,7 @@ import { useTheme } from '../../src/theme';
 import { useInbox } from '../../src/screens/inbox-data';
 export default function TabsLayout() {
   const c = useTheme();
+  const wide = useTabletLayout();
   const mobile = useMobile();
   const segments = useSegments();
   const inbox = useInbox();
@@ -35,6 +38,15 @@ export default function TabsLayout() {
           onPress={() => router.replace('/(tabs)/settings')}
         />
       </Page>
+    );
+  if (wide)
+    return (
+      <SafeAreaView
+        edges={['top', 'bottom', 'right']}
+        style={{ flex: 1, backgroundColor: c.background }}
+      >
+        <Slot />
+      </SafeAreaView>
     );
   return (
     // UIKit owns the material, safe-area insets and accessibility adaptations.
