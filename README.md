@@ -6,6 +6,8 @@ together, Skills and Routines that let work start without you, webhooks, and Art
 your own machine or VPS with Docker Compose, talks to any OpenAI-compatible or Anthropic-compatible
 model endpoint, and connects to any MCP server. See [docs/PRD.md](docs/PRD.md) for the product
 requirements and [docs/TECHNICAL_PLAN.md](docs/TECHNICAL_PLAN.md) for the design.
+See [Images and runtime architecture](docs/ARCHITECTURE.md) for the five Docker images, the Mac
+app's local setup, remote connectivity and standalone deployment trade-offs.
 
 ## Install
 
