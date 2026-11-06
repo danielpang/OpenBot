@@ -324,7 +324,8 @@ describe('release workflow', () => {
       expect(Object.keys(workflowFile(file).on)).toEqual(['workflow_call']);
     }
     const mobile = workflowFile('release-mobile.yml');
-    expect(Object.keys(mobile.on).sort()).toEqual(['push', 'workflow_dispatch']);
+    expect(Object.keys(mobile.on)).toEqual(['push']);
+    expect(mobile.on.push).toEqual(release.on.push);
     // Nothing is granted by default; each job asks for what it needs.
     expect(release.permissions).toEqual({});
   });
@@ -380,8 +381,8 @@ describe('release workflow', () => {
     const mobile = workflowFile('release-mobile.yml').jobs.mobile!;
     const mobileStamp = mobile.steps!.find((s) => s.name === 'Stamp the tagged release version')!;
     expect(mobileStamp.run).toContain('release-version.mjs stamp "$RELEASE_TAG"');
-    expect(mobileStamp.run).toContain('release-version.mjs current');
-    expect(mobileStamp.env!.IS_TAG).toBe("${{ github.ref_type == 'tag' }}");
+    expect(mobileStamp.run).not.toContain('release-version.mjs current');
+    expect(mobileStamp.env!.IS_TAG).toBeUndefined();
     for (const name of ['Build workspace packages', 'Build signed IPA with EAS']) {
       expect(mobile.steps!.indexOf(mobileStamp)).toBeLessThan(
         mobile.steps!.findIndex((s) => s.name === name),

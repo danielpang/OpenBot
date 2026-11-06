@@ -7,7 +7,7 @@ built. Self-hosting is documented in the README too.
 
 ## Before you open a pull request
 
-Run what CI runs (`.github/workflows/ci.yml`):
+Run the full local checks (`.github/workflows/ci.yml` selects affected checks in CI):
 
 ```sh
 pnpm typecheck
@@ -24,6 +24,36 @@ pnpm --filter @openbots/server openapi
 pnpm exec prettier --write packages/api-client/openapi.json
 pnpm --filter @openbots/api-client generate
 ```
+
+## CI scope and build reuse
+
+CI runs on pull requests and pushes to `main`, not on a nightly schedule. The small
+**Select affected checks** job compares changed paths against the merge-base using
+`scripts/ci-scope.mjs`. Deleted and renamed paths count too.
+
+- Mobile-only changes run **iOS unit tests and bundle**. General workspace checks exclude
+  mobile lint, typechecking, tests and builds so these do not run twice.
+- Desktop changes run general workspace checks without database, browser or container jobs.
+- Server changes also run real-Postgres tests, browser tests and image/lifecycle smoke tests.
+- Web changes run browser and image/lifecycle tests, but not the server's Postgres suite.
+- Relay changes run workspace and image checks. Docker/Compose/backup changes run the
+  relevant container checks.
+- Shared packages, the lockfile, CI configuration and unknown code paths conservatively run
+  the full suite. Documentation-only changes skip compilation and integration runners.
+
+The general check job builds the non-mobile workspace once. When browser tests are selected,
+it uploads the compiled `apps/*/dist`, `packages/*/dist` and `ee/*/dist` directories as
+**browser-test-build**. Every Playwright shard downloads those same files rather than
+rebuilding the workspace. This is a temporary CI artifact, retained for one day, not a GitHub
+Release asset or an installer. Each shard still gets a fresh Postgres/Redis environment.
+
+**CI result** always runs and fails if any selected job fails or is cancelled. It accepts
+intentionally skipped jobs. Use this aggregate check for branch protection rather than
+requiring every optional integration job individually.
+
+Release packaging and publication do not run on PRs. Version-tag pushes run the full release
+pipelines, including the iOS EAS build and TestFlight submission when credentials are set.
+There is no manual, untagged iOS release workflow; local builds remain available.
 
 ## What a change includes
 

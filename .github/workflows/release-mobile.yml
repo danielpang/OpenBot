@@ -6,13 +6,7 @@ name: Release iOS app
 
 on:
   push:
-    tags: ['v*']
-  workflow_dispatch:
-    inputs:
-      submit:
-        description: Submit the signed build to App Store Connect/TestFlight
-        type: boolean
-        default: false
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
 
 permissions:
   contents: read
@@ -50,14 +44,11 @@ jobs:
       - name: Stamp the tagged release version
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-          IS_TAG: ${{ github.ref_type == 'tag' }}
         run: |
-          if [ "$IS_TAG" = true ]; then
-            node scripts/release-version.mjs stamp "$RELEASE_TAG" >>"$GITHUB_ENV"
-          else
-            node scripts/release-version.mjs current >>"$GITHUB_ENV"
-          fi
-          echo "OPENBOTS_IOS_BUILD_NUMBER=${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" >>"$GITHUB_ENV"
+          {
+            node scripts/release-version.mjs stamp "$RELEASE_TAG"
+            echo "OPENBOTS_IOS_BUILD_NUMBER=${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          } >>"$GITHUB_ENV"
       - name: Set release app version
         run: echo "OPENBOTS_MOBILE_VERSION=$version" >>"$GITHUB_ENV"
       - name: Test mobile logic
@@ -97,7 +88,7 @@ jobs:
         working-directory: apps/mobile
         run: pnpm dlx eas-cli@18.10.0 build --platform ios --profile production --non-interactive --wait --json >eas-build.json
       - name: Submit to TestFlight
-        if: steps.signing.outputs.signed == 'true' && (github.event_name == 'push' || inputs.submit)
+        if: steps.signing.outputs.signed == 'true'
         working-directory: apps/mobile
         run: |
           build_id="$(node -e 'const fs=require("node:fs"); const builds=JSON.parse(fs.readFileSync("eas-build.json","utf8")); if(!builds[0]?.id) process.exit(1); process.stdout.write(builds[0].id)')"
