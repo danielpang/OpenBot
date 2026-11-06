@@ -1,9 +1,9 @@
-import { Button, XIcon } from '@openbots/ui';
-import { useCallback, useEffect, type ReactNode } from 'react';
+import { useCallback, useEffect } from 'react';
 import { CODING_SESSIONS_PANEL, useRightPanel } from '../../app/right-panel.js';
 import { ArtifactViewer } from '../artifacts/viewer.js';
 import { ScreenPreview } from '../computer/preview.js';
 import { ActivityLog } from './activity-log.js';
+import { PanelFrame } from './panel-frame.js';
 import { ThreadPanel } from './thread-panel.js';
 
 // Which right panel a Bot's transcript has open (PRD section 5): one at a
@@ -136,26 +136,4 @@ export function useFocusThread(
   useEffect(() => {
     if (chatId && thread) show({ kind: 'thread', chatId, rootId: thread, focusSeq });
   }, [show, chatId, thread, focusSeq]);
-}
-
-export function PanelFrame({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose(): void;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-2">
-        <h2 className="text-sm font-medium">{title}</h2>
-        <Button variant="ghost" size="icon" aria-label={`Close ${title}`} onClick={onClose}>
-          <XIcon />
-        </Button>
-      </header>
-      <div className="relative min-h-0 flex-1 overflow-auto">{children}</div>
-    </div>
-  );
 }
