@@ -287,11 +287,6 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
       const active = activeTools();
       const offer = active ? { activeTools: active } : {};
       const steer = await input.drainSteering();
-      if (!steer.length) {
-        lastMessages = messages;
-        await input.checkpoint?.step(lastMessages, { ...usage });
-        return offer;
-      }
       for (const text of steer) {
         await input.recordStep({
           type: 'steer',
@@ -299,10 +294,24 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
           payload: { text },
         });
       }
-      lastMessages = [
-        ...messages,
-        ...steer.map((text) => ({ role: 'user' as const, content: text })),
-      ];
+      lastMessages = steer.length
+        ? [...messages, ...steer.map((text) => ({ role: 'user' as const, content: text }))]
+        : messages;
+      // A queued group run can start after this Bot has already replied. Some
+      // models treat a trailing assistant turn as prefill and reject it. Keep
+      // history intact, use real steering when present, and leave tool-result
+      // turns alone so native tool continuations retain their call/result pairs.
+      if (lastMessages.at(-1)?.role === 'assistant') {
+        lastMessages = [
+          ...lastMessages,
+          {
+            role: 'user',
+            content:
+              '[system] Continue your turn using the conversation above. ' +
+              'Your previous reply is already visible; avoid repeating it.',
+          },
+        ];
+      }
       await input.checkpoint?.step(lastMessages, { ...usage });
       return { ...offer, messages: lastMessages };
     },
