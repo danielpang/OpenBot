@@ -1466,16 +1466,61 @@ describe('coder runner, across agents and accounts', () => {
     return (r.state as RunState).resume!.output as Record<string, unknown>;
   };
 
-  it('discards a pushed branch on the remote too, unless a pull request keeps it', async () => {
+  it('records the head it pushed when the remote branch is at one of its own commits', async () => {
+    const sha = 'a'.repeat(40);
+    let ours = true;
+    w.coder.agent = (io) => {
+      io.stdout(fixture('claude-success.jsonl'));
+      io.exit(0);
+    };
+    w.coder.git = (args) => {
+      if (args.includes('ls-remote')) {
+        return { code: 0, stdout: `${sha}\trefs/heads/bot/fix-reconnect\n` };
+      }
+      if (args.includes('merge-base')) return { code: ours ? 0 : 1 };
+      return defaultGit(args);
+    };
+    try {
+      const pushed = await w.newSession({ pushAllowed: true });
+      expect((await run(pushed.sessionId)).pushedSha).toBe(sha);
+      // Someone else's commit on the remote branch: not recorded.
+      ours = false;
+      const moved = await w.newSession({ pushAllowed: true });
+      expect((await run(moved.sessionId)).pushedSha).toBeNull();
+      // No push approved: nothing is asked of the remote.
+      ours = true;
+      const local = await w.newSession();
+      expect((await run(local.sessionId)).pushedSha).toBeNull();
+    } finally {
+      w.coder.git = defaultGit;
+    }
+  });
+
+  it('discards a pushed bot/ branch on the remote only while its head is what the session pushed', async () => {
+    const sha = 'a'.repeat(40);
+    const other = 'b'.repeat(40);
     w.coder.agent = (io) => io.exit(0);
-    w.coder.git = (args) =>
-      args.includes('ls-remote') ? { code: 0, stdout: 'abc\trefs/heads/x\n' } : defaultGit(args);
-    const settledSession = async (branch: string, prUrl: string | null) => {
+    let remoteHead = sha;
+    w.coder.git = (args) => {
+      if (!args.includes('ls-remote')) return defaultGit(args);
+      const ref = args.at(-1)!;
+      // A longer ref that a pattern would also match comes first.
+      return {
+        code: 0,
+        stdout: `${other}\trefs/heads/x/${ref.slice('refs/heads/'.length)}\n${remoteHead}\t${ref}\n`,
+      };
+    };
+    const settledSession = async (
+      branch: string,
+      prUrl: string | null,
+      pushedSha: string | null = sha,
+    ) => {
       const s = await w.newSession({
         status: 'settled',
         branch,
         worktreePath: `${REPO_PATH}/.worktrees/${branch.replace('/', '-')}`,
         pushAllowed: true,
+        pushedSha,
         prUrl,
       });
       await w.t.db
@@ -1507,19 +1552,46 @@ describe('coder runner, across agents and accounts', () => {
     };
     const feed = async (sessionId: string) =>
       (await w.widget(sessionId)).feed.map((line) => line.text);
+    const deletes = (git: { args: string[] }[]) => git.some((g) => g.args.includes('--delete'));
     try {
       const pushed = await settledSession('bot/gone', null);
       const git = await discard(pushed);
       expect(git).toContainEqual({
-        args: ['-C', REPO_PATH, 'push', 'origin', '--delete', 'bot/gone'],
+        args: [
+          '-C',
+          REPO_PATH,
+          'push',
+          'origin',
+          '--delete',
+          `--force-with-lease=refs/heads/bot/gone:${sha}`,
+          'bot/gone',
+        ],
         user: 'runner',
       });
       expect(await feed(pushed)).toContain('Deleted the pushed branch bot/gone on GitHub');
 
+      // Someone pushed on it since: it stays, and the feed says why.
+      remoteHead = other;
+      const moved = await settledSession('bot/moved', null);
+      expect(deletes(await discard(moved))).toBe(false);
+      expect(await feed(moved)).toContain(
+        'The branch bot/moved stays on GitHub: it has commits the session did not push',
+      );
+      remoteHead = sha;
+
+      // From before the bot/ rule, or with no record of the push: it stays.
+      const old = await settledSession('main', null);
+      expect(deletes(await discard(old))).toBe(false);
+      expect(await feed(old)).toContain(
+        'The branch main stays on GitHub: only bot/ branches are deleted',
+      );
+      const unrecorded = await settledSession('bot/unrecorded', null, null);
+      expect(deletes(await discard(unrecorded))).toBe(false);
+
       const url = 'https://github.com/acme/relay/pull/7';
       const kept = await settledSession('bot/kept', url);
       const keptGit = await discard(kept);
-      expect(keptGit.some((g) => g.args.includes('--delete'))).toBe(false);
+      expect(deletes(keptGit)).toBe(false);
       expect(await feed(kept)).toContain(
         `The branch bot/kept stays on GitHub with its pull request ${url}`,
       );

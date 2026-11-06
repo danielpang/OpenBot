@@ -232,6 +232,13 @@
       "when": 1793932696917,
       "tag": "0032_repo_checkout_disk",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793936267826,
+      "tag": "0033_coding_session_pushed_sha",
+      "breakpoints": true
     }
   ]
 }

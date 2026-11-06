@@ -76,6 +76,47 @@ describe('classify', () => {
     expect(bash('true\ngit push')).toBe('push');
   });
 
+  it('asks for command shapes it does not model', () => {
+    const shape = "OpenBots could not read this command's shape, so it asks.";
+    for (const command of [
+      "$'git\\x20push'",
+      'cat <<EOF',
+      'git pu?h',
+      'g*t push origin x',
+      'git -C . pu[s]h',
+      'npm i*',
+    ]) {
+      expect(classifyCommandLine(command, ROOT), command).toEqual({
+        action: 'outside_worktree',
+        title: `Run: ${command}`,
+        detail: shape,
+      });
+    }
+    // What it did read still counts when it is stricter.
+    for (const command of ['git status # ; git push', '{ git push; }']) {
+      expect(classifyCommandLine(command, ROOT), command).toEqual({
+        action: 'push',
+        title: `Run: ${command}`,
+        detail: shape,
+      });
+    }
+    expect(classifyCommandLine('gh p? create', ROOT)).toMatchObject({
+      action: 'pr',
+      detail: shape,
+    });
+    expect(bash('git status # x')).toBe('outside_worktree');
+    expect(bash('{ ls; }')).toBe('outside_worktree');
+    expect(bash('if true; then git push; fi')).toBe('push');
+    expect(bash('while true; do rm -rf build; done')).toBe('destructive');
+    expect(bash('git status')).toBe('other');
+    // A glob among the arguments expands to paths, which classify as before.
+    expect(bash('ls *.ts')).toBe('other');
+    expect(bash('git add src/*.ts')).toBe('other');
+    expect(bash('rm -rf build/*')).toBe('destructive');
+    expect(bash('[ -f x ] && echo ok')).toBe('other');
+    expect(bash('find . -name x -exec cat {} \\;')).toBe('other');
+  });
+
   it('asks for paths it cannot resolve or that leave the worktree', () => {
     expect(bash('cat ../../secrets')).toBe('outside_worktree');
     expect(bash('cat src/../../../x')).toBe('outside_worktree');

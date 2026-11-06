@@ -189,7 +189,7 @@ interface Verdict {
   paths: string[];
 }
 
-function gitClass(args: Word[]): { action: CoderActionClass; dirs: Word[] } {
+function gitClass(args: Word[]): { action: CoderActionClass; dirs: Word[]; glob: boolean } {
   let action: CoderActionClass = 'other';
   const dirs: Word[] = [];
   let i = 0;
@@ -213,13 +213,15 @@ function gitClass(args: Word[]): { action: CoderActionClass; dirs: Word[] } {
     i++;
   }
   const sub = args[i]?.text;
+  // `git pu?h` names its subcommand only once the shell expands it.
+  const glob = args[i]?.glob === true;
   const rest = args.slice(i + 1).map((w) => w.text);
   const has = (...flags: string[]) => rest.some((a) => flags.includes(a));
   switch (sub) {
     case 'push':
-      return { action: strictest(action, 'push'), dirs };
+      return { action: strictest(action, 'push'), dirs, glob };
     case 'send-pack':
-      return { action: strictest(action, 'push'), dirs };
+      return { action: strictest(action, 'push'), dirs, glob };
     case 'remote':
       if (rest[0] === 'set-url' || rest[0] === 'add' || rest[0] === 'rename')
         action = 'destructive';
@@ -251,14 +253,14 @@ function gitClass(args: Word[]): { action: CoderActionClass; dirs: Word[] } {
       action = 'destructive';
       break;
   }
-  return { action, dirs };
+  return { action, dirs, glob };
 }
 
 /** gh subcommand verbs that only read. */
 const GH_READS = new Set(['view', 'list', 'status', 'diff', 'checks', 'search', 'browse']);
 
-function ghClass(args: Word[]): CoderActionClass {
-  const rest: string[] = [];
+function ghClass(args: Word[]): { action: CoderActionClass; glob: boolean } {
+  const rest: Word[] = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!.text;
     if (a === '-R' || a === '--repo' || a === '--hostname') {
@@ -266,8 +268,15 @@ function ghClass(args: Word[]): CoderActionClass {
       continue;
     }
     if (a.startsWith('--repo=') || a.startsWith('--hostname=') || /^-R.+/.test(a)) continue;
-    rest.push(a);
+    rest.push(args[i]!);
   }
+  return {
+    action: ghAction(rest.map((w) => w.text)),
+    glob: rest.slice(0, 2).some((w) => w.glob === true),
+  };
+}
+
+function ghAction(rest: string[]): CoderActionClass {
   const [group, verb] = rest;
   if (!group) return 'other';
   if (['auth', 'secret', 'ssh-key', 'gpg-key', 'variable', 'extension', 'alias'].includes(group)) {
@@ -341,6 +350,8 @@ interface ShellVerdict {
   action: CoderActionClass;
   /** Paths outside the worktree it names, for the prompt's detail. */
   outside: string[];
+  /** Some part uses shell syntax the reader does not model (`parseShell`). */
+  unmodelled: boolean;
 }
 
 /** Every class in a command line, the strictest winning, with the paths outside it names. */
@@ -348,13 +359,15 @@ function classifyShell(source: string, root: string | undefined, depth = 0): She
   const parsed = parseShell(source);
   let action: CoderActionClass = 'other';
   const outside: string[] = [];
-  if (parsed.unbalanced) action = 'outside_worktree';
+  let unmodelled = parsed.unmodelled;
+  if (parsed.unbalanced || unmodelled) action = 'outside_worktree';
   // Too deeply nested to follow: ask.
-  if (depth > 4) return { action: 'outside_worktree', outside: [] };
+  if (depth > 4) return { action: 'outside_worktree', outside: [], unmodelled: true };
   for (const body of parsed.nested) {
     const inner = classifyShell(body, root, depth + 1);
     action = strictest(action, inner.action);
     outside.push(...inner.outside);
+    unmodelled ||= inner.unmodelled;
   }
   let cwd = root;
   let fetched = false;
@@ -363,6 +376,7 @@ function classifyShell(source: string, root: string | undefined, depth = 0): She
     const verdict = classifyCommand(command.words, cwd, root, depth);
     action = strictest(action, verdict.action);
     outside.push(...verdict.paths);
+    unmodelled ||= verdict.unmodelled ?? false;
     const name = verdict.name;
     // `curl … | sh`: a script from the network runs.
     if (command.piped && fetched && name && (SHELLS.has(name) || /^python\d?$/.test(name))) {
@@ -371,7 +385,9 @@ function classifyShell(source: string, root: string | undefined, depth = 0): She
     if (name && FETCHERS.has(name)) fetched = true;
     if (verdict.cd !== undefined) cwd = verdict.cd ?? undefined;
   }
-  return { action, outside };
+  // A shape it could not read asks, whatever else it read.
+  if (unmodelled) action = strictest(action, 'outside_worktree');
+  return { action, outside, unmodelled };
 }
 
 function classifyCommand(
@@ -379,10 +395,11 @@ function classifyCommand(
   cwd: string | undefined,
   root: string | undefined,
   depth: number,
-): Verdict & { name?: string; cd?: string | null } {
+): Verdict & { name?: string; cd?: string | null; unmodelled?: boolean } {
   const { argv, assignments } = unwrap(words);
   let action: CoderActionClass = 'other';
   const paths: string[] = [];
+  let unmodelled = false;
   const check = (word: Word, writes = false) => {
     const verdict = pathVerdict(word, cwd, root);
     if (verdict.kind === 'state') action = 'destructive';
@@ -397,6 +414,8 @@ function classifyCommand(
   const head = argv[0]!;
   // A command named by a variable or a substitution could be anything.
   if (head.dynamic) action = strictest(action, 'outside_worktree');
+  // `g*t push`: the shell picks the command from the files there.
+  if (head.glob) unmodelled = true;
   const name = base(head.text);
   const args = argv.slice(1);
   const texts = args.map((w) => w.text);
@@ -435,10 +454,16 @@ function classifyCommand(
   if (name === 'git') {
     const git = gitClass(args);
     action = strictest(action, git.action);
+    if (git.glob) unmodelled = true;
   }
-  if (name === 'gh') action = strictest(action, ghClass(args));
+  if (name === 'gh') {
+    const gh = ghClass(args);
+    action = strictest(action, gh.action);
+    if (gh.glob) unmodelled = true;
+  }
   if (ALWAYS_INSTALL.has(name)) action = strictest(action, 'install');
   const verbs = INSTALL_VERBS[name];
+  if (verbs && args[0]?.glob) unmodelled = true;
   if (verbs && texts.some((a) => verbs.has(a))) action = strictest(action, 'install');
   if (
     /^python\d?(?:\.\d+)?$/.test(name) &&
@@ -455,12 +480,14 @@ function classifyCommand(
       const inner = classifyShell(texts[at + 1]!, root, depth + 1);
       action = strictest(action, inner.action);
       paths.push(...inner.outside);
+      unmodelled ||= inner.unmodelled;
     }
   }
   if (name === 'eval' || name === 'source' || name === '.') {
     const inner = name === 'eval' ? classifyShell(texts.join(' '), root, depth + 1) : null;
     action = strictest(action, inner?.action ?? 'outside_worktree');
     if (inner) paths.push(...inner.outside);
+    if (inner?.unmodelled) unmodelled = true;
   }
   let cd: string | null | undefined;
   if (name === 'cd' || name === 'pushd') {
@@ -475,7 +502,7 @@ function classifyCommand(
       cd = verdict.kind === 'inside' && cwd ? posix.resolve(cwd, target.text) : null;
     }
   }
-  return { action, paths, name, ...(cd !== undefined ? { cd } : {}) };
+  return { action, paths, name, unmodelled, ...(cd !== undefined ? { cd } : {}) };
 }
 
 /** An adapter's answer for one prompt: the class and the line the owner reads. */
@@ -485,7 +512,15 @@ export type Classified = ReturnType<CoderAdapter['classify']>;
 export function classifyCommandLine(command: string, root: string | undefined): Classified {
   const title = `Run: ${oneLine(command, 200)}`;
   const detail = command.length > 200 ? command : undefined;
-  const { action, outside } = classifyShell(command, root);
+  const { action, outside, unmodelled } = classifyShell(command, root);
+  // At least `outside_worktree` (classifyShell), or stricter for what it did read.
+  if (unmodelled) {
+    return {
+      action,
+      title,
+      detail: "OpenBots could not read this command's shape, so it asks.",
+    };
+  }
   if (action === 'outside_worktree') {
     const named = [...new Set(outside)];
     return {

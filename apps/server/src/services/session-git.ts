@@ -99,6 +99,44 @@ export async function branchResult(
   return { files, commits };
 }
 
+/**
+ * After a push, by the runner or by the agent with the owner's approval:
+ * the branch's head on the remote is recorded as the session's `pushed_sha`
+ * when it is one of the worktree's own commits (HEAD or before it), so
+ * Discard deletes the remote branch only while nobody moved it since. Left
+ * as it was when the remote has no such branch or its head is not ours.
+ * Never throws: a failure only keeps Discard from deleting the branch.
+ */
+export async function recordPushedHead(
+  deps: Pick<AppDeps, 'db' | 'logger'>,
+  git: GitContext,
+  session: Pick<CodingSessionRow, 'id' | 'worktreePath' | 'branch'>,
+): Promise<string | null> {
+  const { worktreePath: wt, branch } = session;
+  if (!wt || !branch) return null;
+  try {
+    const ref = `refs/heads/${branch}`;
+    const remote = await runGit(git, ['-C', wt, 'ls-remote', '--exit-code', 'origin', ref]);
+    if (remote.code !== 0) return null;
+    const head = remote.stdout
+      .split('\n')
+      .map((line) => line.split('\t'))
+      .find(([, name]) => name?.trim() === ref)?.[0]
+      ?.trim();
+    if (!head || !/^[0-9a-f]{40,64}$/.test(head)) return null;
+    const ours = await runGit(git, ['-C', wt, 'merge-base', '--is-ancestor', head, 'HEAD']);
+    if (ours.code !== 0) return null;
+    await deps.db
+      .update(schema.codingSessions)
+      .set({ pushedSha: head, updatedAt: new Date() })
+      .where(eq(schema.codingSessions.id, session.id));
+    return head;
+  } catch (error) {
+    deps.logger.warn({ err: error, sessionId: session.id }, 'the pushed head was not recorded');
+    return null;
+  }
+}
+
 /** The commit message of what a session left uncommitted. */
 export const leftoverCommitMessage = (label: string) =>
   `${label}: changes from an OpenBots session`;

@@ -91,6 +91,7 @@ import {
   commitLeftovers,
   diffArtifact,
   openPullRequest,
+  recordPushedHead,
   sessionIdentity,
   type SessionIdentity,
 } from './session-git.js';
@@ -1158,6 +1159,8 @@ class SessionRunner {
       if (pr.note) summary = summary ? `${summary}\n\n${pr.note}` : pr.note;
       if (this.stopped) status = 'stopped';
     }
+    // A push this session made (the runner's above, or the agent's own): Discard's guard.
+    if (this.pushAllowed && this.git) await recordPushedHead(deps, this.git, session);
     const [row] = await deps.db
       .select({ usage: schema.codingSessions.usage })
       .from(schema.codingSessions)

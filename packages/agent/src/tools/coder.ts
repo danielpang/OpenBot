@@ -112,7 +112,9 @@ export const CodeTaskInputSchema = z.object({
     .min(1)
     .max(255)
     .optional()
-    .describe('The branch to work on; a new bot/<slug> branch when omitted'),
+    .describe(
+      'The branch to work on, which must start with bot/; a new bot/<slug> branch when omitted',
+    ),
   base: z
     .string()
     .trim()

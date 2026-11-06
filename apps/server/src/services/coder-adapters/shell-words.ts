@@ -2,11 +2,20 @@
 // (classify.ts) and Codex's `bash -lc` unwrapping: words with quotes and
 // escapes honoured, simple commands split on the control operators, and the
 // bodies of `$(...)` and backticks kept to be read as commands of their own.
+//
+// It models a subset of bash. What it does not model (ANSI-C `$'...'` quoting,
+// `#` comments, here-docs, `case`, `{ }` groups, arithmetic `(( ))`, brace
+// expansion, escapes inside backticks, a glob where the command or its
+// subcommand is named) marks the line `unmodelled`, and the
+// classifier asks rather than guess: a line read wrongly could look harmless
+// while running something else.
 
 /** A word of a simple command, and whether its text depends on the shell (`$`, backticks). */
 export interface Word {
   text: string;
   dynamic: boolean;
+  /** Has unquoted glob characters (`*`, `?`, `[...]`): the shell may expand it into other words. */
+  glob?: boolean;
 }
 
 /** One simple command: its words, and what joined it to the previous one. */
@@ -22,10 +31,28 @@ export interface Parsed {
   nested: string[];
   /** Quotes left open: the shell would refuse it, and the rest cannot be read. */
   unbalanced: boolean;
+  /** Uses shell syntax this reader does not model, so its words cannot be trusted. */
+  unmodelled: boolean;
 }
 
 /** The shell's control operators, longest first. */
 const OPERATORS = ['&&', '||', ';;', '|&', ';', '|', '&', '\n', '(', ')'];
+
+/**
+ * Syntax anywhere in the line that changes how it reads and is not modelled:
+ * ANSI-C quoting, here-docs and here-strings, arithmetic. Matched on the raw
+ * text, so a quoted occurrence asks too (fail closed).
+ */
+const UNMODELLED_SYNTAX = /\$'|<<|\(\(/;
+
+/** Reserved words that start a compound command this reader does not follow. */
+const UNMODELLED_HEADS = new Set(['case', 'esac', 'coproc', 'function', 'select', '{', '}']);
+
+/** Reserved words that only precede the command after them: dropped, so that command is read. */
+const PREFIX_WORDS = new Set(['if', 'then', 'else', 'elif', 'while', 'until', 'do', '!']);
+
+/** `{a,b}` or `{1..3}`: brace expansion, which makes words the reader does not see. */
+const BRACE_EXPANSION = /^\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/;
 
 /** Reads a command line into simple commands, as POSIX sh splits words. */
 export function parseShell(source: string): Parsed {
@@ -37,13 +64,28 @@ export function parseShell(source: string): Parsed {
   let text = '';
   let dynamic = false;
   let inWord = false;
+  let quoted = false;
+  let glob = false;
+  let bracket = false;
   let unbalanced = false;
+  let unmodelled = UNMODELLED_SYNTAX.test(source);
 
   const endWord = () => {
-    if (inWord) words.push({ text, dynamic });
+    if (inWord) {
+      // A reserved word counts only unquoted, as a command's first word.
+      const reserved = !quoted && !dynamic && words.length === 0;
+      if (reserved && UNMODELLED_HEADS.has(text)) unmodelled = true;
+      // `{` is dropped too, so the group's first command is still read.
+      if (!(reserved && (PREFIX_WORDS.has(text) || text === '{'))) {
+        words.push(glob ? { text, dynamic, glob } : { text, dynamic });
+      }
+    }
     text = '';
     dynamic = false;
     inWord = false;
+    quoted = false;
+    glob = false;
+    bracket = false;
   };
   const endCommand = (pipe: boolean) => {
     endWord();
@@ -95,7 +137,10 @@ export function parseShell(source: string): Parsed {
         nested.push(source.slice(i + 1));
         break;
       }
-      nested.push(source.slice(i + 1, end));
+      const body = source.slice(i + 1, end);
+      // `\`` nests backticks, and `\` escapes differ inside them: not modelled.
+      if (body.includes('\\')) unmodelled = true;
+      nested.push(body);
       text += source.slice(i, end + 1);
       dynamic = inWord = true;
       i = end + 1;
@@ -109,7 +154,7 @@ export function parseShell(source: string): Parsed {
       }
       if (i + 1 < source.length) {
         text += source[i + 1];
-        inWord = true;
+        inWord = quoted = true;
       }
       i += 2;
       continue;
@@ -122,18 +167,18 @@ export function parseShell(source: string): Parsed {
         inWord = true;
         break;
       }
-      const quoted = source.slice(i + 1, end);
-      text += quoted;
+      const literal = source.slice(i + 1, end);
+      text += literal;
       // Literal to the shell, but a `$` here still reads as unresolved to us.
-      if (/[$`]/.test(quoted)) dynamic = true;
-      inWord = true;
+      if (/[$`]/.test(literal)) dynamic = true;
+      inWord = quoted = true;
       i = end + 1;
       continue;
     }
     if (c === '"') {
       let j = i + 1;
       let closed = false;
-      inWord = true;
+      inWord = quoted = true;
       while (j < source.length) {
         const d = source[j]!;
         if (d === '\\' && '"\\$`\n'.includes(source[j + 1] ?? '')) {
@@ -157,6 +202,7 @@ export function parseShell(source: string): Parsed {
         if (d === '`') {
           const end = source.indexOf('`', j + 1);
           if (end < 0) break;
+          if (source.slice(j + 1, end).includes('\\')) unmodelled = true;
           nested.push(source.slice(j + 1, end));
           text += source.slice(j, end + 1);
           dynamic = true;
@@ -193,11 +239,20 @@ export function parseShell(source: string): Parsed {
       i++;
       continue;
     }
+    // A `#` starting a word comments out the rest of the line.
+    if (c === '#' && !inWord) unmodelled = true;
+    if (c === '{' && source[i - 1] !== '$' && BRACE_EXPANSION.test(source.slice(i))) {
+      unmodelled = true;
+    }
+    // `$*` and `$?` are parameters, not globs.
+    if ((c === '*' || c === '?') && source[i - 1] !== '$') glob = true;
+    if (c === '[') bracket = true;
+    if (c === ']' && bracket) glob = true;
     if (c === '$') dynamic = true;
     text += c;
     inWord = true;
     i++;
   }
   endCommand(false);
-  return { commands, nested, unbalanced };
+  return { commands, nested, unbalanced, unmodelled };
 }

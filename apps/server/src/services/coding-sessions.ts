@@ -104,6 +104,32 @@ function checkRef(value: string | undefined, what: string): string | undefined {
   return ref;
 }
 
+/** What every session branch starts with: Discard deletes only these on the remote. */
+export const SESSION_BRANCH_PREFIX = 'bot/';
+
+/**
+ * A branch a Bot named for its session: under `bot/`, and not the base or
+ * the repository's default branch, which Discard could otherwise delete.
+ */
+function checkSessionBranch(
+  branch: string | undefined,
+  base: string,
+  defaultBranch: string,
+): string | undefined {
+  if (branch === undefined) return undefined;
+  if (!branch.startsWith(SESSION_BRANCH_PREFIX)) {
+    throw new DomainError(400, 'BRANCH_NOT_ALLOWED', 'Session branches start with bot/');
+  }
+  if (branch === base || branch === defaultBranch) {
+    throw new DomainError(
+      400,
+      'BRANCH_NOT_ALLOWED',
+      `A session cannot work on ${branch}, the branch it starts from. Name a new bot/ branch, or leave branch out.`,
+    );
+  }
+  return branch;
+}
+
 const excerpt = (text: string, max: number) => {
   const line = text.replace(/\s+/g, ' ').trim();
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
@@ -221,9 +247,11 @@ export async function startCodingSession(
       base: match.repo.defaultBranch,
     };
   }
-  const branch =
-    previous?.branch ?? checkRef(input.branch, 'Branch') ?? sessionBranch(input.prompt);
   const base = previous?.base ?? checkRef(input.base, 'Base') ?? repo.base;
+  const branch =
+    previous?.branch ??
+    checkSessionBranch(checkRef(input.branch, 'Branch'), base, repo.base) ??
+    sessionBranch(input.prompt);
   const mode: CoderMode = input.mode;
 
   const [chat] = await deps.db.select().from(schema.chats).where(eq(schema.chats.id, run.chatId));
@@ -649,7 +677,10 @@ export async function discardWorktree(deps: AppDeps, row: CodingSessionRow): Pro
 /**
  * The remote side of Discard: a branch the session pushed (its push was
  * approved and the remote has it) is deleted there as `runner`, unless a
- * pull request was opened from it. Returns what the feed says, or null when
+ * pull request was opened from it. Only a `bot/` branch whose remote head is
+ * still the commit the session last pushed (`pushed_sha`) is deleted, with a
+ * lease on that commit, so work someone else pushed on it, or a branch from
+ * before the `bot/` rule, stays. Returns what the feed says, or null when
  * there was nothing on the remote.
  */
 async function discardPushedBranch(
@@ -673,19 +704,29 @@ async function discardPushedBranch(
   };
   // The session could write the checkout's config: checked before runner git runs there.
   await assertRunnable(ctx, repoDir, repo);
-  const there = await runGit(ctx, [
-    '-C',
-    repoDir,
-    'ls-remote',
-    '--exit-code',
-    '--heads',
-    'origin',
-    branch,
-  ]);
+  const ref = `refs/heads/${branch}`;
+  const there = await runGit(ctx, ['-C', repoDir, 'ls-remote', '--exit-code', 'origin', ref]);
   if (there.code !== 0) return null;
-  const deleted = await runGit(ctx, ['-C', repoDir, 'push', 'origin', '--delete', branch], {
-    push: true,
-  });
+  // The exact ref: a pattern also matches `refs/heads/<anything>/<branch>`.
+  const head = there.stdout
+    .split('\n')
+    .map((line) => line.split('\t'))
+    .find(([, name]) => name?.trim() === ref)?.[0]
+    ?.trim();
+  if (!head) return null;
+  const stays = `The branch ${branch} stays on GitHub`;
+  if (!branch.startsWith(SESSION_BRANCH_PREFIX)) {
+    return `${stays}: only bot/ branches are deleted`;
+  }
+  if (!row.pushedSha) return `${stays}: OpenBots has no record of pushing it`;
+  if (head !== row.pushedSha) {
+    return `${stays}: it has commits the session did not push`;
+  }
+  const deleted = await runGit(
+    ctx,
+    ['-C', repoDir, 'push', 'origin', '--delete', `--force-with-lease=${ref}:${head}`, branch],
+    { push: true },
+  );
   if (deleted.code === 0) return `Deleted the pushed branch ${branch} on GitHub`;
   const why = (deleted.error ?? deleted.stderr).trim().split('\n').filter(Boolean).pop();
   return `The pushed branch ${branch} was not deleted on GitHub${why ? `: ${why}` : ''}`;

@@ -157,6 +157,11 @@ export const codingSessions = pgTable(
     vendorSessionId: text('vendor_session_id'),
     status: text('status').notNull().default('queued'),
     pushAllowed: boolean('push_allowed').notNull().default(false),
+    /**
+     * The commit the session last pushed its branch at. Discard deletes the
+     * remote branch only while its head is still this commit.
+     */
+    pushedSha: text('pushed_sha'),
     usage: jsonb('usage').$type<CoderUsage>(),
     summary: text('summary'),
     changedFiles: jsonb('changed_files').$type<CoderChangedFile[]>(),

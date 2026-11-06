@@ -421,6 +421,37 @@ describe('coding agents', () => {
           }),
         ),
       ).rejects.toMatchObject({ code: 'INVALID_BRANCH' });
+      // Discard deletes a pushed session branch, so it is never one the repository relies on.
+      for (const [branch, base] of [
+        ['main', undefined],
+        ['feature/x', undefined],
+        ['bot/release', 'bot/release'],
+      ] as const) {
+        await expect(
+          t.inOrganization(() =>
+            coder.start({
+              agent: 'claude',
+              repo: 'acme/relay',
+              prompt: 'x',
+              mode: 'edit',
+              branch,
+              ...(base ? { base } : {}),
+            }),
+          ),
+          branch,
+        ).rejects.toMatchObject({ status: 400, code: 'BRANCH_NOT_ALLOWED' });
+      }
+      await expect(
+        t.inOrganization(() =>
+          coder.start({
+            agent: 'claude',
+            repo: 'acme/relay',
+            prompt: 'x',
+            mode: 'edit',
+            branch: 'main',
+          }),
+        ),
+      ).rejects.toMatchObject({ message: 'Session branches start with bot/' });
     });
 
     it('continues an ended session on the same row and branch', async () => {
