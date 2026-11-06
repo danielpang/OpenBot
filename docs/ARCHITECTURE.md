@@ -57,7 +57,7 @@ get unrestricted access to the Docker socket.
 `sandbox-firewall` applies rules in the **Linux Docker host's network namespace**, not the macOS
 application firewall. It requires Docker-managed iptables; rootless Docker and Docker's nftables
 firewall backend require equivalent rules applied separately. See the [stack networking and
-hardening details](../README.md#checking-the-container-hardening).
+hardening details](SELF_HOSTING.md#checking-the-container-hardening).
 
 Postgres (`pgvector/pgvector`), Redis (`redis`) and the Docker socket proxy
 (`tecnativa/docker-socket-proxy`) use third-party images. They are additional dependencies, not
@@ -74,7 +74,7 @@ the server's host id, connection status and byte counts.
 Users normally do **not** run the `relay` image locally. An operator can deploy it separately, or
 self-host it with the Compose `relay` profile behind TLS. Push notifications also go through the
 relay, but require the app's APNs key: a self-hosted relay without that key carries the tunnel,
-not push notifications. See [phone connectivity](../README.md#reaching-your-server-from-your-phone)
+not push notifications. See [phone connectivity](SELF_HOSTING.md#reaching-your-server-from-your-phone)
 and the [relay README](../apps/relay/README.md).
 
 The relay does not keep a sleeping Mac running. Bots and Routines pause while the Mac sleeps;

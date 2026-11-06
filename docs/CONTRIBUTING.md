@@ -1,9 +1,9 @@
 # Contributing to OpenBots
 
 Thank you for helping. This page is the short version of how the repository works; the
-[README](../README.md#development) covers setting up a development machine, and
+[development reference](SELF_HOSTING.md#development) covers setting up a development machine, and
 [PRD.md](PRD.md) and [TECHNICAL_PLAN.md](TECHNICAL_PLAN.md) say what OpenBots is and how it is
-built. Self-hosting is documented in the README too.
+built. Start with the [VM guide](VM_SETUP.md) or the [self-hosting reference](SELF_HOSTING.md).
 
 ## Before you open a pull request
 
