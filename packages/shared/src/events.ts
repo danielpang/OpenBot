@@ -80,7 +80,8 @@ export const RunStepSchema = z.looseObject({
 
 export const ApprovalSchema = z.looseObject({
   id,
-  runId: id,
+  /** Null for a coding session's request on the owner's own turn. */
+  runId: nullableId,
   toolName: z.string(),
   args: z.unknown(),
   reason: z.string().nullable(),
@@ -248,6 +249,31 @@ export const EVENT_PAYLOADS = {
     emoji: z.string().min(1),
     reactorType: ParticipantTypeSchema,
     reactorId: id,
+  }),
+  /**
+   * Sent to the owner (`user_id`, in `workspace_id`) when one of their coding
+   * sessions changes (CA15): its status, summary, error, PR or usage. The
+   * payload is the session as `GET /coding-sessions/{id}` returns it.
+   */
+  'coding_session.updated': z.looseObject({
+    session: z.looseObject({ id, botId: id, agent: z.string(), status: z.string() }),
+  }),
+  /**
+   * Sent to the owner when a coding session's transcript grows: the new
+   * entries, in order, batched by the server (`CodingSessionEntry` in
+   * coders.ts). A client with a gap before `entries[0].seq` reads
+   * `GET /coding-sessions/{id}/events?after=` to fill it.
+   */
+  'coding_session.events': z.looseObject({
+    sessionId: id,
+    entries: z.array(
+      z.looseObject({
+        seq: z.number().int().positive(),
+        turn: z.number().int().positive(),
+        at: timestamp,
+        event: z.looseObject({ type: z.string() }),
+      }),
+    ),
   }),
 } as const;
 

@@ -115,6 +115,7 @@ const SAMPLE_BODIES: Record<string, unknown> = {
   'patch /api/v1/event-subscriptions/{id}': { enabled: false },
   'put /api/v1/devices/{id}/push': { token: 'ab'.repeat(32), environment: 'sandbox' },
   'post /api/v1/coding-sessions/{id}/continue': { prompt: 'Keep going' },
+  'post /api/v1/coding-sessions/{id}/turns': { prompt: 'Keep going' },
   'post /api/v1/coders/{agent}/login/{loginId}/code': { code: 'stolen-code' },
   // Another owner's provider is refused in routes/coders.test.ts.
   'put /api/v1/coders/{agent}/api-key': { providerId: '00000000-0000-4000-8000-000000000000' },

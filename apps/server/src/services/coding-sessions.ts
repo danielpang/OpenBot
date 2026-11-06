@@ -6,11 +6,9 @@ import {
   DEFAULT_MAX_CONCURRENT_SESSIONS,
   coderEnabled,
   resolveToolPolicy,
+  sessionTitle,
   type CoderAgent,
-  type CoderChangedFile,
-  type CoderCommit,
   type CoderMode,
-  type CoderUsage,
   type CodingSessionStatus,
   type RunSource,
 } from '@openbots/shared';
@@ -36,7 +34,10 @@ import {
   flushFeed,
   readSessionLog,
   removeSessionLog,
+  reopenSessionWidget,
 } from './coder-state.js';
+import { flushTranscript, readEntries, recordEntry } from './coder-transcript.js';
+import { publishSessionUpdated } from './coding-session-view.js';
 import { SESSION_KIND, sessionEffect } from './coder-widget-actions.js';
 import type { BotRow } from './bots.js';
 import { agentFor, startComputer } from './computer.js';
@@ -355,6 +356,7 @@ export async function startCodingSession(
           base,
           mode,
           prompt: input.prompt,
+          title: sessionTitle(input.prompt, repo.fullName),
           status: 'queued',
         })
         .returning();
@@ -413,6 +415,9 @@ export async function startCodingSession(
     return { session: placed!, message, props };
   });
 
+  await recordEntry(deps, done.session.id, { type: 'prompt', text: input.prompt, by: 'bot' });
+  await flushTranscript(deps, done.session.id);
+  await publishSessionUpdated(deps, done.session);
   await announceMessage(deps, done.message);
   await enqueueCoderJob(deps, { kind: 'session', sessionId: done.session.id });
   return {
@@ -426,67 +431,7 @@ export async function startCodingSession(
 
 // Sessions
 
-/** A session as the API returns it. */
-export interface CodingSessionView {
-  id: string;
-  botId: string;
-  runId: string | null;
-  chatId: string | null;
-  messageId: string | null;
-  partIndex: number | null;
-  agent: CoderAgent;
-  repoId: string | null;
-  repoFullName: string | null;
-  branch: string | null;
-  base: string | null;
-  mode: CoderMode;
-  status: CodingSessionStatus;
-  pushAllowed: boolean;
-  vendorSessionId: string | null;
-  usage: CoderUsage | null;
-  summary: string | null;
-  changedFiles: CoderChangedFile[];
-  commits: CoderCommit[];
-  prUrl: string | null;
-  /** The Artifact holding the branch's diff against its base, once it settled with commits. */
-  diffArtifactId: string | null;
-  error: string | null;
-  worktreePath: string | null;
-  startedAt: string | null;
-  finishedAt: string | null;
-  createdAt: string;
-}
-
-export function toSessionView(row: CodingSessionRow): CodingSessionView {
-  return {
-    id: row.id,
-    botId: row.botId,
-    runId: row.runId,
-    chatId: row.chatId,
-    messageId: row.messageId,
-    partIndex: row.partIndex,
-    agent: row.agent as CoderAgent,
-    repoId: row.repoId,
-    repoFullName: row.repoFullName,
-    branch: row.branch,
-    base: row.base,
-    mode: row.mode as CoderMode,
-    status: row.status as CodingSessionStatus,
-    pushAllowed: row.pushAllowed,
-    vendorSessionId: row.vendorSessionId,
-    usage: row.usage ?? null,
-    summary: row.summary,
-    changedFiles: row.changedFiles ?? [],
-    commits: row.commits ?? [],
-    prUrl: row.prUrl,
-    diffArtifactId: row.diffArtifactId,
-    error: row.error,
-    worktreePath: row.worktreePath,
-    startedAt: row.startedAt?.toISOString() ?? null,
-    finishedAt: row.finishedAt?.toISOString() ?? null,
-    createdAt: row.createdAt.toISOString(),
-  };
-}
+export { toSessionView, type CodingSessionView } from './coding-session-view.js';
 
 async function ownSession(db: Db, owner: Owner, sessionId: string): Promise<CodingSessionRow> {
   const [row] = await db
@@ -579,6 +524,114 @@ export async function continueSession(
   const row = await ownSession(deps.db, owner, sessionId);
   if (!ended(row.status)) throw sessionRunning();
   return viaWidget(deps, owner, row, { type: 'continue', prompt });
+}
+
+/**
+ * The owner's own next prompt to an ended session, from the drawer (CA15):
+ * no Bot run is involved. The row is queued again with the prompt and no
+ * run (`run_id` null), so no earlier run is resumed by this turn and the
+ * runner refuses what would need one (an approval, a sign-in, the pull
+ * request's push). The checks are `code_task`'s: coding on for the Bot, the
+ * agent signed in, the repository still remembered and allowed, and no other
+ * session of the Bot live.
+ */
+export async function ownerTurn(
+  deps: AppDeps,
+  owner: Owner,
+  sessionId: string,
+  prompt: string,
+): Promise<CodingSessionRow> {
+  const row = await ownSession(deps.db, owner, sessionId);
+  if (!ended(row.status)) throw sessionRunning();
+  const [bot] = await deps.db.select().from(schema.bots).where(eq(schema.bots.id, row.botId));
+  if (!bot) throw notFound('Coding session not found');
+  const policy = resolveToolPolicy(bot.toolPolicy);
+  if (!coderEnabled(policy)) {
+    throw new DomainError(
+      403,
+      'CODER_DISABLED',
+      'Coding agents are turned off for this Bot. Turn them on in Bot Settings.',
+    );
+  }
+  if (!row.repoId) {
+    throw new DomainError(
+      409,
+      'REPO_FORGOTTEN',
+      `${row.repoFullName ?? 'The repository'} is no longer one of your repositories. Add it again on the Computer page first.`,
+    );
+  }
+  if (!allowedRepos([{ full_name: row.repoFullName ?? '' }], policy.coder.allowedRepos).length) {
+    throw new DomainError(
+      403,
+      'REPO_NOT_ALLOWED',
+      `This Bot may not work on ${row.repoFullName ?? 'that repository'} any more. Allow it in Bot Settings.`,
+    );
+  }
+  const agent = row.agent as CoderAgent;
+  const account = (await listCoderAccounts(deps, owner)).find((a) => a.agent === agent);
+  if (!account || needsSignIn(account)) {
+    const label = CODER_AGENT_LABELS[agent];
+    throw new DomainError(
+      409,
+      'NEEDS_LOGIN',
+      `${label} is not signed in on this computer. Sign in under Settings > Coding agents, then send your message again.`,
+    );
+  }
+
+  const reopened = await deps.db.transaction(async (tx) => {
+    // The lock and check of `startCodingSession`: one session per Bot.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`coder-bot:${row.botId}`}))`);
+    const [busy] = await tx
+      .select()
+      .from(schema.codingSessions)
+      .where(
+        and(
+          eq(schema.codingSessions.botId, row.botId),
+          inArray(schema.codingSessions.status, CODING_SESSION_ACTIVE),
+          ne(schema.codingSessions.id, row.id),
+        ),
+      )
+      .limit(1);
+    if (busy) throw botBusy(busy);
+    const [updated] = await tx
+      .update(schema.codingSessions)
+      .set({
+        status: 'queued',
+        prompt,
+        runId: null,
+        pushAllowed: false,
+        error: null,
+        finishedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.codingSessions.id, row.id),
+          inArray(schema.codingSessions.status, [...CODING_SESSION_ENDED]),
+        ),
+      )
+      .returning();
+    if (!updated) throw sessionRunning();
+    return updated;
+  });
+
+  await recordEntry(deps, row.id, { type: 'prompt', text: prompt, by: 'owner' });
+  await reopenSessionWidget(deps, row.id, feedLine('text', `Continue: ${excerpt(prompt, 200)}`));
+  await flushTranscript(deps, row.id);
+  await publishSessionUpdated(deps, reopened);
+  await enqueueCoderJob(deps, { kind: 'session', sessionId: row.id });
+  return reopened;
+}
+
+/** The session's transcript after `after`, for the drawer (CA15). */
+export async function sessionEntries(
+  deps: Pick<AppDeps, 'db'>,
+  owner: Owner,
+  sessionId: string,
+  page: { after?: number; limit?: number },
+) {
+  const row = await ownSession(deps.db, owner, sessionId);
+  return readEntries(deps.db, row.id, page);
 }
 
 export async function discardSession(deps: AppDeps, owner: Owner, sessionId: string) {
@@ -698,10 +751,12 @@ export async function discardWorktree(deps: AppDeps, row: CodingSessionRow): Pro
   await removeSessionLog(deps, row).catch((error: unknown) =>
     deps.logger.warn({ err: error, sessionId: row.id }, 'removing a session log failed'),
   );
-  await deps.db
+  const [discarded] = await deps.db
     .update(schema.codingSessions)
     .set({ worktreePath: null, updatedAt: new Date() })
-    .where(eq(schema.codingSessions.id, row.id));
+    .where(eq(schema.codingSessions.id, row.id))
+    .returning();
+  if (discarded) await publishSessionUpdated(deps, discarded);
 }
 
 /**

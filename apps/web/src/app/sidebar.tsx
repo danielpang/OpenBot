@@ -9,8 +9,9 @@ import {
   TooltipTrigger,
 } from '@openbots/ui';
 import { Link } from '@tanstack/react-router';
-import { useCallback, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useState, type ReactNode } from 'react';
 import { Roster } from '../features/bots/roster.js';
+import { CodingSessionsButton } from '../features/coders/drawer/drawer.js';
 import { ConnectionIndicator } from './connection-indicator.js';
 import { NAV_LINKS } from './nav.js';
 import { webExtensions } from './extensions.js';
@@ -52,14 +53,16 @@ export function Sidebar() {
       </ScrollArea>
       <div className="flex flex-col gap-0.5 border-t p-2">
         {NAV_LINKS.map((link) => (
-          <Link
-            key={link.to}
-            to={link.to}
-            className="rounded-md px-2 py-1.5 text-sm hover:bg-accent"
-            activeProps={{ className: 'bg-accent font-medium' }}
-          >
-            {link.label}
-          </Link>
+          <Fragment key={link.to}>
+            <Link
+              to={link.to}
+              className="rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+              activeProps={{ className: 'bg-accent font-medium' }}
+            >
+              {link.label}
+            </Link>
+            {link.to === '/computer' && <CodingSessionsButton />}
+          </Fragment>
         ))}
       </div>
       <NewDialog open={newOpen} onOpenChange={setNewOpen} />

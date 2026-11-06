@@ -4008,13 +4008,19 @@
             "format": "uuid"
           },
           "runId": {
-            "type": "string",
-            "format": "uuid"
+            "type": ["string", "null"],
+            "format": "uuid",
+            "description": "Null for a coding session's request on the owner's own turn"
           },
           "messageId": {
             "type": ["string", "null"],
             "format": "uuid",
             "description": "The message holding the widget"
+          },
+          "sessionId": {
+            "type": ["string", "null"],
+            "format": "uuid",
+            "description": "The coding session that asked, when one did"
           },
           "toolName": {
             "type": "string"
@@ -4057,6 +4063,7 @@
           "id",
           "runId",
           "messageId",
+          "sessionId",
           "toolName",
           "summary",
           "reason",
@@ -5443,9 +5450,14 @@
             "type": "string",
             "format": "uuid"
           },
+          "title": {
+            "type": "string",
+            "description": "The session's name, from its first prompt"
+          },
           "runId": {
             "type": ["string", "null"],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "The Bot's run the session reports to; null on the owner's own turn"
           },
           "chatId": {
             "type": ["string", "null"],
@@ -5537,6 +5549,7 @@
         "required": [
           "id",
           "botId",
+          "title",
           "runId",
           "chatId",
           "messageId",
@@ -5624,6 +5637,237 @@
         "additionalProperties": false,
         "description": "A commit"
       },
+      "CodingSessionEntries": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodingSessionEntry"
+            }
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "required": ["entries", "hasMore"]
+      },
+      "CodingSessionEntry": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "turn": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "event": {
+            "$ref": "#/components/schemas/CoderTranscriptEvent"
+          }
+        },
+        "required": ["seq", "turn", "at", "event"],
+        "additionalProperties": false,
+        "description": "One entry of a session transcript"
+      },
+      "CoderTranscriptEvent": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["prompt"]
+              },
+              "text": {
+                "type": "string"
+              },
+              "by": {
+                "type": "string",
+                "enum": ["bot", "owner"]
+              }
+            },
+            "required": ["type", "text", "by"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["text"]
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "text"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["tool_use"]
+              },
+              "name": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "name", "summary"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["file_change"]
+              },
+              "path": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["edit", "create", "delete"]
+              },
+              "added": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "removed": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": ["type", "path", "kind"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["command"]
+              },
+              "command": {
+                "type": "string"
+              },
+              "exit_code": {
+                "type": "integer"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "command"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["approval_request"]
+              },
+              "request_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "action_class": {
+                "type": "string",
+                "enum": ["push", "pr", "outside_worktree", "install", "destructive", "other"]
+              },
+              "title": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              },
+              "tool_name": {
+                "type": "string"
+              },
+              "input": {}
+            },
+            "required": ["type", "request_id", "action_class", "title"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["usage"]
+              },
+              "input_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "output_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "cost_usd": {
+                "type": "number",
+                "minimum": 0
+              },
+              "billed": {
+                "type": "string",
+                "enum": ["subscription", "api", "unknown"]
+              }
+            },
+            "required": ["type", "input_tokens", "output_tokens", "billed"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["result"]
+              },
+              "ok": {
+                "type": "boolean"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "vendor_session_id": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "ok", "summary"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["error"]
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["type", "message"],
+            "additionalProperties": false
+          }
+        ],
+        "description": "A prompt the session was given (`by` says whether the Bot or the owner sent it), or one of the agent's events. An `approval_request` entry's `request_id` is the approval's id."
+      },
       "CodingSessionTerminal": {
         "type": "object",
         "properties": {
@@ -5642,6 +5886,18 @@
         "required": ["cwd", "user", "preset"]
       },
       "CodingSessionContinue": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": ["prompt"],
+        "additionalProperties": false
+      },
+      "CodingSessionTurn": {
         "type": "object",
         "properties": {
           "prompt": {
@@ -15081,6 +15337,85 @@
         }
       }
     },
+    "/api/v1/coding-sessions/{id}/events": {
+      "get": {
+        "tags": ["coders"],
+        "summary": "The session's transcript, in order",
+        "description": "The entries after `after` (a `seq`), at most `limit`. Page on with the last `seq` while `hasMore`; `coding_session.events` brings the next ones live.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": ["integer", "null"],
+              "minimum": 0,
+              "default": 0
+            },
+            "required": false,
+            "name": "after",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 200
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodingSessionEntries"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/coding-sessions/{id}": {
       "get": {
         "tags": ["coders"],
@@ -15416,6 +15751,100 @@
           },
           "409": {
             "description": "The session already ended (`SESSION_ENDED`), is still running (`SESSION_RUNNING`), or its Bot runs another (`CODER_BUSY`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coding-sessions/{id}/turns": {
+      "post": {
+        "tags": ["coders"],
+        "summary": "Send the agent your own next prompt",
+        "description": "Reopens an ended session with your prompt, straight to its agent: no Bot run is involved, so the session has no run (`runId` null) and refuses what needs one (an approval, the pull request's push). Its chat card follows, and the prompt is the next turn of its transcript.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodingSessionTurn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "session": {
+                      "$ref": "#/components/schemas/CodingSession"
+                    }
+                  },
+                  "required": ["session"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Coding agents are off for the Bot (`CODER_DISABLED`), or it may not work on the repository any more (`REPO_NOT_ALLOWED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The session is still running (`SESSION_RUNNING`), its Bot runs another (`CODER_BUSY`), its repository was forgotten (`REPO_FORGOTTEN`), or its agent is not signed in (`NEEDS_LOGIN`)",
             "content": {
               "application/problem+json": {
                 "schema": {

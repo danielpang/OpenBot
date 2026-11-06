@@ -123,6 +123,41 @@ export const signOutCoder = (agent: CoderAgent) =>
 export const codingSessionTerminal = (id: string): Promise<TerminalAttach> =>
   unwrap(api.GET('/api/v1/coding-sessions/{id}/terminal', { params: { path: { id } } }));
 
+/** The owner's coding sessions for the drawer (CA15), newest first. */
+export const codingSessionsQuery = queryOptions({
+  queryKey: ['coding-sessions'],
+  queryFn: () =>
+    unwrap(api.GET('/api/v1/coding-sessions', { params: { query: { limit: 100 } } })).then(
+      (r) => r.sessions,
+    ),
+});
+
+/** The owner's pending approvals; a coding session's carry its `sessionId`. */
+export const pendingApprovalsQuery = queryOptions({
+  queryKey: ['approvals', 'pending'],
+  queryFn: () => unwrap(api.GET('/api/v1/approvals')).then((r) => r.items),
+});
+export type PendingApproval = components['schemas']['PendingApproval'];
+
+export const stopCodingSession = (id: string) =>
+  unwrap(api.POST('/api/v1/coding-sessions/{id}/stop', { params: { path: { id } } })).then(
+    (r) => r.session,
+  );
+
+/** One page of a session's transcript after `after`, oldest first. */
+export const codingSessionEvents = (id: string, after = 0, limit = 200) =>
+  unwrap(
+    api.GET('/api/v1/coding-sessions/{id}/events', {
+      params: { path: { id }, query: { after, limit } },
+    }),
+  );
+
+/** The owner's next prompt to the agent, once the session has ended. */
+export const sendCodingTurn = (id: string, prompt: string) =>
+  unwrap(
+    api.POST('/api/v1/coding-sessions/{id}/turns', { params: { path: { id } }, body: { prompt } }),
+  ).then((r) => r.session);
+
 /** The session's full log, as text. */
 export async function codingSessionLog(sessionId: string): Promise<string> {
   // Not the generated client: this route answers `text/plain`, and with

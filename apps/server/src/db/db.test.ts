@@ -29,6 +29,7 @@ const SECTION_4_TABLES = [
   'repos',
   'repo_checkouts',
   'coding_sessions',
+  'coding_session_events',
   'coder_logins',
   // Git connections (I17).
   'git_connections',

@@ -200,6 +200,60 @@ export type CoderFeedLine = z.infer<typeof CoderFeedLineSchema>;
 /** The widget keeps the last this many feed lines (I12). */
 export const CODER_FEED_MAX = 200;
 
+/** The statuses of a session that is live: queued, being set up, working or waiting on the owner. */
+export const CODING_SESSION_LIVE: readonly CodingSessionStatus[] = [
+  'queued',
+  'starting',
+  'running',
+  'waiting',
+];
+
+/**
+ * One entry of a session's transcript (CA15): a prompt the session was given
+ * (`by` says whether the Bot's `code_task` or the owner in the drawer sent it)
+ * or one of the agent's events. The server keeps them in order per session
+ * (`coding_session_events`) and the drawer shows them as a conversation.
+ */
+export const CoderTranscriptEventSchema = z.union([
+  z.strictObject({ type: z.literal('prompt'), text: z.string(), by: z.enum(['bot', 'owner']) }),
+  CoderEventSchema,
+]);
+export type CoderTranscriptEvent = z.infer<typeof CoderTranscriptEventSchema>;
+
+/** A transcript entry as the API and the realtime event carry it. */
+export const CodingSessionEntrySchema = z.strictObject({
+  /** Per session, from 1, in the order the entries happened. */
+  seq: z.number().int().positive(),
+  /** Which prompt the entry belongs to: 1 for the first, one more per prompt. */
+  turn: z.number().int().positive(),
+  at: z.iso.datetime({ offset: true }),
+  event: CoderTranscriptEventSchema,
+});
+export type CodingSessionEntry = z.infer<typeof CodingSessionEntrySchema>;
+
+/** A session keeps at most this many transcript entries; the full log is the file. */
+export const SESSION_EVENTS_MAX = 5_000;
+
+/** The longest text one transcript entry keeps (an agent's message, a prompt). */
+export const SESSION_EVENT_TEXT_MAX = 20_000;
+
+/** The longest a session's title is, as the drawer lists it. */
+export const SESSION_TITLE_MAX = 60;
+
+/**
+ * A session's name in the drawer: the first line of its first prompt, cut
+ * to SESSION_TITLE_MAX; the repository's name when the prompt is empty.
+ */
+export function sessionTitle(prompt: string, repoFullName?: string | null): string {
+  const line = prompt
+    .split('\n')
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  if (!line) return repoFullName?.split('/').at(-1) ?? 'Coding session';
+  const flat = line.replace(/\s+/g, ' ');
+  return flat.length > SESSION_TITLE_MAX ? `${flat.slice(0, SESSION_TITLE_MAX - 1)}…` : flat;
+}
+
 // Limits (docs/TECHNICAL_PLAN.md 22.11): constants for now, per account in
 // `limits` later.
 

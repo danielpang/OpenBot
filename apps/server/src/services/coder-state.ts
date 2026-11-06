@@ -20,6 +20,8 @@ import { schema } from '../db/client.js';
 import { inWorkspace } from '../db/scope.js';
 import { publishEvent } from '../infra/index.js';
 import { IGNORED_SESSION_ID, isVendorSessionId } from './coder-adapters/types.js';
+import { flushTranscript } from './coder-transcript.js';
+import { publishSessionUpdated } from './coding-session-view.js';
 
 // A coding session's two records (I12): its `coding_sessions` row and the
 // state of the `coding_session` widget it posted, the `widget_states` row at
@@ -31,7 +33,9 @@ import { IGNORED_SESSION_ID, isVendorSessionId } from './coder-adapters/types.js
 // The agent's output arrives a few lines a second, so feed lines are
 // buffered per session and written and published at most once every
 // FEED_FLUSH_MS; any other change writes the buffered lines first, so the
-// feed stays in order. Changes to one session run one after another.
+// feed stays in order. Changes to one session run one after another. A
+// change to the row is published to the owner as `coding_session.updated`,
+// after the transcript entries written before it (coder-transcript.ts).
 
 type StateDeps = Pick<AppDeps, 'db' | 'infra' | 'logger'>;
 export type CodingSessionRow = typeof schema.codingSessions.$inferSelect;
@@ -194,8 +198,8 @@ type Mutation = (state: CodingSessionState) => CodingSessionState;
 /**
  * Writes the widget state in its row lock, the buffered feed lines first,
  * then publishes it. `rowPatch` goes to the session row in the same
- * transaction. Returns the new state, or null when the session has no
- * widget (its message was deleted).
+ * transaction, and the row is published too. Returns the new state, or null
+ * when the session has no widget (its message was deleted).
  */
 async function write(
   deps: StateDeps,
@@ -214,12 +218,14 @@ async function write(
   const session = await loadSession(deps, sessionId);
   if (!session) return null;
   return inWorkspace(session.workspaceId, async () => {
+    let updated: CodingSessionRow | undefined;
     const done = await deps.db.transaction(async (tx) => {
       if (Object.keys(rowPatch).length) {
-        await tx
+        [updated] = await tx
           .update(schema.codingSessions)
           .set({ ...rowPatch, updatedAt: new Date() })
-          .where(eq(schema.codingSessions.id, sessionId));
+          .where(eq(schema.codingSessions.id, sessionId))
+          .returning();
       }
       if (!session.messageId || session.partIndex === null) return null;
       const [current] = await tx
@@ -253,6 +259,8 @@ async function write(
         });
       return { state, pendingRunId };
     });
+    await flushTranscript(deps, sessionId);
+    if (updated) await publishSessionUpdated(deps, updated);
     if (!done || !session.messageId || session.partIndex === null) return done?.state ?? null;
     const [message] = await deps.db
       .select({
@@ -332,6 +340,31 @@ export function setSessionStatus(
       { status, ...patch },
     ),
   );
+}
+
+/**
+ * The owner's own next prompt reopened the ended session (its row is
+ * already queued): the widget is queued again, without the last turn's
+ * result, error and finish, with `line` in its feed.
+ */
+export function reopenSessionWidget(
+  deps: StateDeps,
+  sessionId: string,
+  line: CoderFeedLine,
+): Promise<CodingSessionState | null> {
+  return serial(sessionId, () => {
+    slot(sessionId).lines.push(line);
+    return write(deps, sessionId, (state) => {
+      const {
+        control: _control,
+        result: _result,
+        error: _error,
+        finished_at: _finished,
+        ...rest
+      } = state;
+      return { ...rest, status: 'queued' };
+    });
+  });
 }
 
 /**

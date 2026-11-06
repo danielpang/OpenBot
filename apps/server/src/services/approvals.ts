@@ -1,7 +1,7 @@
 import { summarizeArgs, type PendingWait } from '@openbots/agent';
 import { PRIORITY, wsEvent, type JobHandler, type MessagePart } from '@openbots/shared';
 import { widgetToolResult, type ApprovalState } from '@openbots/widgets';
-import { and, asc, eq, lte } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Config } from '../config.js';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
@@ -45,6 +45,7 @@ export function toApproval(row: ApprovalRow, note?: string | null) {
     id: row.id,
     runId: row.runId,
     messageId: row.messageId,
+    sessionId: row.sessionId,
     toolName: row.toolName,
     args: row.args,
     summary: summarizeArgs(row.toolName, row.args),
@@ -183,10 +184,7 @@ async function publishApproval(
   row: ApprovalRow,
   note?: string | null,
 ) {
-  const [run] = await deps.db
-    .select({ botId: schema.runs.botId, chatId: schema.runs.chatId })
-    .from(schema.runs)
-    .where(eq(schema.runs.id, row.runId));
+  const scope = await approvalScope(deps.db, row);
   const [message] = row.messageId
     ? await deps.db
         .select({ seq: schema.messages.seq, threadRootId: schema.messages.threadRootId })
@@ -201,13 +199,44 @@ async function publishApproval(
         approval: toApproval(row, note),
         ...(message?.threadRootId ? { threadRootId: message.threadRootId } : {}),
       },
-      {
-        ...(run ? { bot_id: run.botId } : {}),
-        ...(run?.chatId ? { chat_id: run.chatId } : {}),
-        ...(message ? { seq: message.seq } : {}),
-      },
+      { ...scope, ...(message ? { seq: message.seq } : {}) },
     ),
   );
+}
+
+/**
+ * Where an approval's events go: its run's Bot and chat, or, on the owner's
+ * own turn with no run, the session's Bot and chat and its owner, so every
+ * socket of the owner hears it.
+ */
+async function approvalScope(
+  db: Db,
+  row: ApprovalRow,
+): Promise<{ bot_id?: string; chat_id?: string; user_id?: string; workspace_id?: string }> {
+  if (row.runId) {
+    const [run] = await db
+      .select({ botId: schema.runs.botId, chatId: schema.runs.chatId })
+      .from(schema.runs)
+      .where(eq(schema.runs.id, row.runId));
+    return run ? { bot_id: run.botId, ...(run.chatId ? { chat_id: run.chatId } : {}) } : {};
+  }
+  if (!row.sessionId) return {};
+  const [session] = await db
+    .select({
+      botId: schema.codingSessions.botId,
+      chatId: schema.codingSessions.chatId,
+      ownerId: schema.codingSessions.ownerId,
+      workspaceId: schema.codingSessions.workspaceId,
+    })
+    .from(schema.codingSessions)
+    .where(eq(schema.codingSessions.id, row.sessionId));
+  if (!session) return {};
+  return {
+    bot_id: session.botId,
+    ...(session.chatId ? { chat_id: session.chatId } : {}),
+    user_id: session.ownerId,
+    workspace_id: session.workspaceId,
+  };
 }
 
 export const approvalClosed = (status: ApprovalStatus | 'closed') =>
@@ -286,33 +315,56 @@ export async function getApprovalForOwner(
 ): Promise<ApprovalRow> {
   const [row] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
   if (!row) throw notFound('Approval not found');
-  await getRunForOwner(db, owner, row.runId).catch(() => {
+  if (row.runId) {
+    await getRunForOwner(db, owner, row.runId).catch(() => {
+      throw notFound('Approval not found');
+    });
+    return row;
+  }
+  const [session] = row.sessionId
+    ? await db
+        .select({
+          ownerId: schema.codingSessions.ownerId,
+          workspaceId: schema.codingSessions.workspaceId,
+        })
+        .from(schema.codingSessions)
+        .where(eq(schema.codingSessions.id, row.sessionId))
+    : [];
+  if (session?.ownerId !== owner.id || session.workspaceId !== owner.workspaceId) {
     throw notFound('Approval not found');
-  });
+  }
   return row;
 }
 
 /**
  * The owner's pending requests, oldest first, with where each one sits: its
- * run's Bot and chat and the widget message's seq (the Mac app's tray).
+ * run's Bot and chat (or its session's, on the owner's own turn) and the
+ * widget message's seq (the Mac app's tray).
  */
 export async function listPendingApprovals(db: Db, owner: Owner) {
   const rows = await db
     .select({
       approval: schema.approvals,
-      botId: schema.runs.botId,
-      chatId: schema.runs.chatId,
+      botId: schema.bots.id,
+      chatId: sql<string | null>`coalesce(${schema.runs.chatId}, ${schema.codingSessions.chatId})`,
       seq: schema.messages.seq,
     })
     .from(schema.approvals)
-    .innerJoin(schema.runs, eq(schema.runs.id, schema.approvals.runId))
-    .innerJoin(schema.bots, eq(schema.bots.id, schema.runs.botId))
+    .leftJoin(schema.runs, eq(schema.runs.id, schema.approvals.runId))
+    .leftJoin(schema.codingSessions, eq(schema.codingSessions.id, schema.approvals.sessionId))
+    .innerJoin(
+      schema.bots,
+      eq(schema.bots.id, sql`coalesce(${schema.runs.botId}, ${schema.codingSessions.botId})`),
+    )
     .leftJoin(schema.messages, eq(schema.messages.id, schema.approvals.messageId))
     .where(
       and(
         eq(schema.approvals.status, 'pending'),
-        eq(schema.bots.ownerId, owner.id),
         eq(schema.bots.workspaceId, owner.workspaceId),
+        or(
+          and(isNotNull(schema.approvals.runId), eq(schema.bots.ownerId, owner.id)),
+          and(isNull(schema.approvals.runId), eq(schema.codingSessions.ownerId, owner.id)),
+        ),
       ),
     )
     .orderBy(asc(schema.approvals.createdAt));

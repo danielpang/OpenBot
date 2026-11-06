@@ -6310,6 +6310,68 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/coding-sessions/{id}/events': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The session's transcript, in order
+     * @description The entries after `after` (a `seq`), at most `limit`. Page on with the last `seq` while `hasMore`; `coding_session.events` brings the next ones live.
+     */
+    get: {
+      parameters: {
+        query?: {
+          after?: number | null;
+          limit?: number;
+        };
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The entries */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['CodingSessionEntries'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such session */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/coding-sessions/{id}': {
     parameters: {
       query?: never;
@@ -6620,6 +6682,89 @@ export interface paths {
           };
         };
         /** @description The session already ended (`SESSION_ENDED`), is still running (`SESSION_RUNNING`), or its Bot runs another (`CODER_BUSY`) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/coding-sessions/{id}/turns': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Send the agent your own next prompt
+     * @description Reopens an ended session with your prompt, straight to its agent: no Bot run is involved, so the session has no run (`runId` null) and refuses what needs one (an approval, the pull request's push). Its chat card follows, and the prompt is the next turn of its transcript.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['CodingSessionTurn'];
+        };
+      };
+      responses: {
+        /** @description The session */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              session: components['schemas']['CodingSession'];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Coding agents are off for the Bot (`CODER_DISABLED`), or it may not work on the repository any more (`REPO_NOT_ALLOWED`) */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such session */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description The session is still running (`SESSION_RUNNING`), its Bot runs another (`CODER_BUSY`), its repository was forgotten (`REPO_FORGOTTEN`), or its agent is not signed in (`NEEDS_LOGIN`) */
         409: {
           headers: {
             [name: string]: unknown;
@@ -12286,13 +12431,21 @@ export interface components {
     Approval: {
       /** Format: uuid */
       id: string;
-      /** Format: uuid */
-      runId: string;
+      /**
+       * Format: uuid
+       * @description Null for a coding session's request on the owner's own turn
+       */
+      runId: string | null;
       /**
        * Format: uuid
        * @description The message holding the widget
        */
       messageId: string | null;
+      /**
+       * Format: uuid
+       * @description The coding session that asked, when one did
+       */
+      sessionId: string | null;
       toolName: string;
       args?: unknown;
       /** @description The arguments in one readable line */
@@ -12831,7 +12984,12 @@ export interface components {
       id: string;
       /** Format: uuid */
       botId: string;
-      /** Format: uuid */
+      /** @description The session's name, from its first prompt */
+      title: string;
+      /**
+       * Format: uuid
+       * @description The Bot's run the session reports to; null on the owner's own turn
+       */
       runId: string | null;
       /** Format: uuid */
       chatId: string | null;
@@ -12891,6 +13049,87 @@ export interface components {
       sha: string;
       title: string;
     };
+    CodingSessionEntries: {
+      entries: components['schemas']['CodingSessionEntry'][];
+      hasMore: boolean;
+    };
+    /** @description One entry of a session transcript */
+    CodingSessionEntry: {
+      seq: number;
+      turn: number;
+      /** Format: date-time */
+      at: string;
+      event: components['schemas']['CoderTranscriptEvent'];
+    };
+    /** @description A prompt the session was given (`by` says whether the Bot or the owner sent it), or one of the agent's events. An `approval_request` entry's `request_id` is the approval's id. */
+    CoderTranscriptEvent:
+      | {
+          /** @enum {string} */
+          type: 'prompt';
+          text: string;
+          /** @enum {string} */
+          by: 'bot' | 'owner';
+        }
+      | {
+          /** @enum {string} */
+          type: 'text';
+          text: string;
+        }
+      | {
+          /** @enum {string} */
+          type: 'tool_use';
+          name: string;
+          summary: string;
+        }
+      | {
+          /** @enum {string} */
+          type: 'file_change';
+          path: string;
+          /** @enum {string} */
+          kind: 'edit' | 'create' | 'delete';
+          added?: number;
+          removed?: number;
+        }
+      | {
+          /** @enum {string} */
+          type: 'command';
+          command: string;
+          exit_code?: number;
+          summary?: string;
+        }
+      | {
+          /** @enum {string} */
+          type: 'approval_request';
+          request_id: string;
+          /** @enum {string} */
+          action_class: 'push' | 'pr' | 'outside_worktree' | 'install' | 'destructive' | 'other';
+          title: string;
+          detail?: string;
+          tool_name?: string;
+          input?: unknown;
+        }
+      | {
+          /** @enum {string} */
+          type: 'usage';
+          input_tokens: number;
+          output_tokens: number;
+          cost_usd?: number;
+          /** @enum {string} */
+          billed: 'subscription' | 'api' | 'unknown';
+        }
+      | {
+          /** @enum {string} */
+          type: 'result';
+          ok: boolean;
+          summary: string;
+          vendor_session_id?: string;
+          error?: string;
+        }
+      | {
+          /** @enum {string} */
+          type: 'error';
+          message: string;
+        };
     CodingSessionTerminal: {
       cwd: string;
       /** @enum {string} */
@@ -12899,6 +13138,9 @@ export interface components {
       preset: string;
     };
     CodingSessionContinue: {
+      prompt: string;
+    };
+    CodingSessionTurn: {
       prompt: string;
     };
     Repo: {

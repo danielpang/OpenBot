@@ -1,5 +1,16 @@
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { index, integer, jsonb, pgEnum, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { users } from './auth.js';
 import { bots } from './bots.js';
 import { chats, messages } from './chats.js';
@@ -103,28 +114,35 @@ export const runSteps = pgTable(
 );
 
 /** P1. */
-export const approvals = pgTable('approvals', {
-  id: id(),
-  workspaceId: workspaceId(),
-  runId: uuid('run_id')
-    .notNull()
-    .references(() => runs.id, { onDelete: 'cascade' }),
-  messageId: uuid('message_id').references(() => messages.id, { onDelete: 'set null' }),
-  toolName: text('tool_name').notNull(),
-  args: jsonb('args').notNull().default({}),
-  reason: text('reason'),
-  status: approvalStatus('status').notNull().default('pending'),
-  decidedBy: uuid('decided_by').references(() => users.id),
-  decidedAt: timestamptz('decided_at'),
-  expiresAt: timestamptz('expires_at'),
-  createdAt: createdAt(),
-  /**
-   * A coding session's request (I13): deciding it answers the session's
-   * agent over openbots:coder-control instead of resuming a run.
-   */
-  sessionId: uuid('session_id').references((): AnyPgColumn => codingSessions.id, {
-    onDelete: 'set null',
-  }),
-  /** The session request's `CoderActionClass`: push, pr, outside_worktree, install, destructive, other. */
-  actionClass: text('action_class'),
-});
+export const approvals = pgTable(
+  'approvals',
+  {
+    id: id(),
+    workspaceId: workspaceId(),
+    /** Null for a coding session's request on the owner's own turn, which has no run. */
+    runId: uuid('run_id').references(() => runs.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id').references(() => messages.id, { onDelete: 'set null' }),
+    toolName: text('tool_name').notNull(),
+    args: jsonb('args').notNull().default({}),
+    reason: text('reason'),
+    status: approvalStatus('status').notNull().default('pending'),
+    decidedBy: uuid('decided_by').references(() => users.id),
+    decidedAt: timestamptz('decided_at'),
+    expiresAt: timestamptz('expires_at'),
+    createdAt: createdAt(),
+    /**
+     * A coding session's request (I13): deciding it answers the session's
+     * agent over openbots:coder-control instead of resuming a run. It goes
+     * with its session, since a request on the owner's own turn has no run
+     * to keep it.
+     */
+    sessionId: uuid('session_id').references((): AnyPgColumn => codingSessions.id, {
+      onDelete: 'cascade',
+    }),
+    /** The session request's `CoderActionClass`: push, pr, outside_worktree, install, destructive, other. */
+    actionClass: text('action_class'),
+  },
+  (t) => [
+    check('approvals_run_or_session', sql`${t.runId} is not null or ${t.sessionId} is not null`),
+  ],
+);

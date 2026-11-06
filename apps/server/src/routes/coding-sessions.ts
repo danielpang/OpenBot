@@ -4,7 +4,9 @@ import {
   CoderChangedFileSchema,
   CoderCommitSchema,
   CoderModeSchema,
+  CoderTranscriptEventSchema,
   CoderUsageSchema,
+  CodingSessionEntrySchema,
   CodingSessionStatusSchema,
 } from '@openbots/shared';
 import { requireUser } from '../middleware/auth.js';
@@ -14,22 +16,28 @@ import {
   discardSession,
   getSession,
   listSessions,
+  ownerTurn,
+  sessionEntries,
   sessionLog,
   stopSession,
   terminalFor,
   toSessionView,
 } from '../services/coding-sessions.js';
 
-// Coding sessions (CA5 to CA7; I14): the owner's sessions across their Bots,
-// one session, its full log, where Open terminal opens, and Stop, Continue
-// and Discard. The last three act through the session's widget, so the
-// card in the chat and these answers agree. Another owner's session is 404.
+// Coding sessions (CA5 to CA7, CA15; I14): the owner's sessions across their
+// Bots, one session, its transcript and full log, where Open terminal opens,
+// the owner's own next prompt, and Stop, Continue and Discard. The last
+// three act through the session's widget, so the card in the chat and these
+// answers agree. Another owner's session is 404.
 
 const CodingSessionSchema = z
   .object({
     id: z.uuid(),
     botId: z.uuid(),
-    runId: z.uuid().nullable(),
+    title: z.string().openapi({ description: "The session's name, from its first prompt" }),
+    runId: z.uuid().nullable().openapi({
+      description: "The Bot's run the session reports to; null on the owner's own turn",
+    }),
     chatId: z.uuid().nullable(),
     messageId: z.uuid().nullable(),
     partIndex: z.number().int().nullable(),
@@ -61,6 +69,14 @@ const CodingSessionSchema = z
   })
   .openapi('CodingSession');
 
+const CodingSessionEntryApiSchema = CodingSessionEntrySchema.extend({
+  event: CoderTranscriptEventSchema.describe(
+    "A prompt the session was given (`by` says whether the Bot or the owner sent it), or one of the agent's events. An `approval_request` entry's `request_id` is the approval's id.",
+  ).openapi('CoderTranscriptEvent'),
+})
+  .describe('One entry of a session transcript')
+  .openapi('CodingSessionEntry');
+
 const json = <T extends z.ZodType>(schema: T, description: string) => ({
   description,
   content: { 'application/json': { schema } },
@@ -72,6 +88,14 @@ const notFoundProblem = { 404: problemResponse('No such session') };
 const conflict = problemResponse(
   'The session already ended (`SESSION_ENDED`), is still running (`SESSION_RUNNING`), or its Bot runs another (`CODER_BUSY`)',
 );
+const promptBody = (name: string) => ({
+  content: {
+    'application/json': {
+      schema: z.strictObject({ prompt: z.string().trim().min(1).max(4_000) }).openapi(name),
+    },
+  },
+  required: true,
+});
 
 export const codingSessionRoutes = createRouter()
   .openapi(
@@ -97,6 +121,44 @@ export const codingSessionRoutes = createRouter()
     async (c) => {
       const rows = await listSessions(c.var.deps, c.var.user, c.req.valid('query'));
       return c.json({ sessions: rows.map(toSessionView) }, 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: 'get',
+      path: '/coding-sessions/{id}/events',
+      tags: ['coders'],
+      summary: "The session's transcript, in order",
+      description:
+        'The entries after `after` (a `seq`), at most `limit`. Page on with the last `seq` while `hasMore`; `coding_session.events` brings the next ones live.',
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: {
+        params: idParam,
+        query: z.object({
+          after: z.coerce.number().int().min(0).default(0),
+          limit: z.coerce.number().int().min(1).max(500).default(200),
+        }),
+      },
+      responses: {
+        200: json(
+          z
+            .object({ entries: z.array(CodingSessionEntryApiSchema), hasMore: z.boolean() })
+            .openapi('CodingSessionEntries'),
+          'The entries',
+        ),
+        ...authProblems,
+        ...notFoundProblem,
+      },
+    }),
+    async (c) => {
+      const page = await sessionEntries(
+        c.var.deps,
+        c.var.user,
+        c.req.valid('param').id,
+        c.req.valid('query'),
+      );
+      return c.json(page, 200);
     },
   )
   .openapi(
@@ -192,23 +254,44 @@ export const codingSessionRoutes = createRouter()
         "Posts the prompt as your message in the session's chat (in its widget's thread), so the Bot continues the session with `code_task` from a run of its own. The session is returned as it is; it reopens when the Bot's run starts it.",
       middleware: [requireUser] as const,
       security: authenticated,
-      request: {
-        params: idParam,
-        body: {
-          content: {
-            'application/json': {
-              schema: z
-                .strictObject({ prompt: z.string().trim().min(1).max(4_000) })
-                .openapi('CodingSessionContinue'),
-            },
-          },
-          required: true,
-        },
-      },
+      request: { params: idParam, body: promptBody('CodingSessionContinue') },
       responses: { 200: sessionBody, ...authProblems, ...notFoundProblem, 409: conflict },
     }),
     async (c) => {
       const row = await continueSession(
+        c.var.deps,
+        c.var.user,
+        c.req.valid('param').id,
+        c.req.valid('json').prompt,
+      );
+      return c.json({ session: toSessionView(row) }, 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: 'post',
+      path: '/coding-sessions/{id}/turns',
+      tags: ['coders'],
+      summary: 'Send the agent your own next prompt',
+      description:
+        "Reopens an ended session with your prompt, straight to its agent: no Bot run is involved, so the session has no run (`runId` null) and refuses what needs one (an approval, the pull request's push). Its chat card follows, and the prompt is the next turn of its transcript.",
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: { params: idParam, body: promptBody('CodingSessionTurn') },
+      responses: {
+        200: sessionBody,
+        ...authProblems,
+        403: problemResponse(
+          'Coding agents are off for the Bot (`CODER_DISABLED`), or it may not work on the repository any more (`REPO_NOT_ALLOWED`)',
+        ),
+        ...notFoundProblem,
+        409: problemResponse(
+          'The session is still running (`SESSION_RUNNING`), its Bot runs another (`CODER_BUSY`), its repository was forgotten (`REPO_FORGOTTEN`), or its agent is not signed in (`NEEDS_LOGIN`)',
+        ),
+      },
+    }),
+    async (c) => {
+      const row = await ownerTurn(
         c.var.deps,
         c.var.user,
         c.req.valid('param').id,

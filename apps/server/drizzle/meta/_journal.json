@@ -246,6 +246,20 @@
       "when": 1793937355207,
       "tag": "0034_coding_session_branch_existed",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793978636599,
+      "tag": "0035_coding_session_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793979704966,
+      "tag": "0036_approvals_without_run",
+      "breakpoints": true
     }
   ]
 }

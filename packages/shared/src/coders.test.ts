@@ -11,6 +11,9 @@ import {
   CoderFeedLineSchema,
   CodingSessionResultSchema,
   DEFAULT_CODER_ACTIONS,
+  CodingSessionEntrySchema,
+  SESSION_TITLE_MAX,
+  sessionTitle,
 } from './coders.js';
 import { CoderAgentSchema, resolveToolPolicy } from './index.js';
 
@@ -127,6 +130,45 @@ describe('coding agents', () => {
     expect(coderEnabled(resolveToolPolicy(null))).toBe(true);
     expect(coderEnabled(resolveToolPolicy({ coder: { enabled: false } }))).toBe(false);
     expect(coderEnabled(resolveToolPolicy({ groups: { coder: 'deny' } }))).toBe(false);
+  });
+});
+
+describe('session transcript', () => {
+  it('parses prompts and agent events as transcript entries', () => {
+    const at = '2026-01-01T00:00:00.000Z';
+    expect(
+      CodingSessionEntrySchema.parse({
+        seq: 1,
+        turn: 1,
+        at,
+        event: { type: 'prompt', text: 'Fix the tests', by: 'owner' },
+      }).event.type,
+    ).toBe('prompt');
+    expect(
+      CodingSessionEntrySchema.parse({ seq: 2, turn: 1, at, event: { type: 'text', text: 'Hi' } })
+        .event.type,
+    ).toBe('text');
+    expect(
+      CodingSessionEntrySchema.safeParse({ seq: 0, turn: 1, at, event: { type: 'text', text: '' } })
+        .success,
+    ).toBe(false);
+    expect(
+      CodingSessionEntrySchema.safeParse({
+        seq: 1,
+        turn: 1,
+        at,
+        event: { type: 'prompt', text: 'x' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('names a session after the first line of its prompt', () => {
+    expect(sessionTitle('Fix the flaky test\n\nIt fails on CI.')).toBe('Fix the flaky test');
+    expect(sessionTitle('  \n  Add   a   README ')).toBe('Add a README');
+    expect(sessionTitle('x'.repeat(80))).toHaveLength(SESSION_TITLE_MAX);
+    expect(sessionTitle('x'.repeat(80)).endsWith('…')).toBe(true);
+    expect(sessionTitle('', 'acme/widgets')).toBe('widgets');
+    expect(sessionTitle('')).toBe('Coding session');
   });
 });
 

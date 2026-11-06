@@ -5,8 +5,11 @@ import {
   CODER_CONTROL_CHANNEL,
   CODERS_QUEUE,
   DEFAULT_MAX_REPOS,
+  EVENTS_CHANNEL,
   type CoderControl,
+  type CodingSessionEntry,
   type MessagePart,
+  type WsEvent,
 } from '@openbots/shared';
 import { and, asc, eq, ne } from 'drizzle-orm';
 import { widgetToolResult } from '@openbots/widgets';
@@ -22,6 +25,7 @@ import type { CoderJob } from './coder-jobs.js';
 import { startLogin } from './coder-login.js';
 import { runCoderLogin, UNEXPECTED_LOGIN_HOST } from './coder-login-driver.js';
 import { sessionLogPath } from './coder-state.js';
+import { recordEntry } from './coder-transcript.js';
 import { coderContextFor, coderServices } from './coder-tool.js';
 import { resumeIfCoderWidgetDone } from './coder-widget-actions.js';
 import { sessionBranch } from './repos-checkout.js';
@@ -79,6 +83,7 @@ describe('coding agents', () => {
   let repoId: string;
   const jobs: CoderJob[] = [];
   const controls: CoderControl[] = [];
+  const events: WsEvent[] = [];
 
   let restoreAdapter: () => void;
 
@@ -102,6 +107,7 @@ describe('coding agents', () => {
     await t.deps.infra.bus.subscribe<CoderControl>(CODER_CONTROL_CHANNEL, (m) => {
       controls.push(m);
     });
+    await t.deps.infra.bus.subscribe<WsEvent>(EVENTS_CHANNEL, (e) => events.push(e));
     const res = await call(dana, 'POST', '/bots', {
       name: 'Relay Bot',
       modelConfig: { provider_id: await t.providerId(), model_id: 'scripted' },
@@ -766,6 +772,201 @@ describe('coding agents', () => {
           .sessions,
       ).toEqual([]);
       expect((await call('', 'GET', '/coding-sessions')).status).toBe(401);
+    });
+  });
+
+  describe("the drawer: a session's transcript and the owner's own turns", () => {
+    /** A session `code_task` started, now ended, with its prompt in the transcript. */
+    async function endedSession(status = 'settled') {
+      await endAll();
+      await signIn('claude');
+      const run = await waitingRun();
+      const started = await t.inOrganization(async () =>
+        (await services(run.id)).start({
+          agent: 'claude',
+          repo: 'acme/relay',
+          prompt: 'Fix the reconnect loop\nIt spins when the relay is down',
+          mode: 'edit',
+        }),
+      );
+      await t.db
+        .update(schema.codingSessions)
+        .set({ status, finishedAt: new Date() })
+        .where(eq(schema.codingSessions.id, started.sessionId));
+      await t.db
+        .update(schema.widgetStates)
+        .set({
+          state: {
+            status,
+            feed: [],
+            approvals: [],
+            finished_at: new Date().toISOString(),
+            error: 'Earlier error',
+          },
+          pendingRunId: null,
+        })
+        .where(eq(schema.widgetStates.messageId, started.posted.messageId));
+      return { ...started, runId: run.id };
+    }
+    const turn = (sessionId: string, prompt: string, cookie = dana) =>
+      call(cookie, 'POST', `/coding-sessions/${sessionId}/turns`, { prompt });
+    const entries = async (sessionId: string, query = '') => {
+      const res = await call(dana, 'GET', `/coding-sessions/${sessionId}/events${query}`);
+      expect(res.status).toBe(200);
+      return (await res.json()) as { entries: CodingSessionEntry[]; hasMore: boolean };
+    };
+
+    it('pages the transcript after a seq, and names the session from its first prompt', async () => {
+      const s = await endedSession();
+      await t.inOrganization(async () => {
+        for (const text of ['One', 'Two', 'Three']) {
+          await recordEntry(t.ownerDeps, s.sessionId, { type: 'text', text });
+        }
+      });
+      const first = await entries(s.sessionId, '?limit=2');
+      expect(first.hasMore).toBe(true);
+      expect(first.entries.map((e) => [e.seq, e.turn, e.event])).toEqual([
+        [
+          1,
+          1,
+          {
+            type: 'prompt',
+            text: 'Fix the reconnect loop\nIt spins when the relay is down',
+            by: 'bot',
+          },
+        ],
+        [2, 1, { type: 'text', text: 'One' }],
+      ]);
+      const rest = await entries(s.sessionId, '?after=2&limit=2');
+      expect(rest).toMatchObject({ hasMore: false });
+      expect(rest.entries.map((e) => e.seq)).toEqual([3, 4]);
+      expect((await entries(s.sessionId)).entries).toHaveLength(4);
+      expect(
+        (await call(dana, 'GET', `/coding-sessions/${s.sessionId}/events?limit=501`)).status,
+      ).toBe(400);
+      expect((await call(eve, 'GET', `/coding-sessions/${s.sessionId}/events`)).status).toBe(404);
+
+      const list = (await (await call(dana, 'GET', '/coding-sessions?limit=100')).json()) as {
+        sessions: { id: string; title: string }[];
+      };
+      expect(list.sessions.find((x) => x.id === s.sessionId)?.title).toBe('Fix the reconnect loop');
+    });
+
+    it("queues the owner's prompt straight to the agent, with no run", async () => {
+      const s = await endedSession();
+      jobs.length = 0;
+      events.length = 0;
+      const res = await turn(s.sessionId, '  And the docs  ');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        session: {
+          id: s.sessionId,
+          status: 'queued',
+          runId: null,
+          title: 'Fix the reconnect loop',
+        },
+      });
+      expect(await session(s.sessionId)).toMatchObject({
+        status: 'queued',
+        prompt: 'And the docs',
+        runId: null,
+        pushAllowed: false,
+        error: null,
+        finishedAt: null,
+      });
+      await until(() =>
+        expect(jobs).toContainEqual({ kind: 'session', sessionId: s.sessionId, workspaceId }),
+      );
+      const { entries: all } = await entries(s.sessionId);
+      expect(all.at(-1)).toMatchObject({
+        seq: 2,
+        turn: 2,
+        event: { type: 'prompt', text: 'And the docs', by: 'owner' },
+      });
+      // The chat card follows: queued again, without the last turn's end.
+      const state = (await widgetRow(s.posted.messageId)).state as Record<string, unknown>;
+      expect(state).toMatchObject({ status: 'queued' });
+      expect(state).not.toHaveProperty('finished_at');
+      expect(state).not.toHaveProperty('error');
+      expect((state.feed as { text: string }[]).at(-1)!.text).toBe('Continue: And the docs');
+      // The prompt reaches the owner before the session's new status.
+      const mine = events.filter(
+        (e) => e.type === 'coding_session.events' || e.type === 'coding_session.updated',
+      );
+      expect(mine.map((e) => e.type)).toEqual(['coding_session.events', 'coding_session.updated']);
+      expect(mine[1]).toMatchObject({
+        user_id: danaId,
+        workspace_id: workspaceId,
+        payload: { session: { id: s.sessionId, status: 'queued', runId: null } },
+      });
+      // The earlier run was not resumed by this turn.
+      expect((await runRow(s.runId)).status).toBe('waiting');
+
+      // Live again: the next turn waits for this one.
+      const again = await turn(s.sessionId, 'More');
+      expect(again.status).toBe(409);
+      expect(await again.json()).toMatchObject({ code: 'SESSION_RUNNING' });
+      expect((await turn(s.sessionId, 'x', eve)).status).toBe(404);
+      expect((await turn(s.sessionId, '   ')).status).toBe(400);
+    });
+
+    it('refuses a turn while the Bot runs another session, or codes no more, or the agent is signed out', async () => {
+      const s = await endedSession();
+      const [other] = await t.db
+        .insert(schema.codingSessions)
+        .values({
+          workspaceId,
+          ownerId: danaId,
+          botId: bot.id,
+          agent: 'claude',
+          repoId,
+          repoFullName: 'acme/relay',
+          mode: 'edit',
+          prompt: 'Something else',
+          status: 'running',
+        })
+        .returning();
+      const busy = await turn(s.sessionId, 'And the docs');
+      expect(busy.status).toBe(409);
+      expect(await busy.json()).toMatchObject({ code: 'CODER_BUSY' });
+      await t.db
+        .update(schema.codingSessions)
+        .set({ status: 'settled' })
+        .where(eq(schema.codingSessions.id, other!.id));
+
+      const policy = (await botRow()).toolPolicy;
+      await t.db
+        .update(schema.bots)
+        .set({ toolPolicy: { ...(policy as object), coder: { enabled: false } } })
+        .where(eq(schema.bots.id, bot.id));
+      try {
+        const off = await turn(s.sessionId, 'And the docs');
+        expect(off.status).toBe(403);
+        expect(await off.json()).toMatchObject({ code: 'CODER_DISABLED' });
+      } finally {
+        await t.db
+          .update(schema.bots)
+          .set({ toolPolicy: policy })
+          .where(eq(schema.bots.id, bot.id));
+      }
+
+      await t.db
+        .update(schema.coderAccounts)
+        .set({ authKind: 'none' })
+        .where(eq(schema.coderAccounts.ownerId, danaId));
+      const signedOut = await turn(s.sessionId, 'And the docs');
+      expect(signedOut.status).toBe(409);
+      expect(await signedOut.json()).toMatchObject({ code: 'NEEDS_LOGIN' });
+      await signIn('claude');
+
+      await t.db
+        .update(schema.codingSessions)
+        .set({ repoId: null })
+        .where(eq(schema.codingSessions.id, s.sessionId));
+      const forgotten = await turn(s.sessionId, 'And the docs');
+      expect(forgotten.status).toBe(409);
+      expect(await forgotten.json()).toMatchObject({ code: 'REPO_FORGOTTEN' });
+      expect((await session(s.sessionId)).status).toBe('settled');
     });
   });
 

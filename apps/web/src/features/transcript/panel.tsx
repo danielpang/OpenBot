@@ -1,6 +1,6 @@
 import { Button, XIcon } from '@openbots/ui';
 import { useCallback, useEffect, type ReactNode } from 'react';
-import { useRightPanel } from '../../app/right-panel.js';
+import { CODING_SESSIONS_PANEL, useRightPanel } from '../../app/right-panel.js';
 import { ArtifactViewer } from '../artifacts/viewer.js';
 import { ScreenPreview } from '../computer/preview.js';
 import { ActivityLog } from './activity-log.js';
@@ -102,16 +102,22 @@ export function useShowBotPanel(botId: string) {
   return show;
 }
 
-/** `useShowBotPanel`, restoring the remembered panel on mount and closing it on unmount. */
+/**
+ * `useShowBotPanel`, restoring the remembered panel on mount and closing it
+ * on unmount. The coding sessions drawer is not the Bot's: the restore leaves
+ * it open and the close leaves it alone, so it stays open from Bot to Bot.
+ */
 export function useBotPanel(botId: string) {
-  const { close } = useRightPanel();
+  const { close, openId } = useRightPanel();
   const show = useShowBotPanel(botId);
 
   useEffect(() => {
     const remembered = readPanel(botId);
-    if (remembered) show(remembered);
-    return close;
-  }, [botId, show, close]);
+    if (remembered && openId() !== CODING_SESSIONS_PANEL) show(remembered);
+    return () => {
+      if (openId() !== CODING_SESSIONS_PANEL) close();
+    };
+  }, [botId, show, close, openId]);
 
   return show;
 }

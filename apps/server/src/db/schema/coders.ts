@@ -1,4 +1,9 @@
-import type { CoderChangedFile, CoderCommit, CoderUsage } from '@openbots/shared';
+import type {
+  CoderChangedFile,
+  CoderCommit,
+  CoderTranscriptEvent,
+  CoderUsage,
+} from '@openbots/shared';
 import {
   bigint,
   boolean,
@@ -153,6 +158,8 @@ export const codingSessions = pgTable(
     base: text('base'),
     mode: text('mode').notNull(),
     prompt: text('prompt').notNull(),
+    /** Its name in the drawer, from the first prompt (`sessionTitle`); a later prompt leaves it. */
+    title: text('title'),
     /** The vendor's own session id, for the adapter's resume argv. */
     vendorSessionId: text('vendor_session_id'),
     status: text('status').notNull().default('queued'),
@@ -189,6 +196,33 @@ export const codingSessions = pgTable(
     index('coding_sessions_workspace_id_idx').on(t.workspaceId),
     index('coding_sessions_bot_status').on(t.botId, t.status),
     index('coding_sessions_run').on(t.runId),
+  ],
+);
+
+/**
+ * A session's transcript (CA15): its prompts and the agent's events in
+ * order, `seq` from 1 per session, `turn` counting the prompts. Text is
+ * clipped and scrubbed of the provider key before it is written here; the
+ * full output stays in the session's log file.
+ */
+export const codingSessionEvents = pgTable(
+  'coding_session_events',
+  {
+    id: id(),
+    workspaceId: workspaceId(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => codingSessions.id, { onDelete: 'cascade' }),
+    seq: integer('seq').notNull(),
+    turn: integer('turn').notNull(),
+    at: timestamptz('at').notNull(),
+    event: jsonb('event').$type<CoderTranscriptEvent>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('coding_session_events_workspace_id_idx').on(t.workspaceId),
+    // Also the index the transcript is read and appended by.
+    unique('coding_session_events_session_seq').on(t.sessionId, t.seq),
   ],
 );
 

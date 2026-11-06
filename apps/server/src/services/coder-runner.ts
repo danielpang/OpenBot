@@ -55,6 +55,7 @@ import { runCoderLogin } from './coder-login-driver.js';
 import { accountBilling, coderProviderEnv, maskKey } from './coder-provider-env.js';
 import { interruptSession, LIVE } from './coder-recovery.js';
 import { resumeWaitingRun } from './coder-run-resume.js';
+import { recordEntry } from './coder-transcript.js';
 import {
   appendFeed,
   applyEvent,
@@ -492,13 +493,19 @@ class SessionRunner {
     });
     this.session = { ...session, worktreePath: worktree, branch, base, startedAt, branchExisted };
     const label = CODER_AGENT_LABELS[session.agent as CoderAgent] ?? session.agent;
-    appendFeed(
-      deps,
-      this.id,
-      feedLine('text', `${continuing ? 'Continued' : 'Started'} ${label} in ${worktree}`),
-    );
+    await this.note('text', `${continuing ? 'Continued' : 'Started'} ${label} in ${worktree}`);
     const posture = this.adapter?.posture;
-    if (posture) appendFeed(deps, this.id, feedLine('text', posture));
+    if (posture) await this.note('text', posture);
+  }
+
+  /** The runner's own words, in the feed and the transcript (the chat in the drawer). */
+  private async note(type: 'text' | 'error', text: string) {
+    appendFeed(this.deps, this.id, feedLine(type, text));
+    await recordEntry(
+      this.deps,
+      this.id,
+      type === 'text' ? { type, text } : { type, message: text },
+    );
   }
 
   /** Starts the CLI and resolves when it ends. */
@@ -757,6 +764,7 @@ class SessionRunner {
         };
       }
     }
+    await recordEntry(this.deps, this.id, event);
     await applyEvent(this.deps, this.id, event);
   }
 
@@ -808,13 +816,17 @@ class SessionRunner {
       appendFeed(deps, this.id, feedLine('approval_request', `Allowed: ${request.title}`));
       return;
     }
-    if (decision === 'deny' || !this.session.runId) {
+    if (decision === 'deny') {
       this.answer(
         request.request_id,
         'deny',
         "The owner's settings for this Bot do not allow this. Carry on without it.",
       );
       appendFeed(deps, this.id, feedLine('approval_request', `Not allowed: ${request.title}`));
+      await recordEntry(deps, this.id, {
+        type: 'text',
+        text: this.scrub(`Not allowed: ${request.title}`),
+      });
       return;
     }
     await this.askOwner(
@@ -855,7 +867,7 @@ class SessionRunner {
       .insert(schema.approvals)
       .values({
         workspaceId: session.workspaceId,
-        runId: session.runId!,
+        runId: session.runId,
         messageId: session.messageId,
         toolName: input.toolName,
         args: args as object,
@@ -890,6 +902,15 @@ class SessionRunner {
       status: 'pending',
     });
     appendFeed(deps, session.id, feedLine('approval_request', `Asks: ${input.title}`));
+    // The approval's id stands in for the agent's own: what the drawer decides by.
+    await recordEntry(deps, session.id, {
+      type: 'approval_request',
+      request_id: row!.id,
+      action_class: input.action,
+      title: this.scrub(input.title),
+      ...(input.detail ? { detail: this.scrub(input.detail) } : {}),
+      tool_name: input.toolName,
+    });
     await announceApproval(deps, row!);
     const early = this.early.get(row!.id);
     if (early) {
@@ -904,7 +925,7 @@ class SessionRunner {
     switch (msg.type) {
       case 'stop':
         this.stopped = true;
-        appendFeed(deps, this.id, feedLine('text', 'Stopped by the owner'));
+        void this.note('text', 'Stopped by the owner');
         this.stopProcess();
         this.wake?.();
         for (const resolve of this.waiters.values()) resolve('denied');
@@ -965,6 +986,10 @@ class SessionRunner {
       this.id,
       feedLine('approval_request', approved ? 'The owner approved' : 'The owner said no'),
     );
+    await recordEntry(deps, this.id, {
+      type: 'text',
+      text: approved ? 'The owner approved' : 'The owner said no',
+    });
     if (!this.prompts.size && !this.stopped) await setSessionStatus(deps, this.id, 'running');
     return true;
   }
@@ -1001,13 +1026,9 @@ class SessionRunner {
     const line = this.scrub(said.trim().split('\n').filter(Boolean).pop() ?? '');
     const seconds = Math.ceil(wait / 1000);
     await setSessionStatus(this.deps, this.id, 'waiting');
-    appendFeed(
-      this.deps,
-      this.id,
-      feedLine(
-        'text',
-        `${label} is rate limited (${line}); trying again in ${seconds} second${seconds === 1 ? '' : 's'}`,
-      ),
+    await this.note(
+      'text',
+      `${label} is rate limited (${line}); trying again in ${seconds} second${seconds === 1 ? '' : 's'}`,
     );
     await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, wait);
@@ -1095,7 +1116,7 @@ class SessionRunner {
         .update(schema.coderAccounts)
         .set({ lastError: message, updatedAt: new Date() })
         .where(eq(schema.coderAccounts.id, this.account.id));
-      appendFeed(deps, this.id, feedLine('error', message));
+      await this.note('error', message);
       const state = await this.settle('failed', message);
       await this.resume(state, { note: message });
       return;
@@ -1112,7 +1133,7 @@ class SessionRunner {
             eq(schema.coderAccounts.agent, session.agent),
           ),
         );
-      appendFeed(deps, this.id, feedLine('error', `${label} is not signed in on the computer`));
+      await this.note('error', `${label} is not signed in on the computer`);
       // The run waits on the sign-in, which resumes it when it ends; without
       // one (no adapter, the computer off) it hears now.
       const waits = await this.askToSignIn(label);
@@ -1273,8 +1294,6 @@ class SessionRunner {
     commits: CoderCommit[],
   ): Promise<{ url?: string; note?: string; refused?: string }> {
     const { deps, session } = this;
-    if (!session.runId)
-      return { note: 'No run to ask the owner in, so the branch was not pushed.' };
     const branch = session.branch!;
     let decide!: (decision: 'approved' | 'denied' | 'expired') => void;
     const decided = new Promise<'approved' | 'denied' | 'expired'>((resolve) => (decide = resolve));
@@ -1336,7 +1355,7 @@ class SessionRunner {
         commits,
         ...(this.options.githubApi ? { githubApi: this.options.githubApi } : {}),
       });
-      appendFeed(deps, this.id, feedLine('text', `Opened ${url}`));
+      await this.note('text', `Opened ${url}`);
       return { url };
     } catch (error) {
       const message = errorText(error);
@@ -1376,7 +1395,7 @@ class SessionRunner {
     const message = this.scrub(raw);
     this.stopProcess();
     await flushFeed(this.deps, this.id).catch(() => null);
-    appendFeed(this.deps, this.id, feedLine('error', message));
+    await this.note('error', message);
     const state = await this.settle(this.stopped ? 'stopped' : 'failed', message).catch(
       (error: unknown) => {
         this.deps.logger.error({ err: error, sessionId: this.id }, 'coding session not settled');

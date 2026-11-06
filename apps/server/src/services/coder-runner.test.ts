@@ -30,6 +30,7 @@ import {
   type CoderWorld,
 } from './__fixtures__/coders/setup.js';
 import { publishCoderControl } from './coder-control.js';
+import { readEntries, recordEntry } from './coder-transcript.js';
 import { enqueueCoderJob, type CoderJob } from './coder-jobs.js';
 import {
   readSessionLog,
@@ -122,6 +123,14 @@ describe('coder runner', () => {
       io.exit(0);
     };
     const { sessionId, runId } = await w.newSession();
+    // As `startCodingSession` records it.
+    await w.t.inOrganization(() =>
+      recordEntry(w.t.deps, sessionId, {
+        type: 'prompt',
+        text: 'Fix the reconnect loop',
+        by: 'bot',
+      }),
+    );
     await start(sessionId);
     const row = await ended(sessionId, 'settled');
 
@@ -217,6 +226,27 @@ describe('coder runner', () => {
       .from(schema.widgetStates)
       .where(eq(schema.widgetStates.messageId, row.messageId!));
     expect(ws!.pendingRunId).toBeNull();
+
+    // The transcript: the prompt, the runner's note, then the agent's events in order (CA15).
+    const { entries } = await readEntries(w.t.db, sessionId, { limit: 500 });
+    expect(entries.map((e) => e.seq)).toEqual(entries.map((_, i) => i + 1));
+    expect(entries.every((e) => e.turn === 1)).toBe(true);
+    expect(entries[0]!.event).toEqual({
+      type: 'prompt',
+      text: 'Fix the reconnect loop',
+      by: 'bot',
+    });
+    expect(entries[1]!.event).toEqual({ type: 'text', text: `Started Claude Code in ${WORKTREE}` });
+    const types = entries.map((e) => e.event.type);
+    const firstText = types.indexOf('text', 2);
+    const firstTool = types.indexOf('tool_use');
+    expect(firstText).toBeGreaterThan(1);
+    expect(firstTool).toBeGreaterThan(firstText);
+    expect(types.indexOf('result')).toBeGreaterThan(firstTool);
+    expect(entries.find((e) => e.event.type === 'result')!.event).toMatchObject({
+      ok: true,
+      summary: expect.stringContaining('backs off'),
+    });
   });
 
   it("closes the CLI's stdin once it runs, and git's too", async () => {
@@ -281,11 +311,22 @@ describe('coder runner', () => {
         },
       ]);
     });
-    // The owner's tray lists it, and deciding it answers the agent, not a run.
+    // The owner's tray lists it, with its session, and deciding it answers the agent, not a run.
     const pending = await w.call('GET', '/approvals');
     expect(
-      ((await pending.json()) as { items: { id: string }[] }).items.map((i) => i.id),
-    ).toContain(approval.id);
+      ((await pending.json()) as { items: { id: string; sessionId: string | null }[] }).items,
+    ).toContainEqual(expect.objectContaining({ id: approval.id, sessionId }));
+    // The transcript asks by the approval's id, which the drawer decides with.
+    const asked = (await readEntries(w.t.db, sessionId, { limit: 500 })).entries.find(
+      (e) => e.event.type === 'approval_request',
+    );
+    expect(asked?.event).toEqual({
+      type: 'approval_request',
+      request_id: approval.id,
+      action_class: 'install',
+      title: 'Run: pnpm add left-pad',
+      tool_name: 'Bash',
+    });
     const res = await w.call('POST', `/approvals/${approval.id}/decide`, { decision: 'approve' });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
@@ -536,6 +577,118 @@ describe('coder runner', () => {
       const output = await resumedWith(runId);
       expect(output).toMatchObject({ status: 'failed', error: needsLoginText('Claude Code') });
       expect(output.note).toContain('Ask the owner to sign in');
+    } finally {
+      delete options.startLogin;
+    }
+  });
+
+  it('asks the owner on their own turn, with no run', async () => {
+    let installAnswer: Promise<{ decision: string }> | undefined;
+    w.coder.agent = async (io) => {
+      io.stdout(jsonl(initLine()));
+      installAnswer = io.permission('p-install', 'Bash', { command: 'pnpm add left-pad' });
+      await installAnswer;
+      io.stdout(jsonl(resultLine('Added left-pad')));
+      io.exit(0);
+    };
+    const { sessionId } = await w.newSession({ runId: null, mode: 'pr' });
+    const pushes = () => w.coder.gitCalls().filter((args) => args.includes('push')).length;
+    const pushesBefore = pushes();
+    const requested: WsEvent[] = [];
+    const unsubscribe = await w.t.deps.infra.bus.subscribe<WsEvent>(EVENTS_CHANNEL, (e) => {
+      if (e.type === 'approval.requested') requested.push(e);
+    });
+    try {
+      await start(sessionId);
+      const pending = (actionClass: string) =>
+        w.until(async () => {
+          const [row] = await w.t.db
+            .select()
+            .from(schema.approvals)
+            .where(
+              and(
+                eq(schema.approvals.sessionId, sessionId),
+                eq(schema.approvals.actionClass, actionClass),
+              ),
+            );
+          expect(row).toBeDefined();
+          return row!;
+        });
+      const install = await pending('install');
+      expect(install).toMatchObject({ runId: null, sessionId, status: 'pending' });
+      await w.until(async () => {
+        const state = await w.widget(sessionId);
+        expect(state.approvals).toContainEqual({
+          id: install.id,
+          action_class: 'install',
+          title: 'Run: pnpm add left-pad',
+          status: 'pending',
+        });
+      });
+      const asked = (await readEntries(w.t.db, sessionId, { limit: 500 })).entries.find(
+        (e) => e.event.type === 'approval_request',
+      );
+      expect(asked?.event).toMatchObject({ type: 'approval_request', request_id: install.id });
+      // With no run, the event is scoped to the session's Bot and its owner.
+      await w.until(() =>
+        expect(
+          requested.find(
+            (e) => (e.payload as { approval: { id: string } }).approval.id === install.id,
+          ),
+        ).toMatchObject({
+          user_id: w.ownerId,
+          workspace_id: w.workspaceId,
+          bot_id: expect.any(String),
+        }),
+      );
+      // The decision reaches the agent over the control channel.
+      const res = await w.call('POST', `/approvals/${install.id}/decide`, { decision: 'approve' });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ approval: { runId: null }, resumedRunId: null });
+      expect(await installAnswer).toMatchObject({ decision: 'allow' });
+
+      // `pr` mode asks again before the push, and pushes after the approval.
+      const pr = await pending('pr');
+      expect(pr.runId).toBeNull();
+      // Nothing was pushed before the approval.
+      expect(pushes()).toBe(pushesBefore);
+      expect(
+        (await w.call('POST', `/approvals/${pr.id}/decide`, { decision: 'approve' })).status,
+      ).toBe(200);
+      const row = await ended(sessionId, 'settled');
+      expect(pushes()).toBe(pushesBefore + 1);
+      expect(w.coder.gitCalls()).toContainEqual([
+        '-C',
+        WORKTREE,
+        'push',
+        '-u',
+        'origin',
+        'bot/fix-reconnect',
+      ]);
+      expect(row).toMatchObject({
+        runId: null,
+        pushAllowed: true,
+        prUrl: 'https://github.com/acme/relay/pull/7',
+      });
+    } finally {
+      await unsubscribe();
+    }
+  });
+
+  it("fails an owner's turn that finds the agent signed out, without a sign-in", async () => {
+    w.coder.agent = notSignedIn;
+    let asked = false;
+    options.startLogin = async () => {
+      asked = true;
+      throw new Error('not expected');
+    };
+    try {
+      const { sessionId } = await w.newSession({ runId: null });
+      await start(sessionId);
+      const row = await ended(sessionId, 'failed');
+      expect(row.error).toBe(NEEDS_LOGIN);
+      expect((await w.widget(sessionId)).error).toBe(needsLoginText('Claude Code'));
+      expect(asked).toBe(false);
     } finally {
       delete options.startLogin;
     }
