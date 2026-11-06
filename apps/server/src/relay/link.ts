@@ -474,11 +474,7 @@ export async function createRelayLink(
     );
   };
 
-  /**
-   * Records why a dial failed. The status stays `connecting` meanwhile, so
-   * this goes out on its own, once per distinct failure: the owner sees why
-   * their server cannot reach the relay while it keeps trying.
-   */
+  /** Publishes on its own, since the status stays `connecting` across failures. */
   const setError = (next: string | null) => {
     if (next === error) return;
     error = next;
@@ -537,8 +533,7 @@ export async function createRelayLink(
       }
       logger.info({ code, reason, retryInMs: backoffMs }, 'relay link closed; reconnecting');
       setStatus('connecting');
-      // A link that never got to `linked` failed: say why, so the owner can
-      // fix the relay's address. One that was linked and dropped just retries.
+      // Only a link that never got to `linked` reports why; a dropped one just retries.
       if (!c.everLinked) {
         setError(c.failure ?? `the relay closed the link (${code}${reason ? `, ${reason}` : ''})`);
       }

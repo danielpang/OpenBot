@@ -281,10 +281,6 @@ function CodeStep({ flow, state }: { flow: PairFlow; state: PairState }) {
   );
 }
 
-/**
- * The server has not linked to its relay, so the code stays hidden: a phone
- * that scanned it could not get through, and would only see a socket error.
- */
 function LinkFailed({ flow, state }: { flow: PairFlow; state: PairState }) {
   return (
     <div

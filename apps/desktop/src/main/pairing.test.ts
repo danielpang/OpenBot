@@ -44,10 +44,7 @@ describe('a relay address', () => {
 
 describe('the shared relay', () => {
   it('is the Fly app deploy/relay deploys, so no code names a relay that is not there', () => {
-    // Every pairing code sends the phone to this hostname, so it must be one
-    // that answers. Until the relay has a custom hostname (deploy/relay/README.md,
-    // "A custom hostname"), that is the Fly app's own; change both together,
-    // with the certificate, and never back to a retired address.
+    // Until the relay has a custom hostname (deploy/relay/README.md), it is the Fly app's own.
     const flyToml = readFileSync(
       fileURLToPath(new URL('../../../../deploy/relay/fly.toml', import.meta.url)),
       'utf8',

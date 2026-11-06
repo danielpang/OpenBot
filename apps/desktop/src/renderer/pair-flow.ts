@@ -6,27 +6,18 @@ import { createStore } from './store.js';
 // The pairing window's flow (docs/RELAY_PROTOCOL.md 6), without a DOM. Pair
 // your phone shows a code for the phone to scan straight away, through This
 // Mac's relay: the project's shared relay unless the owner set their own.
-//
-// The code shows once the server's link to that relay is up (`GET
-// /api/v1/relay`, asked every second while a code is up). A phone that scans
-// a code while its server cannot reach the relay fails with a bare socket
-// error and nothing to go on, so the window holds the code back and says
-// what is wrong instead, with the server's own reason when it has one (a
-// relay name that does not resolve, a refused connection), and shows the code
-// as soon as the link comes up.
-//
+// The code is held back until the server's link to that relay is up, since a
+// phone that scans it before then gets only a bare socket error.
 // The Relay view (`?view=relay`, the app menu's "Relay…", or "Change relay"
-// under the code) changes the relay. That restarts the stack and signs out
-// every paired phone, so it warns first and asks once more. Another
-// connection's relay is its server's: the view only shows it. ./pair-view.tsx
-// renders it.
+// under the code) changes it. That restarts the stack and signs out every
+// paired phone, so it warns first and asks once more. Another connection's
+// relay is its server's: the view only shows it. ./pair-view.tsx renders it.
 
 export type PairView = 'pair' | 'relay';
 
 /** The server's link to its relay as the window sees it; `none` when the server has no relay. */
 export type PairLink = 'none' | 'waiting' | 'linked' | 'failed';
 
-/** How often the window asks for the link's status while a code is up. */
 export const LINK_POLL_MS = 1_000;
 /** How long the server gets to link before the window says it has not, when it gives no reason. */
 export const LINK_WAIT_MS = 15_000;
@@ -56,7 +47,6 @@ export function relayChanged(state: Pick<PairState, 'relay' | 'url'>): boolean {
   return url !== '' && url !== (state.relay?.current ?? state.relay?.sharedUrl);
 }
 
-/** The relay's host for a message, or the address as given when it does not parse. */
 function relayHost(url: string): string {
   try {
     return new URL(url).host;
@@ -65,7 +55,6 @@ function relayHost(url: string): string {
   }
 }
 
-/** What the window says when the server has not linked: the server's reason when it gave one. */
 export function linkFailure(relayUrl: string, status: PairRelayStatus): string {
   const host = relayHost(relayUrl);
   return status.error
@@ -88,7 +77,7 @@ export function createPairFlow(bridge: Pick<AppBridge, 'pair'>, view: PairView =
   const showError = (error: unknown) => store.update({ error: errorParts(error).message });
 
   let poll: ReturnType<typeof setTimeout> | undefined;
-  /** Which watch is current; a new code, another view or the close ends the older one. */
+  /** Bumped to end the current watch. */
   let watching = 0;
 
   function stopWatching() {
@@ -97,12 +86,7 @@ export function createPairFlow(bridge: Pick<AppBridge, 'pair'>, view: PairView =
     watching += 1;
   }
 
-  /**
-   * Asks for the server's relay link while the code shows. The code is held
-   * back until `linked`; a failure the server reports shows at once, and a
-   * link still not up after LINK_WAIT_MS shows as not connected. Both go on
-   * asking, so a server that links later gets its code shown.
-   */
+  /** Polls the link while the code shows, and keeps polling after a failure so a late link still shows it. */
   function watchLink(relayUrl: string) {
     stopWatching();
     const id = watching;
@@ -112,7 +96,7 @@ export function createPairFlow(bridge: Pick<AppBridge, 'pair'>, view: PairView =
       try {
         status = await bridge.pair.relayStatus();
       } catch {
-        // The server could not be asked: the wait goes on, and tells in time.
+        // Unanswered reads as not linked yet.
       }
       if (id !== watching) return;
       if (status.status === 'linked') {

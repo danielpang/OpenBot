@@ -13,10 +13,8 @@ import { z } from 'zod';
 // Anywhere else it serves every upgrade itself, and a relay of several
 // machines there needs a proxy that routes by host id.
 //
-// Behind Fly's proxy the client's address is in `fly-client-ip`, and the last
-// `x-forwarded-for` hop is the app's own address, so on Fly the relay reads
-// that header (`RELAY_CLIENT_IP_HEADER` names another proxy's) rather than
-// the last hop, or every client would share one address and its limits.
+// On Fly the client's address is read from `fly-client-ip` (see
+// `remoteAddress`); `RELAY_CLIENT_IP_HEADER` names another proxy's header.
 //
 // The cluster settings (MOBILE_AND_VM_PLAN.md 5.8): without `RELAY_REDIS_URL`
 // the relay keeps its registry in memory and is a cluster of one, as a

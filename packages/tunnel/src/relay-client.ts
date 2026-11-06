@@ -13,11 +13,8 @@ import {
 // ByteTransport the tunnel client runs over. When the host is offline (4404),
 // the host has too many streams (4429) or the id is malformed (4400), the
 // relay closes the socket instead, and `connectThroughRelay` rejects with a
-// RelayConnectError that carries the code. A socket that never opens (the
-// relay's name did not resolve, the connection was refused, TLS failed) ends
-// the same way from the client's point of view, with 1006 and whatever the
-// platform said, so that error is told apart: `unreachable` is true and the
-// message names the relay's host, which is what the owner has to check.
+// RelayConnectError that carries the code. A socket that never opens (DNS,
+// refused, TLS) rejects with `unreachable` set and the relay's host named.
 
 export const RELAY_CLOSE_HOST_OFFLINE = 4404;
 export const RELAY_CLOSE_TOO_MANY = 4429;
@@ -74,7 +71,6 @@ function trimSlash(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
-/** The relay's host for a message, or the URL as given when it does not parse. */
 function relayHost(url: string): string {
   try {
     return new URL(url).host;

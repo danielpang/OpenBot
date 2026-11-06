@@ -88,11 +88,7 @@ export interface RelayStatus {
   status: 'off' | 'connecting' | 'linked';
   /** When the status last changed, ISO 8601; null when it never has. */
   since: string | null;
-  /**
-   * Why the last attempt to link failed, while `connecting`: the socket's
-   * error (a relay name that does not resolve, a refused connection) or the
-   * close that ended the link before `linked`. Null once linked, and when off.
-   */
+  /** Why the last attempt to link failed, while `connecting`; null otherwise. */
   error: string | null;
 }
 

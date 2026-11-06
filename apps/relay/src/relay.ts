@@ -71,11 +71,7 @@ export interface RelayOptions {
   host?: string;
   /** Read the client address from the proxy's headers (`remoteAddress`), not the socket. */
   trustProxy?: boolean;
-  /**
-   * With `trustProxy`, a header that carries the client's address on its own,
-   * read before `x-forwarded-for`: `fly-client-ip` on Fly, whose proxy puts
-   * the app's own address last in `x-forwarded-for`. Lower case.
-   */
+  /** With `trustProxy`, a header holding the client's address, read before `x-forwarded-for`. Lower case. */
   clientIpHeader?: string;
   /** APNs credentials, or a gateway (a test's fake). Without either, push answers `unavailable`. */
   apns?: ApnsOptions | PushGateway;
@@ -475,12 +471,10 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
 }
 
 /**
- * The client's address: the socket's peer, or behind a trusted proxy what the
- * proxy says. That is `clientIpHeader` when the proxy sets one (Fly's
- * `fly-client-ip`), else the last `x-forwarded-for` hop, the one a proxy that
- * appends the client adds. Earlier hops are whatever the client claimed. On
- * Fly the last hop is the app's own address, so without the header every
- * client there would share one address, and the limits on it.
+ * The client's address: the socket's peer, or behind a trusted proxy
+ * `clientIpHeader`, else the last `x-forwarded-for` hop (earlier hops are
+ * whatever the client claimed). Fly needs the header: its last hop is the
+ * app's own address, so every client would share one address and its limits.
  */
 export function remoteAddress(
   req: IncomingMessage,

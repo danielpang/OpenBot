@@ -78,8 +78,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # Every pairing code from this build sends phones to the shared relay in
-      # main/pairing.ts, so it must resolve and answer, or the release waits.
       - name: Check the shared relay the app ships with answers
         run: |
           url="$(sed -n "s/^export const DEFAULT_SHARED_RELAY_URL = '\(.*\)';$/\1/p" apps/desktop/src/main/pairing.ts)"

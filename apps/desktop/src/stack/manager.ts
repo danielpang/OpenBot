@@ -143,11 +143,7 @@ export interface StackManagerOptions {
    * with `setRelay`.
    */
   defaultRelayUrl?: string;
-  /**
-   * Shared relays that no longer serve (main/pairing.ts). A `.env` whose
-   * OPENBOTS_RELAY_URL is one of them gets `defaultRelayUrl` instead, since a
-   * pairing code that names a dead relay fails on every phone.
-   */
+  /** Shared relays that no longer serve; a `.env` naming one gets `defaultRelayUrl`. */
   retiredRelayUrls?: readonly string[];
   exec?: Exec;
   spawn?: Spawn;
@@ -341,9 +337,8 @@ export function generateDatabasePassword(): string {
 
 /**
  * The default relay (OPENBOTS_RELAY_URL) for a `.env` that has none, so the
- * phone can reach This Mac away from home without a setting, and for one
- * that names a `retired` shared relay, which no phone could reach. One the
- * owner set stays.
+ * phone can reach This Mac away from home without a setting, or that names a
+ * `retired` one. One the owner set stays.
  */
 export function withRelay(
   env: string,

@@ -136,11 +136,7 @@ export interface PairRelayView {
   current: string | null;
 }
 
-/**
- * Whether the server has its link to the relay up, from `GET /api/v1/relay`.
- * The pairing window shows a code only once it is: a phone that scans one
- * while the server cannot reach the relay fails with nothing to go on.
- */
+/** The server's link to its relay, from `GET /api/v1/relay`. */
 export interface PairRelayStatus {
   status: 'off' | 'connecting' | 'linked';
   /** Why the server's last attempt to link failed, while connecting; null otherwise. */

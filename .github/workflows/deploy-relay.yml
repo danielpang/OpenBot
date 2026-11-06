@@ -106,9 +106,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: flyctl deploy --config deploy/relay/fly.toml --image "$IMAGE" --wait-timeout 10m
 
-      # A deploy that leaves the relay unreachable at its hostname would fail
-      # every pairing, so the job fails instead. /ready answers 503 until the
-      # Machine takes connections, so it gets a minute.
+      # /ready answers 503 until the Machine takes connections, so it gets a minute.
       - name: Check the relay answers at its hostname
         run: |
           for attempt in 1 2 3 4 5 6; do
