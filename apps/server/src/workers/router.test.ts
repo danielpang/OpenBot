@@ -301,7 +301,26 @@ describe('router', () => {
           data: expect.objectContaining({ link: '/settings/models' }),
         }),
       ]);
-      expect(await runsIn(chat.id)).toEqual([]);
+      // The owner still gets an answer: the group's first Bot takes the messages.
+      const runs = await runsIn(chat.id);
+      expect(runs.length).toBeGreaterThan(0);
+      expect(runs.every((r) => r.botId === a.id)).toBe(true);
+    });
+
+    it("has the group's first Bot answer when every Bot declines an owner message", async () => {
+      const { bot: a } = await newBot('Shy1', [[{ text: 'Hi! I can help.' }]]);
+      const { bot: b } = await newBot('Shy2');
+      const chat = await group([a, b]);
+      asked.length = 0;
+      await say(chat.id, 'hi all');
+      await settled(chat.id);
+      // Both were asked and both said no; the first member answers anyway.
+      expect([...asked].sort()).toEqual([a.id, b.id].sort());
+      expect((await runsIn(chat.id)).map((r) => r.botId)).toEqual([a.id]);
+      const kinds = (await messagesIn(chat.id))
+        .flatMap((m) => m.parts as MessagePart[])
+        .map((p) => (p.type === 'event' ? p.kind : p.type));
+      expect(kinds).not.toContain('reply_undecided');
     });
 
     it('stays quiet when at least one Bot could decide', async () => {

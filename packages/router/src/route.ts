@@ -12,7 +12,9 @@
 //   question) addresses that Bot alone (C7). A message that addresses nobody: from a Bot it reaches nobody
 //   (Bots reach Bots only by mention or DM); from the owner it goes to every
 //   Bot whose `shouldReply` says yes (`bot_message`), and to a Bot already at
-//   work in that thread (or top level) without asking. Messages from the
+//   work in that thread (or top level) without asking. When every Bot says no
+//   (or none could decide), the group's first Bot answers anyway, so the
+//   owner is never left without a reply. Messages from the
 //   system, webhooks and Routines wake nobody in a group or a Bot-to-Bot chat,
 //   so an event row never starts work.
 //
@@ -126,9 +128,11 @@ export async function routeTargets(
   const decided = await Promise.all(
     bots.map((botId) => atWork.includes(botId) || shouldReply(botId)),
   );
-  return bots
-    .filter((_, i) => decided[i])
-    .map((botId) => ({ botId, trigger: 'bot_message' as const }));
+  const willing = bots.filter((_, i) => decided[i]);
+  // Nobody took it: the first Bot (the earliest member) answers, rather than
+  // the owner's message going unanswered without a word.
+  const chosen = willing.length ? willing : bots.slice(0, 1);
+  return chosen.map((botId) => ({ botId, trigger: 'bot_message' as const }));
 }
 
 /**
