@@ -168,10 +168,15 @@ describe('waking the computer (plan 9.5)', () => {
     release();
     await until(async () => expect((await computerIn(orgA))?.status).toBe('running'));
     expect(starts()).toBe(1);
-    const statuses = events
-      .filter((e) => e.type === 'computer.status' && e.workspace_id === orgA)
-      .map((e) => (e.payload as { status: string }).status);
-    expect(statuses).toEqual(['creating', 'stopped', 'starting', 'running']);
+    // The row is written before its `computer.status` event is published, so
+    // the last event can arrive just after the row reads `running`.
+    await until(() =>
+      expect(
+        events
+          .filter((e) => e.type === 'computer.status' && e.workspace_id === orgA)
+          .map((e) => (e.payload as { status: string }).status),
+      ).toEqual(['creating', 'stopped', 'starting', 'running']),
+    );
   });
 
   it('does nothing on a wake while it runs, not even marking it used', async () => {
