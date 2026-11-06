@@ -105,21 +105,15 @@ bash scripts/release-check-public.sh ghcr.io/<owner>/openbots 1.2.0
 
 The packages stay public for later releases.
 
-## The dry run
+## Release triggers and PR checks
 
-A pull request that changes the release files (`.github/workflows/release*.yml`, `docker/**`,
-`apps/desktop/electron-builder*`, `apps/desktop/packaging/**` or `scripts/release-*`) runs the
-same workflow as a dry run, and so does a manual run with **tag** left empty (Actions, Release,
-Run workflow). It uses the
-version in the package.json files, builds every artifact without pushing, logging in to a registry
-or reading a secret, and uploads them as workflow artifacts for three days: `release-image-*`
-(the image archives), `release-mac` (the unsigned DMG, zip, `latest-mac.yml` and cask) and
-`release-bundle`. Each job's summary lists the files and their sizes, which shows how close the
-computer image's archive is to GitHub's 2 GiB limit for a release asset.
+Release builds run automatically only when a version tag is pushed. A manual run must name an
+existing release tag and is a retry, not an untagged dry run. Pull requests and untagged branch
+pushes do not run the release workflow, universal Mac packaging or release-image archives.
 
-To keep it cheap, the dry run builds the server and the sandbox firewall for both architectures
-but the computer image for linux/amd64 only: its arm64 build compiles node-pty and installs
-Chromium under QEMU. That build first runs for a real tag.
+Normal PR validation remains in `.github/workflows/ci.yml`, including unit tests, lint,
+typechecking, application builds, Docker smoke tests and browser tests. These are development
+checks, not release publication. Local unsigned Mac packaging is described below.
 
 ## Signing the Mac app
 
@@ -130,8 +124,8 @@ rather than ship a signed app that is not notarized (`OPENBOTS_REQUIRE_NOTARIZAT
 Without all five secrets below, the Mac job fails and nothing is published. Squirrel.Mac only
 installs updates signed by the same Developer ID, so electron-updater cannot update an unsigned
 app: an unsigned release would leave everyone who installs it on that version until they replace
-it by hand. Set the secrets, then release the tag again (Cutting a release, above). The dry run
-never signs and never sees the secrets; its app is ad-hoc signed.
+it by hand. Set the secrets, then release the tag again (Cutting a release, above).
+Local unsigned builds are ad-hoc signed and cannot update themselves.
 
 | Secret                    | Value                                                                |
 | ------------------------- | -------------------------------------------------------------------- |

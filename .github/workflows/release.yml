@@ -20,10 +20,8 @@
 # The Mac app's local stack runs the images of its own version, so the release
 # (and with it latest-mac.yml) appears only after the images are pushed.
 #
-# A pull request that changes the release files, or a manual run without a
-# tag, is a dry run: it builds every artifact without publishing anything or
-# reading a secret, and uploads them as workflow artifacts (release-image-*,
-# release-mac, release-bundle).
+# Release builds never run for pull requests or untagged branch pushes.
+# Normal PR checks remain in ci.yml.
 #
 # A manual run with a tag (Actions, Release, Run workflow, tag v1.2.0) retries
 # that release: every job builds the tag's commit, whichever branch the run
@@ -34,25 +32,18 @@ name: Release
 on:
   push:
     tags: ['v[0-9]+.[0-9]+.[0-9]+*']
-  pull_request:
-    paths:
-      - .github/workflows/release*.yml
-      - docker/**
-      - apps/desktop/electron-builder*
-      - apps/desktop/packaging/**
-      - scripts/release-*
   workflow_dispatch:
     inputs:
       tag:
-        description: An existing tag to release again (such as v1.2.0); empty for a dry run
+        description: An existing tag to release again (such as v1.2.0)
         type: string
-        default: ''
+        required: true
 
 concurrency:
   # A retry and the tag's own push are the same release.
   group: release-${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
-  # A newer push to a pull request replaces its dry run; a release always finishes.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Never cancel a release midway through publishing.
+  cancel-in-progress: false
 
 permissions: {}
 
@@ -83,8 +74,8 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      # Tagged releases use the tag regardless of committed manifest versions.
-      # Untagged dry runs retain the committed development version.
+      # Both tag pushes and manual retries require a release tag, regardless
+      # of committed manifest versions. There is no untagged dry-run path.
       - name: Resolve the release version
         id: version
         env:
@@ -104,15 +95,16 @@ jobs:
               exit 1
             fi
           fi
-          if [ -n "$tag" ]; then
-            node scripts/release-version.mjs from-tag "$tag" >>"$GITHUB_OUTPUT"
-            echo "publish=true" >>"$GITHUB_OUTPUT"
-          else
-            node scripts/release-version.mjs current >>"$GITHUB_OUTPUT"
-            echo "publish=false" >>"$GITHUB_OUTPUT"
+          if [ -z "$tag" ]; then
+            echo "::error::A release tag is required. Push a version tag or retry an existing tag."
+            exit 1
           fi
-          echo "image-prefix=ghcr.io/${OWNER,,}/openbots" >>"$GITHUB_OUTPUT"
-          echo "ref=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+          {
+            node scripts/release-version.mjs from-tag "$tag"
+            echo "publish=true"
+            echo "image-prefix=ghcr.io/${OWNER,,}/openbots"
+            echo "ref=$(git rev-parse HEAD)"
+          } >>"$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
   images:
@@ -131,19 +123,6 @@ jobs:
       publish: true
       ref: ${{ needs.version.outputs.ref }}
 
-  images-dry-run:
-    name: Images (dry run)
-    needs: version
-    if: needs.version.outputs.publish != 'true'
-    permissions:
-      contents: read
-    uses: ./.github/workflows/release-images.yml
-    with:
-      version: ${{ needs.version.outputs.version }}
-      minor: ${{ needs.version.outputs.minor }}
-      image-prefix: ${{ needs.version.outputs.image-prefix }}
-      publish: false
-
   mac:
     name: Mac app
     needs: version
@@ -161,18 +140,6 @@ jobs:
       APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-
-  # No secrets: the dry run always builds the unsigned app.
-  mac-dry-run:
-    name: Mac app (dry run)
-    needs: version
-    if: needs.version.outputs.publish != 'true'
-    permissions:
-      contents: read
-    uses: ./.github/workflows/release-mac.yml
-    with:
-      version: ${{ needs.version.outputs.version }}
-      publish: false
 
   bundle:
     name: Compose bundle
