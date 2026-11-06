@@ -10,8 +10,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: Select affected checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      check: ${{ steps.scope.outputs.check }}
+      mobile: ${{ steps.scope.outputs.mobile }}
+      postgres: ${{ steps.scope.outputs.postgres }}
+      images: ${{ steps.scope.outputs.images }}
+      standalone: ${{ steps.scope.outputs.standalone }}
+      browser: ${{ steps.scope.outputs.browser }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Select jobs from changed paths
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/ci-scope.mjs "$BASE_SHA" "$HEAD_SHA" >>"$GITHUB_OUTPUT"
+
   mobile:
     name: iOS unit tests and bundle
+    needs: scope
+    if: needs.scope.outputs.mobile == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -31,6 +58,8 @@ jobs:
         run: pnpm --filter @openbots/mobile build
 
   check:
+    needs: scope
+    if: needs.scope.outputs.check == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -54,8 +83,9 @@ jobs:
           shellcheck -s sh docker/standalone/s6-rc.d/*/up
       - name: Test the standalone image's init checks
         run: bash docker/standalone/test/init-lib.test.sh
-      - run: pnpm lint
-      - run: pnpm typecheck
+      # Mobile owns its lint/types/tests/bundle in the dedicated job.
+      - run: pnpm exec turbo run lint --filter='!@openbots/mobile'
+      - run: pnpm exec turbo run typecheck --filter='!@openbots/mobile'
       # The committed OpenAPI document and the client generated from it must
       # match the routes: regenerate both and fail on any difference.
       - name: Check the OpenAPI document and client are current
@@ -81,13 +111,28 @@ jobs:
       # Do not run Jest a second time alongside all server/browser workers:
       # CPU contention on shared runners can exhaust its per-test time budget.
       - run: pnpm exec turbo run test --filter='!@openbots/mobile'
-      - run: pnpm build
+      - run: pnpm exec turbo run build --filter='!@openbots/mobile'
+      # Keep the repository-relative layout: every browser shard downloads
+      # this same build instead of compiling the workspace eight more times.
+      - name: Share the browser-test build
+        if: needs.scope.outputs.browser == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-build
+          path: |
+            apps/*/dist
+            packages/*/dist
+            ee/*/dist
+          if-no-files-found: error
+          retention-days: 1
 
   # The server tests again, on real Postgres instead of PGlite (db/test-db.ts):
   # with DATABASE_URL set, each test app gets its own database, copied from a
   # migrated template. Real connections run queries side by side where PGlite
   # runs them one at a time, which shows races PGlite hides.
   server-postgres:
+    needs: scope
+    if: needs.scope.outputs.postgres == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
@@ -114,6 +159,8 @@ jobs:
       - run: pnpm turbo run test --filter @openbots/server
 
   server-image:
+    needs: scope
+    if: needs.scope.outputs.images == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     continue-on-error: false
@@ -183,6 +230,8 @@ jobs:
   # before any owner exists, a backup, a clean stop and a start on the same
   # volume, the volume lock against a second container, and a restore.
   standalone-image:
+    needs: scope
+    if: needs.scope.outputs.standalone == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -296,6 +345,8 @@ jobs:
   # The self-hosted job runs the core server on its default deployment.
   e2e:
     name: e2e (${{ matrix.name }})
+    needs: [scope, check]
+    if: needs.scope.outputs.browser == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -359,7 +410,11 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      - name: Reuse the tested workspace build
+        uses: actions/download-artifact@v4
+        with:
+          name: browser-test-build
+          path: .
       - run: pnpm --filter @openbots/web exec playwright install --with-deps chromium
       - name: Start the server
         run: |
@@ -395,3 +450,22 @@ jobs:
             apps/web/test-results/
             ${{ runner.temp }}/server.log
           retention-days: 7
+
+  result:
+    name: CI result
+    if: always()
+    needs: [scope, mobile, check, server-postgres, server-image, standalone-image, e2e]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require all selected checks to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node -e '
+            const jobs = JSON.parse(process.env.RESULTS);
+            for (const [name, job] of Object.entries(jobs)) {
+              console.log(name + ": " + job.result);
+              if (!["success", "skipped"].includes(job.result)) process.exitCode = 1;
+            }
+          '

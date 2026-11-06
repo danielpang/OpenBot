@@ -316,16 +316,16 @@ describe('release workflow', () => {
   const macJob = mac.jobs.mac!;
   const step = (name: string) => macJob.steps!.find((s) => s.name === name)!;
 
-  it('releases on v<version> tags and dry-runs pull requests that change the release files', () => {
+  it('automatically releases only on version-tag pushes, never on pull requests', () => {
     expect(release.on.push).toEqual({ tags: ['v[0-9]+.[0-9]+.[0-9]+*'] });
-    const paths = (release.on.pull_request as { paths: string[] }).paths;
-    for (const path of [
-      '.github/workflows/release*.yml',
-      'docker/**',
-      'apps/desktop/electron-builder*',
-    ]) {
-      expect(paths).toContain(path);
+    expect(Object.keys(release.on).sort()).toEqual(['push', 'workflow_dispatch']);
+    expect(release.on.pull_request).toBeUndefined();
+    for (const file of ['release-images.yml', 'release-mac.yml']) {
+      expect(Object.keys(workflowFile(file).on)).toEqual(['workflow_call']);
     }
+    const mobile = workflowFile('release-mobile.yml');
+    expect(Object.keys(mobile.on)).toEqual(['push']);
+    expect(mobile.on.push).toEqual(release.on.push);
     // Nothing is granted by default; each job asks for what it needs.
     expect(release.permissions).toEqual({});
   });
@@ -335,17 +335,58 @@ describe('release workflow', () => {
     for (const name of ['images', 'mac']) {
       expect(jobs[name]!.if).toBe("needs.version.outputs.publish == 'true'");
       expect(jobs[name]!.with!.publish).toBe(true);
-      expect(jobs[`${name}-dry-run`]!.if).toBe("needs.version.outputs.publish != 'true'");
-      expect(jobs[`${name}-dry-run`]!.with!.publish).toBe(false);
-      expect(jobs[`${name}-dry-run`]!.uses).toBe(jobs[name]!.uses);
+      expect(jobs[`${name}-dry-run`]).toBeUndefined();
     }
     expect(jobs.release!.needs).toEqual(['version', 'images', 'mac', 'bundle']);
     expect(jobs.release!.if).toBe("needs.version.outputs.publish == 'true'");
     // Write access only where it is used.
     expect(jobs.release!.permissions).toEqual({ contents: 'write' });
     expect(jobs.images!.permissions).toEqual({ contents: 'read', packages: 'write' });
-    for (const name of ['version', 'images-dry-run', 'mac', 'mac-dry-run', 'bundle']) {
+    for (const name of ['version', 'mac', 'bundle']) {
       expect(jobs[name]!.permissions, name).toEqual({ contents: 'read' });
+    }
+  });
+
+  it('derives tagged versions without comparing committed manifests', () => {
+    const run = release.jobs.version!.steps!.find(
+      (s) => s.name === 'Resolve the release version',
+    )!.run!;
+    expect(run).toContain('release-version.mjs from-tag "$tag"');
+    expect(run).not.toContain('release-version.mjs current');
+    expect(run).toContain('A release tag is required');
+    expect(run).not.toContain('publish=false');
+    expect(run).not.toContain('release-version.mjs check');
+  });
+
+  it('stamps every fresh build checkout before packaging or creating Docker contexts', () => {
+    const stamp = step('Stamp the release version into the build checkout');
+    expect(stamp.run).toBe('node scripts/release-version.mjs stamp "v$VERSION"');
+    expect(macJob.env!.VERSION).toBe('${{ inputs.version }}');
+    expect(macJob.steps!.indexOf(stamp)).toBeLessThan(
+      macJob.steps!.indexOf(step('Build the desktop shell')),
+    );
+    const images = workflowFile('release-images.yml').jobs.image!;
+    const imageStamp = images.steps!.find(
+      (s) => s.name === 'Stamp the release version into the build context',
+    )!;
+    expect(imageStamp.env!.VERSION).toBe('${{ inputs.version }}');
+    expect(imageStamp.run).toContain('release-version.mjs stamp "v$VERSION"');
+    for (const build of images.steps!.filter((s) =>
+      s.uses?.startsWith('docker/build-push-action'),
+    )) {
+      expect(images.steps!.indexOf(imageStamp)).toBeLessThan(images.steps!.indexOf(build));
+      // A Git context would ignore checkout mutations. All builds must use path contexts.
+      expect(build.with!.context).toBe('${{ matrix.context }}');
+    }
+    const mobile = workflowFile('release-mobile.yml').jobs.mobile!;
+    const mobileStamp = mobile.steps!.find((s) => s.name === 'Stamp the tagged release version')!;
+    expect(mobileStamp.run).toContain('release-version.mjs stamp "$RELEASE_TAG"');
+    expect(mobileStamp.run).not.toContain('release-version.mjs current');
+    expect(mobileStamp.env!.IS_TAG).toBeUndefined();
+    for (const name of ['Build workspace packages', 'Build signed IPA with EAS']) {
+      expect(mobile.steps!.indexOf(mobileStamp)).toBeLessThan(
+        mobile.steps!.findIndex((s) => s.name === name),
+      );
     }
   });
 
@@ -357,7 +398,7 @@ describe('release workflow', () => {
       'MAC_CERTS_P12_BASE64',
       'MAC_CERTS_PASSWORD',
     ]);
-    expect(release.jobs['mac-dry-run']!.secrets).toBeUndefined();
+    expect(release.jobs['mac-dry-run']).toBeUndefined();
   });
 
   it('pins every action to a commit', () => {
@@ -424,11 +465,13 @@ describe('release workflow', () => {
   });
 
   it('retries an existing tag by hand, building that tag’s commit in every job', () => {
-    const dispatch = release.on.workflow_dispatch as { inputs: Record<string, { type: string }> };
-    expect(dispatch.inputs.tag!.type).toBe('string');
+    const dispatch = release.on.workflow_dispatch as {
+      inputs: Record<string, { type: string; required: boolean }>;
+    };
+    expect(dispatch.inputs.tag).toMatchObject({ type: 'string', required: true });
     const version = release.jobs.version!;
     expect(version.outputs!.ref).toBe('${{ steps.version.outputs.ref }}');
-    const versionRun = version.steps!.find((s) => s.name === 'Check the release version')!.run!;
+    const versionRun = version.steps!.find((s) => s.name === 'Resolve the release version')!.run!;
     expect(versionRun).toContain('Only the newest tag');
     expect(versionRun).toContain('echo "ref=$(git rev-parse HEAD)"');
     // The tag comes in through the environment, never into the script's text.

@@ -151,7 +151,7 @@ pnpm --filter @openbots/mobile check:sdk
 pnpm --filter @openbots/mobile build      # noVNC bundle, Metro export, Hermes bytecode
 ```
 
-PR CI includes a separately named **iOS unit tests and bundle** job running SDK compatibility, typecheck, lint, Vitest logic/integration tests, Jest native component tests, and the iOS/Hermes export on Linux. The workspace-wide `pnpm test` also includes both mobile suites. These are automated JavaScript/component checks, not a native Xcode or physical-device test run.
+When mobile or shared dependencies change, PR CI runs a separately named **iOS unit tests and bundle** job with SDK compatibility, typecheck, lint, Vitest logic/integration tests, Jest native component tests, and the iOS/Hermes export on Linux. General CI excludes mobile lint, typechecking, tests and builds to avoid duplication. The local workspace-wide `pnpm test` still includes both mobile suites. These are automated JavaScript/component checks, not a native Xcode or physical-device test run.
 
 Tests exercise real encrypted tunnel HTTP, native fetch-stream compatibility, pairing/sign-in, credential origin isolation, cache/lifecycle races, transcript delta gaps and resync pagination, widget actions/composer, push encryption and routing, native target generation/autolinking, and the preview bridge. They do not establish device frame rate, APNs delivery, WKWebView rendering or App Store acceptance.
 
@@ -161,7 +161,7 @@ The development-only `/dev/transcript-spike` route provides 500 messages with re
 
 See `.github/workflows/release-mobile.yml` and `eas.json`. Configure an EAS project, Apple app/team identifiers, App Store Connect credentials, and provisioning for `dev.openbots.mobile` plus `dev.openbots.mobile.notifications` (or your configured bundle prefix). The plugin supplies EAS extension metadata and shared Keychain/App Group entitlements. Configure the associated-domain file on `openbots.dev` for your team and app ID before relying on universal links; QR scans and the custom scheme work independently.
 
-The version bump script updates the root, desktop and mobile packages together. Release build numbers come from the workflow run and attempt. Missing release credentials produce only a JavaScript export; a partially configured signing environment fails rather than implying a signed build. No upload or submission happens during local development.
+Tagged CI releases derive their version from the Git tag and stamp the root, desktop and mobile packages in the build checkout before Expo export and EAS upload. No version-bump commit is required. The iOS release workflow runs only on version-tag pushes, not PRs, branch pushes or manual dispatch. With signing configured, a tag builds through EAS and submits to TestFlight. Local builds use the committed package version; for a versioned local build, run `node scripts/release-version.mjs stamp vX.Y.Z` from the repository root in a disposable checkout first. Release build numbers come from the workflow run and attempt. Missing release credentials produce only a JavaScript export; a partially configured signing environment fails rather than implying a signed build. No upload or submission happens during local development.
 
 ## Remaining release work
 

@@ -15,10 +15,10 @@ and 19):
 
 | File                                      | What it does                                                        |
 | ----------------------------------------- | ------------------------------------------------------------------- |
-| `.github/workflows/release.yml`           | The release: version check, then the jobs below, then the Release   |
+| `.github/workflows/release.yml`           | The release: tag version, then the jobs below, then the Release     |
 | `.github/workflows/release-images.yml`    | Builds and pushes the images and writes their archives              |
 | `.github/workflows/release-mac.yml`       | Packages the Mac app, signed and notarized when the secrets are set |
-| `scripts/release-version.mjs`             | Bumps the release version, and checks a tag against it              |
+| `scripts/release-version.mjs`             | Validates tags and stamps versions into build checkouts             |
 | `scripts/release-bundle.sh`               | Packs the compose bundle                                            |
 | `scripts/release-notes.sh`                | Writes the release notes                                            |
 | `scripts/release-check-public.sh`         | Checks that anyone can pull the images                              |
@@ -31,36 +31,43 @@ and 19):
 
 ## Cutting a release
 
-1. Bump the version. The root `package.json` (the server release and its image tag) and
-   `apps/desktop/package.json` (the Mac app) must both equal the tag, because the app's local
-   stack runs the images of its own version:
+1. Merge the changes you want to ship into `main`. No package-version bump or release commit is required.
+2. Fetch GitHub's `main`, review the commit, then tag it and push the tag:
 
    ```sh
-   pnpm release:bump 1.2.0     # node scripts/release-version.mjs bump 1.2.0
-   git commit -am "Release 1.2.0"
-   ```
-
-   Get the commit onto `main` the usual way.
-
-2. Tag that commit and push the tag:
-
-   ```sh
-   git tag v1.2.0
+   git fetch origin
+   git log -1 --oneline origin/main
+   git tag -a v1.2.0 origin/main -m "Release 1.2.0"
    git push origin v1.2.0
    ```
 
-3. Watch the Release workflow in the Actions tab. `Version` fails at once, saying what to do, when
-   the tag and the package.json versions differ (`pnpm release:check v1.2.0` runs the same check
-   locally). Then the images (the longest job: the computer image builds for arm64 under QEMU),
-   the Mac app and the compose bundle build in parallel, and `GitHub Release` publishes the
-   release once all three have succeeded. It is created as a draft while the files upload and
-   published when they are all there, so electron-updater never sees a release without its files.
+   This tags the fetched remote commit, not your local branch or uncommitted changes. Use a new,
+   higher version for each release. Tags must be `v<major>.<minor>.<patch>`, optionally with a
+   prerelease suffix such as `v1.3.0-rc.1`; build metadata (`+...`) is not supported.
+
+3. Watch the Release workflow in the Actions tab. `Version` validates the tag and derives the
+   release metadata without comparing committed package versions. Each Mac/image build job
+   stamps the root, desktop and mobile package versions in its disposable checkout before
+   building. Docker builds use that local checkout as their context, so the running server and
+   the Mac app's bundled image references agree with the tag. Nothing is committed back, and
+   the installed apps do not need Git at runtime.
+
+   The images, Mac app and compose bundle build in parallel. `GitHub Release` publishes once
+   all three have succeeded. It is a draft while files upload, so electron-updater never sees a
+   release without its files. The separate **Release iOS app** workflow stamps the same tag
+   version before Expo/EAS builds; when credentials are configured it submits to TestFlight.
+
 4. The first time only, make the images public (below). The `GitHub Release` job's summary says
    whether each package is public and warns when one is not.
 5. Check the release page: the notes, the DMG, the bundle, the image archives, `SHA256SUMS` and
    `latest-mac.yml`. Install the DMG on a clean Mac.
 6. For Homebrew, copy `openbots.rb` from the release into the tap's `Casks/` directory and open a
    pull request there.
+
+For a manual build in a disposable checkout, run `node scripts/release-version.mjs stamp v1.2.0`
+first. `from-tag v1.2.0` prints metadata without modifying files. `pnpm release:bump <version>`
+remains an optional development helper, and `pnpm release:check v1.2.0` can verify stamped files;
+neither is a prerequisite for pushing a release tag.
 
 A failed job can be rerun from the Actions tab. Rerunning `GitHub Release` finishes the release
 that exists instead of failing: a draft gets its files and is published, and a published release
@@ -98,21 +105,15 @@ bash scripts/release-check-public.sh ghcr.io/<owner>/openbots 1.2.0
 
 The packages stay public for later releases.
 
-## The dry run
+## Release triggers and PR checks
 
-A pull request that changes the release files (`.github/workflows/release*.yml`, `docker/**`,
-`apps/desktop/electron-builder*`, `apps/desktop/packaging/**` or `scripts/release-*`) runs the
-same workflow as a dry run, and so does a manual run with **tag** left empty (Actions, Release,
-Run workflow). It uses the
-version in the package.json files, builds every artifact without pushing, logging in to a registry
-or reading a secret, and uploads them as workflow artifacts for three days: `release-image-*`
-(the image archives), `release-mac` (the unsigned DMG, zip, `latest-mac.yml` and cask) and
-`release-bundle`. Each job's summary lists the files and their sizes, which shows how close the
-computer image's archive is to GitHub's 2 GiB limit for a release asset.
+Release builds run automatically only when a version tag is pushed. A manual run must name an
+existing release tag and is a retry, not an untagged dry run. Pull requests and untagged branch
+pushes do not run the release workflow, universal Mac packaging or release-image archives.
 
-To keep it cheap, the dry run builds the server and the sandbox firewall for both architectures
-but the computer image for linux/amd64 only: its arm64 build compiles node-pty and installs
-Chromium under QEMU. That build first runs for a real tag.
+Normal PR validation remains in `.github/workflows/ci.yml`, including unit tests, lint,
+typechecking, application builds, Docker smoke tests and browser tests. These are development
+checks, not release publication. Local unsigned Mac packaging is described below.
 
 ## Signing the Mac app
 
@@ -123,8 +124,8 @@ rather than ship a signed app that is not notarized (`OPENBOTS_REQUIRE_NOTARIZAT
 Without all five secrets below, the Mac job fails and nothing is published. Squirrel.Mac only
 installs updates signed by the same Developer ID, so electron-updater cannot update an unsigned
 app: an unsigned release would leave everyone who installs it on that version until they replace
-it by hand. Set the secrets, then release the tag again (Cutting a release, above). The dry run
-never signs and never sees the secrets; its app is ad-hoc signed.
+it by hand. Set the secrets, then release the tag again (Cutting a release, above).
+Local unsigned builds are ad-hoc signed and cannot update themselves.
 
 | Secret                    | Value                                                                |
 | ------------------------- | -------------------------------------------------------------------- |
@@ -228,4 +229,4 @@ on other Macs until they are opened with right-click Open, and electron-updater 
 Nothing here has run end to end yet: the workflows need GitHub Actions, and signing,
 notarization and the updater need the Apple secrets. `actionlint` checks the workflows, and the
 tests in `src/release` check the configuration statically, including electron-builder's own schema
-for `electron-builder.yml`, the jobs' permissions and pinned actions, and the version check.
+for `electron-builder.yml`, the jobs' permissions and pinned actions, and tag-derived version stamping.
