@@ -9,7 +9,7 @@ import {
   type ApprovalState,
   type FormState,
 } from '@openbots/widgets';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
@@ -384,6 +384,44 @@ export async function botsAtWork(db: Db, chatId: string, thread: string | null) 
           (r.state as RunState | null)?.pending?.reason === 'question'),
     )
     .map((r) => r.botId);
+}
+
+/**
+ * An owner message in a group ends the handoffs still queued from earlier Bot
+ * chains in its thread (or at the top level): runs a Bot's message started
+ * (they have a parent run) that no worker has picked up yet. Work queued
+ * before the owner moved on would otherwise run after their newer message.
+ * A Bot already running is left to its steering, which takes the message.
+ * The update only touches runs still queued, so a worker that claims one
+ * first keeps it. Returns the dropped runs.
+ */
+export async function dropQueuedHandoffs(
+  deps: Pick<AppDeps, 'db' | 'infra' | 'logger'>,
+  chatId: string,
+  thread: string | null,
+): Promise<RunRow[]> {
+  // The run's thread, as `runThread` reads it.
+  const runThreadSql = sql`${schema.runs.state} -> 'input' ->> 'threadRootId'`;
+  const dropped = await deps.db
+    .update(schema.runs)
+    .set({
+      status: 'cancelled',
+      error: 'Dropped: the owner sent a newer message',
+      finishedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.runs.chatId, chatId),
+        eq(schema.runs.status, 'queued'),
+        isNotNull(schema.runs.parentRunId),
+        // Never started: a run resumed after an approval or answer is queued again, but keeps it.
+        isNull(schema.runs.startedAt),
+        thread ? sql`${runThreadSql} = ${thread}` : sql`${runThreadSql} is null`,
+      ),
+    )
+    .returning();
+  await Promise.all(dropped.map((row) => publishRunStatus(deps, row)));
+  return dropped;
 }
 
 /** Moves a waiting run back to the queue with the answer for its pending tool call (plan 5.6). */

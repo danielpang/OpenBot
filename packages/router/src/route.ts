@@ -5,9 +5,11 @@
 // - `bot_to_bot`: a message from one Bot of the pair wakes the other (`bot_dm`).
 // - `group`: a mention or `@everyone` addresses Bots directly (`mention`), and
 //   then only the addressed Bots answer (C5: "@bot directs only the mentioned
-//   Bots"). An owner's reply that mentions nobody in a thread about one Bot's
-//   item (its result, approval request or question) addresses that Bot alone
-//   (C7). A message that addresses nobody: from a Bot it reaches nobody
+//   Bots"). Only the owner's `@everyone` wakes the group: a Bot must name the
+//   Bots it needs, so one Bot message cannot fan out to every other Bot and
+//   each of their replies fan out again. An owner's reply that mentions
+//   nobody in a thread about one Bot's item (its result, approval request or
+//   question) addresses that Bot alone (C7). A message that addresses nobody: from a Bot it reaches nobody
 //   (Bots reach Bots only by mention or DM); from the owner it goes to every
 //   Bot whose `shouldReply` says yes (`bot_message`), and to a Bot already at
 //   work in that thread (or top level) without asking. When every Bot says no
@@ -116,7 +118,9 @@ export async function routeTargets(
     !byBot && context.threadBotId && bots.includes(context.threadBotId)
       ? context.threadBotId
       : null;
-  const addressed = addressedBots(bots, message, threadBotId);
+  // A Bot's `@everyone` wakes nobody; its named mentions still do.
+  const addressing = byBot ? { ...message, mentionEveryone: false } : message;
+  const addressed = addressedBots(bots, addressing, threadBotId);
   if (addressed) return addressed.map((botId) => ({ botId, trigger: 'mention' as const }));
   if (byBot) return [];
   // One small call per Bot not already at work here, side by side.

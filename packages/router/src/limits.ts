@@ -12,8 +12,8 @@ export interface ChainLimits {
 }
 
 export const DEFAULT_CHAIN_LIMITS: ChainLimits = {
-  maxChainDepth: 6,
-  botRunBudget: 20,
+  maxChainDepth: 4,
+  botRunBudget: 10,
   budgetWindowMs: 10 * 60_000,
 };
 

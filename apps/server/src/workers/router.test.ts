@@ -10,7 +10,8 @@ import { schema } from '../db/client.js';
 import type { Message } from '../schemas.js';
 import { loadRunPolicy, runSource } from '../services/policy.js';
 import { registerRunHooks, RUNS_QUEUE, type RunJob } from '../services/runs.js';
-import type { RouterOptions } from '../services/router.js';
+import { postMessage } from '../services/messages.js';
+import { routeMessage, type RouterOptions } from '../services/router.js';
 import { createTestApp, isGreeting, type TestApp } from '../test-app.js';
 import { createRunWorker, type RunModel } from './runs.js';
 
@@ -692,19 +693,124 @@ describe('router', () => {
     });
   });
 
+  describe("an owner's newer message", () => {
+    /** A handoff a Bot's message queued but no worker picked up yet: no job is scheduled. */
+    async function queuedHandoff(
+      botId: string,
+      chatId: string,
+      parentRunId: string,
+      thread?: string,
+    ) {
+      const [bot] = await t.db.select().from(schema.bots).where(eq(schema.bots.id, botId));
+      const [run] = await t.db
+        .insert(schema.runs)
+        .values({
+          workspaceId: bot!.workspaceId,
+          botId,
+          chatId,
+          trigger: 'mention',
+          parentRunId,
+          depth: 2,
+          ...(thread ? { state: { input: { threadRootId: thread } } } : {}),
+        })
+        .returning();
+      return run!;
+    }
+
+    it('drops handoffs still queued in its thread, says so, and leaves other threads alone', async () => {
+      const { bot: lead } = await newBot('Lead', [[{ text: 'Starting.' }]]);
+      const { bot: helper } = await newBot('Helper');
+      const chat = await group([lead, helper]);
+      const root = await say(chat.id, '@lead start');
+      await settled(chat.id);
+      const [leadRun] = await runsIn(chat.id);
+      const here = await queuedHandoff(helper.id, chat.id, leadRun!.id);
+      const elsewhere = await queuedHandoff(helper.id, chat.id, leadRun!.id, root.id);
+
+      asked.length = 0;
+      // Routing finishes before the POST answers; the stuck handoff elsewhere never settles.
+      const owner = await say(chat.id, 'Change of plan, hold off');
+
+      const byId = new Map((await runsIn(chat.id)).map((r) => [r.id, r]));
+      expect(byId.get(here.id)).toMatchObject({ status: 'cancelled' });
+      expect(byId.get(elsewhere.id)).toMatchObject({ status: 'queued' });
+      // Its Bot was no longer at work, so it was asked like the others.
+      expect(asked).toContain(helper.id);
+      const rows = await messagesIn(chat.id);
+      const notice = rows.find((m) =>
+        (m.parts as MessagePart[]).some((p) => p.type === 'event' && p.kind === 'handoffs_dropped'),
+      );
+      expect(notice).toMatchObject({ authorType: 'system', threadRootId: null });
+      expect((notice!.parts as MessagePart[])[0]).toMatchObject({
+        text: 'Dropped 1 queued Bot handoff after a newer owner message.',
+        data: { runIds: [here.id], botIds: [helper.id] },
+      });
+      // Posted after routing: shouldReply saw the owner's message last.
+      expect(notice!.seq).toBeGreaterThan(owner.seq);
+    });
+
+    it('leaves handoffs alone when the owner names a Bot, and never drops one that started', async () => {
+      const { bot: lead } = await newBot('Lead2', [[{ text: 'Starting.' }]]);
+      const { bot: helper } = await newBot('Helper2');
+      const { bot: designer } = await newBot('Designer2', [[{ text: 'Sure.' }]]);
+      const chat = await group([lead, helper, designer]);
+      await say(chat.id, '@lead2 start');
+      await settled(chat.id);
+      const [leadRun] = await runsIn(chat.id);
+      const pending = await queuedHandoff(helper.id, chat.id, leadRun!.id);
+      // Queued again after an approval or answer: it started before, so it is kept.
+      const resumed = await queuedHandoff(helper.id, chat.id, leadRun!.id);
+      await t.db
+        .update(schema.runs)
+        .set({ startedAt: new Date() })
+        .where(eq(schema.runs.id, resumed.id));
+
+      await say(chat.id, '@designer2 quick question');
+      let byId = new Map((await runsIn(chat.id)).map((r) => [r.id, r]));
+      expect(byId.get(pending.id)?.status).toBe('queued');
+
+      await say(chat.id, 'Change of plan');
+      byId = new Map((await runsIn(chat.id)).map((r) => [r.id, r]));
+      expect(byId.get(pending.id)?.status).toBe('cancelled');
+      expect(byId.get(resumed.id)?.status).toBe('queued');
+    });
+
+    it("never drops a handoff for a Bot's message", async () => {
+      const { bot: one } = await newBot('Relay1', [[{ text: 'Passing on.' }]]);
+      const { bot: two } = await newBot('Relay2');
+      const chat = await group([one, two]);
+      await say(chat.id, '@relay1 go');
+      await settled(chat.id);
+      const [run] = await runsIn(chat.id);
+      const handoff = await queuedHandoff(two.id, chat.id, run!.id);
+      // Another Bot's message in the same place is routed, but ends nothing.
+      const fromBot = await postMessage(t.ownerDeps, chat.id, {
+        authorType: 'bot',
+        authorId: one.id,
+        parts: [{ type: 'text', text: 'Still on it.' }],
+      });
+      await routeMessage(t.ownerDeps, fromBot, router);
+      expect((await runsIn(chat.id)).find((r) => r.id === handoff.id)?.status).toBe('queued');
+      const kinds = (await messagesIn(chat.id))
+        .flatMap((m) => m.parts as MessagePart[])
+        .map((p) => (p.type === 'event' ? p.kind : p.type));
+      expect(kinds).not.toContain('handoffs_dropped');
+    });
+  });
+
   describe('loop guards', () => {
-    it('stops a chain at max_chain_depth (default 6) with an event row', async () => {
+    it('stops a chain at max_chain_depth (default 4) with an event row', async () => {
       const { bot: ping } = await newBot('Ping', pingPong('pong'));
       const { bot: pong } = await newBot('Pong', pingPong('ping'));
       const chat = await group([ping, pong]);
       await say(chat.id, '@ping start');
       await settled(chat.id);
       const runs = await runsIn(chat.id);
-      expect(runs.map((r) => r.depth)).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(runs.map((r) => r.depth)).toEqual([1, 2, 3, 4]);
       expect(await loopEvents(chat.id)).toEqual([
         expect.objectContaining({
-          text: 'Stopped a Bot loop: the chain of Bot replies reached 6 steps.',
-          data: { reason: 'depth', depth: 7, botIds: [ping.id] },
+          text: 'Stopped a Bot loop: the chain of Bot replies reached 4 steps.',
+          data: { reason: 'depth', depth: 5, botIds: [ping.id] },
         }),
       ]);
     });
@@ -756,7 +862,7 @@ describe('router', () => {
       });
       await settled(pair.id, left.chatId);
       const runs = await runsIn(pair.id);
-      expect(Math.max(...runs.map((r) => r.depth))).toBe(6);
+      expect(Math.max(...runs.map((r) => r.depth))).toBe(4);
       expect(await loopEvents(pair.id)).toHaveLength(1);
     });
   });
@@ -812,7 +918,7 @@ describe('router', () => {
     expect(handoffs.map((r) => r.botId).sort()).toEqual([research.id, design.id, copy.id].sort());
     expect(handoffs.every((r) => r.trigger === 'mention' && r.depth === 2)).toBe(true);
     // The ping-pong between Copy and Design is stopped by the depth guard.
-    expect(Math.max(...runs.map((r) => r.depth))).toBe(6);
+    expect(Math.max(...runs.map((r) => r.depth))).toBe(4);
     expect(await loopEvents(chat.id)).toHaveLength(1);
     expect(chiefModel.calls).toHaveLength(1);
 
