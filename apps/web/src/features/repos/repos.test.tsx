@@ -443,7 +443,7 @@ describe('the GitHub card (GH1, GH8)', () => {
     expect(row(CONN).querySelector('[data-status]')!.textContent).toBe('Connected');
     expect(row(CONN).textContent).toContain('2 repositories');
     expect(row('c3').querySelector('[data-status]')!.textContent).toBe('Needs reinstall');
-    expect(button('Pick repositories', row('c3'))).toBeUndefined();
+    expect(button('Choose repositories', row('c3'))).toBeUndefined();
 
     setValue(row(CONN).querySelector('select')!, 'owner');
     await until(() => sent('PATCH', `/api/v1/git-connections/${CONN}`).length === 1, 'the patch');
@@ -578,7 +578,7 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
     expect(host.querySelector('[data-connection]')!.textContent).not.toContain('GitHub App');
     expect(button('Connect GitHub')).toBeUndefined();
     expect(button('Sync')).toBeUndefined();
-    expect(button('Pick repositories')).toBeUndefined();
+    expect(button('Choose repositories')).toBeUndefined();
     click(button('Finish connecting'));
     await until(() => host.textContent!.includes('ABCD-EFGH'), 'resumed code');
     expect(sent('POST', '/api/v1/git-connections/github-app/device')).toEqual([
@@ -595,7 +595,7 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
       connection({ kind: 'device', accountLogin: 'alice', installationId: null, actAs: 'owner' }),
     ];
     render(<GithubCard admin />);
-    await until(() => !!button('Pick repositories'), 'connected controls');
+    await until(() => !!button('Choose repositories'), 'connected controls');
     expect(host.querySelectorAll('[data-github-card]')).toHaveLength(1);
     expect(host.querySelectorAll('[data-status="connected"]')).toHaveLength(1);
     expect(host.querySelector('[data-connection]')!.textContent).toContain('alice');
@@ -641,7 +641,7 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
     expect(button('Connect GitHub')).toBeUndefined();
     expect(host.querySelector('[data-connection] select')).toBeNull();
     click(document.querySelector('[data-remote="danielpang/site"] input'));
-    click(button('Keep on the computer') ?? button('Keep 1 on the computer'));
+    click(button('Select 1'));
     await until(
       () => sent('POST', '/api/v1/repos/remember').length === 1,
       'remember picked repository',
@@ -751,10 +751,28 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
 });
 
 describe('the repository picker (GH2)', () => {
+  it('uses Choose repositories and the current selection count, including Select 6', async () => {
+    remotes = Array.from({ length: 6 }, (_, index) => remote(`danielpang/project-${index + 1}`));
+    render(<GithubCard admin />);
+    await until(() => !!button('Choose repositories'), 'choose action');
+    click(button('Choose repositories'));
+    await until(() => document.querySelectorAll('[data-remote]').length === 6, 'six repositories');
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog.querySelector('h2')!.textContent).toBe('Choose repositories');
+    expect(button('Select repositories', dialog)!.disabled).toBe(true);
+    const boxes = [...dialog.querySelectorAll<HTMLInputElement>('[data-remote] input')];
+    click(boxes[0]);
+    expect(button('Select 1', dialog)).toBeDefined();
+    for (const box of boxes.slice(1)) click(box);
+    expect(button('Select 6', dialog)!.disabled).toBe(false);
+    click(boxes[0]);
+    expect(button('Select 5', dialog)).toBeDefined();
+    expect(dialog.textContent).not.toContain('Keep 6 on the computer');
+  });
   it('lists repositories, keeps the remembered ones checked, and remembers the picked', async () => {
     render(<GithubCard admin />);
-    await until(() => !!button('Pick repositories'), 'the row');
-    click(button('Pick repositories'));
+    await until(() => !!button('Choose repositories'), 'the row');
+    click(button('Choose repositories'));
     const item = (name: string) => document.querySelector<HTMLElement>(`[data-remote="${name}"]`)!;
     const box = (name: string) => item(name).querySelector<HTMLInputElement>('input')!;
     await until(() => !!item('danielpang/notes'), 'the list');
@@ -763,11 +781,11 @@ describe('the repository picker (GH2)', () => {
     expect(item('danielpang/OpenBots').textContent).toContain('Private');
     expect(item('danielpang/site').textContent).toContain('main · pushed 4 min ago');
 
-    const keep = () => button('Keep on the computer') ?? button('Keep 2 on the computer');
+    const keep = () => button('Select repositories') ?? button('Select 2');
     expect(keep()!.disabled).toBe(true);
     click(box('danielpang/site'));
     click(box('danielpang/notes'));
-    expect(button('Keep 2 on the computer')).toBeDefined();
+    expect(button('Select 2')).toBeDefined();
 
     const search = document.querySelector<HTMLInputElement>(
       'input[aria-label="Search repositories"]',
@@ -776,7 +794,7 @@ describe('the repository picker (GH2)', () => {
     await until(() => !item('danielpang/notes'), 'the search');
     expect(server.requests.some((r) => r.path.endsWith('/repositories?q=site'))).toBe(true);
 
-    click(button('Keep 2 on the computer'));
+    click(button('Select 2'));
     await until(() => !document.querySelector('[data-remote]'), 'the dialog to close');
     expect(sent('POST', '/api/v1/repos/remember')).toEqual([
       { fullNames: ['danielpang/site', 'danielpang/notes'], connectionId: CONN },

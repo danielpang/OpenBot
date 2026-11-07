@@ -542,7 +542,7 @@ function ConnectionRow({
         )}
         {usable && (
           <Button size="sm" onClick={onPick}>
-            Pick repositories
+            Choose repositories
           </Button>
         )}
         {connection.kind === 'app' && connection.status === 'needs_reinstall' && (
