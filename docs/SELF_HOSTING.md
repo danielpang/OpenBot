@@ -189,6 +189,22 @@ If the server or sandbox firewall image cannot be pulled, `docker compose up -d`
 your checkout (`docker/server.Dockerfile`, `docker/sandbox-firewall.Dockerfile`). To build them
 yourself: `docker compose build`.
 
+## Connect GitHub for coding agents
+
+Use **Connectors → GitHub for coding agents → Connect GitHub**. Install the shared OpenBots
+GitHub App on your account or organization, select repositories, then return to OpenBots and
+choose **Authorize on GitHub** to enter the device code. Installing the App alone does not
+complete device authorization.
+
+The shared flow works on a Mac or localhost without a PAT, custom App registration, public HTTPS
+URL, client secret or App private key. **Use a different GitHub App** accepts a custom App's public
+client ID and slug with Device Flow enabled. The optional **Advanced: server-managed GitHub App**
+mode still requires server-held App secrets and public HTTPS for callbacks/webhooks.
+
+See [GitHub repositories for coding agents](GITHUB_REPOSITORIES.md) for setup, repository selection,
+token permissions, approved-push boundaries and verification. Existing GitHub MCP/tool connections
+remain separate and retain their Bot bindings.
+
 ## Upgrade
 
 ```sh

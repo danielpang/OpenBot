@@ -18,8 +18,9 @@ is required on a Mac or localhost.
 3. Return to OpenBots and open **Authorize on GitHub**. Enter the short-lived code shown there.
    Check the App and account before approving. Never authorize an unexpected device code.
 4. Keep OpenBots open. It waits for both user authorization and an active installation.
-5. Select repositories in the picker and choose **Keep on the computer**. The existing checkout
-   runner clones them when your computer is running. Start coding from that remembered repository.
+5. In **Choose repositories**, check the repositories and press **Select N** (for example,
+   **Select 6**). The existing checkout runner clones them when your computer is running.
+   Start coding from that remembered repository.
 6. Approve a branch push and PR through the coding session's existing approval controls.
 
 **Manage repositories** reopens the connection's own App installation page. **Sync** refreshes
