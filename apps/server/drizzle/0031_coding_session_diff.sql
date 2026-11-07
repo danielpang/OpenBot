@@ -1,0 +1,2 @@
+ALTER TABLE "coding_sessions" ADD COLUMN "diff_artifact_id" uuid;--> statement-breakpoint
+ALTER TABLE "coding_sessions" ADD CONSTRAINT "coding_sessions_diff_artifact_id_artifacts_id_fk" FOREIGN KEY ("diff_artifact_id") REFERENCES "public"."artifacts"("id") ON DELETE set null ON UPDATE no action;

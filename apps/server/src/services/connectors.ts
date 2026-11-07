@@ -49,7 +49,7 @@ import {
   type TransportConfig,
 } from '@openbots/mcp';
 import { wsEvent, type Unsubscribe } from '@openbots/shared';
-import { and, asc, count, eq, inArray, notInArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, notInArray } from 'drizzle-orm';
 import { isPublicAddress, netFetch, type NetOptions } from '../builtins/net.js';
 import { publishEvent } from '../infra/index.js';
 import type { StdioRunner } from '../config.js';
@@ -59,6 +59,15 @@ import { DomainError, notFound } from '../errors.js';
 import { assertBotOwner } from '../ownership.js';
 import { decryptSecretString, encryptSecret, keyringFromConfig } from '../secrets.js';
 import { isOrgAdmin, storedSettings, type Role } from '../workspace.js';
+import {
+  GitHubAppAuthorizationError,
+  beginGitHubDevice,
+  pollGitHubDevice,
+  refreshGitHubDevice,
+  hasGitHubInstallation,
+  githubInstallationUrl,
+  type DevicePoll,
+} from './github-device.js';
 import { computerStdioSpec } from './computer-stdio.js';
 import { MCP_CONTROL_CHANNEL, type McpControl } from './mcp-control.js';
 import { connectorWorkspace, currentWorkspace, inWorkspace, outsideScope } from '../db/scope.js';
@@ -118,6 +127,7 @@ export interface ConnectorRecord {
     clientConfigured: boolean;
     connected: boolean;
     expiresAt: Date | null;
+    installationUrl?: string;
   } | null;
   disabledByAdmin: boolean;
   toolCount: number;
@@ -136,7 +146,7 @@ export interface ConnectorInput {
   headers?: Record<string, string>;
   params?: Record<string, string>;
   secrets?: Record<string, string>;
-  oauthClient?: { clientId: string; clientSecret?: string };
+  oauthClient?: { clientId: string; clientSecret?: string; githubAppSlug?: string };
 }
 
 export interface ConnectorPatch {
@@ -150,7 +160,7 @@ export interface ConnectorPatch {
   params?: Record<string, string>;
   /** A value sets the secret, null removes it; names not listed are kept. */
   secrets?: Record<string, string | null>;
-  oauthClient?: { clientId: string; clientSecret?: string } | null;
+  oauthClient?: { clientId: string; clientSecret?: string; githubAppSlug?: string } | null;
 }
 
 const invalid = (code: string, message: string) => new DomainError(400, code, message);
@@ -212,6 +222,7 @@ export function scrub(text: string, secrets: SealedSecrets): string {
     secrets.oauth?.tokens?.access_token,
     secrets.oauth?.tokens?.refresh_token,
     secrets.oauth?.client?.client_secret,
+    secrets.oauth?.device?.deviceCode,
   ].filter((v): v is string => typeof v === 'string' && v.length >= 4);
   let out = text;
   for (const v of values.sort((a, b) => b.length - a.length)) out = out.split(v).join('***');
@@ -703,9 +714,17 @@ function toRecord(
     oauth:
       http?.auth === 'oauth'
         ? {
-            clientConfigured: Boolean(secrets.oauth?.client),
+            clientConfigured: Boolean(
+              secrets.oauth?.client ||
+              (isGitHubConnector(row) &&
+                deps.config.githubConnectorClientId &&
+                deps.config.githubConnectorAppSlug),
+            ),
             connected: Boolean(tokens),
             expiresAt: tokens?.expires_at ? new Date(tokens.expires_at) : null,
+            ...(isGitHubConnector(row) && githubAppSlug(deps, secrets)
+              ? { installationUrl: githubInstallationUrl(githubAppSlug(deps, secrets)!) }
+              : {}),
           }
         : null,
     disabledByAdmin: isBlocked(row, rules) || (stdioRefused && isCustomStdio(row)),
@@ -847,6 +866,9 @@ export async function createConnector(
     secrets.oauth = {
       client: {
         client_id: input.oauthClient.clientId,
+        ...(input.oauthClient.githubAppSlug
+          ? { github_app_slug: input.oauthClient.githubAppSlug }
+          : {}),
         ...(input.oauthClient.clientSecret
           ? { client_secret: input.oauthClient.clientSecret }
           : {}),
@@ -948,6 +970,9 @@ export async function updateConnector(
       ? {
           client: {
             client_id: patch.oauthClient.clientId,
+            ...(patch.oauthClient.githubAppSlug
+              ? { github_app_slug: patch.oauthClient.githubAppSlug }
+              : {}),
             ...(patch.oauthClient.clientSecret
               ? { client_secret: patch.oauthClient.clientSecret }
               : {}),
@@ -1490,39 +1515,76 @@ export async function oauthAccessToken(deps: ConnectorsDeps, id: string): Promis
   const tokens = secrets.oauth?.tokens;
   if (!tokens) throw new NeedsAuthError('Sign in to this connector first.');
   if (!needsRefresh(tokens)) return tokens.access_token;
-  const promise = (async () => {
-    const oauth = secrets.oauth!;
-    if (!oauth.client || !oauth.authorizationServerUrl || !tokens.refresh_token) {
-      throw new NeedsAuthError('The sign-in expired; sign in again.');
-    }
-    let fresh;
-    try {
-      fresh = await refreshOAuth({
-        authorizationServerUrl: oauth.authorizationServerUrl,
-        client: oauth.client,
-        tokens,
-        ...(oauth.resource ? { resource: oauth.resource } : {}),
-        fetch: connectorFetch(deps, row),
-      });
-    } catch (err) {
-      throw new NeedsAuthError(
-        `The sign-in expired and could not be renewed: ${scrub((err as Error).message, secrets)}`,
-      );
-    }
-    const latest = openSecrets(deps, await rowById(deps.db, id));
-    latest.oauth = { ...latest.oauth, tokens: fresh };
-    await deps.db
-      .update(schema.connectors)
-      .set({ secrets: sealSecrets(deps, latest) })
-      .where(eq(schema.connectors.id, id));
-    return fresh.access_token;
-  })();
+  const promise = secrets.oauth?.githubApp
+    ? refreshGitHubAppToken(deps, id)
+    : (async () => {
+        const oauth = secrets.oauth!;
+        if (!oauth.client || !oauth.authorizationServerUrl || !tokens.refresh_token) {
+          throw new NeedsAuthError('The sign-in expired; sign in again.');
+        }
+        let fresh;
+        try {
+          fresh = await refreshOAuth({
+            authorizationServerUrl: oauth.authorizationServerUrl,
+            client: oauth.client,
+            tokens,
+            ...(oauth.resource ? { resource: oauth.resource } : {}),
+            fetch: connectorFetch(deps, row),
+          });
+        } catch (err) {
+          throw new NeedsAuthError(
+            `The sign-in expired and could not be renewed: ${scrub((err as Error).message, secrets)}`,
+          );
+        }
+        const latest = openSecrets(deps, await rowById(deps.db, id));
+        latest.oauth = { ...latest.oauth, tokens: fresh };
+        await deps.db
+          .update(schema.connectors)
+          .set({ secrets: sealSecrets(deps, latest) })
+          .where(eq(schema.connectors.id, id));
+        return fresh.access_token;
+      })();
   refreshing.set(id, promise);
   try {
     return await promise;
   } finally {
     refreshing.delete(id);
   }
+}
+
+/** Row locking serializes single-use GitHub refresh tokens across API/worker
+ * processes, not just callers sharing the in-process refreshing map. */
+async function refreshGitHubAppToken(deps: ConnectorsDeps, id: string): Promise<string> {
+  return deps.db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(schema.connectors)
+      .where(eq(schema.connectors.id, id))
+      .for('update');
+    if (!row || !isGitHubConnector(row))
+      throw new NeedsAuthError('The GitHub connector changed. Connect again.');
+    const secrets = openSecrets(deps, row);
+    const oauth = secrets.oauth;
+    const tokens = oauth?.tokens;
+    if (!tokens || !oauth.githubApp) throw new NeedsAuthError('Connect the GitHub App again.');
+    if (!needsRefresh(tokens)) return tokens.access_token;
+    try {
+      oauth.tokens = await refreshGitHubDevice(
+        oauth.githubApp.clientId,
+        tokens,
+        connectorFetch(deps, { local: false }),
+      );
+    } catch {
+      throw new NeedsAuthError(
+        'The GitHub App authorization expired or was revoked. Connect again.',
+      );
+    }
+    await tx
+      .update(schema.connectors)
+      .set({ secrets: sealSecrets(deps, secrets) })
+      .where(eq(schema.connectors.id, id));
+    return oauth.tokens.access_token;
+  });
 }
 
 async function storeTools(db: Db, connectorId: string, tools: McpTool[]): Promise<void> {
@@ -1673,12 +1735,46 @@ function authorizationParams(catalogId: string | null) {
   return params ? { authorizationParams: params } : {};
 }
 
+export { githubInstallationUrl };
+
+function githubAppSlug(
+  deps: Pick<ConnectorsDeps, 'config'>,
+  secrets: SealedSecrets,
+): string | undefined {
+  const client = secrets.oauth?.client;
+  return client
+    ? typeof client.github_app_slug === 'string'
+      ? client.github_app_slug
+      : undefined
+    : deps.config.githubConnectorAppSlug;
+}
+
+/** Never send GitHub tokens to a connector whose URL was changed. */
+function isGitHubConnector(row: ConnectorRow): boolean {
+  const transport = readConfig(row).transport;
+  return (
+    row.catalogId === 'github' &&
+    transport.transport === 'http' &&
+    transport.auth === 'oauth' &&
+    transport.url === 'https://api.githubcopilot.com/mcp/'
+  );
+}
+
 export async function startConnectorOAuth(
   deps: ConnectorsDeps,
   viewer: Viewer,
   id: string,
   mode: OAuthMode = 'redirect',
-): Promise<{ authorizationUrl: string }> {
+): Promise<{
+  authorizationUrl: string;
+  device?: {
+    userCode: string;
+    verificationUrl: string;
+    installationUrl: string;
+    expiresAt: string;
+    interval: number;
+  };
+}> {
   const row = await connectorRow(deps.db, viewer, id);
   const config = readConfig(row).transport;
   if (config.transport !== 'http' || config.auth !== 'oauth') {
@@ -1687,6 +1783,50 @@ export async function startConnectorOAuth(
   const rules = await blockRules(deps.db, viewer.workspaceId);
   if (isBlocked(row, rules)) throw connectorBlocked();
   const secrets = openSecrets(deps, row);
+  const client = secrets.oauth?.client;
+  const deviceClientId = isGitHubConnector(row)
+    ? client?.client_id || deps.config.githubConnectorClientId
+    : undefined;
+  const appSlug = githubAppSlug(deps, secrets);
+  if (isGitHubConnector(row) && (!deviceClientId || !appSlug || client?.client_secret)) {
+    throw invalid(
+      'OAUTH_CLIENT_REQUIRED',
+      'Configure a GitHub App client ID and app slug with Device Flow enabled. No client secret is used.',
+    );
+  }
+  if (deviceClientId) {
+    let startedDevice;
+    try {
+      startedDevice = await beginGitHubDevice(
+        deviceClientId,
+        appSlug!,
+        connectorFetch(deps, { local: false }),
+      );
+    } catch {
+      throw new DomainError(
+        502,
+        'OAUTH_FAILED',
+        'Could not start GitHub device authorization. Check that Device Flow is enabled on the GitHub App.',
+      );
+    }
+    secrets.oauth = { ...secrets.oauth, device: startedDevice.device };
+    delete secrets.oauth.pending;
+    const saved = await deps.db
+      .update(schema.connectors)
+      .set({ secrets: sealSecrets(deps, secrets) })
+      .where(
+        and(
+          eq(schema.connectors.id, id),
+          row.secrets
+            ? eq(schema.connectors.secrets, Buffer.from(row.secrets))
+            : isNull(schema.connectors.secrets),
+        ),
+      )
+      .returning({ id: schema.connectors.id });
+    if (!saved.length)
+      throw invalid('OAUTH_DEVICE_CHANGED', 'The connector changed. Connect again.');
+    return { authorizationUrl: startedDevice.public.verificationUrl, device: startedDevice.public };
+  }
   let started;
   try {
     started = await startOAuth({
@@ -1706,6 +1846,7 @@ export async function startConnectorOAuth(
   secrets.oauth = {
     ...secrets.oauth,
     client: started.client,
+    device: undefined,
     pending: { ...started.pending, ownerId: viewer.id, mode },
   };
   await deps.db
@@ -1713,6 +1854,111 @@ export async function startConnectorOAuth(
     .set({ secrets: sealSecrets(deps, secrets) })
     .where(eq(schema.connectors.id, id));
   return { authorizationUrl: started.authorizationUrl };
+}
+
+/**
+ * Authenticated polling keeps the device code on the server. A compare-and-swap
+ * reserves each poll across API processes and prevents stale requests from
+ * overwriting a restarted flow, edited settings or a deleted connector.
+ */
+export async function pollConnectorDevice(
+  deps: ConnectorsDeps,
+  viewer: Viewer,
+  id: string,
+): Promise<DevicePoll> {
+  const row = await connectorRow(deps.db, viewer, id);
+  if (!isGitHubConnector(row))
+    throw invalid('NOT_DEVICE_OAUTH', 'This connector does not use GitHub device authorization.');
+  if (isBlocked(row, await blockRules(deps.db, viewer.workspaceId))) throw connectorBlocked();
+  const secrets = openSecrets(deps, row);
+  const device = secrets.oauth?.device;
+  if (!device) throw invalid('OAUTH_DEVICE_MISSING', 'Start GitHub authorization again.');
+  const pending = (): DevicePoll => ({ status: 'pending', interval: device.interval });
+  const save = async (previous: Buffer, values: Record<string, unknown> = {}) => {
+    const next = sealSecrets(deps, secrets)!;
+    const updated = await deps.db
+      .update(schema.connectors)
+      .set({ ...values, secrets: next })
+      .where(and(eq(schema.connectors.id, id), eq(schema.connectors.secrets, previous)))
+      .returning({ id: schema.connectors.id });
+    return updated.length ? next : null;
+  };
+  if (Date.now() >= device.expiresAt) {
+    delete secrets.oauth!.device;
+    await save(Buffer.from(row.secrets!));
+    return { status: 'error', message: 'The GitHub code expired. Connect again for a new code.' };
+  }
+  if (Date.now() < device.nextPollAt) return pending();
+  // Reserve enough time for this request as well as GitHub's polling interval.
+  device.nextPollAt = Date.now() + Math.max(device.interval * 1000, 20_000);
+  const reserved = await save(Buffer.from(row.secrets!));
+  if (!reserved) return pending();
+  let result;
+  try {
+    result = await pollGitHubDevice(device, connectorFetch(deps, { local: false }));
+  } catch (error) {
+    if (error instanceof GitHubAppAuthorizationError) {
+      delete secrets.oauth!.device;
+      await save(reserved);
+      return { status: 'error', message: error.message };
+    }
+    // Leave the reservation in place after a network error. Do not echo provider
+    // responses or exceptions, which could contain the device code or token.
+    return pending();
+  }
+  if ('error' in result) {
+    if (result.error === 'authorization_pending' || result.error === 'slow_down') {
+      if (result.error === 'slow_down')
+        device.interval = Math.max(device.interval + 5, result.interval ?? 0);
+      device.nextPollAt = Date.now() + device.interval * 1000;
+      await save(reserved);
+      return pending();
+    }
+    delete secrets.oauth!.device;
+    await save(reserved);
+    return {
+      status: 'error',
+      message:
+        result.error === 'access_denied'
+          ? 'GitHub authorization was cancelled. Connect again to retry.'
+          : 'GitHub authorization ended. Connect again for a new code.',
+    };
+  }
+  let installed;
+  try {
+    installed = await hasGitHubInstallation(
+      result.tokens.access_token,
+      device.appSlug,
+      connectorFetch(deps, { local: false }),
+    );
+  } catch {
+    installed = false;
+  }
+  if (!installed) {
+    delete secrets.oauth!.device;
+    await save(reserved);
+    return {
+      status: 'error',
+      message:
+        'Install the GitHub App on the repositories you want to use, then Connect again. Use Manage repositories to install it or request organization approval.',
+    };
+  }
+  secrets.oauth = {
+    ...secrets.oauth,
+    tokens: result.tokens,
+    githubApp: { clientId: device.clientId, appSlug: device.appSlug },
+    authorizationServerUrl: 'https://github.com',
+  };
+  delete secrets.oauth.device;
+  const saved = await save(reserved, { status: 'untested', lastError: null });
+  if (!saved)
+    throw invalid(
+      'OAUTH_DEVICE_CHANGED',
+      'The connector changed during authorization. Connect again.',
+    );
+  await stopSessions(deps, [id]);
+  await publishConnectorUpdated(deps, row, { oauth: 'connected' });
+  return { status: 'connected' };
 }
 
 /** How a sign-in ended, for the callback page; never carries a token. */

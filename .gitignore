@@ -12,3 +12,5 @@ coverage/
 backups/
 test-results/
 playwright-report/
+.worktrees/
+.pnpm-store/

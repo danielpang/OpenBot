@@ -19,7 +19,6 @@ import {
   type IpcMainInvokeEvent,
   type Session,
 } from 'electron';
-import electronUpdater from 'electron-updater';
 import WebSocket from 'ws';
 import {
   DESKTOP_CHANNELS,
@@ -37,7 +36,8 @@ import {
   repositoryFromAppUpdateYml,
 } from '../images/release-archive.js';
 import { createStackManager, devImageOverrides } from '../stack/manager.js';
-import { cloudUrl } from './app-config.js';
+import { cloudUrl, isPreviewBuild } from './app-config.js';
+import { aboutPanelOptions } from './about.js';
 import {
   pairedByThis,
   parseRelayUrl,
@@ -71,7 +71,8 @@ import { createProfileStore, localServerUrl, type ProfileFiles } from './profile
 import { createServerGate, verifyServer, type Refusal } from './server-gate.js';
 import { createTokenStore, sessionCookieChange, type SessionToken } from './tokens.js';
 import { trayIconPath, trayTitle } from './tray-icon.js';
-import { createUpdater } from './updater.js';
+import { createUpdates } from './update-service.js';
+import type { DesktopUpdates } from './updater.js';
 
 // The Electron main process (plan 14.4, 18.8). The main window shows the
 // active server profile's web app, once that server answers as OpenBots
@@ -80,6 +81,9 @@ import { createUpdater } from './updater.js';
 // pairing window come from the bundle. Everything with logic in it lives in
 // the plain modules next to this file, which are tested without Electron;
 // this file only wires them to Electron.
+
+/** Embedded by electron-vite; no Git or filesystem version lookup at runtime. */
+declare const __OPENBOTS_BUILD_VERSION__: string;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PRELOAD = join(here, '../preload/index.cjs');
@@ -140,9 +144,11 @@ const SHARED_RELAY_URL = sharedRelayUrl({
   env: process.env,
 });
 
+const PREVIEW_BUILD = isPreviewBuild(packageJson());
 const paths = stackPaths();
 const stack = createStackManager({
   paths,
+  projectName: PREVIEW_BUILD ? 'openbots-preview' : undefined,
   defaultRelayUrl: SHARED_RELAY_URL,
   retiredRelayUrls: RETIRED_SHARED_RELAY_URLS,
   serverVersion: app.isPackaged ? app.getVersion() : undefined,
@@ -236,12 +242,15 @@ let pendingLink: DeepLink | null = null;
 // Notifications are kept until clicked or closed, or macOS drops their handlers.
 const notifications = new Set<Notification>();
 
-const updater = createUpdater({
-  autoUpdater: electronUpdater.autoUpdater,
-  enabled: app.isPackaged,
-  notify: ({ title, body, onClick }) => showNotification(title, body, onClick),
-  log: (message, error) => console.error(`[updater] ${message}`, error),
-});
+let updater: DesktopUpdates | undefined;
+
+function refreshUpdates() {
+  Menu.setApplicationMenu(applicationMenu());
+  updateTray();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(DESKTOP_CHANNELS.updateNotice, updater?.notice ?? null);
+  }
+}
 
 function platformInfo(): PlatformInfo {
   return {
@@ -252,7 +261,7 @@ function platformInfo(): PlatformInfo {
   };
 }
 
-function webPreferences(partition?: Session): Electron.WebPreferences {
+function webPreferences(partition?: Session, updates = false): Electron.WebPreferences {
   return {
     preload: PRELOAD,
     contextIsolation: true,
@@ -261,6 +270,7 @@ function webPreferences(partition?: Session): Electron.WebPreferences {
     webSecurity: true,
     ...(partition ? { session: partition } : {}),
     additionalArguments: [
+      `--openbots-updates=${updates}`,
       `--openbots-platform=${JSON.stringify(platformInfo())}`,
       `--openbots-app-base=${RENDERER_URL ?? ''}`,
     ],
@@ -270,7 +280,7 @@ function webPreferences(partition?: Session): Electron.WebPreferences {
 /** Only the app's own pages may use the app bridge and the local stack. */
 function isTrusted(event: { sender: unknown }): boolean {
   const frame = (event as IpcMainInvokeEvent).senderFrame;
-  return frame != null && isAppPage(frame.url, RENDERER_URL);
+  return frame != null && frame.parent == null && isAppPage(frame.url, RENDERER_URL);
 }
 
 /** The web app's indicator: the active server's own top page in the main window. */
@@ -520,7 +530,7 @@ async function createMainWindow(profile: ServerProfile): Promise<BrowserWindow> 
     // Windows and Linux show it on the window and taskbar; macOS uses the Dock icon.
     icon: DEV_ICON,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    webPreferences: webPreferences(ses),
+    webPreferences: webPreferences(ses, true),
   });
   mainWindow = window;
   window.once('ready-to-show', () => window.show());
@@ -804,6 +814,7 @@ function updateTray() {
     profileName: activeProfile?.name ?? 'OpenBots',
     connection: activeProfile ? connectionHeader(activeProfile) : null,
     connected: connection != null,
+    update: updater?.menu,
     actions: {
       open: (link) => void openLink(link),
       decide: (id, decision) => {
@@ -817,7 +828,7 @@ function updateTray() {
       quickAsk: toggleQuickAsk,
       pairPhone: () => openPairWindow(),
       changeConnection: () => void launcher.changeConnection(),
-      checkForUpdates: () => updater.checkNow(),
+      checkForUpdates: () => void updater?.check(true),
       quit: () => app.quit(),
     },
   });
@@ -837,7 +848,11 @@ function applicationMenu() {
       label: app.name,
       submenu: [
         { role: 'about' },
-        { label: 'Check for Updates…', click: () => updater.checkNow() },
+        {
+          ...updater?.menu,
+          label: updater?.menu.label ?? 'Check for Updates…',
+          click: () => void updater?.check(true),
+        },
         { type: 'separator' },
         { label: 'Relay…', click: () => openPairWindow('relay') },
         {
@@ -884,18 +899,37 @@ if (!app.requestSingleInstanceLock()) {
     handleLink(url);
   });
 
-  if (process.defaultApp && process.argv[1]) {
+  // A side-by-side preview must not take over the installed app's deep links.
+  if (!PREVIEW_BUILD && process.defaultApp && process.argv[1]) {
     // `electron .` in development: register the app with its script path.
     app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [resolve(process.argv[1])]);
-  } else {
+  } else if (!PREVIEW_BUILD) {
     app.setAsDefaultProtocolClient(PROTOCOL);
   }
 
   void app.whenReady().then(async () => {
+    updater = await createUpdates({
+      repository: releaseRepository(),
+      changed: refreshUpdates,
+      // Unlike Bento's child server, our Docker stack is independent of the app.
+      // Keep it and its agents running; the next launch offers a stack upgrade.
+      shutdown: async () => {
+        quitting = true;
+        disconnect();
+      },
+      shutdownFailed: () => {
+        quitting = false;
+      },
+    });
     registerStackIpc(ipcMain, stack, isTrusted);
     registerDesktopIpc(
       ipcMain,
       {
+        updateStatus: () => updater?.notice ?? null,
+        checkUpdates: async () => {
+          await updater?.check(true);
+        },
+        dismissUpdate: () => updater?.dismissNotice(),
         listProfiles: () => profiles.list(),
         addProfile: (input) => profiles.add(input),
         removeProfile: async (id) => {
@@ -965,6 +999,13 @@ if (!app.requestSingleInstanceLock()) {
       isActiveServerPage,
     );
 
+    app.setAboutPanelOptions(
+      aboutPanelOptions({
+        packaged: app.isPackaged,
+        appVersion: app.getVersion(),
+        buildVersion: __OPENBOTS_BUILD_VERSION__,
+      }),
+    );
     Menu.setApplicationMenu(applicationMenu());
     if (DEV_ICON) app.dock?.setIcon(DEV_ICON);
     const trayIcon = nativeImage.createFromPath(
@@ -996,7 +1037,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
-    updater.stop();
+    updater?.dispose();
     connection?.close();
   });
   app.on('window-all-closed', () => {

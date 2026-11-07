@@ -31,6 +31,8 @@ import {
   listConnectorTools,
   listConnectors,
   oauthRedirectUrl,
+  githubInstallationUrl,
+  pollConnectorDevice,
   putBotConnectors,
   putConnectorPolicy,
   setConnectorLocal,
@@ -95,6 +97,7 @@ const ConnectorSchema = z
         clientConfigured: z.boolean(),
         connected: z.boolean(),
         expiresAt: z.iso.datetime().nullable(),
+        installationUrl: z.url().optional(),
       })
       .nullable()
       .openapi({ description: 'Present when the connector signs in with OAuth' }),
@@ -166,7 +169,11 @@ const CatalogEntrySchema = z
       .object({
         scopes: z.array(z.string()),
         dynamicRegistration: z.boolean(),
+        deviceFlow: z.boolean().optional().openapi({
+          description: 'Shared GitHub device authorization is configured; no client secret needed',
+        }),
         clientSetupUrl: z.string().nullable(),
+        installationUrl: z.url().optional(),
       })
       .nullable(),
     disabledByAdmin: z.boolean(),
@@ -181,6 +188,11 @@ const OAuthClientInput = z
   .strictObject({
     clientId: z.string().min(1).max(512),
     clientSecret: z.string().min(1).max(4096).optional(),
+    githubAppSlug: z
+      .string()
+      .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/)
+      .max(100)
+      .optional(),
   })
   .openapi('OAuthClientInput', {
     description: 'For servers without dynamic client registration (GitHub, Slack)',
@@ -413,6 +425,16 @@ export const connectorRoutes = createRouter()
               ? {
                   scopes: e.oauth.scopes,
                   dynamicRegistration: e.oauth.dynamic_registration,
+                  ...(e.id === 'github' &&
+                  c.var.deps.config.githubConnectorClientId &&
+                  c.var.deps.config.githubConnectorAppSlug
+                    ? {
+                        deviceFlow: true,
+                        installationUrl: githubInstallationUrl(
+                          c.var.deps.config.githubConnectorAppSlug,
+                        ),
+                      }
+                    : {}),
                   clientSetupUrl: e.oauth.client_setup_url ?? null,
                 }
               : null,
@@ -741,13 +763,26 @@ export const connectorRoutes = createRouter()
       tags: ['connectors'],
       summary: 'Begin an OAuth 2.1 sign-in (PKCE, dynamic registration when offered)',
       description:
-        'Answers with the authorization URL to open. After consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOTS_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).',
+        'Answers with the authorization URL to open. GitHub device flow also returns a user code to display and polling instructions; poll the authenticated device endpoint until complete. Device flow does not use a callback. Otherwise, after consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOTS_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).',
       middleware: [requireUser] as const,
       security: authenticated,
       request: { params, query: z.object({ mode: OAuthModeSchema.optional() }) },
       responses: {
         200: json(
-          z.object({ authorizationUrl: z.url() }).openapi('OAuthStart'),
+          z
+            .object({
+              authorizationUrl: z.url(),
+              device: z
+                .object({
+                  userCode: z.string(),
+                  verificationUrl: z.url(),
+                  installationUrl: z.url(),
+                  expiresAt: z.iso.datetime(),
+                  interval: z.number().int().positive(),
+                })
+                .optional(),
+            })
+            .openapi('OAuthStart'),
           'Where to send the browser',
         ),
         400: problemResponse(
@@ -766,7 +801,42 @@ export const connectorRoutes = createRouter()
         c.req.valid('param').id,
         c.req.valid('query').mode,
       );
+      c.header('cache-control', 'no-store');
       return c.json(result, 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: 'post',
+      path: '/connectors/{id}/oauth/device',
+      tags: ['connectors'],
+      summary: 'Poll GitHub device authorization without exposing its device code or token',
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: { params },
+      responses: {
+        200: json(
+          z
+            .discriminatedUnion('status', [
+              z.object({ status: z.literal('pending'), interval: z.number().int().positive() }),
+              z.object({ status: z.literal('connected') }),
+              z.object({ status: z.literal('error'), message: z.string() }),
+            ])
+            .openapi('OAuthDevicePoll'),
+          'Authorization status',
+        ),
+        400: problemResponse('No device authorization is pending, or the connector changed'),
+        403: problemResponse('Connector blocked by policy'),
+        ...notFoundProblem,
+        ...authProblems,
+      },
+    }),
+    async (c) => {
+      c.header('cache-control', 'no-store');
+      return c.json(
+        await pollConnectorDevice(c.var.deps, c.var.user, c.req.valid('param').id),
+        200,
+      );
     },
   )
   .openapi(

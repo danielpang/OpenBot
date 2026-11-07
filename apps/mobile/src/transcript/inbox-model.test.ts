@@ -19,8 +19,17 @@ describe('pending owner input', () => {
       message('e', 5, [
         { type: 'widget', kind: 'login_request', props: {}, state: { status: 'failed' } },
       ]),
+      message('f', 6, [
+        { type: 'widget', kind: 'coder_login', props: {}, state: { status: 'pending' } },
+      ]),
+      message('g', 7, [
+        { type: 'widget', kind: 'coder_login', props: {}, state: { status: 'awaiting_code' } },
+      ]),
+      message('h', 8, [
+        { type: 'widget', kind: 'coding_session', props: {}, state: { status: 'running' } },
+      ]),
     ];
-    expect(pendingWidgets(rows).map((item) => item.message.id)).toEqual(['c', 'a']);
+    expect(pendingWidgets(rows).map((item) => item.message.id)).toEqual(['f', 'c', 'a']);
   });
   it('reads past the first page to retain old unanswered widgets', async () => {
     const cursors: (number | undefined)[] = [];

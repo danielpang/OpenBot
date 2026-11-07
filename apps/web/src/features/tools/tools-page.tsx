@@ -9,6 +9,7 @@ import { Catalog } from './catalog.js';
 import { ConnectorCard } from './connector-card.js';
 import { CustomServerForm, ImportForm } from './custom-server.js';
 import { ErrorText } from './fields.js';
+import { GithubCard } from './github-card.js';
 import { stdioAvailability } from './forms.js';
 import { useTestConnector } from './hooks.js';
 import { useRealtime } from '../transcript/realtime.js';
@@ -20,12 +21,17 @@ import { useRealtime } from '../transcript/realtime.js';
 // links here); a sign-in in this same tab comes back with
 // `oauth=connected|error`. A sign-in finished anywhere (a popup, the Mac
 // app's browser, another tab) arrives as `connector.updated` and refreshes
-// the list at once.
+// the list at once. The GitHub card for coding agents reads
+// `github_app=created` and `connection=<id>` (GH1).
 
 export interface ToolsSearch {
   connector?: string;
   oauth?: 'connected' | 'error';
   message?: string;
+  /** Back from GitHub's manifest flow: the install's App was made (GH1). */
+  github_app?: 'created';
+  /** Back from installing the GitHub App: the new or updated connection (GH1, GH2). */
+  connection?: string;
 }
 
 export function ToolsPage({
@@ -117,6 +123,14 @@ export function ToolsPage({
           ))}
         </ul>
       </section>
+      <GithubCard
+        admin={isAdmin}
+        arrival={{
+          ...(search.github_app ? { githubApp: search.github_app } : {}),
+          ...(search.connection ? { connection: search.connection } : {}),
+        }}
+        onArrivalHandled={onSearchHandled}
+      />
       <Catalog />
       <Fold title="Add custom MCP server">
         <CustomServerForm key={stdio} stdio={stdio} />

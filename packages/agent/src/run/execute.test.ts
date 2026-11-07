@@ -1,5 +1,6 @@
 import type { MessagePart } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
+import { assembleContext } from '../context/assemble.js';
 import { defaultPolicy, type Policy } from '../policy/index.js';
 import { promptText, scriptedModel, type ScriptedTurn } from '../testing.js';
 import { toolsFor } from '../tools/index.js';
@@ -87,6 +88,98 @@ describe('executeRun', () => {
         tokensOut: 10,
       }),
     ]);
+  });
+
+  it('continues a queued group run whose latest message is its own reply without assistant prefill', async () => {
+    const context = assembleContext({
+      bot: { name: 'Scout', handle: 'scout', label: null, description: '' },
+      roster: [
+        { name: 'Scout', handle: 'scout', kind: 'bot', self: true },
+        { name: 'Researcher', handle: 'researcher', kind: 'bot' },
+      ],
+      skills: [],
+      memories: [],
+      summary: null,
+      messages: [
+        {
+          seq: 1,
+          author: { kind: 'owner', handle: 'dana' },
+          parts: [{ type: 'text', text: 'Discuss this together.' }],
+        },
+        {
+          seq: 2,
+          author: { kind: 'bot', handle: 'researcher' },
+          parts: [{ type: 'text', text: '@scout please review.' }],
+        },
+        {
+          seq: 3,
+          author: { kind: 'bot', handle: 'scout', self: true },
+          parts: [{ type: 'text', text: 'Here is my review.' }],
+        },
+      ],
+    });
+    expect(context.messages.at(-1)!.role).toBe('assistant');
+    const checkpoints: unknown[] = [];
+    const h = harness([[{ text: 'Nothing further to add.' }]], {
+      ...context,
+      checkpoint: {
+        step: async (messages) => {
+          checkpoints.push(messages);
+        },
+        started: async () => {},
+        finished: async () => {},
+      },
+    });
+
+    expect(await executeRun(h.input)).toMatchObject({ status: 'completed' });
+    const prompt = h.model.calls[0]!.prompt;
+    expect(prompt.map((m) => m.role)).toEqual([
+      'system',
+      'system',
+      'user',
+      'user',
+      'assistant',
+      'user',
+    ]);
+    expect(prompt.at(-1)).toMatchObject({
+      role: 'user',
+      content: [{ type: 'text', text: expect.stringContaining('[system] Continue') }],
+    });
+    expect(checkpoints).toEqual([
+      [
+        ...context.messages,
+        {
+          role: 'user',
+          content: expect.stringContaining('[system] Continue'),
+        },
+      ],
+    ]);
+    // Normalization must not mutate the transcript or duplicate on checkpoint resume.
+    expect(context.messages).toHaveLength(3);
+    const resumed = harness([[{ text: 'Done.' }]], {
+      messages: checkpoints[0] as ExecuteRunInput['messages'],
+    });
+    await executeRun(resumed.input);
+    expect(resumed.model.calls[0]!.prompt.slice(1)).toEqual(prompt.slice(2));
+  });
+
+  it('uses real steering instead of a synthetic continuation after an assistant message', async () => {
+    const h = harness([[{ text: 'Following the new request.' }]], {
+      messages: [
+        { role: 'user', content: 'Review this.' },
+        { role: 'assistant', content: 'Here is my review.' },
+      ],
+    });
+    h.steering.push(['[@dana (owner)] Now summarize it.']);
+    await executeRun(h.input);
+    expect(h.model.calls[0]!.prompt.map((m) => m.role)).toEqual([
+      'system',
+      'user',
+      'assistant',
+      'user',
+    ]);
+    expect(promptText(h.model.calls[0]!)).not.toContain('[system] Continue');
+    expect(promptText(h.model.calls[0]!)).toContain('Now summarize it.');
   });
 
   it('runs a tool through gated(): working with the label, then a labeled step', async () => {

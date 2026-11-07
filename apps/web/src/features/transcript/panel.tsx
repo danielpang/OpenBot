@@ -1,15 +1,15 @@
-import { Button, XIcon } from '@openbots/ui';
-import { useCallback, useEffect, type ReactNode } from 'react';
-import { useRightPanel } from '../../app/right-panel.js';
+import { useCallback, useEffect } from 'react';
+import { CODING_SESSIONS_PANEL, useRightPanel } from '../../app/right-panel.js';
 import { ArtifactViewer } from '../artifacts/viewer.js';
 import { ScreenPreview } from '../computer/preview.js';
 import { ActivityLog } from './activity-log.js';
+import { PanelFrame } from './panel-frame.js';
 import { ThreadPanel } from './thread-panel.js';
 
 // Which right panel a Bot's transcript has open (PRD section 5): one at a
 // time, closable, remembered per Bot in local storage so coming back to the
-// Bot reopens it: the activity log, the artifact viewer (Phase 3) or the
-// computer preview (Phase 4) or a thread (Phase 5). A group keeps its panel
+// Bot reopens it: the activity log, the artifact viewer, the computer
+// preview or a thread. A group keeps its panel
 // under its chat id where a Bot uses its own id.
 
 export type BotPanel =
@@ -102,16 +102,22 @@ export function useShowBotPanel(botId: string) {
   return show;
 }
 
-/** `useShowBotPanel`, restoring the remembered panel on mount and closing it on unmount. */
+/**
+ * `useShowBotPanel`, restoring the remembered panel on mount and closing it
+ * on unmount. The coding sessions drawer is not the Bot's: the restore leaves
+ * it open and the close leaves it alone, so it stays open from Bot to Bot.
+ */
 export function useBotPanel(botId: string) {
-  const { close } = useRightPanel();
+  const { close, openId } = useRightPanel();
   const show = useShowBotPanel(botId);
 
   useEffect(() => {
     const remembered = readPanel(botId);
-    if (remembered) show(remembered);
-    return close;
-  }, [botId, show, close]);
+    if (remembered && openId() !== CODING_SESSIONS_PANEL) show(remembered);
+    return () => {
+      if (openId() !== CODING_SESSIONS_PANEL) close();
+    };
+  }, [botId, show, close, openId]);
 
   return show;
 }
@@ -130,26 +136,4 @@ export function useFocusThread(
   useEffect(() => {
     if (chatId && thread) show({ kind: 'thread', chatId, rootId: thread, focusSeq });
   }, [show, chatId, thread, focusSeq]);
-}
-
-export function PanelFrame({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose(): void;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-2">
-        <h2 className="text-sm font-medium">{title}</h2>
-        <Button variant="ghost" size="icon" aria-label={`Close ${title}`} onClick={onClose}>
-          <XIcon />
-        </Button>
-      </header>
-      <div className="relative min-h-0 flex-1 overflow-auto">{children}</div>
-    </div>
-  );
 }

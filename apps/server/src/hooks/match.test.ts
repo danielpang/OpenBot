@@ -72,6 +72,37 @@ describe('GitHub rules', () => {
     ).toBe(false);
   });
 
+  it('matches an installation id against the payload installation, as a string (I19)', () => {
+    const labeled = (installation?: unknown) =>
+      gh('issues', {
+        action: 'labeled',
+        label: { name: 'bot' },
+        ...repo,
+        ...(installation === undefined ? {} : { installation }),
+      });
+    const pinned = rule({
+      source: 'github',
+      event: 'label_added',
+      repo: 'acme/api',
+      installation_id: '42',
+    });
+    expect(matchesRule(pinned, labeled({ id: 42 }))).toBe(true);
+    expect(matchesRule(pinned, labeled({ id: '42' }))).toBe(true);
+    expect(matchesRule(pinned, labeled({ id: 43 }))).toBe(false);
+    expect(matchesRule(pinned, labeled())).toBe(false);
+    // Without one, any installation (or none, a per-repository webhook) matches.
+    const open = rule({ source: 'github', event: 'label_added', repo: 'acme/api' });
+    expect(matchesRule(open, labeled({ id: 43 }))).toBe(true);
+    expect(matchesRule(open, labeled())).toBe(true);
+    expect(
+      EndpointMatchSchema.safeParse({
+        source: 'github',
+        event: 'pr_opened',
+        installation_id: 'abc',
+      }).success,
+    ).toBe(false);
+  });
+
   it('refuses a comment rule without text', () => {
     expect(
       EndpointMatchSchema.safeParse({ source: 'github', event: 'comment_contains' }).success,

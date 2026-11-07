@@ -1,4 +1,4 @@
-import type { RoutineTriggerInput } from '@openbots/shared';
+import type { CodingRoutineTemplate, RoutineTriggerInput } from '@openbots/shared';
 import { Button, cn, Input } from '@openbots/ui';
 import { browserTimezone } from '@openbots/widgets/react';
 import { useQuery } from '@tanstack/react-query';
@@ -16,6 +16,7 @@ import {
 import { EventFields } from './event-fields.js';
 import { DEFAULT_DRAFT, draftFromPreset, presetFromDraft, type ScheduleDraft } from './schedule.js';
 import { ScheduleFields } from './schedule-fields.js';
+import { TemplateChooser, TemplateRoutineForm } from './templates.js';
 import {
   DEFAULT_EVENT_DRAFT,
   draftFromTrigger,
@@ -28,7 +29,8 @@ import {
 // records (the 20 most recent), each opening the run's activity log. Every
 // run also posts into the Bot's transcript, where exceptions are handled.
 // An event Routine shows the endpoint it waits on (R2, H2), made with it; the
-// Bot's inbox (H1) is in Bot Settings.
+// Bot's inbox (H1) is in Bot Settings. A new Routine can start from a coding
+// template (CA11).
 
 type TriggerType = RoutineTriggerInput['type'];
 
@@ -76,6 +78,7 @@ export function lastRunText(routine: Pick<Routine, 'lastRun'>) {
 export function RoutinesTab({ botId }: { botId: string }) {
   const { data, error } = useQuery(routinesQuery(botId));
   const [adding, setAdding] = useState(false);
+  const [created, setCreated] = useState<string | null>(null);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
@@ -84,12 +87,32 @@ export function RoutinesTab({ botId }: { botId: string }) {
           Run this Bot on a schedule or when an event arrives.
         </p>
         {!adding && (
-          <Button size="sm" className="shrink-0" onClick={() => setAdding(true)}>
+          <Button
+            size="sm"
+            className="shrink-0"
+            onClick={() => {
+              setCreated(null);
+              setAdding(true);
+            }}
+          >
             New Routine
           </Button>
         )}
       </div>
-      {adding && <RoutineForm botId={botId} onDone={() => setAdding(false)} />}
+      {adding && (
+        <NewRoutine
+          botId={botId}
+          onDone={(name) => {
+            setAdding(false);
+            setCreated(name ?? null);
+          }}
+        />
+      )}
+      {created && (
+        <p role="status" className="rounded-md border px-3 py-2 text-sm" data-routine-created>
+          Created the Routine {created}.
+        </p>
+      )}
       {error && <p className="text-sm text-destructive">{error.message}</p>}
       {data && !data.length && !adding && (
         <p className="text-sm text-muted-foreground">No Routines yet.</p>
@@ -101,6 +124,27 @@ export function RoutinesTab({ botId }: { botId: string }) {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** New Routine: a coding template (CA11), or the manual form below it. */
+function NewRoutine({ botId, onDone }: { botId: string; onDone(name?: string): void }) {
+  const [template, setTemplate] = useState<CodingRoutineTemplate | null>(null);
+  if (template) {
+    return (
+      <TemplateRoutineForm
+        botId={botId}
+        template={template}
+        onBack={() => setTemplate(null)}
+        onDone={onDone}
+      />
+    );
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      <TemplateChooser onPick={setTemplate} />
+      <RoutineForm botId={botId} onDone={() => onDone()} />
     </div>
   );
 }

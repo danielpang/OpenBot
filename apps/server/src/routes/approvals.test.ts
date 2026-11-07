@@ -1,5 +1,8 @@
+import { EVENTS_CHANNEL, type WsEvent } from '@openbots/shared';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { nextSeq, schema } from '../db/client.js';
+import { announceApproval } from '../services/approvals.js';
 import { insertRun } from '../services/runs.js';
 import { createTestApp, type TestApp } from '../test-app.js';
 
@@ -8,6 +11,8 @@ import { createTestApp, type TestApp } from '../test-app.js';
 
 interface PendingApproval {
   id: string;
+  runId: string | null;
+  sessionId: string | null;
   botId: string;
   chatId: string | null;
   seq: number | null;
@@ -109,6 +114,101 @@ describe('approvals API', () => {
     const bobs = await requestFor(bob, 'Bobs', 'bash');
     expect((await pendingList(bob)).map((a) => a.id)).toEqual([bobs.approval.id]);
     expect((await pendingList(alice)).map((a) => a.id)).not.toContain(bobs.approval.id);
+  });
+
+  /** A coding session's request on the owner's own drawer turn, which has no run. */
+  async function sessionRequestFor(email: string, cookie: string, name: string) {
+    const bot = (await (await call(cookie, 'POST', '/bots', { name })).json()) as {
+      id: string;
+      chatId: string;
+    };
+    const [row] = await t.db
+      .select({ workspaceId: schema.bots.workspaceId })
+      .from(schema.bots)
+      .where(eq(schema.bots.id, bot.id));
+    const workspaceId = row!.workspaceId;
+    const [session] = await t.db
+      .insert(schema.codingSessions)
+      .values({
+        workspaceId,
+        ownerId: await t.userId(email),
+        botId: bot.id,
+        chatId: bot.chatId,
+        agent: 'claude',
+        mode: 'pr',
+        prompt: 'Push it and open a PR',
+        status: 'waiting',
+      })
+      .returning();
+    const [approval] = await t.db
+      .insert(schema.approvals)
+      .values({
+        workspaceId,
+        sessionId: session!.id,
+        toolName: 'open_pull_request',
+        args: { branch: 'bot/fix' },
+        actionClass: 'pr',
+      })
+      .returning();
+    return { bot, session: session!, approval: approval! };
+  }
+
+  it("lists a session's request with no run under its session's Bot and chat", async () => {
+    const { bot, session, approval } = await sessionRequestFor('alice@example.com', alice, 'Coder');
+    expect(approval.runId).toBeNull();
+    const item = (await pendingList(alice)).find((a) => a.id === approval.id);
+    expect(item).toMatchObject({
+      runId: null,
+      sessionId: session.id,
+      botId: bot.id,
+      chatId: bot.chatId,
+      seq: null,
+    });
+    expect((await pendingList(bob)).map((a) => a.id)).not.toContain(approval.id);
+  });
+
+  it('lets only the session owner decide a request with no run', async () => {
+    const { approval } = await sessionRequestFor('alice@example.com', alice, 'Coder two');
+    expect(
+      (await call(bob, 'POST', `/approvals/${approval.id}/decide`, { decision: 'approve' })).status,
+    ).toBe(404);
+    const res = await call(alice, 'POST', `/approvals/${approval.id}/decide`, {
+      decision: 'approve',
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      approval: { id: approval.id, runId: null, status: 'approved' },
+      resumedRunId: null,
+    });
+  });
+
+  it("announces a request with no run to its session's Bot and owner", async () => {
+    const { bot, session, approval } = await sessionRequestFor(
+      'alice@example.com',
+      alice,
+      'Coder three',
+    );
+    const { workspaceId } = session;
+    const seen: WsEvent[] = [];
+    const unsubscribe = await t.deps.infra.bus.subscribe<WsEvent>(EVENTS_CHANNEL, (e) => {
+      if (e.type === 'approval.requested') seen.push(e);
+    });
+    try {
+      await t.inOrganization(() => announceApproval(t.ownerDeps, approval), workspaceId);
+      expect(seen).toContainEqual(
+        expect.objectContaining({
+          bot_id: bot.id,
+          chat_id: bot.chatId,
+          user_id: session.ownerId,
+          workspace_id: workspaceId,
+          payload: expect.objectContaining({
+            approval: expect.objectContaining({ id: approval.id, runId: null }),
+          }),
+        }),
+      );
+    } finally {
+      await unsubscribe();
+    }
   });
 
   it('needs a signed-in user', async () => {

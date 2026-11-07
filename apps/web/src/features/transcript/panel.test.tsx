@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { RightPanelProvider, useRightPanel } from '../../app/right-panel.js';
+import { CODING_SESSIONS_PANEL, RightPanelProvider, useRightPanel } from '../../app/right-panel.js';
 import { readPanel, useBotPanel, useFocusThread, writePanel, type BotPanel } from './panel.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -20,9 +20,11 @@ function LinkedView({ botId }: { botId: string }) {
   useFocusThread(show, CHAT, ROOT, 7);
   return null;
 }
+let openDrawer: () => void;
 function Slot() {
-  const { content } = useRightPanel();
-  return content ? <aside>{content}</aside> : null;
+  const { content, width, open } = useRightPanel();
+  openDrawer = () => open(<h2>Coding sessions</h2>, CODING_SESSIONS_PANEL, { width: 'wide' });
+  return content ? <aside data-width={width}>{content}</aside> : null;
 }
 
 let root: Root;
@@ -90,6 +92,28 @@ describe('the right panel per Bot', () => {
     render(null);
     expect(host.querySelector('aside')).toBeNull();
     expect(readPanel('a')).not.toBeNull();
+  });
+
+  it('leaves the coding sessions drawer open from Bot to Bot (CA15)', () => {
+    writePanel('a', { kind: 'activity', runId: 'run-1' });
+    writePanel('b', { kind: 'activity', runId: 'run-2' });
+    render('a');
+    expect(host.querySelector('aside h2')?.textContent).toBe('Activity');
+    act(() => openDrawer());
+    expect(host.querySelector('aside')?.getAttribute('data-width')).toBe('wide');
+
+    render('b');
+    expect(host.querySelector('aside h2')?.textContent).toBe('Coding sessions');
+    render(null);
+    expect(host.querySelector('aside h2')?.textContent).toBe('Coding sessions');
+    render('a');
+    expect(host.querySelector('aside h2')?.textContent).toBe('Coding sessions');
+    expect(readPanel('a')).toEqual({ kind: 'activity', runId: 'run-1' });
+
+    act(() => show({ kind: 'activity', runId: 'run-3' }));
+    expect(host.querySelector('aside')?.getAttribute('data-width')).toBe('default');
+    render('b');
+    expect(host.querySelector('aside h2')?.textContent).toBe('Activity');
   });
 
   it('remembers the computer preview', () => {

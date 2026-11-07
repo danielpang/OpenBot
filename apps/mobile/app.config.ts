@@ -5,7 +5,7 @@ const require = createRequire(import.meta.url);
 const { version: packageVersion } = require('./package.json') as { version: string };
 const releaseVersion = process.env.OPENBOTS_MOBILE_VERSION ?? packageVersion;
 const version = releaseVersion.split('-')[0]!;
-const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID ?? '5cd2b86b-c6f1-4be7-b068-7af28d521c1f';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,

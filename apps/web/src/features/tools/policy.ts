@@ -1,7 +1,11 @@
 import {
+  CoderActionClassSchema,
+  CoderModelNameSchema,
   DomainPatternSchema,
   resolveToolPolicy,
   ToolPolicySchema,
+  type CoderAgent,
+  type CoderPolicy,
   type PolicyDecision,
   type ToolGroupName,
   type ToolPolicy,
@@ -27,6 +31,7 @@ export const EDITED_GROUPS = [
   'builtin',
   'connector',
   'computer',
+  'coder',
 ] as const satisfies readonly ToolGroupName[];
 
 export const GROUP_LABELS: Record<ToolGroupName, string> = {
@@ -35,6 +40,7 @@ export const GROUP_LABELS: Record<ToolGroupName, string> = {
   builtin: 'Built-in tools',
   connector: 'Connector tools',
   computer: 'Computer tools',
+  coder: 'Coding agents',
 };
 
 export const GROUP_NOTES: Record<ToolGroupName, string> = {
@@ -44,6 +50,7 @@ export const GROUP_NOTES: Record<ToolGroupName, string> = {
   builtin: 'On for every Bot unless set to Never or blocked.',
   connector: "Tools from your connectors; each connector's own setting wins.",
   computer: "The shell, files, browser and screen of the Bot's computer.",
+  coder: 'Claude Code, Codex and pi, working in a repository on the computer.',
 };
 
 /** The tools of one group that sit in the group's own list, not under a connector. */
@@ -170,3 +177,57 @@ export const isDefaultPermission = (p: BotConnectorPermission) =>
 /** The `PUT /bots/{id}/connectors` items: only connectors that differ from the defaults. */
 export const permissionItems = (permissions: readonly BotConnectorPermission[]) =>
   permissions.filter((p) => !isDefaultPermission(p));
+
+/** The action classes a coding session asks about, in the order the tab shows them (CA9). */
+export const CODER_ACTION_CLASSES = CoderActionClassSchema.options;
+
+export const CODER_ACTION_LABELS: Record<(typeof CODER_ACTION_CLASSES)[number], string> = {
+  push: 'Push a branch',
+  pr: 'Open a pull request',
+  outside_worktree: 'Work outside its worktree',
+  install: 'Install packages',
+  destructive: 'Delete or rewrite history',
+  other: 'Anything else in its worktree',
+};
+
+/**
+ * Changes the Bot's `coder` settings: `undefined` clears a field, an empty
+ * `allowedRepos` means every repository (the field is dropped), and nothing
+ * left drops `coder` altogether, so an untouched Bot stores nothing.
+ */
+export function setCoderPolicy(policy: ToolPolicy, patch: Partial<CoderPolicy>): ToolPolicy {
+  const next: CoderPolicy = { ...policy.coder };
+  for (const [key, value] of Object.entries(patch) as [keyof CoderPolicy, unknown][]) {
+    if (value === undefined) delete next[key];
+    else (next as Record<string, unknown>)[key] = value;
+  }
+  if (next.actions && !Object.keys(next.actions).length) delete next.actions;
+  if (next.allowedRepos && !next.allowedRepos.length) delete next.allowedRepos;
+  const { coder: _old, ...rest } = policy;
+  return Object.keys(next).length ? { ...rest, coder: next } : rest;
+}
+
+/**
+ * Sets the model one agent runs with (`coder.models[agent]`); an empty
+ * field removes the key, so the agent uses its own default again.
+ */
+export function setCoderModel(policy: ToolPolicy, agent: CoderAgent, value: string): ToolPolicy {
+  const models = { ...policy.coder?.models };
+  if (value.trim()) models[agent] = value;
+  else delete models[agent];
+  return setCoderPolicy(policy, { models: Object.keys(models).length ? models : undefined });
+}
+
+/** Why a model name would be refused, or null when it is fine (or empty). */
+export function coderModelError(value: string | undefined): string | null {
+  if (!value?.trim()) return null;
+  const parsed = CoderModelNameSchema.safeParse(value);
+  return parsed.success ? null : (parsed.error.issues[0]?.message ?? 'Not a model name');
+}
+
+/** The agents whose model name would be refused. */
+export function invalidCoderModels(policy: ToolPolicy): CoderAgent[] {
+  return (Object.entries(policy.coder?.models ?? {}) as [CoderAgent, string][])
+    .filter(([, value]) => coderModelError(value))
+    .map(([agent]) => agent);
+}

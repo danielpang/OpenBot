@@ -483,6 +483,48 @@ describe('push worker', () => {
     await t.db.delete(schema.chats).where(eq(schema.chats.id, chat!.id));
   });
 
+  it("catches up on a coding session's approval on the owner's own turn, which has no run", async () => {
+    const [chat] = await t.db
+      .insert(schema.chats)
+      .values({ workspaceId, ownerId, type: 'bot_dm', botId })
+      .returning();
+    const [session] = await t.db
+      .insert(schema.codingSessions)
+      .values({
+        workspaceId,
+        ownerId,
+        botId,
+        chatId: chat!.id,
+        agent: 'claude',
+        mode: 'pr',
+        prompt: 'Push it and open a PR',
+        status: 'waiting',
+      })
+      .returning();
+    const [pending] = await t.db
+      .insert(schema.approvals)
+      .values({
+        workspaceId,
+        sessionId: session!.id,
+        toolName: 'open_pull_request',
+        args: { branch: 'bot/fix' },
+        actionClass: 'pr',
+        expiresAt: new Date(Date.now() + 60_000),
+      })
+      .returning();
+    expect(pending!.runId).toBeNull();
+
+    await worker.catchUp();
+    await worker.idle();
+    expect(sent.map((p) => p.collapseId)).toEqual([`approval:${pending!.id}`]);
+    expect(JSON.parse(decryptPush(pushKey, sent[0]!.ciphertext))).toMatchObject({
+      kind: 'approval',
+      title: 'Researcher needs your approval',
+      target: { botId, chatId: chat!.id },
+    });
+    await t.db.delete(schema.chats).where(eq(schema.chats.id, chat!.id));
+  });
+
   it('sends nothing for an owner suspended in the organization', async () => {
     await t.db
       .update(schema.workspaceMembers)

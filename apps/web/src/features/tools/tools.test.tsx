@@ -37,6 +37,7 @@ import {
   readPolicy,
   serializePolicy,
   setAllowlist,
+  setCoderPolicy,
   setComputerEnabled,
   setDecision,
   setToolEnabled,
@@ -84,6 +85,36 @@ const server = vi.hoisted(() => {
     if (path.endsWith('/connectors') && request.method === 'PUT')
       return Response.json({ items: [] });
     if (path === '/api/v1/connectors') return Response.json({ items: state.connectors });
+    if (path === '/api/v1/coders') {
+      return Response.json({
+        agents: (['claude', 'codex', 'pi'] as const).map((agent) => ({
+          agent,
+          label: agent,
+          available: agent === 'claude',
+          authKind: 'none',
+          accountLabel: null,
+          signedInAt: null,
+          version: null,
+          lastError: null,
+          providerId: null,
+        })),
+      });
+    }
+    if (path === '/api/v1/repos') {
+      return Response.json({
+        repos: ['danielpang/OpenBots', 'danielpang/site'].map((fullName, i) => ({
+          id: `r${i}`,
+          fullName,
+          remoteUrl: `https://github.com/${fullName}.git`,
+          defaultBranch: 'main',
+          keepCloned: true,
+          pinned: false,
+          description: null,
+          lastUsedAt: null,
+          checkout: null,
+        })),
+      });
+    }
     return Response.json({});
   };
   return state;
@@ -778,6 +809,127 @@ describe('Bot tools tab (T5)', () => {
     await flush();
     const row = select('web_fetch approval').closest('li')!;
     expect(row.textContent).toContain('Disabled by admin');
+  });
+
+  it('sets the default agent, allowed repositories and action decisions for coding agents (CA9)', async () => {
+    render(
+      <BotToolsForm
+        bot={bot({ coder: { allowedRepos: ['danielpang/gone'] } })}
+        entries={entries()}
+        tools={TOOLS}
+        computer
+      />,
+    );
+    await until(
+      () =>
+        host.querySelector('[data-coder-settings]')?.textContent?.includes('danielpang/site') ??
+        false,
+      'the repositories',
+    );
+    const settings = host.querySelector('[data-coder-settings]')!;
+    expect(settings.closest('[data-group="coder"]')).not.toBeNull();
+    expect(defaultOf('Push a branch approval')).toBe('Default: Ask first');
+    expect(defaultOf('Anything else in its worktree approval')).toBe('Default: Run without asking');
+    expect(settings.querySelector('[data-coder-actions-note]')?.textContent).toBe(
+      'Codex works inside its own sandbox and does not ask for approvals; these settings apply to Claude Code and pi. Pushes always need your approval.',
+    );
+    expect(host.querySelector('[data-group="coder"]')?.textContent).toContain(
+      'Claude Code, Codex and pi, working in a repository on the computer.',
+    );
+    const repo = (name: string) =>
+      [...settings.querySelectorAll('label')]
+        .find((l) => l.textContent === name)!
+        .querySelector('input')!;
+    // A stored repository that is no longer kept stays listed so it can be unticked.
+    expect(repo('danielpang/gone').checked).toBe(true);
+    act(() => repo('danielpang/gone').click());
+    act(() => repo('danielpang/site').click());
+    // Only the agents this build runs are offered.
+    await until(
+      () => [...select('Default coding agent').options].some((o) => o.value === 'claude'),
+      'the agents',
+    );
+    expect([...select('Default coding agent').options].map((o) => o.value)).toEqual(['', 'claude']);
+    setValue(select('Default coding agent'), 'claude');
+    setValue(select('Push a branch approval'), 'auto');
+    setValue(select('Open a pull request approval'), 'deny');
+    act(() => button('Save')!.closest('form')!.requestSubmit());
+    await flush();
+    const patch = server.requests.find((r) => r.method === 'PATCH');
+    expect(ToolPolicySchema.parse((patch!.body as { toolPolicy: unknown }).toolPolicy)).toEqual({
+      coder: {
+        allowedRepos: ['danielpang/site'],
+        defaultAgent: 'claude',
+        actions: { push: 'auto', pr: 'deny' },
+      },
+    });
+  });
+
+  it('sets a model per agent, empty removing it, and refuses a name that is not one', async () => {
+    render(
+      <BotToolsForm
+        bot={bot({ coder: { models: { pi: 'sonnet:high' } } })}
+        entries={entries()}
+        tools={TOOLS}
+        computer
+      />,
+    );
+    const model = (label: string) =>
+      host.querySelector<HTMLInputElement>(`input[aria-label="${label} model"]`)!;
+    await until(() => !!model('Claude Code'), 'the model fields');
+    // A stored model for an agent this build does not run stays listed so it can be cleared.
+    expect(model('pi').value).toBe('sonnet:high');
+    expect(model('Codex')).toBeNull();
+    expect(model('Claude Code').placeholder).toBe("the agent's default");
+    setValue(model('Claude Code'), '--dangerously-skip');
+    const row = host.querySelector('[data-coder-model="claude"]')!;
+    expect(row.querySelector('[role="alert"]')?.textContent).toBe(
+      'A model name like gpt-5.3-codex or anthropic/claude-sonnet-4-5',
+    );
+    act(() => button('Save')!.closest('form')!.requestSubmit());
+    await flush();
+    expect(server.requests.find((r) => r.method === 'PATCH')).toBeUndefined();
+    setValue(model('Claude Code'), 'claude-sonnet-4-5');
+    expect(row.querySelector('[role="alert"]')).toBeNull();
+    setValue(model('pi'), '');
+    act(() => button('Save')!.closest('form')!.requestSubmit());
+    await flush();
+    const patch = server.requests.find((r) => r.method === 'PATCH');
+    expect((patch!.body as { toolPolicy: unknown }).toolPolicy).toEqual({
+      coder: { models: { claude: 'claude-sonnet-4-5' } },
+    });
+  });
+
+  it('stores nothing for coding agents left on their defaults', async () => {
+    render(<BotToolsForm bot={bot()} entries={entries()} tools={TOOLS} computer />);
+    await until(() => !!host.querySelector('[data-coder-settings] li input'), 'the repositories');
+    setValue(select('Push a branch approval'), 'auto');
+    setValue(select('Push a branch approval'), '');
+    act(() => button('Save')!.closest('form')!.requestSubmit());
+    await flush();
+    const patch = server.requests.find((r) => r.method === 'PATCH');
+    expect((patch!.body as { toolPolicy: unknown }).toolPolicy).toEqual({});
+    expect(setCoderPolicy({ coder: { defaultAgent: 'pi' } }, { defaultAgent: undefined })).toEqual(
+      {},
+    );
+  });
+
+  it('has no coding agent settings without a computer, or with the group set to Never', async () => {
+    render(<BotToolsForm bot={bot()} entries={entries()} tools={TOOLS} computer={false} />);
+    await flush();
+    expect(host.querySelector('[data-coder-settings]')).toBeNull();
+    act(() => root.unmount());
+    root = createRoot(host);
+    render(
+      <BotToolsForm
+        bot={bot({ groups: { coder: 'deny' } })}
+        entries={entries()}
+        tools={TOOLS}
+        computer
+      />,
+    );
+    await flush();
+    expect(host.querySelector('[data-coder-settings]')).toBeNull();
   });
 
   it('reads Default from the connector, then the group, then the engine', () => {

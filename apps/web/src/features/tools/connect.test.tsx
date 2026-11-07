@@ -31,6 +31,14 @@ const server = vi.hoisted(() => {
     discovery: null as Record<string, unknown> | null,
     /** The start answer: a URL, or a problem code. */
     start: null as string | null,
+    device: null as {
+      userCode: string;
+      verificationUrl: string;
+      installationUrl: string;
+      expiresAt: string;
+      interval: number;
+    } | null,
+    devicePoll: { status: 'pending', interval: 1 } as Record<string, unknown>,
   };
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
@@ -43,8 +51,12 @@ const server = vi.hoisted(() => {
       if (state.start) {
         return Response.json({ title: 'Needs a client', code: state.start }, { status: 400 });
       }
-      return Response.json({ authorizationUrl: AUTH_URL });
+      return Response.json({
+        authorizationUrl: state.device?.verificationUrl ?? AUTH_URL,
+        ...(state.device ? { device: state.device } : {}),
+      });
     }
+    if (path.endsWith('/oauth/device')) return Response.json(state.devicePoll);
     if (path === '/api/v1/connectors/discover') return Response.json(state.discovery);
     if (path === '/api/v1/connectors/catalog') {
       return Response.json({ items: state.catalog, oauthCallbackUrl: CALLBACK });
@@ -152,6 +164,8 @@ beforeEach(() => {
   server.created = connector();
   server.discovery = null;
   server.start = null;
+  server.device = null;
+  server.devicePoll = { status: 'pending', interval: 1 };
   popup = {
     closed: false,
     location: { replace: vi.fn() },
@@ -208,6 +222,59 @@ function setValue(el: HTMLInputElement, value: string) {
 }
 
 describe('one-click Connect', () => {
+  it('shows a GitHub code, polls for approval and tests the connected connector', async () => {
+    const github = entry({
+      id: 'github',
+      name: 'GitHub',
+      oauth: {
+        scopes: [],
+        dynamicRegistration: false,
+        deviceFlow: true,
+        clientSetupUrl: null,
+      },
+    });
+    server.device = {
+      userCode: 'ABCD-EFGH',
+      verificationUrl: 'https://github.com/login/device',
+      installationUrl: 'https://github.com/apps/openbots-test/installations/new',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      interval: 1,
+    };
+    render(<CatalogCard entry={github} added={false} />);
+    act(() => button('Connect')!.click());
+    await until(() => !!host.textContent?.includes('ABCD-EFGH'), 'the device code');
+    expect(host.querySelector('form')).toBeNull();
+    expect(popup.location.replace).toHaveBeenCalledWith(
+      'https://github.com/apps/openbots-test/installations/new',
+    );
+    expect(host.textContent).toContain('Install the GitHub App');
+    expect(button('Connect')!.disabled).toBe(true);
+    await until(
+      () => server.requests.some((r) => r.path.endsWith('/oauth/device')),
+      'the device poll',
+    );
+    expect(host.textContent).toContain('Waiting for GitHub approval');
+    server.devicePoll = { status: 'connected' };
+    await until(tested, 'the connected tools');
+    expect(host.textContent).not.toContain('ABCD-EFGH');
+  });
+
+  it('stops device polling when cancelled', async () => {
+    server.device = {
+      userCode: 'ABCD-EFGH',
+      verificationUrl: 'https://github.com/login/device',
+      installationUrl: 'https://github.com/apps/openbots-test/installations/new',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      interval: 60,
+    };
+    render(<CatalogCard entry={entry()} added={false} />);
+    act(() => button('Connect')!.click());
+    await until(() => !!host.textContent?.includes('ABCD-EFGH'), 'the device code');
+    act(() => button('Cancel')!.click());
+    expect(host.textContent).not.toContain('ABCD-EFGH');
+    expect(server.requests.some((r) => r.path.endsWith('/oauth/device'))).toBe(false);
+  });
+
   it('adds the connector, starts OAuth and opens a popup in the click', async () => {
     render(<CatalogCard entry={entry()} added={false} />);
     act(() => button('Connect')!.click());

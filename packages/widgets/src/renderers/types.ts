@@ -29,6 +29,23 @@ export interface WidgetRendererProps<Props = unknown, State = unknown> {
    * on `url` first when given; absent where there is no computer view.
    */
   onTakeover?: (botId: string, url?: string) => void;
+  /**
+   * What a `coding_session` widget asks of the app beyond its own actions:
+   * deciding its approvals, opening a terminal on its worktree and reading
+   * its full log. Absent where there is no app to ask (a read only view).
+   */
+  coder?: CodingSessionHost;
+  /** Renders markdown the way the transcript does; plain text where absent. */
+  renderMarkdown?: (text: string) => ReactNode;
+}
+
+export interface CodingSessionHost {
+  /** Decides one of the session's approvals (`POST /approvals/{id}/decide`). */
+  decideApproval(approvalId: string, decision: 'approve' | 'deny'): Promise<void>;
+  /** Opens the computer's terminal on the session's worktree, its resume command ready. */
+  openTerminal(sessionId: string): Promise<void>;
+  /** The session's full log as text. */
+  loadLog(sessionId: string): Promise<string>;
 }
 
 export type WidgetRenderer<Props = unknown, State = unknown> = (

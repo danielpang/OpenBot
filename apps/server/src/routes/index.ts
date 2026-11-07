@@ -7,16 +7,21 @@ import { avatarRoutes } from './avatars.js';
 import { botRoutes } from './bots.js';
 import { capabilityRoutes } from './capabilities.js';
 import { chatRoutes } from './chats.js';
+import { coderRoutes } from './coders.js';
+import { codingSessionRoutes } from './coding-sessions.js';
 import { computerRoutes } from './computer.js';
 import { connectorRoutes } from './connectors.js';
 import { deviceRoutes } from './devices.js';
 import { fileRoutes } from './files.js';
+import { gitConnectionRoutes } from './git-connections.js';
+import { githubAppWebhookRoutes } from './github-app-webhook.js';
 import { healthRoutes } from './health.js';
 import { localRoutes } from './local.js';
 import { meRoutes } from './me.js';
 import { memoryRoutes } from './memories.js';
 import { messageRoutes } from './messages.js';
 import { providerRoutes } from './providers.js';
+import { repoRoutes } from './repos.js';
 import { resyncRoutes } from './resync.js';
 import { routineRoutes } from './routines.js';
 import { runRoutes } from './runs.js';
@@ -47,6 +52,10 @@ export function mountRoutes(app: OpenAPIHono<AppEnv>) {
   app.route('/api/v1', connectorRoutes);
   app.route('/api/v1', artifactRoutes);
   app.route('/api/v1', computerRoutes);
+  app.route('/api/v1', coderRoutes);
+  app.route('/api/v1', codingSessionRoutes);
+  app.route('/api/v1', repoRoutes);
+  app.route('/api/v1', gitConnectionRoutes);
   app.route('/api/v1', routineRoutes);
   app.route('/api/v1', skillRoutes);
   app.route('/api/v1', webhookRoutes);
@@ -54,4 +63,5 @@ export function mountRoutes(app: OpenAPIHono<AppEnv>) {
   app.route('/api/v1', localRoutes);
   app.route('/api/v1', deviceRoutes);
   app.route('/', hookIngressRoutes);
+  app.route('/', githubAppWebhookRoutes);
 }

@@ -11,6 +11,7 @@
 //
 // Metadata is key=value lines for $GITHUB_OUTPUT / $GITHUB_ENV: version,
 // tag, minor (X.Y, the floating image tag) and prerelease (true or false).
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -48,6 +49,29 @@ export function parseReleaseTag(tag) {
     throw new Error(`${tag} is not a release tag: use v<major>.<minor>.<patch>, such as v1.2.0`);
   }
   return parsed;
+}
+
+/**
+ * About's build-time fallback for local builds whose manifest is still 0.0.0.
+ * Release CI's stamped manifest wins, even in a shallow checkout without tags.
+ * Never call this from an installed app: Vite embeds the result at build time.
+ */
+export function desktopBuildVersion(repoDir = REPO_DIR) {
+  const manifest = JSON.parse(readFileSync(join(repoDir, 'apps/desktop/package.json'), 'utf8'));
+  if (!parseVersion(manifest.version)) throw new Error('Invalid desktop package version');
+  if (manifest.version !== '0.0.0') return manifest.version;
+  try {
+    const tag = execFileSync('git', ['describe', '--tags', '--match', 'v[0-9]*', '--abbrev=0'], {
+      cwd: repoDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2000,
+    }).trim();
+    return parseReleaseTag(tag).version;
+  } catch {
+    // Source archives, shallow clones without tags and machines without Git.
+    return manifest.version;
+  }
 }
 
 /**

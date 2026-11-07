@@ -7,11 +7,15 @@ import { mcpStdioSession } from '@openbots/computer-agent/mcp-stdio';
 import {
   BROWSER_ACTIONS,
   BrowserActionSchemas,
+  CoderClientMessageSchema,
   CookieSyncRequestSchema,
   ExecRequestSchema,
   InputActionSchema,
   StartScreenSchema,
   type BrowserActionName,
+  type CoderClientMessage,
+  type CoderServerMessage,
+  type CoderStart,
   type ExecRequest,
   type FsEntry,
   type InputAction,
@@ -19,16 +23,17 @@ import {
   type ScreenInfo,
 } from '@openbots/computer-agent/protocol';
 import type Docker from 'dockerode';
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, type WebSocket } from 'ws';
 import { GUARD_NAME, GUARD_PATH, type DockerApi } from './docker.js';
 
 // Test doubles: an in-process control agent speaking
 // `@openbots/computer-agent/protocol` (requests are validated with the agent's
 // own schemas, so a client that drifts from the agent fails here), with a
 // memory filesystem under the home, scripted exec, screens, a 1x1 PNG
-// screenshot, echoing pty and vnc sockets, and the agent's own `/mcp/stdio`
-// running real processes on this machine; and a dockerode stand-in that
-// records every call. Server and agent tests use these; no daemon needed.
+// screenshot, echoing pty and vnc sockets, the agent's own `/mcp/stdio`
+// running real processes on this machine, and a scripted `/coder` that runs
+// nothing (`FakeAgent.coderScript`); and a dockerode stand-in that records
+// every call. Server and agent tests use these; no daemon needed.
 
 /** A 1x1 transparent PNG. */
 export const TINY_PNG = Uint8Array.from(
@@ -43,6 +48,30 @@ export interface FakeAgentCall {
   path: string;
   body?: unknown;
 }
+
+/** One `WS /coder` connection to the fake agent, for a `coderScript` to play. */
+export interface FakeCoderSession {
+  /** The start frame, defaults filled in by the agent's schema. */
+  start: CoderStart;
+  /** Every frame after the start, in order. */
+  frames: CoderClientMessage[];
+  /** Sends a frame as the agent would. */
+  send(msg: CoderServerMessage): void;
+  /** The next client frame of `type` not yet taken, waiting for it if need be. */
+  next<T extends CoderClientMessage['type']>(
+    type: T,
+  ): Promise<Extract<CoderClientMessage, { type: T }>>;
+  /** Closes the socket as the agent does after `exit`. */
+  close(): void;
+  closed: boolean;
+}
+
+/**
+ * What `/coder` does with each session: frames to send in order (the socket
+ * closes after an `exit`), or a function that plays the agent's side.
+ */
+export type FakeCoderScript =
+  CoderServerMessage[] | ((session: FakeCoderSession) => void | Promise<void>);
 
 export interface FakeAgent {
   url: string;
@@ -69,7 +98,95 @@ export interface FakeAgent {
   mcpLaunch: (start: McpStdioStart) => McpStdioStart;
   /** A real temporary directory standing in for the home, for `/mcp/stdio` (`dirs`, `cwd`). */
   home: string;
+  /** Each `/coder` start, as the agent received it (secrets included: tests only). */
+  coderStarts: CoderStart[];
+  /** Every `/coder` frame after a start (stdin, answer, credential, signal, resize), all sessions. */
+  coderFrames: CoderClientMessage[];
+  coderSessions: FakeCoderSession[];
+  /**
+   * How `/coder` answers; by default `started` (pid 1, a session directory
+   * under /tmp/openbots/coders) and then `exit` with code 0. Nothing runs.
+   */
+  coderScript: FakeCoderScript;
   close(): Promise<void>;
+}
+
+const defaultCoderScript: FakeCoderScript = (session) => {
+  session.send({
+    type: 'started',
+    pid: 1,
+    session_dir: `/tmp/openbots/coders/${session.start.session_id}`,
+  });
+  session.send({ type: 'exit', code: 0, signal: null });
+  session.close();
+};
+
+function fakeCoderSession(ws: WebSocket, agent: FakeAgent): void {
+  let session: FakeCoderSession | undefined;
+  const taken = new Set<number>();
+  const waiters: (() => void)[] = [];
+  ws.on('message', (raw) => {
+    let frame: CoderClientMessage;
+    try {
+      frame = CoderClientMessageSchema.parse(JSON.parse(raw.toString()));
+    } catch {
+      ws.send(JSON.stringify({ type: 'error', message: 'Not a valid coder message' }));
+      return ws.close(1007);
+    }
+    if (!session) {
+      if (frame.type !== 'start') {
+        ws.send(JSON.stringify({ type: 'error', message: 'The first frame must be start' }));
+        return ws.close(1008);
+      }
+      const s: FakeCoderSession = {
+        start: frame,
+        frames: [],
+        closed: false,
+        send: (msg) => {
+          if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+        },
+        next: (type) =>
+          new Promise((resolve) => {
+            const look = () => {
+              const i = s.frames.findIndex((f, n) => f.type === type && !taken.has(n));
+              if (i < 0) return false;
+              taken.add(i);
+              resolve(s.frames[i] as never);
+              return true;
+            };
+            if (!look()) {
+              const waiter = () => {
+                if (look()) waiters.splice(waiters.indexOf(waiter), 1);
+              };
+              waiters.push(waiter);
+            }
+          }),
+        close: () => {
+          s.closed = true;
+          ws.close(1000);
+        },
+      };
+      session = s;
+      agent.coderStarts.push(frame);
+      agent.coderSessions.push(s);
+      const script = agent.coderScript;
+      void (async () => {
+        if (typeof script === 'function') return script(s);
+        for (const msg of script) s.send(msg);
+        if (script.some((msg) => msg.type === 'exit')) s.close();
+      })().catch((error: unknown) => {
+        s.send({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+        s.close();
+      });
+      return;
+    }
+    session.frames.push(frame);
+    agent.coderFrames.push(frame);
+    for (const waiter of [...waiters]) waiter();
+  });
+  ws.on('close', () => {
+    if (session) session.closed = true;
+  });
 }
 
 export async function startFakeAgent({ token = 'agent-token' } = {}): Promise<FakeAgent> {
@@ -87,6 +204,10 @@ export async function startFakeAgent({ token = 'agent-token' } = {}): Promise<Fa
     mcpStdio: [],
     mcpLaunch: (start) => start,
     home: mkdtempSync(join(tmpdir(), 'openbots-fake-home-')),
+    coderStarts: [],
+    coderFrames: [],
+    coderSessions: [],
+    coderScript: defaultCoderScript,
     close: async () => {},
   };
 
@@ -232,7 +353,10 @@ export async function startFakeAgent({ token = 'agent-token' } = {}): Promise<Fa
     const path = new URL(req.url ?? '/', 'http://agent').pathname;
     const vnc = /^\/vnc\/(\d+)$/.exec(path);
     const known =
-      path === '/pty' || path === '/mcp/stdio' || (vnc && agent.screens.has(Number(vnc[1])));
+      path === '/pty' ||
+      path === '/mcp/stdio' ||
+      path === '/coder' ||
+      (vnc && agent.screens.has(Number(vnc[1])));
     if (req.headers.authorization !== `Bearer ${agent.token}` || !known) {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       return;
@@ -248,6 +372,10 @@ export async function startFakeAgent({ token = 'agent-token' } = {}): Promise<Fa
           },
         }),
       );
+      return;
+    }
+    if (path === '/coder') {
+      wss.handleUpgrade(req, socket, head, (ws) => fakeCoderSession(ws, agent));
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
@@ -388,6 +516,11 @@ export function mockDocker(): MockDocker {
     getVolume: (name) => ({
       inspect: async () => {
         if (!docker.volumes.has(name)) throw notFound();
+        return {};
+      },
+      remove: async () => {
+        docker.calls.push({ op: 'removeVolume', args: [name] });
+        if (!docker.volumes.delete(name)) throw notFound();
         return {};
       },
     }),

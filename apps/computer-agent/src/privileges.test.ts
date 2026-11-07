@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { cookieStoreDir } from './cookies.js';
-import { dropToBot, ensureDir, layOut, takeToken } from './privileges.js';
+import { dropToBot, ensureDir, layOut, shareRepos, takeToken } from './privileges.js';
 import { screenPaths } from './screens.js';
 import { tempHome } from './test-utils.js';
 
@@ -68,7 +68,30 @@ describe('dropToBot', () => {
       setegid: (g) => void calls.push(`egid ${g}`),
       seteuid: (u) => void calls.push(`euid ${u}`),
     });
-    expect(calls).toEqual(['groups ', 'egid 1000', 'euid 1000']);
+    // The coders group stays, for the repositories and the sessions' directories (I2).
+    expect(calls).toEqual(['groups 1800', 'egid 1000', 'euid 1000']);
+  });
+});
+
+describe('shareRepos (I2)', () => {
+  it('makes the repositories directory, setgid in the group it is given', async () => {
+    const home = await tempHome();
+    const repos = path.join(home, 'repos');
+    const gid = process.getgid?.() ?? 0;
+    await shareRepos(repos, gid);
+    expect([await mode(repos), (await lstat(repos)).gid]).toEqual([0o2775, gid]);
+    // Again, over what is there.
+    await writeFile(path.join(repos, 'kept'), 'x');
+    await shareRepos(repos, gid);
+    expect(await readFile(path.join(repos, 'kept'), 'utf8')).toBe('x');
+  });
+
+  it("is just the agent user's without a group, and refuses a symlink", async () => {
+    const home = await tempHome();
+    await shareRepos(path.join(home, 'repos'));
+    expect(await mode(path.join(home, 'repos'))).toBe(0o775);
+    await symlink('/etc', path.join(home, 'link'));
+    await expect(shareRepos(path.join(home, 'link'))).rejects.toThrow(/not a directory/);
   });
 });
 
@@ -94,6 +117,19 @@ describe.skipIf(!root)('layOut (as root)', () => {
     // The shared cookie store: its own user's, closed to the bot user and the screens (K1).
     const store = cookieStoreDir(dirs.stateDir);
     expect([await mode(store), await owner(store)]).toEqual([0o700, [1900, 1900]]);
+    // The coding agents' (I2): config directories the coder user's alone, and
+    // a sessions directory the coders group may enter but nobody may list.
+    const coders = path.join(dirs.stateDir, 'coders');
+    expect([await mode(coders), await owner(coders)]).toEqual([0o711, [0, 0]]);
+    for (const agent of ['claude', 'codex', 'pi', 'home']) {
+      const dir = path.join(coders, agent);
+      expect([await mode(dir), await owner(dir)]).toEqual([0o700, [1800, 1800]]);
+    }
+    // The runner's home: its own, closed to the coder user.
+    const runnerHome = path.join(coders, 'runner-home');
+    expect([await mode(runnerHome), await owner(runnerHome)]).toEqual([0o700, [1801, 1800]]);
+    const sessions = path.join(dirs.runtimeDir, 'coders');
+    expect([await mode(sessions), await owner(sessions)]).toEqual([0o1730, [0, 1800]]);
     for (const n of [0, 7, 89]) {
       const paths = screenPaths(dirs.runtimeDir, dirs.stateDir, n);
       expect([await mode(paths.run), await owner(paths.run)]).toEqual([
@@ -186,8 +222,31 @@ describe.skipIf(!root || !cc)('openbots-runas (as root)', () => {
     expect(r).toMatchObject({ status: 0, stdout: '1900\n1900\n' });
   });
 
+  it("runs a coding agent as the coder user, and the owner's session command with the coders group (I2)", () => {
+    expect(asAgent(['1800', '1800', '--', '/bin/sh', '-c', 'id -u; id -G'])).toMatchObject({
+      status: 0,
+      stdout: '1800\n1800\n',
+    });
+    expect(asAgent(['1000', '1800', '--', '/bin/sh', '-c', 'id -u; id -G'])).toMatchObject({
+      status: 0,
+      stdout: '1000\n1800\n',
+    });
+  });
+
+  it("runs the server's git operations as the runner user with the coders group", () => {
+    expect(asAgent(['1801', '1800', '--', '/bin/sh', '-c', 'id -u; id -G'])).toMatchObject({
+      status: 0,
+      stdout: '1801\n1800\n',
+    });
+  });
+
   it.each([
     ['0', '0'],
+    ['1800', '1000'],
+    ['1800', '1900'],
+    ['1801', '1801'],
+    ['1801', '1000'],
+    ['1802', '1800'],
     ['1900', '1000'],
     ['1000', '1900'],
     ['1000', '0'],

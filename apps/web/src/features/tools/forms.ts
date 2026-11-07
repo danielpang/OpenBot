@@ -42,7 +42,7 @@ export function signInAction(connector: Connector): 'Connect' | 'Reconnect' | nu
 
 /** Whether a catalog entry needs the owner's own OAuth client (GitHub, Slack, Google). */
 export const needsOAuthClient = (entry: Pick<CatalogEntry, 'oauth'>) =>
-  !!entry.oauth && !entry.oauth.dynamicRegistration;
+  !!entry.oauth && !entry.oauth.dynamicRegistration && !entry.oauth.deviceFlow;
 
 /**
  * What Connect on a catalog card does: `oauth` signs in at once (the
@@ -52,7 +52,7 @@ export const needsOAuthClient = (entry: Pick<CatalogEntry, 'oauth'>) =>
  */
 export function connectKind(entry: CatalogEntry): 'oauth' | 'client' | 'plain' {
   if (!entry.oauth) return 'plain';
-  return entry.oauth.dynamicRegistration ? 'oauth' : 'client';
+  return entry.oauth.dynamicRegistration || entry.oauth.deviceFlow ? 'oauth' : 'client';
 }
 
 /** Whether a catalog entry has something to fill in before it can be added. */
@@ -242,8 +242,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function oauthClientBody(client: {
   clientId: string;
   clientSecret: string;
-}): { clientId: string; clientSecret?: string } | undefined {
+  githubAppSlug?: string;
+}): { clientId: string; clientSecret?: string; githubAppSlug?: string } | undefined {
   const clientId = client.clientId.trim();
   const clientSecret = client.clientSecret.trim();
-  return clientId ? { clientId, ...(clientSecret ? { clientSecret } : {}) } : undefined;
+  const githubAppSlug = client.githubAppSlug?.trim();
+  return clientId
+    ? {
+        clientId,
+        ...(clientSecret ? { clientSecret } : {}),
+        ...(githubAppSlug ? { githubAppSlug } : {}),
+      }
+    : undefined;
 }

@@ -16,7 +16,13 @@ import {
   type ComputerProvider,
   type ComputerRef,
 } from '@openbots/computer';
-import { COMPUTER_OFF, wsEvent, type ComputerStatus } from '@openbots/shared';
+import {
+  CODER_CONTROL_CHANNEL,
+  COMPUTER_OFF,
+  wsEvent,
+  type CoderControl,
+  type ComputerStatus,
+} from '@openbots/shared';
 import {
   and,
   asc,
@@ -40,6 +46,7 @@ import { assertBotOwner } from '../ownership.js';
 import { decryptSecretString, encryptSecret, keyringFromConfig } from '../secrets.js';
 import { recordAudit, SYSTEM_ACTOR, type AuditActor } from './audit.js';
 import { setState } from './bot-state.js';
+import { enqueueCoderJob } from './coder-jobs.js';
 import { MCP_CONTROL_CHANNEL, type McpControl } from './mcp-control.js';
 
 // The account's computer (plan 4.5, 9; K1 to K7). One `computers` row per
@@ -485,12 +492,26 @@ async function start(deps: AppDeps, owner: Owner, by: AuditActor): Promise<Start
     .where(eq(schema.botScreens.computerId, row.id));
   row = await setStatus(deps, row, 'running', { lastUsedAt: new Date(), spec: settledSpec(row) });
   await auditComputer(deps, row, by, 'computer.start', { durationMs: Date.now() - began });
+  queueRepoJobs(deps, row.id);
   // The hour's wallpaper (K5) on the computer's own clock (its TZ); the agent
   // keeps it current from here.
   agentFor(deps, row)
     .setWallpaper()
     .catch((error: unknown) => deps.logger.warn({ err: error }, 'wallpaper failed'));
   return { computer: row, durationMs: Date.now() - began, updated };
+}
+
+/**
+ * After a start (GH4, GH6): remembered repositories a new home volume lost
+ * are cloned again, then clones made by hand are listed. Queued, never
+ * waited on; a failure to queue does not fail the start.
+ */
+function queueRepoJobs(deps: AppDeps, computerId: string) {
+  enqueueCoderJob(deps, { kind: 'reconcile', computerId })
+    .then(() => enqueueCoderJob(deps, { kind: 'scan', computerId }))
+    .catch((error: unknown) =>
+      deps.logger.warn({ err: error, computerId }, 'queueing repository jobs failed'),
+    );
 }
 
 /** What `wakeComputer` did. */
@@ -649,6 +670,81 @@ export async function restartComputer(
   return startComputer(deps, owner, by);
 }
 
+/** Options of `destroyComputer`. */
+export interface DestroyComputerOptions {
+  /** Removes the state volume too: the cookie store and the coding agents' sign-ins. */
+  signIns: boolean;
+}
+
+/**
+ * The machine part of a reset (GH5; services/computer-reset.ts asks first):
+ * stops the computer if it is up (its stdio connectors and coding sessions
+ * end with it), then removes the container and its home volume through the
+ * provider, and the state volume only with `signIns`. The row stays,
+ * `stopped`, with no machine, so the next start makes a fresh one with the
+ * same volume name. Docker only: the remote machine is not the server's to
+ * remove (409 `RESET_UNSUPPORTED`). A stop that fails does not stop the reset,
+ * since removing the container stops it anyway.
+ */
+export async function destroyComputer(
+  deps: AppDeps,
+  row: ComputerRow,
+  options: DestroyComputerOptions,
+  by: AuditActor = { type: 'user', id: row.ownerId },
+): Promise<ComputerRow> {
+  const machines = provider(deps);
+  assertResettable(deps);
+  // `stopMachine` ends the coding sessions; with nothing to stop, they end here.
+  const stops = !!row.agentUrl && row.status !== 'stopped';
+  if (stops) {
+    row = await stopComputer(deps, row, by).catch(async (error: unknown) => {
+      deps.logger.warn({ err: error, computerId: row.id }, 'stop before reset failed');
+      const [now] = await deps.db
+        .select()
+        .from(schema.computers)
+        .where(eq(schema.computers.id, row.id));
+      return now ?? row;
+    });
+  } else {
+    await deps.infra.bus
+      .publish<CoderControl>(CODER_CONTROL_CHANNEL, { type: 'stop_all', computerId: row.id })
+      .catch((error: unknown) =>
+        deps.logger.warn({ err: error, computerId: row.id }, 'stopping coding sessions failed'),
+      );
+  }
+  if (row.agentUrl && row.agentToken && row.containerId) {
+    try {
+      await machines.destroy(refOf(deps, row), {
+        computerId: row.id,
+        home: true,
+        state: options.signIns,
+      });
+    } catch (error) {
+      const message = errorText(error);
+      deps.logger.error({ err: error, computerId: row.id }, 'computer reset failed');
+      await setStatus(deps, row, 'error', {}, message);
+      throw computerUnavailable(`The computer could not be reset: ${message}`);
+    }
+  }
+  return setStatus(deps, row, 'stopped', {
+    containerId: null,
+    agentUrl: null,
+    agentToken: null,
+    volumeName: row.volumeName ?? volumeName(row.id),
+  });
+}
+
+/** Refuses a reset where the server cannot remove the machine (the remote provider). */
+export function assertResettable(deps: AppDeps) {
+  if (provider(deps).name !== 'docker') {
+    throw new DomainError(
+      409,
+      'RESET_UNSUPPORTED',
+      'This computer runs elsewhere, so it cannot be reset from here',
+    );
+  }
+}
+
 /**
  * Stops the machine of a row already set `stopping`. On failure the row is
  * `error`, with `failed` merged in (the idle sweep's retry), and it throws.
@@ -668,6 +764,12 @@ async function stopMachine(
     })
     .catch((error: unknown) =>
       deps.logger.warn({ err: error, computerId: row.id }, 'stopping stdio connectors failed'),
+    );
+  // And its coding sessions, wherever their jobs run (I12).
+  await deps.infra.bus
+    .publish<CoderControl>(CODER_CONTROL_CHANNEL, { type: 'stop_all', computerId: row.id })
+    .catch((error: unknown) =>
+      deps.logger.warn({ err: error, computerId: row.id }, 'stopping coding sessions failed'),
     );
   try {
     await provider(deps).stop(refOf(deps, row));

@@ -16,11 +16,24 @@ export {
   type ArtifactCardState,
 } from './renderers/artifact.js';
 export { chartTable, ChartWidget, niceTicks } from './renderers/chart.js';
+export {
+  CoderLoginWidget,
+  CoderSignInSteps,
+  CopyButton,
+  type CoderSignInStepsProps,
+} from './renderers/coder_login.js';
+export {
+  CODER_ACTION_WORDS,
+  CodingSessionWidget,
+  sessionClock,
+  sessionDuration,
+} from './renderers/coding_session.js';
 export { addressList, EmailDraftWidget } from './renderers/email_draft.js';
 export { EventRow, EventWidget, type EventRowProps } from './renderers/event.js';
 export { FileCard, FileWidget, formatBytes } from './renderers/file.js';
 export { formValues, FormWidget } from './renderers/form.js';
 export { LoginRequestWidget } from './renderers/login_request.js';
+export { QrCode } from './renderers/qr-code.js';
 export { QuestionWidget } from './renderers/question.js';
 export { RoutineCreatedWidget } from './renderers/routine_created.js';
 export { browserTimezone, RoutineProposalWidget } from './renderers/routine_proposal.js';
@@ -31,6 +44,7 @@ export { csvHref, csvName, DataTable, sortRows, TableWidget, toCsv } from './ren
 export { Widget, WIDGET_RENDERERS, widgetRenderer } from './renderers/registry.js';
 export {
   defaultFileUrl,
+  type CodingSessionHost,
   type WidgetRenderer,
   type WidgetRendererProps,
 } from './renderers/types.js';

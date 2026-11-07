@@ -239,6 +239,15 @@ describe('docker guard: other operations', () => {
     );
   });
 
+  it('removes only computer volumes, never forced (a reset, GH5)', () => {
+    expect(check('DELETE', `/volumes/${spec.volumeName}?force=true`)).toEqual({
+      allow: true,
+      url: `/volumes/${spec.volumeName}`,
+    });
+    expect(check('DELETE', `/volumes/${stateVolumeName(spec.computerId)}`).allow).toBe(true);
+    expect(check('DELETE', '/volumes/openbots_pgdata').allow).toBe(false);
+  });
+
   it('puts only the agent token archive into a container, only into the state directory (S-7)', () => {
     const archive = tokenArchive('a'.repeat(43)).toString('utf8');
     const put = (url: string, body: string) =>

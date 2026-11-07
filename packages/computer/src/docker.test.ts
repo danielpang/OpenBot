@@ -350,6 +350,22 @@ describe('docker provider', () => {
     expect(await provider.status(ref)).toBe('missing');
   });
 
+  it('removes the home on a reset, and the state volume only when asked (GH5)', async () => {
+    const docker = mockDocker();
+    const provider = createDockerProvider({ docker, pollMs: 5 });
+    const state = stateVolumeName(spec.computerId);
+    const ref = await provider.create(spec);
+    await provider.destroy(ref, { computerId: spec.computerId, home: true });
+    expect(docker.volumes).toEqual(new Set([state]));
+    expect(await provider.status(ref)).toBe('missing');
+
+    const again = await provider.create(spec);
+    await provider.destroy(again, { computerId: spec.computerId, home: true, state: true });
+    expect(docker.volumes).toEqual(new Set());
+    // Already gone: nothing to remove, and no error.
+    await provider.destroy(again, { computerId: spec.computerId, home: true, state: true });
+  });
+
   it('pulls a moved tag again and tells a machine made from the older build (plan 16.3)', async () => {
     const docker = mockDocker();
     const provider = createDockerProvider({ docker, pollMs: 5 });

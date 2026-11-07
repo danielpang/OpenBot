@@ -23,9 +23,9 @@
         }
       ],
       "oauth": {
-        "scopes": ["repo", "read:org", "read:user"],
+        "scopes": [],
         "dynamic_registration": false,
-        "client_setup_url": "https://github.com/settings/applications/new"
+        "client_setup_url": "https://github.com/settings/apps/new"
       }
     },
     {

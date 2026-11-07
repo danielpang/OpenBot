@@ -1,6 +1,11 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { AgentError, computerPath } from '@openbots/computer';
-import { ComputerStatusSchema, ScreenStatusSchema } from '@openbots/shared';
+import {
+  CodingSessionStatusSchema,
+  ComputerStatusSchema,
+  RepoRescueResultSchema,
+  ScreenStatusSchema,
+} from '@openbots/shared';
 import type { Context, MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AppEnv } from '../context.js';
@@ -23,10 +28,11 @@ import {
   type ComputerRow,
   type ScreenRow,
 } from '../services/computer.js';
+import { prepareReset, resetComputer, resetStatus } from '../services/computer-reset.js';
 import { fileTooLarge, uploadLimit } from '../services/files.js';
 
 // The account's computer (plan 9, 14.1; K1, K3, K7): its status, start,
-// stop and restart, a background wake (the Mac app's launch; plan 9.5), the
+// stop and restart, a reset that rescues unpushed work first (GH5), a background wake (the Mac app's launch; plan 9.5), the
 // owner's idle settings (always on, idle timeout; plan 4.5, 9.5), the file
 // browser over /home/bot (list, download, upload; K7) and taking a Bot's
 // screen over or handing it back (K3). The terminal and the
@@ -79,6 +85,39 @@ const DirEntrySchema = z
 const DirListingSchema = z
   .object({ path: z.string(), entries: z.array(DirEntrySchema) })
   .openapi('ComputerDirListing');
+
+const ResetStatusSchema = z
+  .object({
+    status: z.enum(['running', 'done']),
+    results: z.array(RepoRescueResultSchema),
+    unsaved: z
+      .array(
+        z.object({
+          fullName: z.string(),
+          branch: z.string().nullable(),
+          note: z.string().openapi({ description: 'Why it was not saved, in plain words' }),
+        }),
+      )
+      .openapi({ description: 'Work the rescue could not push, which a reset loses' }),
+    error: z
+      .string()
+      .nullable()
+      .openapi({ description: 'Set when the rescue failed outright: what it saved is unknown' }),
+    runningSessions: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          botId: z.uuid(),
+          agent: z.string(),
+          repoFullName: z.string().nullable(),
+          branch: z.string().nullable(),
+          status: CodingSessionStatusSchema,
+        }),
+      )
+      .openapi({ description: 'Coding sessions a reset would stop; warn before confirming' }),
+    expiresAt: z.iso.datetime().openapi({ description: 'Confirm the reset before this' }),
+  })
+  .openapi('ComputerResetStatus');
 
 const iso = (date: Date | null) => (date ? new Date(date).toISOString() : null);
 
@@ -320,6 +359,95 @@ export const computerRoutes = createRouter()
       if (!row) throw notFound('The account has no computer yet');
       const { computer } = await restartComputer(c.var.deps, c.var.user, row);
       return c.json(await computerOut(c, computer), 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: 'post',
+      path: '/computer/reset/prepare',
+      tags: ['computer'],
+      summary: 'Rescue unpushed work before a reset',
+      description:
+        'The first step of a reset (GH5): queues the rescue job over every repository on the computer, which starts it if it is off and pushes unpushed commits and uncommitted changes to rescue branches. Poll GET /computer/reset/{requestId}, show what could not be saved and the coding sessions that would stop, then confirm with POST /computer/reset within fifteen minutes. Docker computers only (409 `RESET_UNSUPPORTED`).',
+      middleware: [requireUser] as const,
+      security: authenticated,
+      responses: {
+        202: {
+          description: 'Rescue queued',
+          content: { 'application/json': { schema: z.object({ requestId: z.uuid() }) } },
+        },
+        ...authProblems,
+        404: problemResponse('The account has no computer yet'),
+        409: problemResponse('The computer cannot be reset from here (`RESET_UNSUPPORTED`)'),
+        503: unavailable,
+      },
+    }),
+    async (c) => c.json(await prepareReset(c.var.deps, c.var.user), 202),
+  )
+  .openapi(
+    createRoute({
+      method: 'get',
+      path: '/computer/reset/{requestId}',
+      tags: ['computer'],
+      summary: "A prepared reset's rescue, what it could not save, and the sessions it would stop",
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: { params: z.object({ requestId: z.uuid() }) },
+      responses: {
+        200: {
+          description: 'The rescue results once `done`',
+          content: { 'application/json': { schema: ResetStatusSchema } },
+        },
+        ...authProblems,
+        404: problemResponse('No such reset, or it was prepared more than fifteen minutes ago'),
+      },
+    }),
+    async (c) =>
+      c.json(await resetStatus(c.var.deps, c.var.user, c.req.valid('param').requestId), 200),
+  )
+  .openapi(
+    createRoute({
+      method: 'post',
+      path: '/computer/reset',
+      tags: ['computer'],
+      summary: 'Reset the computer: a fresh home, after the rescue',
+      description:
+        "Confirms a reset prepared with POST /computer/reset/prepare whose rescue is `done`, within fifteen minutes of the prepare. Stops the computer and every coding session on it, removes the container and its home volume (/home/bot: files, clones, worktrees), marks every checkout `missing` and clears the sessions' worktrees. The state volume, with the browser cookie store and the coding agents' sign-ins, is kept unless `resetSignIns`. Audited as `computer.reset`. Nothing is made until the next start, which creates a fresh computer; its reconcile job then clones every repository marked `keep_cloned` again, and the rescue branches stay on the remote. A coding session started after the prepare, so not shown to the owner, refuses the reset (409 `CODING_SESSION_RUNNING`): prepare again.",
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: {
+        body: {
+          content: {
+            'application/json': {
+              schema: z
+                .strictObject({
+                  requestId: z.uuid().openapi({ description: 'From POST /computer/reset/prepare' }),
+                  confirm: z.literal(true),
+                  resetSignIns: z.boolean().optional().openapi({
+                    description:
+                      "Also remove the cookie store and the coding agents' sign-ins on the computer",
+                  }),
+                })
+                .openapi('ComputerReset'),
+            },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        202: computerResponse('Reset: stopped with no machine; the next start makes a fresh one'),
+        ...authProblems,
+        404: problemResponse('The account has no computer yet'),
+        409: problemResponse(
+          'Not prepared, the rescue still running or the prepare too old (`RESET_NOT_PREPARED`), a coding session the owner was not shown (`CODING_SESSION_RUNNING`), or a computer that cannot be reset from here (`RESET_UNSUPPORTED`)',
+        ),
+        503: unavailable,
+      },
+    }),
+    async (c) => {
+      const { requestId, resetSignIns } = c.req.valid('json');
+      const row = await resetComputer(c.var.deps, c.var.user, { requestId, resetSignIns });
+      return c.json(await computerOut(c, row), 202);
     },
   )
   .openapi(

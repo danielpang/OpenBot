@@ -25,7 +25,9 @@ import type { Users } from './users.js';
 import type { Wallpaper } from './wallpaper.js';
 
 // The control agent's HTTP endpoints (plan 9.3). The WebSocket endpoints
-// (`/pty`, `/vnc/:n`) are in ws.ts. Every request needs the token.
+// (`/pty`, `/vnc/:n`, `/mcp/stdio`, `/coder`) are in ws.ts. Every request
+// needs the token. git's credential helper does not come here: it asks its
+// session's own unix socket (coder.ts, I5).
 
 export interface AppDeps {
   token: string;

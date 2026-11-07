@@ -1,0 +1,1 @@
+ALTER TABLE "repo_checkouts" ADD COLUMN "disk_bytes" bigint;

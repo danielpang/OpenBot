@@ -78,6 +78,9 @@ export const startOAuth = (id: string, mode: OAuthMode) =>
     }),
   );
 
+export const pollDeviceOAuth = (id: string) =>
+  unwrap(api.POST('/api/v1/connectors/{id}/oauth/device', { params: { path: { id } } }));
+
 export type ConnectorDiscovery = components['schemas']['ConnectorDiscovery'];
 
 /** How a pasted URL signs in, before anything is added. */

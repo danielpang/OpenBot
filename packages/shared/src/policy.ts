@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { REPO_FULL_NAME } from './git.js';
 
 // Tool policy (plan 8, T5, P1): what a Bot may do without asking. Stored in
 // `bots.tool_policy` and edited in Bot Settings (`PATCH /bots/:id`
@@ -27,6 +28,7 @@ export const ToolGroupNameSchema = z.enum([
   'builtin',
   'connector',
   'computer',
+  'coder',
 ]);
 export type ToolGroupName = z.infer<typeof ToolGroupNameSchema>;
 
@@ -79,6 +81,68 @@ export const DomainPatternSchema = z
     message: 'A host like api.example.com, or *.example.com for its subdomains',
   });
 
+// Coding agents (CA9, I7). The agent and action class enums and the per-Bot
+// settings live here rather than in coders.ts because `ToolPolicySchema`
+// carries them and coders.ts reads this file's helpers: one import direction,
+// no cycle. coders.ts re-exports all three, so import them from either.
+
+/** The coding agents a Bot can run on its computer. */
+export const CoderAgentSchema = z.enum(['claude', 'codex', 'pi']);
+export type CoderAgent = z.infer<typeof CoderAgentSchema>;
+
+/**
+ * What a coding agent asks to do, as the approvals bridge classes it (I13):
+ * push a branch, open a PR, touch files outside its worktree, install
+ * packages, delete or rewrite history, or anything else.
+ */
+export const CoderActionClassSchema = z.enum([
+  'push',
+  'pr',
+  'outside_worktree',
+  'install',
+  'destructive',
+  'other',
+]);
+export type CoderActionClass = z.infer<typeof CoderActionClassSchema>;
+
+/** A repository by its full name on its host: `owner/name`. */
+const RepoFullNameSchema = z
+  .string()
+  .trim()
+  .regex(REPO_FULL_NAME, { message: 'A repository like owner/name' })
+  .max(200);
+
+/**
+ * A model as its vendor's CLI names it (`--model`): `gpt-5.3-codex` for
+ * Codex, `claude-sonnet-4-5` for Claude Code, `anthropic/claude-sonnet-4-5`
+ * or `sonnet:high` for pi. It goes into the agent's argv, so it starts with
+ * a letter or digit (never read as a flag) and holds no spaces or globs.
+ */
+export const CoderModelNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$/, {
+    message: 'A model name like gpt-5.3-codex or anthropic/claude-sonnet-4-5',
+  });
+
+/**
+ * A Bot's coding agent settings, inside `tool_policy` (`coder`). `enabled`
+ * absent means on; `actions` overrides `DEFAULT_CODER_ACTIONS` class by
+ * class; `allowedRepos` absent allows every repository the owner keeps,
+ * an empty list allows none; `models` picks a model per agent, absent for
+ * an agent means the CLI's own default.
+ */
+export const CoderPolicySchema = z.strictObject({
+  enabled: z.boolean().optional(),
+  defaultAgent: CoderAgentSchema.optional(),
+  actions: z.partialRecord(CoderActionClassSchema, PolicyDecisionSchema).optional(),
+  allowedRepos: z.array(RepoFullNameSchema).max(200).optional(),
+  models: z.partialRecord(CoderAgentSchema, CoderModelNameSchema).optional(),
+});
+export type CoderPolicy = z.infer<typeof CoderPolicySchema>;
+
 const ToolDecisionsSchema = z.record(z.string().min(1).max(200), PolicyDecisionSchema);
 const GroupDecisionsSchema = z.partialRecord(ToolGroupNameSchema, PolicyDecisionSchema);
 
@@ -109,6 +173,8 @@ export const ToolPolicySchema = z.strictObject({
    * reach one.
    */
   httpAllowlist: z.array(DomainPatternSchema).max(200).optional(),
+  /** The Bot's coding agent settings (CA9); see `CoderPolicySchema`. */
+  coder: CoderPolicySchema.optional(),
 });
 export type ToolPolicy = z.infer<typeof ToolPolicySchema>;
 
@@ -130,20 +196,49 @@ export const DEFAULT_TOOL_POLICY = {
   },
 } as const satisfies ToolPolicy;
 
-export type ResolvedToolPolicy = Required<Omit<ToolPolicy, 'httpAllowlist'>> & {
+export type ResolvedToolPolicy = Required<Omit<ToolPolicy, 'httpAllowlist' | 'coder'>> & {
   /** Null allows every public host. */
   httpAllowlist: string[] | null;
+  /** As stored; `{}` when absent. `coderActionDecision` fills in the defaults. */
+  coder: CoderPolicy;
 };
 
-/** A stored policy with the defaults filled in; anything unreadable counts as empty. */
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * A stored `coder` section, key by key: a key that does not parse (a model
+ * name that reads as a flag, say) is dropped and the rest are kept, so one
+ * bad entry does not reset the Bot's other coding settings. Unknown keys
+ * are ignored.
+ */
+function readCoderPolicy(stored: unknown): CoderPolicy {
+  if (!isRecord(stored)) return {};
+  const coder: Record<string, unknown> = {};
+  for (const [key, schema] of Object.entries(CoderPolicySchema.shape)) {
+    if (!Object.hasOwn(stored, key)) continue;
+    const parsed = schema.safeParse(stored[key]);
+    if (parsed.success && parsed.data !== undefined) coder[key] = parsed.data;
+  }
+  return coder as CoderPolicy;
+}
+
+/**
+ * A stored policy with the defaults filled in. The `coder` section is read
+ * on its own (`readCoderPolicy`); anything else unreadable makes the whole
+ * policy count as empty.
+ */
 export function resolveToolPolicy(stored: unknown): ResolvedToolPolicy {
-  const parsed = ToolPolicySchema.safeParse(stored ?? {});
+  const raw = stored ?? {};
+  const { coder: storedCoder, ...rest } = isRecord(raw) ? raw : { coder: undefined };
+  const parsed = ToolPolicySchema.safeParse(isRecord(raw) ? rest : raw);
   const policy = parsed.success ? parsed.data : {};
   return {
     tools: { ...DEFAULT_TOOL_POLICY.tools, ...policy.tools },
     groups: { ...DEFAULT_TOOL_POLICY.groups, ...policy.groups },
     triggers: mergeTriggers(DEFAULT_TOOL_POLICY.triggers, policy.triggers ?? {}),
     httpAllowlist: policy.httpAllowlist ?? null,
+    coder: parsed.success ? readCoderPolicy(storedCoder) : {},
   };
 }
 

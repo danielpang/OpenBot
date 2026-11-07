@@ -59,6 +59,19 @@ export interface ComputerRef {
   volumeName: string | null;
 }
 
+/**
+ * What a reset removes besides the machine (GH5). The home volume
+ * (`ref.volumeName`) goes with `home`; the computer's state volume, which
+ * holds the cookie store and the coding agents' sign-ins, only with `state`
+ * too. A provider with no volumes of its own ignores both.
+ */
+export interface DestroyOptions {
+  /** The computer whose volumes go. */
+  computerId: string;
+  home: boolean;
+  state?: boolean;
+}
+
 /** What the provider sees; the server's own status adds `creating`, `starting`, `stopping`, `error`. */
 export type MachineStatus = 'running' | 'stopped' | 'missing';
 
@@ -68,8 +81,11 @@ export interface ComputerProvider {
   /** Starts the machine and resolves once its control agent answers. */
   start(ref: ComputerRef): Promise<void>;
   stop(ref: ComputerRef): Promise<void>;
-  /** Removes the machine; the home volume is kept (K7). */
-  destroy(ref: ComputerRef): Promise<void>;
+  /**
+   * Removes the machine; the home volume is kept (K7) unless `options` says
+   * otherwise (a reset, GH5).
+   */
+  destroy(ref: ComputerRef, options?: DestroyOptions): Promise<void>;
   status(ref: ComputerRef): Promise<MachineStatus>;
   agent(ref: ComputerRef): ComputerAgentClient;
   /** Fetches the sandbox image ahead of the first `create` (the setup wizard); Docker only. */
@@ -86,7 +102,38 @@ export interface ComputerProvider {
   runsImage?(ref: ComputerRef, image: string): Promise<boolean>;
 }
 
-/** The persistent home every Bot of the account shares (plan 9.1). */
-export const COMPUTER_HOME = '/home/bot';
-/** The agent's state volume: the token file and the screens' Chromium profiles, root's (S-7). */
-export const STATE_DIR = '/var/lib/openbots';
+// The computer's paths and the coding agents' users, paths and environment
+// variable names (I2, I3, I5, I11) are defined in @openbots/shared
+// (coder-runtime.ts), which the control agent imports too. The `coder` user
+// runs every coding agent and every login; its config directories live on
+// the root-only state volume, so the Bot's shell, running as `bot`, cannot
+// read the owner's vendor sign-ins (the same arrangement as the cookie
+// store, plan 9.6).
+export {
+  CODER_APPROVAL_TTL_ENV,
+  CODER_CONFIG_DIRS,
+  CODER_CONFIG_ENV,
+  CODER_CREDENTIAL_SOCKET_ENV,
+  CODER_HOME,
+  CODER_HOME_NAME,
+  CODER_ID,
+  CODER_MODE_ENV,
+  CODER_PERMISSION_MCP,
+  CODER_PI_EXTENSION,
+  CODER_SESSION_DIR_ENV,
+  CODER_SESSION_ENV,
+  CODER_SOCKET_ENV,
+  CODER_STATE_DIR,
+  CODER_STATE_NAME,
+  CODERS_GID,
+  COMPUTER_HOME,
+  COMPUTER_STATE_DIR as STATE_DIR,
+  coderApprovalTtlMs,
+  DEFAULT_CODER_APPROVAL_TTL_MS,
+  GIT_CREDENTIAL_HELPER,
+  REPOS_DIR,
+  REPOS_REL,
+  RUNNER_HOME,
+  RUNNER_HOME_NAME,
+  RUNNER_ID,
+} from '@openbots/shared';

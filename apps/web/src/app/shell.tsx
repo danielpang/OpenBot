@@ -1,3 +1,4 @@
+import { cn } from '@openbots/ui';
 import { Outlet } from '@tanstack/react-router';
 import { WebNotifications } from '../features/notifications/web-notifications.js';
 import { RealtimeProvider } from '../features/transcript/realtime.js';
@@ -33,7 +34,17 @@ export function Shell() {
 }
 
 function RightPanelSlot() {
-  const { content } = useRightPanel();
+  const { content, width } = useRightPanel();
   if (!content) return null;
-  return <aside className="relative w-96 shrink-0 overflow-auto border-l">{content}</aside>;
+  return (
+    <aside
+      data-width={width}
+      className={cn(
+        'relative shrink-0 overflow-auto border-l',
+        width === 'wide' ? 'w-[34rem]' : 'w-96',
+      )}
+    >
+      {content}
+    </aside>
+  );
 }

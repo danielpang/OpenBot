@@ -263,6 +263,38 @@ describe('notices', () => {
     });
   });
 
+  it('notifies when the computer could not clone repositories again, under the main Bot', () => {
+    const watcher = createNoticeWatcher(() => context);
+    const posted = (kind: string, data: Record<string, unknown>) =>
+      wsEvent(
+        'message.created',
+        {
+          message: message({
+            id: `m-${kind}`,
+            authorType: 'system',
+            authorId: null,
+            parts: [{ type: 'event', kind, text: 'Could not clone 1 repository', data }],
+          }),
+        },
+        { chat_id: DM, seq: 5 },
+      );
+    expect(watcher.onEvent(posted('repos_cloned', { botId: BOT }))).toBeNull();
+    expect(
+      watcher.onEvent(
+        posted('repos_clone_failed', {
+          botId: BOT,
+          failed: [{ fullName: 'acme/relay', error: 'Not found' }],
+        }),
+      ),
+    ).toEqual({
+      kind: 'repos_clone_failed',
+      tag: 'repos_clone_failed:m-repos_clone_failed',
+      title: 'Repositories could not be cloned',
+      body: 'The computer could not clone acme/relay again. Open to see why.',
+      target: at(DM, 5),
+    });
+  });
+
   it('ignores the owner’s own messages and other events', () => {
     const watcher = createNoticeWatcher(() => context);
     const own = message({
