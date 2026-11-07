@@ -4,6 +4,7 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { capabilitiesQuery } from '../../app/api.js';
+import * as platform from '../../app/platform.js';
 import { GithubCard } from '../tools/github-card.js';
 import type { GitConnectionView, GithubAppStatus, RemoteRepo } from './api.js';
 import { diskTotal, formatDisk, isStuck, Repositories, STUCK_MS } from './repositories.js';
@@ -101,10 +102,14 @@ let found: { path: string; remoteUrl: string; fullName: string | null }[];
 let rescuePolls: number;
 let actAsAnswer: 'ok' | 'needs-sign-in';
 let syncReauthorize: boolean;
+let deviceNext: 'authorization' | 'installation' | 'connected' | 'error';
 
 beforeEach(() => {
   server.requests.length = 0;
   app = {
+    deviceFlowAvailable: false,
+    deviceAppSlug: null,
+    deviceInstallationUrl: null,
     configured: true,
     source: 'config',
     slug: 'openbots',
@@ -114,6 +119,7 @@ beforeEach(() => {
   };
   actAsAnswer = 'ok';
   syncReauthorize = false;
+  deviceNext = 'authorization';
   connections = [connection()];
   remotes = [
     remote('danielpang/OpenBots', { remembered: true, private: true }),
@@ -133,6 +139,43 @@ beforeEach(() => {
     const { pathname, searchParams } = new URL(request.url);
     const method = request.method;
     const json = async () => (await request.clone().json()) as Record<string, unknown>;
+    if (pathname === '/api/v1/git-connections/github-app/device') {
+      const body = await json();
+      const slug = String(body.appSlug ?? 'openbots-github');
+      connections = [
+        connection({
+          kind: 'device',
+          appSlug: slug,
+          installationId: null,
+          accountLogin: 'alice',
+          actAs: 'owner',
+          status: 'pending',
+        }),
+      ];
+      return Response.json({
+        connectionId: CONN,
+        device: {
+          userCode: 'ABCD-EFGH',
+          verificationUrl: 'https://github.com/login/device',
+          installationUrl: `https://github.com/apps/${slug}/installations/new`,
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          interval: 1,
+        },
+      });
+    }
+    if (pathname === `/api/v1/git-connections/${CONN}/device`) {
+      if (deviceNext === 'error') {
+        connections = connections.map((connection) => ({ ...connection, status: 'error' }));
+        return Response.json({
+          status: 'error',
+          message: 'GitHub authorization was cancelled. Connect again for a new code.',
+        });
+      }
+      if (deviceNext !== 'connected')
+        return Response.json({ status: 'pending', stage: deviceNext, interval: 1 });
+      connections = connections.map((connection) => ({ ...connection, status: 'connected' }));
+      return Response.json({ status: 'connected', connection: connections[0] });
+    }
     if (pathname === '/api/v1/git-connections/github-app') return Response.json(app);
     if (pathname === '/api/v1/git-connections/github-app/manifest') {
       return Response.json({
@@ -304,6 +347,9 @@ describe('the GitHub card (GH1, GH8)', () => {
   });
 
   const noApp = (over: Partial<GithubAppStatus> = {}): GithubAppStatus => ({
+    deviceFlowAvailable: false,
+    deviceAppSlug: null,
+    deviceInstallationUrl: null,
     configured: false,
     source: null,
     slug: null,
@@ -397,7 +443,7 @@ describe('the GitHub card (GH1, GH8)', () => {
     expect(row(CONN).querySelector('[data-status]')!.textContent).toBe('Connected');
     expect(row(CONN).textContent).toContain('2 repositories');
     expect(row('c3').querySelector('[data-status]')!.textContent).toBe('Needs reinstall');
-    expect(button('Pick repositories', row('c3'))).toBeUndefined();
+    expect(button('Choose repositories', row('c3'))).toBeUndefined();
 
     setValue(row(CONN).querySelector('select')!, 'owner');
     await until(() => sent('PATCH', `/api/v1/git-connections/${CONN}`).length === 1, 'the patch');
@@ -475,11 +521,258 @@ describe('the GitHub card (GH1, GH8)', () => {
   });
 });
 
+describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () => {
+  beforeEach(() => {
+    app = {
+      ...app,
+      configured: false,
+      source: null,
+      slug: null,
+      publicUrlOk: false,
+      manifestAvailable: false,
+      installUrlAvailable: false,
+      deviceFlowAvailable: true,
+      deviceAppSlug: 'openbots-github',
+      deviceInstallationUrl: 'https://github.com/apps/openbots-github/installations/new',
+    };
+    connections = [];
+    vi.spyOn(window, 'open').mockReturnValue(null);
+  });
+
+  it('connects the shared App on localhost without a public-HTTPS warning or an MCP connector', async () => {
+    render(<GithubCard admin />);
+    await until(() => !!button('Connect GitHub'), 'device connect');
+    expect(host.textContent).not.toContain('OPENBOTS_PUBLIC_URL');
+    expect(host.querySelector('[data-no-app]')).toBeNull();
+    click(button('Connect GitHub'));
+    await until(() => host.textContent!.includes('ABCD-EFGH'), 'public device code');
+    expect(
+      host.querySelector('a[href="https://github.com/apps/openbots-github/installations/new"]'),
+    ).not.toBeNull();
+    expect(host.querySelector('a[href="https://github.com/login/device"]')).not.toBeNull();
+    expect(sent('POST', '/api/v1/git-connections/github-app/device')).toEqual([{}]);
+    expect(server.requests.some((r) => r.path.includes('/connectors'))).toBe(false);
+    expect(host.textContent).not.toContain('device_code');
+    click(button('Cancel authorization'));
+    await until(() => !host.textContent!.includes('ABCD-EFGH'), 'cancelled code');
+  });
+
+  it('shows a saved pending connection inline with one status and one Finish action', async () => {
+    connections = [
+      connection({
+        kind: 'device',
+        accountLogin: 'GitHub',
+        status: 'pending',
+        installationId: null,
+        repoCount: 0,
+      }),
+    ];
+    render(<GithubCard admin />);
+    await until(() => !!button('Finish connecting'), 'resume pending authorization');
+    expect(host.querySelectorAll('[data-github-card]')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-status]')).toHaveLength(1);
+    expect(host.querySelector('[data-status]')!.textContent).toBe('Awaiting authorization');
+    expect(
+      host.querySelector('[aria-label="GitHub connections"]')!.classList.contains('border'),
+    ).toBe(false);
+    expect(host.querySelector('[data-connection]')!.textContent).not.toContain('GitHub App');
+    expect(button('Connect GitHub')).toBeUndefined();
+    expect(button('Sync')).toBeUndefined();
+    expect(button('Choose repositories')).toBeUndefined();
+    click(button('Finish connecting'));
+    await until(() => host.textContent!.includes('ABCD-EFGH'), 'resumed code');
+    expect(sent('POST', '/api/v1/git-connections/github-app/device')).toEqual([
+      { connectionId: CONN },
+    ]);
+    expect(host.querySelector('[data-status]')!.textContent).toBe('Authorizing');
+    expect(button('Finish connecting')).toBeUndefined();
+    expect(button('Connect GitHub')).toBeUndefined();
+    expect(button('Cancel authorization')).toBeDefined();
+  });
+
+  it('shows connected account controls in the same card and returns to Connect on disconnect', async () => {
+    connections = [
+      connection({ kind: 'device', accountLogin: 'alice', installationId: null, actAs: 'owner' }),
+    ];
+    render(<GithubCard admin />);
+    await until(() => !!button('Choose repositories'), 'connected controls');
+    expect(host.querySelectorAll('[data-github-card]')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-status="connected"]')).toHaveLength(1);
+    expect(host.querySelector('[data-connection]')!.textContent).toContain('alice');
+    expect(host.querySelector('[data-connection]')!.textContent).toContain('2 repositories');
+    expect(
+      host.querySelector('[aria-label="GitHub connections"]')!.classList.contains('border'),
+    ).toBe(false);
+    expect(button('Connect GitHub')).toBeUndefined();
+    expect(button('Reconnect GitHub')).toBeUndefined();
+    expect(host.textContent).not.toContain('No public URL needed.');
+    click(button('Disconnect'));
+    click(button('Disconnect'));
+    await until(() => !!button('Connect GitHub'), 'connect after disconnect');
+    expect(host.querySelector('[data-connection]')).toBeNull();
+    expect(host.querySelectorAll('[data-github-card]')).toHaveLength(1);
+  });
+
+  it('coalesces repeated coding-repository Connect clicks before the busy render', async () => {
+    render(<GithubCard admin />);
+    await until(() => !!button('Connect GitHub'), 'device connect');
+    act(() => {
+      const connect = button('Connect GitHub')!;
+      connect.click();
+      connect.click();
+      connect.click();
+    });
+    await until(() => host.textContent!.includes('ABCD-EFGH'), 'one device flow');
+    expect(sent('POST', '/api/v1/git-connections/github-app/device')).toEqual([{}]);
+  });
+
+  it('opens the actual repository picker after authorization and remembers selected repositories', async () => {
+    deviceNext = 'connected';
+    render(<GithubCard admin />);
+    await until(() => !!button('Connect GitHub'), 'device connect');
+    click(button('Connect GitHub'));
+    await until(
+      () => !!document.querySelector('[data-remote="danielpang/site"]'),
+      'the coding repository picker',
+    );
+    expect(host.textContent).toContain('GitHub is connected');
+    expect(host.querySelector('[data-connection]')!.textContent).toContain('alice');
+    expect(host.querySelectorAll('[data-status="connected"]')).toHaveLength(1);
+    expect(button('Connect GitHub')).toBeUndefined();
+    expect(host.querySelector('[data-connection] select')).toBeNull();
+    click(document.querySelector('[data-remote="danielpang/site"] input'));
+    click(button('Select 1'));
+    await until(
+      () => sent('POST', '/api/v1/repos/remember').length === 1,
+      'remember picked repository',
+    );
+    expect(sent('POST', '/api/v1/repos/remember')).toEqual([
+      { fullNames: ['danielpang/site'], connectionId: CONN },
+    ]);
+  });
+
+  it('waits for installation approval separately from user authorization', async () => {
+    deviceNext = 'installation';
+    render(<GithubCard admin />);
+    await until(() => !!button('Connect GitHub'), 'device connect');
+    click(button('Connect GitHub'));
+    await until(
+      () => host.textContent!.includes('wait for organization approval'),
+      'installation pending',
+    );
+    expect(document.querySelector('[data-remote]')).toBeNull();
+    deviceNext = 'connected';
+    await until(
+      () => !!document.querySelector('[data-remote]'),
+      'picker after installation approval',
+    );
+  });
+
+  it('handles denial without an MCP success or opening the picker', async () => {
+    deviceNext = 'error';
+    render(<GithubCard admin />);
+    await until(() => !!button('Connect GitHub'), 'device connect');
+    click(button('Connect GitHub'));
+    await until(
+      () => host.textContent!.includes('GitHub authorization was cancelled'),
+      'authorization error',
+    );
+    expect(document.querySelector('[data-remote]')).toBeNull();
+    await until(() => !!button('Reconnect GitHub'), 'retry on the same connection');
+    expect(button('Reconnect GitHub')!.disabled).toBe(false);
+    expect(button('Connect GitHub')).toBeUndefined();
+  });
+
+  it('accepts only public custom identifiers and does not ask for a secret', async () => {
+    render(<GithubCard admin />);
+    await until(
+      () => !!host.querySelector('form[aria-label="Custom GitHub App"]'),
+      'custom app form',
+    );
+    const form = host.querySelector<HTMLFormElement>('form[aria-label="Custom GitHub App"]')!;
+    const inputs = form.querySelectorAll<HTMLInputElement>('input');
+    expect(inputs).toHaveLength(2);
+    setValue(inputs[0]!, 'Iv.custom');
+    setValue(inputs[1]!, 'my-company-app');
+    act(() => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    await until(() => host.textContent!.includes('ABCD-EFGH'), 'custom app code');
+    expect(sent('POST', '/api/v1/git-connections/github-app/device')).toEqual([
+      { clientId: 'Iv.custom', appSlug: 'my-company-app' },
+    ]);
+    expect(
+      host.querySelector('a[href="https://github.com/apps/my-company-app/installations/new"]'),
+    ).not.toBeNull();
+  });
+
+  it('reconnects through the device flow, not the server-managed App redirect', async () => {
+    connections = [
+      connection({
+        kind: 'device',
+        appSlug: 'my-company-app',
+        accountLogin: 'alice',
+        installationId: null,
+        actAs: 'owner',
+        status: 'revoked',
+      }),
+    ];
+    render(<GithubCard admin />);
+    await until(() => !!button('Reconnect GitHub'), 'reconnect');
+    expect(
+      host.querySelector('a[href="https://github.com/apps/my-company-app/installations/new"]'),
+    ).not.toBeNull();
+    click(button('Reconnect GitHub'));
+    await until(
+      () => sent('POST', '/api/v1/git-connections/github-app/device').length === 1,
+      'reauthorize',
+    );
+    expect(sent('POST', '/api/v1/git-connections/github-app/device')).toEqual([
+      { connectionId: CONN },
+    ]);
+    expect(server.requests.some((r) => r.path.includes('/reauthorize'))).toBe(false);
+  });
+
+  it('uses the Mac default browser and brings the app back on connection', async () => {
+    const open = vi.fn(async (_url: string) => {});
+    const finished = vi.fn(async () => {});
+    vi.spyOn(platform, 'desktopOAuth').mockReturnValue({ open, finished });
+    deviceNext = 'connected';
+    render(<GithubCard admin />);
+    await until(() => !!button('Connect GitHub'), 'device connect');
+    click(button('Connect GitHub'));
+    await until(() => open.mock.calls.length === 1, 'default browser');
+    expect(open).toHaveBeenCalledWith('https://github.com/apps/openbots-github/installations/new');
+    expect(window.open).not.toHaveBeenCalled();
+    click(host.querySelector('a[href="https://github.com/login/device"]'));
+    await until(() => open.mock.calls.length === 2, 'device verification browser');
+    expect(open).toHaveBeenLastCalledWith('https://github.com/login/device');
+    await until(() => finished.mock.calls.length === 1, 'return to app');
+    await until(() => !!document.querySelector('[data-remote]'), 'picker');
+  });
+});
+
 describe('the repository picker (GH2)', () => {
+  it('uses Choose repositories and the current selection count, including Select 6', async () => {
+    remotes = Array.from({ length: 6 }, (_, index) => remote(`danielpang/project-${index + 1}`));
+    render(<GithubCard admin />);
+    await until(() => !!button('Choose repositories'), 'choose action');
+    click(button('Choose repositories'));
+    await until(() => document.querySelectorAll('[data-remote]').length === 6, 'six repositories');
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(dialog.querySelector('h2')!.textContent).toBe('Choose repositories');
+    expect(button('Select repositories', dialog)!.disabled).toBe(true);
+    const boxes = [...dialog.querySelectorAll<HTMLInputElement>('[data-remote] input')];
+    click(boxes[0]);
+    expect(button('Select 1', dialog)).toBeDefined();
+    for (const box of boxes.slice(1)) click(box);
+    expect(button('Select 6', dialog)!.disabled).toBe(false);
+    click(boxes[0]);
+    expect(button('Select 5', dialog)).toBeDefined();
+    expect(dialog.textContent).not.toContain('Keep 6 on the computer');
+  });
   it('lists repositories, keeps the remembered ones checked, and remembers the picked', async () => {
     render(<GithubCard admin />);
-    await until(() => !!button('Pick repositories'), 'the row');
-    click(button('Pick repositories'));
+    await until(() => !!button('Choose repositories'), 'the row');
+    click(button('Choose repositories'));
     const item = (name: string) => document.querySelector<HTMLElement>(`[data-remote="${name}"]`)!;
     const box = (name: string) => item(name).querySelector<HTMLInputElement>('input')!;
     await until(() => !!item('danielpang/notes'), 'the list');
@@ -488,11 +781,11 @@ describe('the repository picker (GH2)', () => {
     expect(item('danielpang/OpenBots').textContent).toContain('Private');
     expect(item('danielpang/site').textContent).toContain('main · pushed 4 min ago');
 
-    const keep = () => button('Keep on the computer') ?? button('Keep 2 on the computer');
+    const keep = () => button('Select repositories') ?? button('Select 2');
     expect(keep()!.disabled).toBe(true);
     click(box('danielpang/site'));
     click(box('danielpang/notes'));
-    expect(button('Keep 2 on the computer')).toBeDefined();
+    expect(button('Select 2')).toBeDefined();
 
     const search = document.querySelector<HTMLInputElement>(
       'input[aria-label="Search repositories"]',
@@ -501,7 +794,7 @@ describe('the repository picker (GH2)', () => {
     await until(() => !item('danielpang/notes'), 'the search');
     expect(server.requests.some((r) => r.path.endsWith('/repositories?q=site'))).toBe(true);
 
-    click(button('Keep 2 on the computer'));
+    click(button('Select 2'));
     await until(() => !document.querySelector('[data-remote]'), 'the dialog to close');
     expect(sent('POST', '/api/v1/repos/remember')).toEqual([
       { fullNames: ['danielpang/site', 'danielpang/notes'], connectionId: CONN },

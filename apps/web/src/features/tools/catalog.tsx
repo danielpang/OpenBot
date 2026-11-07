@@ -1,6 +1,6 @@
 import { Button, Input } from '@openbots/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { blockedText, useManaged } from '../../app/deployment.js';
 import {
   catalogQuery,
@@ -9,12 +9,14 @@ import {
   updateConnector,
   type CatalogEntry,
   type CreateConnector,
+  type Connector,
   type UpdateConnector,
 } from './api.js';
 import { ErrorText, Labelled, SecretInputs } from './fields.js';
 import {
   ALWAYS_ON,
   connectKind,
+  isLegacyGitHubTool,
   needsForm,
   oauthClientBody,
   paramValues,
@@ -28,7 +30,7 @@ import { needsClient, useOAuthConnect, waitingText, type ConnectState } from './
 // entry whose provider registers OpenBots itself (dynamic registration) adds
 // it and opens the provider's sign-in at once. An entry with required
 // settings or keys asks for them first, then signs in. GitHub, Slack and
-// Google need the owner's own OAuth app for now, entered under Advanced; a
+// Google can use custom OAuth clients under Advanced; GitHub uses our shared App. A
 // token works instead where the entry takes one. Blocked entries say
 // "Disabled by admin", or "Blocked by policy" on a self-hosted install (T3).
 
@@ -43,9 +45,11 @@ export function Catalog() {
       </h2>
       <ErrorText error={catalog.error} />
       <ul className="grid gap-3 sm:grid-cols-2">
-        {catalog.data?.items.map((entry) => (
-          <CatalogCard key={entry.id} entry={entry} added={added.has(entry.id)} />
-        ))}
+        {catalog.data?.items
+          .filter((entry) => !isLegacyGitHubTool(entry.id))
+          .map((entry) => (
+            <CatalogCard key={entry.id} entry={entry} added={added.has(entry.id)} />
+          ))}
       </ul>
     </section>
   );
@@ -67,20 +71,28 @@ export function CatalogCard({ entry, added }: { entry: CatalogEntry; added: bool
       await onAdded([connector]);
     },
   });
+  const prepared = useRef<Connector | null>(null);
   const kind = connectKind(entry);
   const label = entry.kind === 'mcp_http' ? 'Connect' : 'Add';
   // The owner's sign-in connector from this entry, if they have one: Connect reuses it.
   const existing = connectors.data?.items.find((c) => c.catalogId === entry.id && c.oauth);
   const connected = existing && signInAction(existing) === null;
-  const busy = create.isPending || state.phase === 'working' || state.phase === 'device';
+  const busy = create.isPending || state.phase !== 'idle';
   const askClient = clientMissing || (state.phase === 'idle' && needsClient(state.error));
 
   function signIn(body: CreateConnector, client?: OAuthClient) {
     connect(async () => {
-      if (!existing) return createConnector(body);
-      if (!client) return existing;
+      // A failed start or Cancel must retain the row we already created,
+      // even if the query refetch has not completed yet.
+      const target = existing ?? prepared.current;
+      if (!target) {
+        const added = await createConnector(body);
+        prepared.current = added;
+        return added;
+      }
+      if (!client) return target;
       // The generated type for this nullable object is unusable (`& Record<string, never>`).
-      return updateConnector(existing.id, {
+      return updateConnector(target.id, {
         oauthClient: client as UpdateConnector['oauthClient'],
       });
     });
@@ -126,7 +138,7 @@ export function CatalogCard({ entry, added }: { entry: CatalogEntry; added: bool
     action = <span className="text-xs text-muted-foreground">{blockedText(managed)}</span>;
   } else if (ALWAYS_ON.has(entry.id)) {
     action = <span className="text-xs text-muted-foreground">Always on</span>;
-  } else if (connected) {
+  } else if (connected || (added && kind === 'plain')) {
     action = <span className="text-xs text-emerald-600">Connected</span>;
   } else if (!form && !askClient) {
     action = (

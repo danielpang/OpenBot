@@ -461,7 +461,11 @@ export async function rememberRepos(
   const bad = names.find((n) => normalizeFullName(n) === null);
   if (bad) throw new DomainError(400, 'VALIDATION_FAILED', `${bad} does not look like owner/name`);
   const [connection] = await deps.db
-    .select({ id: schema.gitConnections.id, accountLogin: schema.gitConnections.accountLogin })
+    .select({
+      id: schema.gitConnections.id,
+      kind: schema.gitConnections.kind,
+      accountLogin: schema.gitConnections.accountLogin,
+    })
     .from(schema.gitConnections)
     .where(
       and(
@@ -474,7 +478,10 @@ export async function rememberRepos(
   const noAccess = (name: string) =>
     new DomainError(403, 'CONNECTION_NO_ACCESS', `The connection does not reach ${name}`);
   for (const name of names) {
-    if (name.split('/')[0]!.toLowerCase() !== connection.accountLogin.toLowerCase()) {
+    if (
+      connection.kind !== 'device' &&
+      name.split('/')[0]!.toLowerCase() !== connection.accountLogin.toLowerCase()
+    ) {
       throw noAccess(name);
     }
     if (!(await connectionAllows(deps, connection.id, name, owner.id))?.read) throw noAccess(name);

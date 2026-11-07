@@ -14,7 +14,12 @@ import { protectFilesDir } from './files-dir.js';
 import { createInfra } from './infra/index.js';
 import { createLogger } from './logger.js';
 import { rotateMasterKey } from './rotation.js';
-import { closeMcpManager, sealPlaintextConnectorValues } from './services/connectors.js';
+import { recheckConnectorsOnBoot } from './services/connector-startup.js';
+import {
+  closeMcpManager,
+  repairEmptyGitHubAuth,
+  sealPlaintextConnectorValues,
+} from './services/connectors.js';
 import { openInstanceKey } from './services/instance-key.js';
 import { startRelayAdapter } from './relay/adapter.js';
 import { createRelayLink } from './relay/link.js';
@@ -73,6 +78,7 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
   // Upkeep of each organization's rows, in its scope.
   await inEveryOrganization({ db }, async () => {
     await sealPlaintextConnectorValues({ db, config, logger });
+    await repairEmptyGitHubAuth({ db, config });
     await sealPlaintextProviderHeaders({ db, config });
     await backfillProviderKeyHints({ db, config });
     return 0;
@@ -140,6 +146,14 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
     const workers = await startWorkers(deps);
     stops.push(workers.stop);
     if (config.previousMasterKeys.length) void rotateInBackground();
+    const checks = new AbortController();
+    const rechecking = inEveryOrganization(deps, () => recheckConnectorsOnBoot(deps, checks.signal))
+      .then((checked) => logger.info({ checked }, 'connector startup checks finished'))
+      .catch(() => logger.warn('connector startup checks did not complete'));
+    stops.push(async () => {
+      checks.abort();
+      await rechecking;
+    });
   }
 
   /** Re-seals secrets under the new master key while the server runs (plan 4.9); `rotate-key` does the same. */

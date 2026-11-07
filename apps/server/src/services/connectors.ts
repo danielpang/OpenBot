@@ -10,6 +10,7 @@ import {
   HttpHost,
   McpManager,
   OAuthSetupError,
+  RestartSkipped,
   StdioHost,
   TransportConfigSchema,
   blockedBy,
@@ -48,8 +49,8 @@ import {
   type ToolCallResult,
   type TransportConfig,
 } from '@openbots/mcp';
-import { wsEvent, type Unsubscribe } from '@openbots/shared';
-import { and, asc, count, eq, inArray, isNull, notInArray } from 'drizzle-orm';
+import { resolveToolPolicy, wsEvent, type Unsubscribe } from '@openbots/shared';
+import { and, asc, count, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import { isPublicAddress, netFetch, type NetOptions } from '../builtins/net.js';
 import { publishEvent } from '../infra/index.js';
 import type { StdioRunner } from '../config.js';
@@ -292,7 +293,13 @@ function configFromCatalog(entry: CatalogEntry, input: ConnectorInput): Transpor
     const hasBearer = Boolean(
       entry.http.bearer_secret && input.secrets?.[entry.http.bearer_secret],
     );
-    const auth = input.auth ?? (hasBearer ? 'bearer' : entry.http.auth[0]!);
+    const auth =
+      input.auth ??
+      (hasBearer
+        ? 'bearer'
+        : entry.oauth && entry.http.auth.includes('oauth')
+          ? 'oauth'
+          : entry.http.auth[0]!);
     if (!entry.http.auth.includes(auth)) {
       throw invalid(
         'INVALID_AUTH',
@@ -898,8 +905,45 @@ export async function createConnector(
   }
   const slug = input.slug ?? (await freeSlug(deps.db, viewer, slugify(entry?.id ?? name)));
   let row: ConnectorRow;
+  let reused = false;
   try {
     row = await deps.db.transaction(async (tx) => {
+      // Bare catalog Connect requests are one owned sign-in, not an instruction
+      // to add a new named account. Serialize across tabs/processes; preserve
+      // explicitly named/configured connectors as independent connections.
+      if (
+        entry &&
+        !input.name &&
+        !input.slug &&
+        !input.auth &&
+        !input.oauthClient &&
+        !Object.keys(input.params ?? {}).length &&
+        !Object.keys(input.secrets ?? {}).length
+      ) {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`connector-signin:${viewer.workspaceId}:${viewer.id}:${entry.id}`}, 0))`,
+        );
+        const candidates = await tx
+          .select()
+          .from(schema.connectors)
+          .where(
+            and(
+              eq(schema.connectors.workspaceId, viewer.workspaceId),
+              eq(schema.connectors.ownerId, viewer.id),
+              eq(schema.connectors.catalogId, entry.id),
+              eq(schema.connectors.name, entry.name),
+              sql`(${schema.connectors.config} - 'discovered') = ${JSON.stringify(writeConfig({ transport, params }))}::jsonb`,
+            ),
+          )
+          .orderBy(asc(schema.connectors.createdAt));
+        const existing = candidates.find(
+          (candidate) => !openSecrets(deps, candidate).oauth?.client,
+        );
+        if (existing) {
+          reused = true;
+          return existing;
+        }
+      }
       const [inserted] = await tx
         .insert(schema.connectors)
         .values({
@@ -921,7 +965,7 @@ export async function createConnector(
     if (isUniqueViolation(err)) throw slugTaken();
     throw err;
   }
-  return toRecord(deps, row, rules, 0, false);
+  return reused ? getConnector(deps, viewer, row.id) : toRecord(deps, row, rules, 0, false);
 }
 
 export async function updateConnector(
@@ -1647,6 +1691,7 @@ async function recordSnapshot(
       lastCheckedAt: new Date(),
     })
     .where(eq(schema.connectors.id, id));
+  await publishConnectorUpdated(deps, row, {});
 }
 
 export function errorStatus(error: Error): ConnectorStatus {
@@ -1666,6 +1711,7 @@ export async function recordError(deps: ConnectorsDeps, id: string, error: Error
     .update(schema.connectors)
     .set({ status: errorStatus(error), lastError: message, lastCheckedAt: new Date() })
     .where(eq(schema.connectors.id, id));
+  await publishConnectorUpdated(deps, row, {});
 }
 
 function describeError(deps: Pick<AppDeps, 'config'>, row: ConnectorRow, error: Error): string {
@@ -1681,12 +1727,265 @@ function describeError(deps: Pick<AppDeps, 'config'>, row: ConnectorRow, error: 
   return scrub(base, secrets);
 }
 
+/** Repair the old default-bearer bug without touching working PATs.
+ * Redundant credential-free rows are consolidated with their Bot bindings.
+ * Authorization still needs consent.
+ */
+export async function repairEmptyGitHubAuth(deps: Pick<AppDeps, 'db' | 'config'>): Promise<number> {
+  const rows = await deps.db
+    .select()
+    .from(schema.connectors)
+    .where(eq(schema.connectors.catalogId, 'github'));
+  let repaired = 0;
+  for (const row of rows) {
+    let stored: StoredConfig;
+    try {
+      stored = readConfig(row);
+    } catch {
+      continue;
+    }
+    const transport = stored.transport;
+    if (transport.transport !== 'http' || transport.auth !== 'bearer') continue;
+    let secrets: SealedSecrets;
+    // A stale key/corrupt credential must not turn optional repair into a
+    // server startup failure. Never replace a credential we cannot read.
+    try {
+      secrets = openSecrets(deps, row);
+    } catch {
+      continue;
+    }
+    if (
+      secrets.values[transport.bearerSecret ?? 'GITHUB_PERSONAL_ACCESS_TOKEN'] ||
+      Object.keys(transport.headers ?? {}).some((key) => key.toLowerCase() === 'authorization') ||
+      Object.keys(transport.secretHeaders ?? {}).some(
+        (key) => key.toLowerCase() === 'authorization',
+      )
+    )
+      continue;
+    const saved = await deps.db
+      .update(schema.connectors)
+      .set({
+        config: writeConfig({ ...stored, transport: { ...transport, auth: 'oauth' } }),
+        status: 'untested',
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.connectors.id, row.id),
+          row.secrets
+            ? eq(schema.connectors.secrets, row.secrets)
+            : isNull(schema.connectors.secrets),
+          sql`${schema.connectors.config} = ${JSON.stringify(row.config)}::jsonb`,
+        ),
+      )
+      .returning({ id: schema.connectors.id });
+    repaired += saved.length;
+  }
+  await consolidateEmptyGitHubConnectors(deps);
+  return repaired;
+}
+
+/** Old repeated Connect clicks left empty GitHub rows. Remove only redundant
+ * default rows with NO credential, custom client or authorization in progress.
+ * Working accounts/PATs remain independent. Never widen a Bot's permissions
+ * when both rows were already bound to it.
+ */
+async function consolidateEmptyGitHubConnectors(deps: Pick<AppDeps, 'db' | 'config'>) {
+  const owners = await deps.db
+    .selectDistinct({
+      id: schema.connectors.ownerId,
+      workspaceId: schema.connectors.workspaceId,
+    })
+    .from(schema.connectors)
+    .where(eq(schema.connectors.catalogId, 'github'));
+  for (const owner of owners) {
+    await deps.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`connector-signin:${owner.workspaceId}:${owner.id}:github`}, 0))`,
+      );
+      const rows = await tx
+        .select()
+        .from(schema.connectors)
+        .where(
+          and(
+            eq(schema.connectors.workspaceId, owner.workspaceId),
+            eq(schema.connectors.ownerId, owner.id),
+            eq(schema.connectors.catalogId, 'github'),
+            eq(schema.connectors.name, catalogEntry('github')!.name),
+          ),
+        )
+        .orderBy(asc(schema.connectors.createdAt), asc(schema.connectors.id))
+        .for('update');
+      const groups = new Map<string, { row: ConnectorRow; empty: boolean }[]>();
+      for (const row of rows) {
+        try {
+          if (!isGitHubConnector(row)) continue;
+          const secrets = openSecrets(deps, row);
+          if (secrets.oauth?.client) continue;
+          const key = JSON.stringify([writeConfig(readConfig(row)), row.trusted, row.local]);
+          const group = groups.get(key) ?? [];
+          group.push({
+            row,
+            empty:
+              !Object.values(secrets.values).some(Boolean) &&
+              !Object.keys(secrets.oauth ?? {}).length,
+          });
+          groups.set(key, group);
+        } catch {
+          /* Preserve unreadable rows and credentials. */
+        }
+      }
+      for (const group of groups.values()) {
+        const canonical = group.find((entry) => !entry.empty) ?? group[0]!;
+        for (const duplicate of group) {
+          if (!duplicate.empty || duplicate === canonical) continue;
+          // A slug-specific Bot/webhook policy cannot be safely renamed by a
+          // credential repair. Keep deliberately configured compatibility rows.
+          const prefix = `${duplicate.row.slug}__`;
+          const [botPolicy] = await tx
+            .select({ id: schema.bots.id })
+            .from(schema.bots)
+            .where(
+              and(
+                eq(schema.bots.ownerId, owner.id),
+                eq(schema.bots.workspaceId, owner.workspaceId),
+                sql`strpos(${schema.bots.toolPolicy}::text, ${prefix}) > 0`,
+              ),
+            )
+            .limit(1);
+          const [webhookPolicy] = await tx
+            .select({ id: schema.webhookEndpoints.id })
+            .from(schema.webhookEndpoints)
+            .innerJoin(schema.bots, eq(schema.bots.id, schema.webhookEndpoints.botId))
+            .where(
+              and(
+                eq(schema.bots.ownerId, owner.id),
+                eq(schema.bots.workspaceId, owner.workspaceId),
+                sql`strpos(${schema.webhookEndpoints.toolPolicyOverride}::text, ${prefix}) > 0`,
+              ),
+            )
+            .limit(1);
+          if (botPolicy || webhookPolicy) continue;
+          const bindings = await tx
+            .select()
+            .from(schema.botConnectors)
+            .where(eq(schema.botConnectors.connectorId, duplicate.row.id));
+          for (const binding of bindings) {
+            const [existing] = await tx
+              .select()
+              .from(schema.botConnectors)
+              .where(
+                and(
+                  eq(schema.botConnectors.botId, binding.botId),
+                  eq(schema.botConnectors.connectorId, canonical.row.id),
+                ),
+              );
+            if (!existing) {
+              await tx
+                .update(schema.botConnectors)
+                .set({ connectorId: canonical.row.id })
+                .where(eq(schema.botConnectors.id, binding.id));
+              continue;
+            }
+            const allowlist =
+              existing.toolAllowlist === null
+                ? binding.toolAllowlist
+                : binding.toolAllowlist === null
+                  ? existing.toolAllowlist
+                  : existing.toolAllowlist.filter((tool) => binding.toolAllowlist!.includes(tool));
+            const overrides = [existing.approvalOverride, binding.approvalOverride];
+            const [bot] = await tx
+              .select({ toolPolicy: schema.bots.toolPolicy })
+              .from(schema.bots)
+              .where(eq(schema.bots.id, binding.botId));
+            const inheritsDenial =
+              overrides.includes(null) &&
+              resolveToolPolicy(bot?.toolPolicy).groups.connector === 'deny';
+            await tx
+              .update(schema.botConnectors)
+              .set({
+                toolAllowlist: allowlist,
+                toolDenylist: [...new Set([...existing.toolDenylist, ...binding.toolDenylist])],
+                approvalOverride:
+                  inheritsDenial || overrides.includes('deny')
+                    ? 'deny'
+                    : overrides.includes('ask')
+                      ? 'ask'
+                      : overrides.includes(null)
+                        ? null
+                        : 'auto',
+              })
+              .where(eq(schema.botConnectors.id, existing.id));
+            await tx.delete(schema.botConnectors).where(eq(schema.botConnectors.id, binding.id));
+          }
+          await tx.delete(schema.connectors).where(eq(schema.connectors.id, duplicate.row.id));
+          await audit(tx, owner, 'connector.deduplicate', canonical.row.id, {
+            removedId: duplicate.row.id,
+          });
+        }
+      }
+    });
+  }
+}
+
+/** One eligibility policy for server boot and frontend-session recovery. */
+async function automaticCheckAllowed(deps: ConnectorsDeps, record: ConnectorRecord) {
+  if (
+    record.row.kind === 'builtin' ||
+    record.disabledByAdmin ||
+    (record.oauth && !record.oauth.connected) ||
+    record.secrets.some((secret) => secret.required && !secret.set)
+  )
+    return false;
+  const config = record.config;
+  if (
+    config.transport === 'http' &&
+    config.auth === 'bearer' &&
+    config.bearerSecret &&
+    !record.secrets.some((secret) => secret.name === config.bearerSecret && secret.set)
+  )
+    return false;
+  const [member] = await deps.db
+    .select({ id: schema.workspaceMembers.userId })
+    .from(schema.workspaceMembers)
+    .where(
+      and(
+        eq(schema.workspaceMembers.userId, record.row.ownerId),
+        eq(schema.workspaceMembers.workspaceId, record.row.workspaceId),
+        isNull(schema.workspaceMembers.suspendedAt),
+      ),
+    )
+    .limit(1);
+  if (!member) return false;
+  if (record.row.kind === 'mcp_stdio' && deps.config.stdioRunner === 'computer') {
+    const [computer] = await deps.db
+      .select({ status: schema.computers.status })
+      .from(schema.computers)
+      .where(
+        and(
+          eq(schema.computers.ownerId, record.row.ownerId),
+          eq(schema.computers.workspaceId, record.row.workspaceId),
+        ),
+      )
+      .limit(1);
+    if (computer?.status !== 'running') return false;
+  }
+  return true;
+}
+
 /** Connects, lists tools and stores the outcome in `status`, `last_error` and `connector_tools`. */
 export async function testConnector(
   deps: ConnectorsDeps,
   viewer: Viewer,
   id: string,
-): Promise<{ record: ConnectorRecord; tools: ConnectorToolRow[] }> {
+  options?: { automatic?: boolean },
+): Promise<{ record: ConnectorRecord; tools: ConnectorToolRow[]; checked: boolean }> {
+  if (options?.automatic) {
+    const record = await getConnector(deps, viewer, id);
+    if (!(await automaticCheckAllowed(deps, record)))
+      return { record, tools: await listConnectorTools(deps.db, viewer, id), checked: false };
+  }
   const row = await connectorRow(deps.db, viewer, id);
   if (row.kind === 'builtin') {
     throw invalid(
@@ -1701,8 +2000,14 @@ export async function testConnector(
     if (refusal) throw refusal;
   }
   try {
-    await mcpManager(deps).test(id);
+    await mcpManager(deps).test(id, options);
   } catch (err) {
+    if (options?.automatic && err instanceof RestartSkipped)
+      return {
+        record: await getConnector(deps, viewer, id),
+        tools: await listConnectorTools(deps.db, viewer, id),
+        checked: false,
+      };
     // Start failures were stored by `onError`; failures while resolving (no login, unreadable
     // secrets) never reached it. Storing twice is harmless.
     if (err instanceof DomainError) throw err;
@@ -1711,6 +2016,7 @@ export async function testConnector(
   return {
     record: await getConnector(deps, viewer, id),
     tools: await listConnectorTools(deps.db, viewer, id),
+    checked: true,
   };
 }
 
@@ -2420,7 +2726,8 @@ async function audit(
     | 'connector.update'
     | 'connector.delete'
     | 'connector.trust'
-    | 'connector.local',
+    | 'connector.local'
+    | 'connector.deduplicate',
   connectorId: string,
   metadata: Record<string, unknown>,
 ) {

@@ -144,9 +144,11 @@ export class McpManager {
   }
 
   /** Restarts the connector's session and returns what it lists (the Test button). */
-  async test(connectorId: string): Promise<McpSnapshot> {
+  async test(connectorId: string, options?: { automatic?: boolean }): Promise<McpSnapshot> {
     await this.stop(connectorId);
-    const { snapshot } = await this.startSession(connectorId);
+    // Automatic checks use the crash-restart contract: a computer that has
+    // stopped since preflight must stay stopped, even at the launch boundary.
+    const { snapshot } = await this.startSession(connectorId, options?.automatic ?? false);
     return snapshot;
   }
 

@@ -1,13 +1,21 @@
-# Shared GitHub App connector
+# Legacy GitHub tool connector
+
+New GitHub connections in settings use **GitHub for coding agents**; see [GITHUB_REPOSITORIES.md](GITHUB_REPOSITORIES.md). The MCP and built-in GitHub choices are no longer offered in the add-connector catalog. Existing tool connections remain under **Existing GitHub tool connections**, with their credentials and Bot usage preserved. The implementation and registration notes below describe that compatibility path.
 
 The catalog's **GitHub** MCP connector uses a public **GitHub App**. Owners install it on their
 personal account or organization, select repositories, then authorize a user access token with
 GitHub's device flow. This connects repositories, issues and pull requests to Bots without
 adding an OpenBots account system or changing how the owner accesses OpenBots.
 
+**Coding-agent repository access is a separate connection.** Use **GitHub for coding agents → Connect GitHub**; authorizing this MCP connector alone does not connect the repository picker or git credentials. Both flows use the same public App defaults, but keep separate owned credentials. See [GITHUB_REPOSITORIES.md](GITHUB_REPOSITORIES.md).
+
 The separate `github_builtin` connector still uses a personal access token.
 
-## Create a public GitHub App
+## Optional: create your own public GitHub App
+
+End users do **not** need these steps. The shared OpenBots App works with the bundled public
+identifiers and needs only installation/repository consent and device authorization. This section
+is for operators who deliberately want to replace our App.
 
 1. Open [GitHub Apps settings](https://github.com/settings/apps) and choose **New GitHub App**.
    For an organization-owned app, use the organization's Settings > Developer settings >
@@ -102,7 +110,7 @@ this GitHub App integration. Reconnect existing connectors with the GitHub App i
 
 ## What the owner sees
 
-1. Open **Connectors**, find **GitHub**, and press **Connect**.
+1. For an existing MCP connection, open **Connectors → Existing GitHub tool connections**, find **GitHub**, and press **Connect** or **Reconnect**.
 2. OpenBots shows a short-lived device code and opens the app's GitHub installation page.
    Choose a personal account or organization and **Only select repositories**, then choose
    the repositories to share. An organization member may need to request approval instead.

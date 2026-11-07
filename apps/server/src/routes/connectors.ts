@@ -666,10 +666,10 @@ export const connectorRoutes = createRouter()
       tags: ['connectors'],
       summary: 'Connect, list tools, store status and last error',
       description:
-        'A server that fails to start or answer is reported in `status` and `lastError`, not as an error response.',
+        'A server that fails to start or answer is reported in `status` and `lastError`, not as an error response. Automatic checks skip missing consent, credentials and stopped computers without changing status.',
       middleware: [requireUser] as const,
       security: authenticated,
-      request: { params },
+      request: { params, query: z.object({ automatic: z.enum(['true', 'false']).optional() }) },
       responses: {
         200: json(
           z.object({ connector: ConnectorSchema, tools: z.array(ConnectorToolSchema) }),
@@ -688,6 +688,7 @@ export const connectorRoutes = createRouter()
         c.var.deps,
         c.var.user,
         c.req.valid('param').id,
+        { automatic: c.req.valid('query').automatic === 'true' },
       );
       return c.json({ connector: toConnector(record), tools: tools.map(toTool) }, 200);
     },

@@ -65,8 +65,12 @@ export const updateConnector = (id: string, body: UpdateConnector) =>
 export const deleteConnector = (id: string) =>
   unwrap(api.DELETE('/api/v1/connectors/{id}', { params: { path: { id } } }));
 
-export const testConnector = (id: string) =>
-  unwrap(api.POST('/api/v1/connectors/{id}/test', { params: { path: { id } } }));
+export const testConnector = (id: string, automatic = false) =>
+  unwrap(
+    api.POST('/api/v1/connectors/{id}/test', {
+      params: { path: { id }, ...(automatic ? { query: { automatic: 'true' as const } } : {}) },
+    }),
+  );
 
 /** Where the sign-in page opens: a popup of this page, or the Mac app's default browser. */
 export type OAuthMode = 'popup' | 'external';

@@ -65,6 +65,23 @@ describe('McpManager', () => {
     expect(t.started).toHaveLength(1);
   });
 
+  it('uses the no-wake restart contract only for automatic tests', async () => {
+    const contexts: boolean[] = [];
+    await setup({
+      resolve: async (id, context) => {
+        contexts.push(context?.restart ?? false);
+        return {
+          id,
+          version: 'v1',
+          create: (options) => new HttpHost({ url: server!.url }, options),
+        };
+      },
+    });
+    await manager!.test('c1', { automatic: true });
+    await manager!.test('c1');
+    expect(contexts).toEqual([true, false]);
+  });
+
   it('stops idle sessions in the health loop and pings the rest', async () => {
     const t = await setup();
     await manager!.host('c1');

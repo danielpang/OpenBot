@@ -87,9 +87,9 @@ function PickerBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Pick repositories</DialogTitle>
+        <DialogTitle>Choose repositories</DialogTitle>
         <DialogDescription>
-          Repositories {connection.accountLogin} can reach on GitHub. The ones you pick are cloned
+          Repositories {connection.accountLogin} can reach on GitHub. The ones you select are cloned
           on the computer so coding agents can work on them.
         </DialogDescription>
       </DialogHeader>
@@ -121,7 +121,7 @@ function PickerBody({
                     <input
                       type="checkbox"
                       className="mt-1"
-                      aria-label={`Keep ${repo.fullName} on the computer`}
+                      aria-label={`Select ${repo.fullName}`}
                       checked={repo.remembered || picked.has(repo.fullName)}
                       disabled={repo.remembered}
                       onChange={() => toggle(repo.fullName)}
@@ -164,7 +164,7 @@ function PickerBody({
           disabled={picked.size === 0 || remember.isPending}
           onClick={() => remember.mutate()}
         >
-          {picked.size > 1 ? `Keep ${picked.size} on the computer` : 'Keep on the computer'}
+          {picked.size > 0 ? `Select ${picked.size}` : 'Select repositories'}
         </Button>
       </DialogFooter>
     </>

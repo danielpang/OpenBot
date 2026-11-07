@@ -12,7 +12,7 @@ import { z } from 'zod';
  * manifest flow), `oauth` the owner's sign-in token, `token` a pasted
  * fine-grained token. The App is preferred (GH1).
  */
-export const GitConnectionKindSchema = z.enum(['app', 'oauth', 'token']);
+export const GitConnectionKindSchema = z.enum(['app', 'device', 'oauth', 'token']);
 export type GitConnectionKind = z.infer<typeof GitConnectionKindSchema>;
 
 /**
@@ -29,6 +29,7 @@ export type GitActAs = z.infer<typeof GitActAsSchema>;
  * `error`.
  */
 export const GitConnectionStatusSchema = z.enum([
+  'pending',
   'connected',
   'needs_reinstall',
   'revoked',
@@ -58,6 +59,8 @@ export const GitConnectionViewSchema = z.strictObject({
   id: z.uuid(),
   provider: z.literal('github'),
   kind: GitConnectionKindSchema,
+  /** Public GitHub App slug for a device-authorized connection's installation link. */
+  appSlug: z.string().optional(),
   /** The App installation's id; null for `oauth` and `token`. */
   installationId: z.string().nullable(),
   /** The GitHub user or organization the connection reaches. */

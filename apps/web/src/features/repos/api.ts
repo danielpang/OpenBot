@@ -28,6 +28,8 @@ export type AddRepo = components['schemas']['RepoInput'];
 
 /** Whether this install has a GitHub App, and where it came from. */
 export type GithubAppStatus = components['schemas']['GithubAppStatus'];
+export type GitDeviceStart = components['schemas']['GitDeviceStart'];
+export type GitDeviceInput = components['schemas']['GitDeviceInput'];
 export type RescueStatus = components['schemas']['RepoRescueStatus'];
 export type RepoForgotten = components['schemas']['RepoForgotten'];
 /** A sync answer; `needsReauthorize` when GitHub wants the owner to grant access again. */
@@ -76,6 +78,12 @@ export const remoteReposQuery = (connectionId: string, q: string) =>
 
 /** Where the browser goes to install the App; GitHub sends it back with `?connection=<id>`. */
 export const GITHUB_APP_INSTALL_PATH = '/api/v1/git-connections/github-app/install';
+
+export const startGitDevice = (body: GitDeviceInput = {}) =>
+  unwrap(api.POST('/api/v1/git-connections/github-app/device', { body }));
+
+export const pollGitDevice = (id: string) =>
+  unwrap(api.POST('/api/v1/git-connections/{id}/device', byId(id)));
 
 /** Starts the manifest flow; `organization` makes the App on that organization instead of the viewer's account. */
 export const startAppManifest = (organization?: string) =>
