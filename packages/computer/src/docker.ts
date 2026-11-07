@@ -148,7 +148,7 @@ export interface DockerApi {
   };
   getNetwork(name: string): { inspect(): Promise<unknown> };
   createNetwork(options: Docker.NetworkCreateOptions): Promise<unknown>;
-  getVolume(name: string): { inspect(): Promise<unknown> };
+  getVolume(name: string): { inspect(): Promise<unknown>; remove(): Promise<unknown> };
   createVolume(options: Docker.VolumeCreateOptions): Promise<unknown>;
   createContainer(options: Docker.ContainerCreateOptions): Promise<{ id: string }>;
   getContainer(id: string): {
@@ -428,12 +428,19 @@ export function createDockerProvider(options: DockerProviderOptions = {}): Compu
         }
       });
     },
-    async destroy(ref) {
+    async destroy(ref, options) {
       // `v: false` keeps named volumes: the home outlives the container (K7).
       await guard();
       await ignoreMissing(() =>
         docker.getContainer(containerId(ref)).remove({ force: true, v: false }),
       );
+      // A reset (GH5): the home goes, and the state volume only when asked.
+      if (!options?.home) return;
+      const volumes = [ref.volumeName ?? volumeName(options.computerId)];
+      if (options.state) volumes.push(stateVolumeName(options.computerId));
+      for (const volume of volumes) {
+        await ignoreMissing(() => docker.getVolume(volume).remove());
+      }
     },
     async status(ref): Promise<MachineStatus> {
       await guard();

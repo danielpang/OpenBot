@@ -44,6 +44,11 @@ import type { Db } from './client.js';
 //   openbots_device_workspaces() and openbots_pairing_workspace(); the
 //   device or the code is then read there. `devicesExist` says only whether any
 //   organization has a device or an open pairing (openbots_devices_exist()).
+// - `githubInstallationWorkspaces`: which organizations have a connection
+//   to a GitHub App installation, through
+//   openbots_github_installation_workspaces() (drizzle/0029; 0030 holds
+//   openbots_system to the columns it reads); the App's webhook delivery
+//   then works in each.
 // - Jobs carry the organization that queued them and run in it
 //   (infra/index.ts); realtime events carry it too, and the gateway and the
 //   outbound fan-out work in it.
@@ -261,6 +266,20 @@ export async function devicesExist(db: Db, now = new Date()): Promise<boolean> {
     sql`select openbots_devices_exist(${now.toISOString()}::timestamptz) as exists`,
   );
   return rowsOf<{ exists: boolean }>(result)[0]?.exists === true;
+}
+
+/**
+ * The organizations with a GitHub App connection to the installation, the
+ * oldest connection's first (openbots_github_installation_workspaces()).
+ */
+export async function githubInstallationWorkspaces(
+  db: Db,
+  installationId: string,
+): Promise<string[]> {
+  const result = await db.execute<{ id: string }>(
+    sql`select openbots_github_installation_workspaces(${installationId}) as id`,
+  );
+  return rowsOf<{ id: string }>(result).map((r) => r.id);
 }
 
 /** postgres.js answers an array of rows, PGlite `{ rows }`. */

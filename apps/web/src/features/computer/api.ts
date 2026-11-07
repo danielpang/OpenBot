@@ -1,5 +1,5 @@
 import { ApiError, unwrap, type components } from '@openbots/api-client';
-import { COMPUTER_OFF, type WsEventOf } from '@openbots/shared';
+import { COMPUTER_OFF, type RepoRescueResult, type WsEventOf } from '@openbots/shared';
 import { queryOptions } from '@tanstack/react-query';
 import { api } from '../../app/api.js';
 
@@ -32,6 +32,44 @@ export const startComputer = () => unwrap(api.POST('/api/v1/computer/start'));
 
 /** Stops the computer if it runs, then starts it again; its files are kept. */
 export const restartComputer = () => unwrap(api.POST('/api/v1/computer/restart'));
+
+// Reset (a fresh, empty home): local types and plain fetch until the client
+// is regenerated with the /computer/reset routes.
+
+/** What a reset's check found: what rescue pushed, what it could not save, and sessions it would stop. */
+export interface ResetCheck {
+  status: 'running' | 'done';
+  results: RepoRescueResult[];
+  unsaved: { fullName: string; branch: string; note: string }[];
+  runningSessions: { id: string; botId: string; repoFullName: string }[];
+}
+
+/** The server's 409 code when the reset's request id has no finished check. */
+export const RESET_NOT_PREPARED = 'RESET_NOT_PREPARED';
+
+async function send<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method,
+    credentials: 'include',
+    ...(body === undefined
+      ? {}
+      : { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }),
+  });
+  const answer = (await response.json().catch(() => undefined)) as unknown;
+  if (!response.ok) throw new ApiError(response.status, answer as never);
+  return answer as T;
+}
+
+/** Starts the check before a reset: rescue pushes unpushed work. Poll `resetCheck` with the id. */
+export const prepareReset = () =>
+  send<{ requestId: string }>('POST', '/api/v1/computer/reset/prepare');
+
+export const resetCheck = (requestId: string) =>
+  send<ResetCheck>('GET', `/api/v1/computer/reset/${encodeURIComponent(requestId)}`);
+
+/** Resets the computer to an empty home, after a finished check. */
+export const resetComputer = (requestId: string, resetSignIns: boolean) =>
+  send<unknown>('POST', '/api/v1/computer/reset', { requestId, confirm: true, resetSignIns });
 
 export type ComputerSettings = components['schemas']['ComputerSettings'];
 
@@ -83,9 +121,25 @@ export function socketUrl(path: string, base = window.location.origin) {
   return url.toString();
 }
 
-/** The terminal: a login shell on the computer, sized in character cells. */
-export const ptyUrl = (cols: number, rows: number) =>
-  socketUrl(`/api/v1/computer/pty?cols=${cols}&rows=${rows}`);
+/** Where a terminal opens: a directory, as another user (`coder`), with a command typed (I15). */
+export interface PtyAttach {
+  cwd?: string;
+  user?: string;
+  preset?: string;
+}
+
+/**
+ * The terminal: a login shell on the computer, sized in character cells, in
+ * `cwd` as `user` with `preset` typed and ready when given (the server checks
+ * them against a coding session or a repository the owner has).
+ */
+export function ptyUrl(cols: number, rows: number, attach: PtyAttach = {}) {
+  const query = new URLSearchParams({ cols: String(cols), rows: String(rows) });
+  for (const key of ['cwd', 'user', 'preset'] as const) {
+    if (attach[key]) query.set(key, attach[key]);
+  }
+  return socketUrl(`/api/v1/computer/pty?${query.toString()}`);
+}
 
 /**
  * The Bot's screen as RFB over WebSocket (websockify on its display).

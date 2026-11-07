@@ -38,7 +38,7 @@ const BotStateSchema = z
       .nullable()
       .openapi({ description: 'One-line activity label shown on hover (I3)' }),
     runId: z.uuid().nullable(),
-    // Optional on the wire so clients built before Phase 4 still type-check; always sent.
+    // Always sent; optional in the schema so older clients' generated types still check.
     currentTool: z.string().nullable().optional().openapi({
       description:
         'The tool running while `working`; a computer tool shows a dot on the Preview button (I5)',
@@ -132,6 +132,24 @@ const BotUsageSchema = z
     models: z
       .array(z.object({ model: z.string().nullable(), ...usageSums }))
       .openapi({ description: 'By model, most expensive first' }),
+    coding: z
+      .object({
+        sessions: z
+          .number()
+          .int()
+          .openapi({ description: 'Coding sessions started in the window' }),
+        inputTokens: z.number().int(),
+        outputTokens: z.number().int(),
+        costUsd: z.number().nullable().openapi({
+          description:
+            'What API billed sessions reported in US dollars; null when none did. Plan sessions are left out',
+        }),
+        onPlanSessions: z
+          .number()
+          .int()
+          .openapi({ description: 'Sessions billed to a plan sign-in, which cost nothing extra' }),
+      })
+      .openapi('BotCodingUsage'),
   })
   .openapi('BotUsage');
 
@@ -436,6 +454,7 @@ export const botRoutes = createRouter()
           totals: toSums(usage.totals),
           daily: usage.daily.map((d) => ({ date: d.date, ...toSums(d) })),
           models: usage.models.map((m) => ({ model: m.model, ...toSums(m) })),
+          coding: usage.coding,
         },
         200,
       );

@@ -249,6 +249,81 @@ describe('loadConfig', () => {
     expect(config.oauth.google).toBeUndefined();
   });
 
+  describe("the managed service's shared GitHub App (I17)", () => {
+    const pem = [
+      '-----BEGIN RSA PRIVATE KEY-----',
+      'MIIEpAIBAAKCAQEA',
+      '-----END RSA PRIVATE KEY-----',
+    ];
+    const app = {
+      GITHUB_APP_ID: '123456',
+      GITHUB_APP_SLUG: 'openbots',
+      // As it sits on one line in .env.
+      GITHUB_APP_PRIVATE_KEY: pem.join('\\n'),
+      GITHUB_APP_WEBHOOK_SECRET: 'whsec-0123456789abcdef',
+    };
+
+    it('is unset by default, and when every variable is empty', () => {
+      expect(loadConfig(base).githubApp).toBeUndefined();
+      const empty = Object.fromEntries(Object.keys(app).map((name) => [name, '']));
+      expect(loadConfig({ ...base, ...empty }).githubApp).toBeUndefined();
+    });
+
+    it('reads the App, turning the escaped line breaks back into a PEM', () => {
+      expect(loadConfig({ ...base, ...app }).githubApp).toEqual({
+        appId: '123456',
+        slug: 'openbots',
+        privateKey: pem.join('\n'),
+        webhookSecret: 'whsec-0123456789abcdef',
+      });
+      const withOAuth = loadConfig({
+        ...base,
+        ...app,
+        GITHUB_APP_PRIVATE_KEY: `${pem.join('\n')}\n`,
+        GITHUB_APP_CLIENT_ID: 'Iv1.abc',
+        GITHUB_APP_CLIENT_SECRET: 'app-secret',
+      });
+      expect(withOAuth.githubApp).toMatchObject({
+        privateKey: pem.join('\n'),
+        clientId: 'Iv1.abc',
+        clientSecret: 'app-secret',
+      });
+    });
+
+    it('refuses half an App, or half its OAuth client', () => {
+      expect(() => loadConfig({ ...base, GITHUB_APP_ID: '1', GITHUB_APP_SLUG: 'x' })).toThrow(
+        /GITHUB_APP_PRIVATE_KEY: needed[\s\S]*GITHUB_APP_WEBHOOK_SECRET: needed/,
+      );
+      expect(() => loadConfig({ ...base, ...app, GITHUB_APP_CLIENT_ID: 'Iv1.abc' })).toThrow(
+        /GITHUB_APP_CLIENT_SECRET: set both/,
+      );
+      expect(() => loadConfig({ ...base, GITHUB_APP_CLIENT_SECRET: 's' })).toThrow(
+        /GITHUB_APP_CLIENT_ID: set only with/,
+      );
+      expect(() => loadConfig({ ...base, ...app, GITHUB_APP_PRIVATE_KEY: 'not a key' })).toThrow(
+        /GITHUB_APP_PRIVATE_KEY: must be the PEM private key/,
+      );
+      expect(() => loadConfig({ ...base, ...app, GITHUB_APP_ID: 'openbots' })).toThrow(
+        /GITHUB_APP_ID: must be the App ID/,
+      );
+    });
+
+    it('reads its secrets from NAME_FILE, and warns of those in the plain environment (S-1)', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'openbots-config-'));
+      const keyFile = join(dir, 'github_app_key');
+      writeFileSync(keyFile, `${pem.join('\n')}\n`, { mode: 0o600 });
+      const config = loadConfig({
+        ...base,
+        ...app,
+        GITHUB_APP_PRIVATE_KEY: undefined,
+        GITHUB_APP_PRIVATE_KEY_FILE: keyFile,
+      });
+      expect(config.githubApp?.privateKey).toBe(pem.join('\n'));
+      expect(config.secretsFromEnvironment).toContain('GITHUB_APP_WEBHOOK_SECRET');
+      expect(config.secretsFromEnvironment).not.toContain('GITHUB_APP_PRIVATE_KEY');
+    });
+  });
+
   it('rejects missing or invalid values with every problem listed', () => {
     expect(() => loadConfig({})).toThrow(
       /OPENBOTS_MASTER_KEY[\s\S]*DATABASE_URL|DATABASE_URL[\s\S]*OPENBOTS_MASTER_KEY/,

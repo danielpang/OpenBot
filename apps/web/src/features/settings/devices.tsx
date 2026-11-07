@@ -8,8 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@openbots/ui';
+import { QrCode } from '@openbots/widgets/react';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toString as qrSvg } from 'qrcode';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { api } from '../../app/api.js';
 import { RealtimeStatusContext, useRealtime } from '../transcript/realtime.js';
@@ -319,7 +319,6 @@ function PairingCode({
   // The server's clock, as near as its Date header tells.
   const serverNow = () => Date.now() + skewMs;
   const [now, setNow] = useState(serverNow);
-  const [svg, setSvg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const expired = new Date(pairing.expiresAt).getTime() <= now;
 
@@ -327,17 +326,6 @@ function PairingCode({
     const timer = setInterval(() => setNow(Date.now() + skewMs), 1000);
     return () => clearInterval(timer);
   }, [skewMs]);
-
-  useEffect(() => {
-    let current = true;
-    void qrSvg(pairing.link, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' }).then(
-      (text) => current && setSvg(text),
-      () => current && setSvg(null),
-    );
-    return () => {
-      current = false;
-    };
-  }, [pairing.link]);
 
   if (expired) {
     return (
@@ -350,13 +338,11 @@ function PairingCode({
 
   return (
     <div className="flex flex-col items-center gap-3">
-      {svg && (
-        <img
-          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`}
-          alt="QR code for pairing a phone with this server"
-          className="size-56 rounded-md bg-white p-2"
-        />
-      )}
+      <QrCode
+        value={pairing.link}
+        alt="QR code for pairing a phone with this server"
+        className="size-56"
+      />
       <p className="text-sm font-medium tabular-nums" role="timer">
         Expires in {countdown(pairing.expiresAt, now)}
       </p>

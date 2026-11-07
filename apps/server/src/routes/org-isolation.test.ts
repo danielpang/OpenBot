@@ -42,6 +42,15 @@ const UNSCOPED = new Set([
   '/api/v1/setup/sandbox-image',
   '/api/v1/local/session',
   '/api/v1/connectors/oauth/callback',
+  // GitHub's browser redirects, whose signed state names the owner, and the
+  // redirect to the App's install page (this app has no App).
+  '/api/v1/git-connections/github-app/manifest/callback',
+  '/api/v1/git-connections/github-app/callback',
+  '/api/v1/git-connections/github-app/install',
+  // The caller's own agent card and a new sign-in for it: `{agent}` names no one's resource.
+  '/api/v1/coders/{agent}/login',
+  '/api/v1/coders/{agent}/sign-out',
+  '/api/v1/coders/{agent}/check',
 ]);
 
 const withParams = operations.filter(({ path }) => path.includes('{') && !UNSCOPED.has(path));
@@ -58,6 +67,14 @@ const OWNER_GET_EXCEPTIONS = new Set([
   '/api/v1/connectors/{id}/oauth/start',
   '/api/v1/computer/files/{path}',
   '/api/v1/runs/{id}/events',
+  // Lists the repositories from GitHub, which this test does not reach.
+  '/api/v1/git-connections/{id}/repositories',
+  // A redirect to GitHub for an App connection; the seeded one is a token connection (409).
+  '/api/v1/git-connections/{id}/reauthorize',
+  // A rescue's results live ten minutes in memory; this test starts none.
+  '/api/v1/repos/rescue/{requestId}',
+  // Likewise a prepared reset's (fifteen minutes); this test prepares none.
+  '/api/v1/computer/reset/{requestId}',
 ]);
 
 /** Lists only owners and admins read; Carol is a member in B. */
@@ -68,6 +85,7 @@ const NO_COMPUTER = new Set(['/api/v1/computer/files']);
 
 const SAMPLE_BODIES: Record<string, unknown> = {
   'patch /api/v1/bots/{id}': { name: 'Taken' },
+  'patch /api/v1/git-connections/{id}': { actAs: 'owner' },
   'post /api/v1/bots/{id}/memories': { content: 'a fact', kind: 'fact' },
   'patch /api/v1/bots/{id}/memories/{memoryId}': { content: 'changed' },
   'put /api/v1/bots/{id}/connectors': { items: [] },
@@ -96,6 +114,11 @@ const SAMPLE_BODIES: Record<string, unknown> = {
   'post /api/v1/endpoints/{id}/test': { payload: {} },
   'patch /api/v1/event-subscriptions/{id}': { enabled: false },
   'put /api/v1/devices/{id}/push': { token: 'ab'.repeat(32), environment: 'sandbox' },
+  'post /api/v1/coding-sessions/{id}/continue': { prompt: 'Keep going' },
+  'post /api/v1/coding-sessions/{id}/turns': { prompt: 'Keep going' },
+  'post /api/v1/coders/{agent}/login/{loginId}/code': { code: 'stolen-code' },
+  // Another owner's provider is refused in routes/coders.test.ts.
+  'put /api/v1/coders/{agent}/api-key': { providerId: '00000000-0000-4000-8000-000000000000' },
 };
 
 /** What one person owns in organization A, and the words that would give it away. */
@@ -278,9 +301,55 @@ describe('organizations are isolated (plan 21.3)', () => {
         bodyPreview: `${marker} payload`,
       })
       .returning();
+    const repo = await json<{ repo: { id: string } }>(
+      call(cookie, 'post', '/api/v1/repos', {
+        remoteUrl: `https://github.com/${marker.toLowerCase()}/app`,
+      }),
+      201,
+    );
+    const [session] = await t.db
+      .insert(schema.codingSessions)
+      .values({
+        workspaceId: owner.workspaceId,
+        ownerId: userId,
+        botId: bot.id,
+        agent: 'claude',
+        repoId: repo.repo.id,
+        repoFullName: `${marker.toLowerCase()}/app`,
+        worktreePath: `/home/bot/repos/${marker.toLowerCase()}/app/.worktrees/bot-x`,
+        branch: 'bot/x',
+        base: 'main',
+        mode: 'edit',
+        prompt: `${marker} task`,
+        status: 'settled',
+      })
+      .returning();
+    const [gitConnection] = await t.db
+      .insert(schema.gitConnections)
+      .values({
+        workspaceId: owner.workspaceId,
+        ownerId: userId,
+        kind: 'token',
+        accountLogin: marker.toLowerCase(),
+      })
+      .returning();
+    const [login] = await t.db
+      .insert(schema.coderLogins)
+      .values({
+        workspaceId: owner.workspaceId,
+        ownerId: userId,
+        agent: 'claude',
+        status: 'pending',
+        expiresAt: new Date(Date.now() + 3_600_000),
+      })
+      .returning();
     return {
       marker,
       ids: {
+        repo: repo.repo.id,
+        session: session!.id,
+        login: login!.id,
+        gitConnection: gitConnection!.id,
         bot: bot.id,
         peer: peer.id,
         chat: bot.chatId,
@@ -324,6 +393,9 @@ describe('organizations are isolated (plan 21.3)', () => {
       'event-subscriptions': ids.subscription!,
       'api-keys': ids.apiKey!,
       devices: ids.device!,
+      repos: ids.repo!,
+      'coding-sessions': ids.session!,
+      'git-connections': ids.gitConnection!,
     };
     let filled = path;
     if (first) {
@@ -334,11 +406,14 @@ describe('organizations are isolated (plan 21.3)', () => {
     if (path === '/api/v1/devices/pairings/{id}') filled = filled.replace('{id}', ids.pairing!);
     if (path === '/api/v1/messages/{id}/reactions') filled += '?emoji=%F0%9F%91%8D';
     return filled
+      .replace('{agent}', 'claude')
+      .replace('{loginId}', ids.login!)
       .replace('{memoryId}', ids.memory!)
       .replace('{botId}', ids.peer!)
       .replace('{part}', '0')
       .replace('{version}', '1')
       .replace('{did}', ids.delivery!)
+      .replace('{requestId}', '00000000-0000-4000-8000-000000000000')
       .replace('{path}', 'notes.txt');
   }
 

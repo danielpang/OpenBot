@@ -10,7 +10,7 @@ import {
   type Unsubscribe,
   type WsEvent,
 } from '@openbots/shared';
-import { and, desc, eq, gt, inArray, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import type { AppDeps, RelayPushOutcome, RelayPushRequest } from '../context.js';
 import { schema } from '../db/client.js';
 import { forEachWorkspace, inWorkspace, outsideScope } from '../db/scope.js';
@@ -558,13 +558,18 @@ export async function startPushWorker(
     const approvals = await db
       .select({
         approval: schema.approvals,
-        botId: schema.runs.botId,
-        chatId: schema.runs.chatId,
+        // On the owner's own turn there is no run: the session says where it is.
+        botId: sql<string | null>`coalesce(${schema.runs.botId}, ${schema.codingSessions.botId})`,
+        chatId: sql<
+          string | null
+        >`coalesce(${schema.runs.chatId}, ${schema.codingSessions.chatId})`,
+        sessionOwnerId: schema.codingSessions.ownerId,
         seq: schema.messages.seq,
         threadRootId: schema.messages.threadRootId,
       })
       .from(schema.approvals)
-      .innerJoin(schema.runs, eq(schema.runs.id, schema.approvals.runId))
+      .leftJoin(schema.runs, eq(schema.runs.id, schema.approvals.runId))
+      .leftJoin(schema.codingSessions, eq(schema.codingSessions.id, schema.approvals.sessionId))
       .leftJoin(schema.messages, eq(schema.messages.id, schema.approvals.messageId))
       .where(
         and(
@@ -604,6 +609,7 @@ export async function startPushWorker(
 
     const events: { at: number; event: WsEvent }[] = [];
     for (const row of approvals) {
+      if (!row.botId) continue;
       events.push({
         at: new Date(row.approval.createdAt).getTime(),
         event: wsEvent(
@@ -615,6 +621,7 @@ export async function startPushWorker(
           {
             bot_id: row.botId,
             ...(row.chatId ? { chat_id: row.chatId } : {}),
+            ...(!row.approval.runId && row.sessionOwnerId ? { user_id: row.sessionOwnerId } : {}),
             ...(row.seq != null ? { seq: row.seq } : {}),
             workspace_id: workspaceId,
           },

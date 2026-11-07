@@ -10,6 +10,7 @@ import { DomainError } from '../errors.js';
 import { authenticateHeaders } from '../middleware/auth.js';
 import { assertBotOwner } from '../ownership.js';
 import { SYSTEM_ACTOR } from '../services/audit.js';
+import { isCoderTerminalCwd } from '../services/coding-sessions.js';
 import {
   agentFor,
   ensureScreen,
@@ -36,6 +37,11 @@ import { KEY_RECHECK_MS, watchApiKeys } from './key-watch.js';
 // minute, so the idle sweep does not stop it under a terminal or a screen
 // session (plan 9.5); a socket left open on a still screen does not keep it on.
 //
+// The terminal opens on a coding session's worktree with
+// `?cwd=…&user=coder&preset=…` (I15, Open terminal): the proxy passes those
+// on only for a path that is one of the owner's session worktrees or
+// repository checkouts (`ptyParams`), and drops them otherwise.
+//
 // Takeover opens its screen with `?control=1`. When the last such socket of
 // the owner for a Bot closes (a closed tab, a crash) and none comes back
 // within `takeoverGraceMs`, the screen is handed back as Hand back would, so
@@ -47,6 +53,37 @@ import { KEY_RECHECK_MS, watchApiKeys } from './key-watch.js';
 export const PTY_PATH = '/api/v1/computer/pty';
 const VNC_PATH =
   /^\/api\/v1\/bots\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/screen\/vnc$/i;
+
+/** The longest text `preset` may type into a terminal. */
+export const PTY_PRESET_MAX = 500;
+
+/**
+ * The query the agent's `/pty` gets (I15): `cols` and `rows` when sane, and
+ * `cwd`, `user` and `preset` only for a coding session's terminal, that is
+ * when `cwd` is the worktree of one of the owner's sessions or the checkout
+ * of one of their repositories. Anything else is dropped, and the plain
+ * terminal opens.
+ */
+export async function ptyParams(
+  deps: Pick<AppDeps, 'db'>,
+  user: Pick<CurrentUser, 'id' | 'workspaceId'>,
+  query: URLSearchParams,
+): Promise<URLSearchParams> {
+  const params = new URLSearchParams();
+  for (const key of ['cols', 'rows']) {
+    const value = Number(query.get(key));
+    if (Number.isInteger(value) && value > 0 && value < 1000) params.set(key, String(value));
+  }
+  const cwd = query.get('cwd');
+  if (!cwd || cwd.length > 4_096 || !cwd.startsWith('/')) return params;
+  if (!(await isCoderTerminalCwd(deps, user, cwd))) return params;
+  params.set('cwd', cwd);
+  const asked = query.get('user');
+  if (asked === 'coder' || asked === 'bot') params.set('user', asked);
+  const preset = query.get('preset');
+  if (preset && preset.length <= PTY_PRESET_MAX) params.set('preset', preset);
+  return params;
+}
 
 export function isComputerSocketPath(pathname: string) {
   return pathname === PTY_PATH || VNC_PATH.test(pathname);
@@ -156,13 +193,9 @@ export async function attachComputerProxies(
     const computer = await runningComputer(deps, user);
     const agent = agentFor(deps, computer);
     if (url.pathname === PTY_PATH) {
-      const size = new URLSearchParams();
-      for (const key of ['cols', 'rows']) {
-        const value = Number(url.searchParams.get(key));
-        if (Number.isInteger(value) && value > 0 && value < 1000) size.set(key, String(value));
-      }
+      const params = await ptyParams(deps, user, url.searchParams);
       return {
-        ...agent.socket(`/pty${size.size ? `?${size}` : ''}`),
+        ...agent.socket(`/pty${params.size ? `?${params}` : ''}`),
         computerId: computer.id,
         user,
       };

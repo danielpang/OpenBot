@@ -1,6 +1,8 @@
 import { approvalWidget } from './approval.js';
 import { artifactWidget } from './artifact.js';
 import { chartWidget } from './chart.js';
+import { coderLoginWidget } from './coder_login.js';
+import { codingSessionWidget } from './coding_session.js';
 import { emailDraftWidget } from './email_draft.js';
 import { eventWidget } from './event.js';
 import { fileWidget } from './file.js';
@@ -36,6 +38,8 @@ export const WIDGET_KIND_NAMES = [
   'artifact',
   'file',
   'login_request',
+  'coding_session',
+  'coder_login',
 ] as const;
 
 export type WidgetKindName = (typeof WIDGET_KIND_NAMES)[number];
@@ -56,6 +60,8 @@ export const WIDGET_KINDS: Record<WidgetKindName, WidgetKind | null> = {
   artifact: artifactWidget as WidgetKind,
   file: fileWidget as WidgetKind,
   login_request: loginRequestWidget as WidgetKind,
+  coding_session: codingSessionWidget as WidgetKind,
+  coder_login: coderLoginWidget as WidgetKind,
 };
 
 export type { WidgetKind } from './types.js';
@@ -63,6 +69,8 @@ export { defineWidget, invalidAction } from './types.js';
 export * from './approval.js';
 export * from './artifact.js';
 export * from './chart.js';
+export * from './coder_login.js';
+export * from './coding_session.js';
 export * from './email_draft.js';
 export * from './event.js';
 export * from './file.js';

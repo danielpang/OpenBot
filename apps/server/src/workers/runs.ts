@@ -1,6 +1,7 @@
 import {
   assembleContext,
   attachmentRequests,
+  loadCoderContext,
   ContextOverflowError,
   describeError,
   executeRun,
@@ -44,6 +45,7 @@ import { isForBot } from '@openbots/router';
 import {
   missingCapabilities,
   ModelConfigSchema,
+  resolveToolPolicy,
   usesComputer,
   wsEvent,
   type JobHandler,
@@ -75,6 +77,8 @@ import {
   transcriptMessage,
   type ChatHandles,
 } from '../services/chats.js';
+import { coderServices } from '../services/coder-tool.js';
+import { CODER_WIDGET_KINDS, resumeIfCoderWidgetDone } from '../services/coder-widget-actions.js';
 import { computerAvailable, computerServices } from '../services/computer.js';
 import { attachmentServices, loadContextAttachments } from '../services/files.js';
 import {
@@ -100,7 +104,7 @@ import {
   postMessage,
   storeMessage,
 } from '../services/messages.js';
-import { loadRunPolicy } from '../services/policy.js';
+import { loadRunPolicy, runSource } from '../services/policy.js';
 import { routineInstructions } from '../services/routines.js';
 import { smallModelFor, providerRegistry } from '../services/providers.js';
 import { botMessenger, routeBotReply, type RouterOptions } from '../services/router.js';
@@ -311,6 +315,13 @@ async function processRun(
                 : {}),
             }),
             logins: loginRequests(deps, run, bot),
+            coder: coderServices(deps, {
+              bot,
+              runId: run.id,
+              chatId: chat.id,
+              thread,
+              source: runSource(run),
+            }),
           }
         : {}),
       needsLogin: (notice) => {
@@ -921,8 +932,16 @@ async function buildContext(
     bot.id,
     rows.slice(lastOwn + 1).flatMap((r) => r.parts as MessagePart[]),
   );
+  // The Bot's repositories and coding agents (I9), the same services `code_task` gets.
+  const coder = await loadCoderContext(
+    computerAvailable(deps)
+      ? coderServices(deps, { bot, runId: run.id, chatId: chat.id, thread, source: runSource(run) })
+      : undefined,
+    resolveToolPolicy(bot.toolPolicy),
+  );
   const context = assembleContext({
     bot: { name: bot.name, handle: bot.handle, label: bot.label, description: bot.description },
+    ...(coder ? { coder } : {}),
     roster: [
       ...(chat.type === 'bot_to_bot'
         ? []
@@ -1202,7 +1221,14 @@ async function pauseRun(
   await publishRunStatus(deps, row);
   await setState(deps, run.botId, 'waiting', { runId: run.id, currentAction: wait.label });
   if (expiresAt) await scheduleLoginExpiry(deps, { messageId, partIndex }, expiresAt);
-  if (posted) await resumeIfAnswered(deps, run.id, posted);
+  if (posted) {
+    // A coding widget's outcome may have landed before the pause (code_task posts first).
+    if (CODER_WIDGET_KINDS.has(wait.widget.kind)) {
+      await resumeIfCoderWidgetDone(deps, run.id, posted, wait.widget.kind);
+    } else {
+      await resumeIfAnswered(deps, run.id, posted);
+    }
+  }
 }
 
 const NO_USAGE: UsageTotals = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, steps: 0 };

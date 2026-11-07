@@ -190,6 +190,76 @@
       "when": 1793678540530,
       "tag": "0026_device_key_per_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793902269893,
+      "tag": "0027_coders",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793907735836,
+      "tag": "0028_git_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793908411216,
+      "tag": "0029_github_app_installations",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793910610550,
+      "tag": "0030_github_app_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793912572521,
+      "tag": "0031_coding_session_diff",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793932696917,
+      "tag": "0032_repo_checkout_disk",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793936267826,
+      "tag": "0033_coding_session_pushed_sha",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793937355207,
+      "tag": "0034_coding_session_branch_existed",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793978636599,
+      "tag": "0035_coding_session_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793979704966,
+      "tag": "0036_approvals_without_run",
+      "breakpoints": true
     }
   ]
 }

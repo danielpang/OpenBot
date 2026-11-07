@@ -1,12 +1,14 @@
 import { summarizeArgs, type PendingWait } from '@openbots/agent';
 import { PRIORITY, wsEvent, type JobHandler, type MessagePart } from '@openbots/shared';
 import { widgetToolResult, type ApprovalState } from '@openbots/widgets';
-import { and, asc, eq, lte } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Config } from '../config.js';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
 import { publishEvent } from '../infra/index.js';
+import { publishCoderControl } from './coder-control.js';
+import { setApprovalStatus } from './coder-state.js';
 import { actOnWidget, getRunForOwner, resumeRun, type RunRow } from './runs.js';
 
 // Approvals (plan 4.3, 5.6, P1, T5). When the policy answers `ask`, the run
@@ -43,6 +45,7 @@ export function toApproval(row: ApprovalRow, note?: string | null) {
     id: row.id,
     runId: row.runId,
     messageId: row.messageId,
+    sessionId: row.sessionId,
     toolName: row.toolName,
     args: row.args,
     summary: summarizeArgs(row.toolName, row.args),
@@ -181,10 +184,7 @@ async function publishApproval(
   row: ApprovalRow,
   note?: string | null,
 ) {
-  const [run] = await deps.db
-    .select({ botId: schema.runs.botId, chatId: schema.runs.chatId })
-    .from(schema.runs)
-    .where(eq(schema.runs.id, row.runId));
+  const scope = await approvalScope(deps.db, row);
   const [message] = row.messageId
     ? await deps.db
         .select({ seq: schema.messages.seq, threadRootId: schema.messages.threadRootId })
@@ -199,13 +199,44 @@ async function publishApproval(
         approval: toApproval(row, note),
         ...(message?.threadRootId ? { threadRootId: message.threadRootId } : {}),
       },
-      {
-        ...(run ? { bot_id: run.botId } : {}),
-        ...(run?.chatId ? { chat_id: run.chatId } : {}),
-        ...(message ? { seq: message.seq } : {}),
-      },
+      { ...scope, ...(message ? { seq: message.seq } : {}) },
     ),
   );
+}
+
+/**
+ * Where an approval's events go: its run's Bot and chat, or, on the owner's
+ * own turn with no run, the session's Bot and chat and its owner, so every
+ * socket of the owner hears it.
+ */
+async function approvalScope(
+  db: Db,
+  row: ApprovalRow,
+): Promise<{ bot_id?: string; chat_id?: string; user_id?: string; workspace_id?: string }> {
+  if (row.runId) {
+    const [run] = await db
+      .select({ botId: schema.runs.botId, chatId: schema.runs.chatId })
+      .from(schema.runs)
+      .where(eq(schema.runs.id, row.runId));
+    return run ? { bot_id: run.botId, ...(run.chatId ? { chat_id: run.chatId } : {}) } : {};
+  }
+  if (!row.sessionId) return {};
+  const [session] = await db
+    .select({
+      botId: schema.codingSessions.botId,
+      chatId: schema.codingSessions.chatId,
+      ownerId: schema.codingSessions.ownerId,
+      workspaceId: schema.codingSessions.workspaceId,
+    })
+    .from(schema.codingSessions)
+    .where(eq(schema.codingSessions.id, row.sessionId));
+  if (!session) return {};
+  return {
+    bot_id: session.botId,
+    ...(session.chatId ? { chat_id: session.chatId } : {}),
+    user_id: session.ownerId,
+    workspace_id: session.workspaceId,
+  };
 }
 
 export const approvalClosed = (status: ApprovalStatus | 'closed') =>
@@ -220,6 +251,7 @@ export async function decideApproval(
 ): Promise<{ approval: Approval; resumedRunId: string | null }> {
   const row = await getApprovalForOwner(deps.db, owner, approvalId);
   if (row.status !== 'pending') throw approvalClosed(row.status);
+  if (row.sessionId) return decideSessionApproval(deps, owner, row, input);
   const partIndex = row.messageId ? await approvalPartIndex(deps.db, row.messageId) : null;
   if (!row.messageId || partIndex === null) throw approvalClosed(row.status);
   const result = await actOnWidget(deps, owner, row.messageId, partIndex, {
@@ -234,6 +266,48 @@ export async function decideApproval(
   return { approval: toApproval(after!, note), resumedRunId: result.resumedRunId };
 }
 
+// A coding session's request (I13) has no approval widget and no paused
+// run: the session's job waits on the agent's prompt. The decision goes to
+// it over openbots:coder-control, and a push or PR approval also arms the
+// session's push credential.
+
+async function decideSessionApproval(
+  deps: ApprovalsDeps,
+  owner: Owner,
+  row: ApprovalRow,
+  input: { decision: 'approve' | 'deny'; note?: string | undefined },
+): Promise<{ approval: Approval; resumedRunId: string | null }> {
+  const status = input.decision === 'approve' ? 'approved' : 'denied';
+  const [decided] = await deps.db
+    .update(schema.approvals)
+    .set({ status, decidedBy: owner.id, decidedAt: new Date() })
+    .where(and(eq(schema.approvals.id, row.id), eq(schema.approvals.status, 'pending')))
+    .returning();
+  if (!decided) throw approvalClosed('closed');
+  await answerSession(deps, decided, status);
+  await announceDecision(deps, decided, { type: 'user', id: owner.id }, input.note);
+  return { approval: toApproval(decided, input.note), resumedRunId: null };
+}
+
+/** Tells the session's job the decision, and shows it on the session's widget. */
+async function answerSession(
+  deps: ApprovalsDeps,
+  row: ApprovalRow,
+  status: 'approved' | 'denied' | 'expired',
+) {
+  if (!row.sessionId) return;
+  const sessionId = row.sessionId;
+  const decision = status === 'approved' ? 'approved' : 'denied';
+  if (decision === 'approved' && (row.actionClass === 'push' || row.actionClass === 'pr')) {
+    await publishCoderControl(deps, { type: 'push_allowed', sessionId });
+  }
+  await publishCoderControl(deps, { type: 'approval', sessionId, approvalId: row.id, decision });
+  // The job updates the widget too; this covers a job that is gone.
+  await setApprovalStatus(deps, sessionId, row.id, status).catch((error: unknown) =>
+    deps.logger.warn({ err: error, sessionId }, 'session approval not shown'),
+  );
+}
+
 export async function getApprovalForOwner(
   db: Db,
   owner: Owner,
@@ -241,33 +315,56 @@ export async function getApprovalForOwner(
 ): Promise<ApprovalRow> {
   const [row] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
   if (!row) throw notFound('Approval not found');
-  await getRunForOwner(db, owner, row.runId).catch(() => {
+  if (row.runId) {
+    await getRunForOwner(db, owner, row.runId).catch(() => {
+      throw notFound('Approval not found');
+    });
+    return row;
+  }
+  const [session] = row.sessionId
+    ? await db
+        .select({
+          ownerId: schema.codingSessions.ownerId,
+          workspaceId: schema.codingSessions.workspaceId,
+        })
+        .from(schema.codingSessions)
+        .where(eq(schema.codingSessions.id, row.sessionId))
+    : [];
+  if (session?.ownerId !== owner.id || session.workspaceId !== owner.workspaceId) {
     throw notFound('Approval not found');
-  });
+  }
   return row;
 }
 
 /**
  * The owner's pending requests, oldest first, with where each one sits: its
- * run's Bot and chat and the widget message's seq (the Mac app's tray).
+ * run's Bot and chat (or its session's, on the owner's own turn) and the
+ * widget message's seq (the Mac app's tray).
  */
 export async function listPendingApprovals(db: Db, owner: Owner) {
   const rows = await db
     .select({
       approval: schema.approvals,
-      botId: schema.runs.botId,
-      chatId: schema.runs.chatId,
+      botId: schema.bots.id,
+      chatId: sql<string | null>`coalesce(${schema.runs.chatId}, ${schema.codingSessions.chatId})`,
       seq: schema.messages.seq,
     })
     .from(schema.approvals)
-    .innerJoin(schema.runs, eq(schema.runs.id, schema.approvals.runId))
-    .innerJoin(schema.bots, eq(schema.bots.id, schema.runs.botId))
+    .leftJoin(schema.runs, eq(schema.runs.id, schema.approvals.runId))
+    .leftJoin(schema.codingSessions, eq(schema.codingSessions.id, schema.approvals.sessionId))
+    .innerJoin(
+      schema.bots,
+      eq(schema.bots.id, sql`coalesce(${schema.runs.botId}, ${schema.codingSessions.botId})`),
+    )
     .leftJoin(schema.messages, eq(schema.messages.id, schema.approvals.messageId))
     .where(
       and(
         eq(schema.approvals.status, 'pending'),
-        eq(schema.bots.ownerId, owner.id),
         eq(schema.bots.workspaceId, owner.workspaceId),
+        or(
+          and(isNotNull(schema.approvals.runId), eq(schema.bots.ownerId, owner.id)),
+          and(isNull(schema.approvals.runId), eq(schema.codingSessions.ownerId, owner.id)),
+        ),
       ),
     )
     .orderBy(asc(schema.approvals.createdAt));
@@ -365,6 +462,8 @@ async function closeApproval(
     }
   }
   await announceDecision(deps, done.closed, { type: 'system', id: null }, state.note);
+  // A session's request expired or its run was cancelled: the agent hears no.
+  if (done.closed.sessionId) await answerSession(deps, done.closed, state.status);
   return { closed: done.closed, pendingRunId: done.pendingRunId };
 }
 
@@ -415,6 +514,30 @@ export async function closeApprovalsForRun(deps: ApprovalsDeps, runId: string) {
   for (const row of pending) {
     await closeApproval(deps, row, { status: 'denied', note: 'The run was cancelled' });
   }
+}
+
+/**
+ * A coding session ended (it settled, failed, stopped or hit its time
+ * limit): its requests still pending expire, with the events and the audit
+ * entry, so the owner's tray drops them. Returns how many it expired.
+ */
+export async function expireSessionApprovals(
+  deps: ApprovalsDeps,
+  sessionId: string,
+): Promise<number> {
+  const pending = await deps.db
+    .select()
+    .from(schema.approvals)
+    .where(and(eq(schema.approvals.sessionId, sessionId), eq(schema.approvals.status, 'pending')));
+  let expired = 0;
+  for (const row of pending) {
+    const closed = await closeApproval(deps, row, {
+      status: 'expired',
+      note: 'The coding session ended',
+    });
+    if (closed) expired++;
+  }
+  return expired;
 }
 
 /** The `approvals` queue handler: one delayed `expire` job per request. */

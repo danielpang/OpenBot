@@ -43,6 +43,15 @@ export const GithubMatchSchema = z
     event: GithubEventSchema,
     /** `owner/name`, or `owner/*` for every repository of an owner. */
     repo: z.string().trim().min(1).max(200).optional(),
+    /**
+     * The GitHub App installation the delivery came through (I19), so an App
+     * delivery matches only the Routines of the connection it belongs to.
+     * Repository matching is `repo`, against `repository.full_name`.
+     */
+    installation_id: z
+      .string()
+      .regex(/^\d{1,20}$/, 'an installation id is digits')
+      .optional(),
     /** The label added (`label_added`), case-insensitive. */
     label: z.string().trim().min(1).max(100).optional(),
     /** Text the comment contains (`comment_contains`), case-insensitive. */

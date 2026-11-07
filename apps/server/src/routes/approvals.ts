@@ -6,14 +6,22 @@ import { decideApproval, listPendingApprovals } from '../services/approvals.js';
 
 // Approvals (plan 14.1 "Runs", P1). The owner decides a pending request here
 // or through the approval widget's action route; both take the same path.
-// Owner-scoped through the run's Bot: another user's approval answers 404.
+// Owner-scoped through the run's Bot, or the coding session's owner when there
+// is no run: another user's approval answers 404.
 // `GET /approvals` lists the caller's pending requests (the Mac app's tray).
 
 const ApprovalSchema = z
   .object({
     id: z.uuid(),
-    runId: z.uuid(),
+    runId: z
+      .uuid()
+      .nullable()
+      .openapi({ description: "Null for a coding session's request on the owner's own turn" }),
     messageId: z.uuid().nullable().openapi({ description: 'The message holding the widget' }),
+    sessionId: z
+      .uuid()
+      .nullable()
+      .openapi({ description: 'The coding session that asked, when one did' }),
     toolName: z.string(),
     args: z.unknown(),
     summary: z.string().openapi({ description: 'The arguments in one readable line' }),

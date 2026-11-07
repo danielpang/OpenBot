@@ -2,6 +2,7 @@ import { ToolGroupNameSchema, type ToolGroupName } from '@openbots/shared';
 import { defaultSummary, type DefaultSummary, type ToolFacts } from '../policy/index.js';
 import { artifactTools } from './artifacts.js';
 import { builtinTools, NEEDS_CONNECTOR, TOOL_CONNECTOR, type BuiltinConnector } from './builtin.js';
+import { coderTools } from './coder.js';
 import { computerTools } from './computer.js';
 import { connectorTools } from './connector.js';
 import { conversationTools } from './conversation.js';
@@ -18,6 +19,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
   builtinTools,
   connectorTools,
   computerTools,
+  coderTools,
 ];
 
 function groupTools(ctx: ToolContext, groups: ToolGroup[]) {
@@ -95,6 +97,7 @@ export function everyToolDefault(groups: ToolGroup[] = TOOL_GROUPS): ToolDefault
     reactions: present,
     skills: present,
     logins: present,
+    coder: present,
     builtins: {
       connectors: Object.fromEntries(Object.values(TOOL_CONNECTOR).map((id) => [id, builtin(id)])),
     },
@@ -124,6 +127,7 @@ export function everyToolDefault(groups: ToolGroup[] = TOOL_GROUPS): ToolDefault
 export * from './artifacts.js';
 export * from './attachments.js';
 export * from './builtin.js';
+export * from './coder.js';
 export * from './computer.js';
 export * from './connector.js';
 export * from './conversation.js';

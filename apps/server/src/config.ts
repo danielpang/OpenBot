@@ -152,6 +152,29 @@ const envSchema = z.object({
   GITHUB_CLIENT_SECRET: optional(z.string()),
   GOOGLE_CLIENT_ID: optional(z.string()),
   GOOGLE_CLIENT_SECRET: optional(z.string()),
+  // The managed service's shared GitHub App (GH1, I17). Checked together below.
+  GITHUB_APP_ID: optional(z.string().regex(/^\d{1,20}$/, 'must be the App ID, digits')),
+  GITHUB_APP_SLUG: optional(
+    z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/, "must be the App's slug, as in its URL"),
+  ),
+  GITHUB_APP_PRIVATE_KEY: optional(
+    z
+      .string()
+      // One line in .env, with \n for each line break.
+      .transform((pem) => pem.replace(/\\n/g, '\n').trim())
+      .refine(
+        (pem) =>
+          /^-----BEGIN (RSA )?PRIVATE KEY-----\n[\s\S]+\n-----END (RSA )?PRIVATE KEY-----$/.test(
+            pem,
+          ),
+        {
+          message: 'must be the PEM private key GitHub generated for the App',
+        },
+      ),
+  ),
+  GITHUB_APP_CLIENT_ID: optional(z.string()),
+  GITHUB_APP_CLIENT_SECRET: optional(z.string()),
+  GITHUB_APP_WEBHOOK_SECRET: optional(z.string().min(16)),
   ...limitsShape,
 });
 
@@ -161,6 +184,22 @@ export type StdioRunner = 'host' | 'computer';
 export interface OAuthClient {
   clientId: string;
   clientSecret: string;
+}
+
+/**
+ * A GitHub App's credentials (I17): the managed service's shared App from
+ * GITHUB_APP_*, or (stored in `instance_settings`, not here) the one a
+ * self-hoster made through the manifest flow.
+ */
+export interface GithubAppConfig {
+  appId: string;
+  slug: string;
+  /** PEM; signs the JWT that mints installation tokens. */
+  privateKey: string;
+  /** For "Act as me" (GH8): the App's own OAuth sign-in. Both or neither. */
+  clientId?: string;
+  clientSecret?: string;
+  webhookSecret: string;
 }
 
 export interface Config {
@@ -299,6 +338,12 @@ export interface Config {
     github?: OAuthClient;
     google?: OAuthClient;
   };
+  /**
+   * The managed service's shared GitHub App, when GITHUB_APP_ID, _SLUG,
+   * _PRIVATE_KEY and _WEBHOOK_SECRET are all set. A self-hosted install gets
+   * its own App through the manifest flow instead.
+   */
+  githubApp?: GithubAppConfig;
   limits: Limits;
   /**
    * Approval expiry, the MCP idle stop and the web_fetch caps
@@ -353,6 +398,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   } catch (error) {
     throw new Error(`invalid configuration:\n  ${(error as Error).message}`, { cause: error });
   }
+  const githubApp = githubAppFrom(e);
   const raw = e as Record<string, unknown>;
   const limitOverrides: Partial<Limits> = {};
   for (const [key, name] of Object.entries(LIMIT_ENV_VARS) as [keyof Limits, string][]) {
@@ -418,8 +464,46 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       github: oauthClient(e.GITHUB_CLIENT_ID, e.GITHUB_CLIENT_SECRET),
       google: oauthClient(e.GOOGLE_CLIENT_ID, e.GOOGLE_CLIENT_SECRET),
     },
+    ...(githubApp ? { githubApp } : {}),
     limits: resolveLimits(limitOverrides),
     processLimits: resolveProcessLimits(processOverrides),
+  };
+}
+
+const GITHUB_APP_REQUIRED = [
+  'GITHUB_APP_ID',
+  'GITHUB_APP_SLUG',
+  'GITHUB_APP_PRIVATE_KEY',
+  'GITHUB_APP_WEBHOOK_SECRET',
+] as const;
+
+/** The shared App: all of its required variables or none, and its OAuth client whole or not at all. */
+function githubAppFrom(e: z.infer<typeof envSchema>): GithubAppConfig | undefined {
+  const missing = GITHUB_APP_REQUIRED.filter((name) => !e[name]);
+  const oauthHalf = !e.GITHUB_APP_CLIENT_ID !== !e.GITHUB_APP_CLIENT_SECRET;
+  if (missing.length === GITHUB_APP_REQUIRED.length) {
+    if (e.GITHUB_APP_CLIENT_ID || e.GITHUB_APP_CLIENT_SECRET) {
+      throw new Error(
+        'invalid configuration:\n  GITHUB_APP_CLIENT_ID: set only with GITHUB_APP_ID, GITHUB_APP_SLUG, GITHUB_APP_PRIVATE_KEY and GITHUB_APP_WEBHOOK_SECRET',
+      );
+    }
+    return undefined;
+  }
+  const problems = missing.map((name) => `  ${name}: needed with the other GITHUB_APP_ variables`);
+  if (oauthHalf) {
+    problems.push(
+      '  GITHUB_APP_CLIENT_SECRET: set both GITHUB_APP_CLIENT_ID and GITHUB_APP_CLIENT_SECRET, or neither',
+    );
+  }
+  if (problems.length) throw new Error(`invalid configuration:\n${problems.join('\n')}`);
+  return {
+    appId: e.GITHUB_APP_ID!,
+    slug: e.GITHUB_APP_SLUG!,
+    privateKey: e.GITHUB_APP_PRIVATE_KEY!,
+    ...(e.GITHUB_APP_CLIENT_ID
+      ? { clientId: e.GITHUB_APP_CLIENT_ID, clientSecret: e.GITHUB_APP_CLIENT_SECRET! }
+      : {}),
+    webhookSecret: e.GITHUB_APP_WEBHOOK_SECRET!,
   };
 }
 

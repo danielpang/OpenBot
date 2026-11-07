@@ -8,6 +8,8 @@ export * from './chats.js';
 export * from './runs.js';
 export * from './tools.js';
 export * from './computer.js';
+export * from './git.js';
+export * from './coders.js';
 export * from './prompts.js';
 export * from './webhooks.js';
 export * from './artifacts.js';

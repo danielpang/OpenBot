@@ -96,6 +96,23 @@ export const SEALED_COLUMNS: readonly SealedColumn[] = [
     key: 'pushKey',
   },
   {
+    name: 'git_connections.secrets',
+    table: schema.gitConnections,
+    id: schema.gitConnections.id,
+    column: schema.gitConnections.secrets,
+    key: 'secrets',
+    updatedAt: schema.gitConnections.updatedAt,
+  },
+  {
+    name: 'instance_settings.value',
+    table: schema.instanceSettings,
+    id: schema.instanceSettings.key,
+    column: schema.instanceSettings.value,
+    key: 'value',
+    updatedAt: schema.instanceSettings.updatedAt,
+    install: true,
+  },
+  {
     name: 'instance_keys.signing_key',
     table: schema.instanceKeys,
     id: schema.instanceKeys.id,

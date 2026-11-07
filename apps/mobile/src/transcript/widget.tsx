@@ -8,10 +8,13 @@ import {
   ApprovalPropsSchema,
   LoginRequestPropsSchema,
   RoutineRunPropsSchema,
+  CodingSessionPropsSchema,
+  CoderLoginPropsSchema,
 } from '@openbots/widgets';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApi } from '../api/provider';
 import { Button, Card, ErrorNote, Field, Icon, Label, row } from '../components/ui';
+import { CoderLoginBody, CodingSessionBody } from './coder-widgets';
 import type { Message } from './model';
 
 export function NativeWidget({
@@ -32,27 +35,44 @@ export function NativeWidget({
   const [answer, setAnswer] = useState('');
   const state = (part.state ?? {}) as Record<string, unknown>;
   const pending = !state.status || state.status === 'pending';
-  async function act(action: Record<string, unknown>) {
+  async function act(action: Record<string, unknown>): Promise<boolean> {
     const valid = validateWidgetAction(part.kind, action);
     if (!valid.ok) {
       setError(new Error(valid.error));
-      return;
+      return false;
     }
-    setBusy(true);
-    setError(null);
-    try {
-      await unwrap(
+    return send(() =>
+      unwrap(
         api.POST('/api/v1/messages/{id}/widgets/{part}/action', {
           params: { path: { id: messageId, part: index } },
           body: { action },
         }),
-      );
+      ),
+    );
+  }
+  // A coding session's approvals are ordinary approvals rows (CA6), decided
+  // through the same route as the Inbox's; the server updates the widget.
+  async function decide(id: string, decision: 'approve' | 'deny') {
+    return send(() =>
+      unwrap(
+        api.POST('/api/v1/approvals/{id}/decide', { params: { path: { id } }, body: { decision } }),
+      ),
+    );
+  }
+  /** Sends a request and refreshes what it changed; false when it failed (the error shows). */
+  async function send(request: () => Promise<unknown>): Promise<boolean> {
+    setBusy(true);
+    setError(null);
+    try {
+      await request();
       await cache.invalidateQueries({ queryKey: ['approvals'] });
       await cache.invalidateQueries({ queryKey: ['inbox'] });
       await cache.invalidateQueries({ queryKey: ['messages'] });
       onUpdated?.();
+      return true;
     } catch (e) {
       setError(e);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -208,6 +228,25 @@ export function NativeWidget({
           <Label muted>Routine paused</Label>
         )}
       </>
+    );
+  } else if (part.kind === 'coding_session') {
+    body = (
+      <CodingSessionBody
+        props={CodingSessionPropsSchema.parse(part.props)}
+        state={state}
+        busy={busy}
+        act={act}
+        decide={decide}
+      />
+    );
+  } else if (part.kind === 'coder_login') {
+    body = (
+      <CoderLoginBody
+        props={CoderLoginPropsSchema.parse(part.props)}
+        state={state}
+        busy={busy}
+        act={act}
+      />
     );
   } else {
     const props = part.props as Record<string, unknown>;

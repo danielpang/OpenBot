@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BotUsageSection,
   botUsageQuery,
+  codingWords,
+  onPlanWords,
   formatCost,
   unpricedNote,
   USAGE_HELP,
@@ -25,6 +27,8 @@ const sums = (over: Partial<BotUsage['totals']> = {}): BotUsage['totals'] => ({
   ...over,
 });
 
+const noCoding = { sessions: 0, inputTokens: 0, outputTokens: 0, costUsd: null, onPlanSessions: 0 };
+
 function render(usage: BotUsage) {
   const queryClient = new QueryClient();
   queryClient.setQueryData(botUsageQuery(BOT_ID, 30).queryKey, usage);
@@ -42,6 +46,7 @@ describe('Bot Settings usage section', () => {
     const html = render({
       days: 30,
       since: '2026-09-30T00:00:00.000Z',
+      coding: noCoding,
       totals: sums({
         runs: 3,
         inputTokens: 12_345,
@@ -71,12 +76,42 @@ describe('Bot Settings usage section', () => {
     const html = render({
       days: 30,
       since: '2026-09-30T00:00:00.000Z',
+      coding: noCoding,
       totals: sums(),
       daily: [],
       models: [],
     });
     expect(html).toContain('No runs in the last 30 days.');
     expect(html).not.toContain('Estimated cost');
+  });
+
+  it('shows the coding sessions, with or without other runs', () => {
+    const coding = {
+      sessions: 3,
+      inputTokens: 12_000,
+      outputTokens: 600,
+      costUsd: 0.4,
+      onPlanSessions: 2,
+    };
+    const base = {
+      days: 30,
+      since: '2026-09-30T00:00:00.000Z',
+      daily: [],
+      models: [],
+    };
+    const html = render({ ...base, totals: sums({ runs: 1, inputTokens: 10 }), coding });
+    expect(html).toContain('3 coding sessions, 12,000 in / 600 out tokens, $0.40');
+    expect(html).toContain('2 sessions on your plan');
+    const quiet = render({ ...base, totals: sums(), coding });
+    expect(quiet).toContain('No runs in the last 30 days.');
+    expect(quiet).toContain('3 coding sessions');
+    const none = render({ ...base, totals: sums({ runs: 1 }), coding: { ...coding, sessions: 0 } });
+    expect(none).not.toContain('data-coding-usage');
+    expect(codingWords({ ...coding, sessions: 1, costUsd: null })).toBe(
+      '1 coding session, 12,000 in / 600 out tokens',
+    );
+    expect(onPlanWords(1)).toBe('1 session on your plan');
+    expect(html).not.toMatch(/[–—]| - /);
   });
 
   it('formats estimates and the unpriced note', () => {

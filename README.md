@@ -192,6 +192,169 @@ If the server or sandbox firewall image cannot be pulled, `docker compose up -d`
 your checkout (`docker/server.Dockerfile`, `docker/sandbox-firewall.Dockerfile`). To build them
 yourself: `docker compose build`.
 
+## Coding agents
+
+A Bot can hand real coding work to a coding agent on its own computer: understand a repository,
+change it, run its tests, and push a branch or open a pull request once you approve. It can use
+Claude Code, Codex or pi. The agents are pinned in the image (`docker/coders/package.json`) and
+never downloaded at run time. The design is in [docs/TECHNICAL_PLAN.md](docs/TECHNICAL_PLAN.md)
+section 22, and what each CLI was checked to do is in
+[docs/CODING_AGENT_VENDORS.md](docs/CODING_AGENT_VENDORS.md).
+
+**Sign in.** Open Settings > Coding agents. Each agent has a card and signs in its own way, with
+the vendor's own login running on the computer. The sign-in stays on the computer's state volume,
+where the Bot's shell cannot read it, and is never sent to the server.
+
+- **Claude Code:** press Sign in. The card shows a link. Open it on any device (the phone works),
+  sign in to Claude with the account that holds your plan, and paste the code Claude gives you back
+  into the card. The computer runs `claude auth login --claudeai`, and the sign-in is saved on the
+  computer, never on the server. Check asks Claude Code how it is signed in.
+- **Codex:** press Sign in. The card shows a link and a code. Open the link on any device, sign in
+  to ChatGPT and enter the code there. Nothing is pasted back; the card follows the sign-in by
+  itself. Check reads the sign-in again later.
+- **pi:** pi signs in inside its own terminal. Press Sign in and the Computer page's terminal opens
+  as the coding agents' user. Run `pi`, type `/login` and choose a provider, then come back and
+  press Check, which asks pi on the computer how it is signed in.
+
+If a Bot needs an agent that is not signed in, a sign-in card appears in your main Bot's chat (for
+pi it tells you to sign in from pi's terminal and press Check), and the Bot carries on once you
+finish. In the chat, Show QR on that card draws the link as a QR code, so you can open it with
+your phone's camera.
+
+**Plans.** Each agent uses your plan through its own CLI: Claude Code your Claude plan, Codex your
+ChatGPT plan. OpenBots runs the vendor's own CLI and its own sign-in and never calls the vendor with
+your plan's token. pi offers every sign-in pi lists: a ChatGPT plan, a Claude plan, GitHub Copilot
+and the others. Anthropic bills a Claude plan used through pi as extra usage, not against the plan,
+and the pi card says so. Whether Claude Code's headless mode bills your Claude plan is still to be
+checked with a real Pro or Max account.
+
+**API keys.** Use API key on an agent's card picks a provider you added in Settings > Models, so
+the key is never typed twice. The card offers only the providers that agent can use:
+
+| Agent       | Provider keys                  | Custom endpoints     |
+| ----------- | ------------------------------ | -------------------- |
+| Claude Code | Anthropic                      | Anthropic compatible |
+| Codex       | OpenAI                         | OpenAI compatible    |
+| pi          | Anthropic, OpenAI, Google, xAI | Not yet              |
+
+The key goes into the session's environment on the computer, where the agent and the scripts it
+runs can read it, and shows as `[key]` in the feed and the log. Use a key made for this, with a
+spend limit. If the provider rejects the key, the session fails with "The <provider> API key for
+<agent> was rejected", and the card links to Settings > Models; OpenBots never switches the agent
+to a plan sign-in by itself.
+
+**Repositories.** On the Computer page, Repositories lists the repositories you keep, with their
+state on the computer (Ready, Cloning, Behind by N, Local changes, Missing), branch and path. Add
+repository takes a GitHub URL, https or ssh, and clones it under `/home/bot/repos/<owner>/<name>`.
+Add from GitHub opens the picker for a GitHub connection (below). Update fetches, Clone clones it
+again, Open terminal opens the terminal there, and Forget drops it from the list, keeping the clone
+unless you ask to delete its files. Keep cloned (on by default) has a repository cloned again by
+itself when the computer starts without it, as on a new home volume; your main Bot's chat says what
+was cloned, and a clone that failed also notifies you on the Mac and the phone. Pin keeps a
+repository at the top. Every running computer fetches its repositories every 15 minutes, so the
+states stay current, and each repository shows its size on disk, with the total in the header. A
+clone that has not moved in 30 minutes shows Stuck. The same fetch removes the worktrees of finished
+sessions whose branch was merged, or was pushed and then deleted on GitHub, when nothing is left
+uncommitted in them.
+
+**Found repositories.** After every computer start, every 15 minutes, and when you press Scan now,
+OpenBots looks three levels deep under `/home/bot` for clones nobody remembered and lists them under
+"On the computer, not remembered". Remember keeps one where it is. A found clone is never offered to
+a Bot until you remember it.
+
+**Rescue.** Rescue unpushed work pushes, for every repository you keep, commits that are on no
+remote branch and uncommitted changes to tracked files to a new branch named
+`openbots/rescue/<time>/<repository>/<branch>`, without touching your branch, index or files, and
+lists what it saved and what it could not. A running session's worktree is left alone, and new files
+nobody added are not saved.
+
+**Reset computer.** Reset computer on the Computer page gives you a fresh computer with an empty
+home. It runs Rescue first, then shows what was pushed to rescue branches, what could not be saved
+and any coding session a reset would stop, and only then offers Reset. The reset removes the
+computer and its home; your browser logins and the coding agents' sign-ins stay unless you check
+"Also forget the coding agent sign-ins", which removes both, since they are kept on the same volume.
+Confirm within 15 minutes of opening the dialog, or open it
+again. The next start makes the new computer and clones every Keep cloned repository again. Docker
+computers only.
+
+**A task.** Ask a Bot in plain words ("Fix the reconnect loop in the relay"). It calls `code_task`,
+and a coding session card appears in the chat: the agent, repository and branch, a live feed of what
+it reads, edits and runs, and at the end a summary, the changed files, the commits and the PR link.
+Each session works in a git worktree of its own on a new branch (`bot/...`), so nothing happens on
+your default branch. Edits, tests and commits inside the worktree run without asking. Pushing,
+opening a PR, anything outside the worktree, package installs and destructive commands ask first:
+the approval shows in the card and as a notification on the Mac and the phone. In `pr` mode the
+session asks once to push and open the PR, then does both. A run started by a webhook or another
+Bot asks before everything unless you lift that. That is how Claude Code and pi work; pi asks
+through an OpenBots extension that every pi session loads. Codex asks less: it works inside its own
+sandbox, which lets it write only the worktree and the repository's `.git` and keeps the network
+off, and runs what the sandbox allows without asking. It asks only when it wants to step outside
+(a command with the network or unsandboxed, a write elsewhere), and that request is decided by the
+actions below like any agent's. Package installs fail in its sandbox. Its session card says so. The
+push and the PR still ask, whatever the agent. When the session ends, the Bot commits the files the
+agent itself changed and left uncommitted, so the branch carries them; a file whose name looks like
+it holds a secret (`.env`, a key, a token) is never committed, and anything else left in the
+worktree is listed on the card as left uncommitted. If the vendor rate limits the agent, the session
+waits until the limit resets (at most 30 minutes) and tries once more. Bot Settings >
+Tools and permissions sets, per Bot, whether it may code, its default agent, which repositories it
+may use, what each action does, and a model per agent, written as that agent's CLI names it
+(`claude-sonnet-4-5`, `gpt-5.3-codex`, `anthropic/claude-sonnet-4-5`); leave it empty for the
+agent's default. Continue on a finished
+card (or a reply in its thread) asks the Bot to pick the session up again; Discard branch removes
+the worktree and the branch from the computer, and a branch the session pushed is deleted on GitHub
+too, unless a pull request was opened from it.
+
+**View diff and usage.** A finished session with commits saves its branch's diff against the base
+as an Artifact, and View diff on the card (or the link on the phone) opens it. A continued session
+updates the same Artifact. The card's usage line says "On your Claude plan", "On your ChatGPT plan"
+or "On your plan" for a plan sign-in, and the tokens and any cost for an API key. Bot Settings'
+usage section counts the Bot's coding sessions beside its runs.
+
+**The terminal.** Open terminal on a session opens the Computer page's terminal in its worktree, as
+the coding agents' user, with the agent's resume command (`claude --resume <id>`,
+`codex resume <id>` or `pi --session <id>`) typed and ready: press Enter to carry on the same
+conversation yourself.
+
+**Limits.** Three sessions at a time per account (the next one waits), 60 minutes per session, 200
+agent turns per Claude Code session, one wait of at most 30 minutes for a vendor rate limit, and 50
+repositories.
+
+### Connect GitHub
+
+Coding agents reach GitHub through the GitHub card on the Connectors page. The GitHub App is the
+best way in. Each repository then gets its own short-lived token, which can only read until you
+approve a push, so a push you did not approve is refused by GitHub itself.
+
+- **On the managed service** there is one shared App. Press Install the OpenBots app, pick the
+  account or organization and its repositories on GitHub, and authorize when GitHub asks.
+- **On a self-hosted install** an admin makes the install's own App in one click: Create a GitHub
+  App for this install, on your personal account or an organization (the App is private, so only
+  that account can install it). This needs `OPENBOTS_PUBLIC_URL` to be an https address GitHub can
+  reach (see "Exposing your OpenBots server to the internet" below); the card says so otherwise.
+  GitHub creates the App with its webhook at `<OPENBOTS_PUBLIC_URL>/api/v1/github/app/webhook`,
+  and then any member installs it. To use an App you made yourself, set `GITHUB_APP_*` in `.env`
+  (see `.env.example`): it needs "Request user authorization (OAuth) during installation" on, its
+  callback URL at `<OPENBOTS_PUBLIC_URL>/api/v1/git-connections/github-app/callback`, its webhook
+  at the URL above, and its client id and secret set.
+- **What your access means.** GitHub asks you to authorize the App while you install it, and
+  OpenBots keeps the list of the installation's repositories your own GitHub account can reach,
+  then forgets that authorization. Your Bots read only those repositories, and push only where you
+  can push. Someone else in your organization who connects the same installation is held to their
+  own access. Re-check access reads the list again after your access on GitHub changes.
+- **The picker.** After an install the card opens the picker: check the repositories to keep and
+  press Keep on the computer, and each is cloned. Sync lists again.
+- **Who it acts as.** Commits are by the Bot, as "<Bot name> (OpenBots)", with you as co-author. Act
+  as on an App connection says who opens pull requests: The Bot (OpenBots app) or Me, which needs
+  your GitHub sign-in on the GitHub connector.
+- **A token instead.** Paste a token instead takes a fine-grained personal access token. GitHub
+  cannot narrow it, so a session gets it only for a push you approved; limit it to the repositories
+  you add. With no connection at all, the GitHub connector's token or the GitHub built-in's is used
+  the same way.
+- **Routines.** A Bot's Routines tab starts with three coding templates: Fix issues labeled bot,
+  Review new pull requests and Weekly dependency update. Pick the repository (and the label). On a
+  repository the App reaches, its webhook delivers the events and there is nothing to set up on
+  GitHub; otherwise the Routine shows a webhook URL and secret, once, to add on the repository.
+
 ## Upgrade
 
 ```sh
@@ -412,6 +575,66 @@ openbots ls -l /run/openbots` lists the secrets, each `-rw-------`. Remove the c
     `curl -m 10 https://example.com` gets a 403 from tinyproxy;
     `curl -m 10 --noproxy '*' https://example.com` times out (proxy only). The proxy's log
     (`docker compose logs egress-proxy`) shows both requests, and the firewall's names the proxy.
+14. Coding agents are out of the Bot's reach (S-22). In a Bot's terminal (as `bot`),
+    `ls /var/lib/openbots/coders` is refused ("Permission denied") and `claude -p hi` reports that
+    it is not signed in, while Settings > Coding agents shows Claude Code signed in. From a coding
+    session's Open terminal (as `coder`), `ls /var/lib/openbots/cookies` and
+    `ls /var/lib/openbots/coders/runner-home` are refused, and `ls -ld /home/bot/repos` shows
+    `drwxrwsr-x bot coders`.
+15. A push without an approval fails (S-23, S-27). Ask a Bot for a `pr` mode task and deny "Push
+    and open a PR": the branch stays on the computer and does not appear on GitHub. In the session's terminal, `git push origin HEAD` fails for want of a
+    credential, since only the session's own processes hold its secret.
+16. Both platforms install the three CLIs (S-20): `docker buildx build --platform
+linux/amd64,linux/arm64 -f docker/computer.Dockerfile .` succeeds, and in a computer
+    `claude --version`, `codex --version` and `pi --version` print the versions pinned in
+    `docker/coders/package.json`, from files owned by root under `/opt/openbots/coders`.
+17. A read token cannot push (S-27, S-29). With the GitHub App connected, set "Push a branch" to
+    "Run without asking" for a Bot in Tools and permissions, so nothing approves the push, and ask
+    it for an `edit` task on a repository you can push to whose prompt says to run
+    `sh -c 'git push https://fetch@github.com/<owner>/<name>.git HEAD'`. The session's feed shows
+    GitHub's 403 for that push, since the fetch URL got a read token. With a pasted token instead,
+    the same push fails for want of a credential. Set the decision back afterwards.
+18. The server's git has its own user (S-30). While a coding session runs and a repository clones
+    or updates, `ps -o user,cmd -e` in the computer's terminal shows the runner's `git` as
+    `coder-runner` and the coding agent's `claude` as `coder`.
+19. A repository's config cannot run anything (S-31). In a coding session's Open terminal (as
+    `coder`), run `git config --file .git/config core.hooksPath /tmp/hooks` in the repository's
+    checkout, then press Update (or wait for the next 15 minute refresh). The repository shows
+    Error with "The repository's git configuration was changed in a way OpenBots does not run;
+    remove it or forget and clone the repository again", naming `.git/config` as a file a coding
+    session can change, since git replaced the runner's file with the session's. No hook runs.
+    Forget the repository with its files and add it again to recover.
+20. Codex keeps its posture over the coder user's config and stays in its sandbox (S-37, S-40). In
+    a coding session's Open terminal (as `coder`), `cat $CODEX_HOME/config.toml` shows what is
+    there (or nothing); add `sandbox_mode = "danger-full-access"` and `approval_policy = "never"`
+    to it. Then ask a Bot with Codex signed in for an `edit` task whose prompt says to run
+    `touch /home/bot/outside-the-worktree`. The feed starts with "Codex works inside its own
+    sandbox". The command either fails in the sandbox, or Codex asks to run it outside and the card
+    shows an approval, which you deny; either way `ls /home/bot/outside-the-worktree` finds nothing,
+    since every session sets the sandbox and the approval policy over that file. Remove the two
+    lines afterwards.
+21. A pi session denies a blocked tool (S-38). Set "Install packages" to "Never" for a Bot in Tools
+    and permissions, and ask it for a pi `edit` task whose prompt says to run `npm install left-pad`.
+    The feed shows the call blocked with OpenBots' reason, no approval is asked, and nothing is
+    installed in the worktree. Set the decision back afterwards.
+22. A provider key reaches only a session on a key (S-39). With Claude Code signed in with a plan,
+    ask for a Claude Code `edit` task whose prompt says to run `env | grep API_KEY`: the feed shows no
+    variable. Switch the card to Use API key and run it again: `ANTHROPIC_API_KEY` is there, and its
+    value shows as `[key]` in the feed and in View log.
+23. A session survives a server restart (plan 22.8). Start a coding session and, while it runs,
+    restart the server with `docker compose restart openbots`. After it starts, the session shows
+    failed with "The server restarted during the session; continue it to pick up where it left
+    off", and the run that waited on it resumes, so the Bot says so in the chat. Continue picks the session up again.
+24. The image build fails when an installed CLI differs from its pin (CA1). Change one CLI's version
+    in `docker/coders/package.json` and build `docker/computer.Dockerfile`: the `coders` stage
+    fails, at `npm ci` when the lockfile disagrees or at the pin check with "<name>: installed
+    <version>, pinned <version>". Put the version back afterwards.
+25. Reset computer rescues first and removes only the computer's volumes (S-43, plan 22.14). With an
+    unpushed commit in a repository, press Reset computer on the Computer page: the dialog lists the
+    commit under "Pushed to rescue branches" and the branch is on GitHub. Reset, then start the
+    computer: `/home/bot` is fresh, the Keep cloned repositories clone again, and Settings > Coding
+    agents still shows the agents signed in. `docker volume ls` lists the computer's state volume
+    and a new home volume, and the database's volume is untouched.
 
 ## Exposing your OpenBots server to the internet
 

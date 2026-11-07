@@ -3,6 +3,7 @@ import { cn } from '@openbots/ui';
 import { EventRow, FileCard, Widget } from '@openbots/widgets/react';
 import { memo, type ReactNode } from 'react';
 import { ArtifactPart } from '../artifacts/card.js';
+import { codingSessionHost } from '../coders/session-host.js';
 import type { Bot } from '../bots/queries.js';
 import { useToolConnector } from '../tools/hooks.js';
 import { ConnectorIcon } from '../tools/icons.js';
@@ -255,8 +256,15 @@ function BlockView({
           fileUrl={fileUrl}
           onReply={onReply}
           onOpenActivity={onOpenActivity}
+          onOpenArtifact={onOpenArtifact}
           onNavigate={onNavigate}
           {...(onTakeover ? { onTakeover } : {})}
+          {...(block.part.kind === 'coding_session'
+            ? {
+                renderMarkdown,
+                ...(onNavigate ? { coder: codingSessionHost(onNavigate) } : {}),
+              }
+            : {})}
           onAction={
             onWidgetAction ? (action) => onWidgetAction(message, block.index, action) : undefined
           }
@@ -284,6 +292,8 @@ function BlockView({
       );
   }
 }
+
+const renderMarkdown = (text: string) => <Markdown text={text} />;
 
 /** The connector's mark before a connector tool's line; nothing for other tools. */
 function ToolConnectorIcon({ tool }: { tool: string }) {

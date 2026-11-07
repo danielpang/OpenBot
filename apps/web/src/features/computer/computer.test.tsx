@@ -20,6 +20,7 @@ import {
   applyScreenControl,
   computerFileUrl,
   computerQuery,
+  ptyUrl,
   type Computer,
   type ComputerState,
 } from './api.js';
@@ -838,6 +839,325 @@ describe('the Computer page', () => {
     const put = server.requests.find((r) => r.method === 'PUT')!;
     expect(put.path).toBe('/api/v1/computer/files/my%20report.txt');
     expect(put.body).toBe('hello world');
+  });
+});
+
+describe('Reset computer', () => {
+  function resetServer(answer: 'ok' | 'not-prepared' = 'ok') {
+    let polls = 0;
+    const handle = server.handle;
+    server.handle = async (request) => {
+      const { pathname } = new URL(request.url, 'http://localhost');
+      if (pathname === '/api/v1/computer/reset/prepare') {
+        return Response.json({ requestId: 'r1' }, { status: 202 });
+      }
+      if (pathname === '/api/v1/computer/reset/r1') {
+        polls += 1;
+        return Response.json(
+          polls < 2
+            ? { status: 'running', results: [], unsaved: [], runningSessions: [] }
+            : {
+                status: 'done',
+                results: [
+                  {
+                    repoId: '00000000-0000-4000-8000-0000000000a1',
+                    fullName: 'danielpang/OpenBots',
+                    branch: 'openbots/rescue/2026-11-05T10-30',
+                    pushed: true,
+                    note: 'Pushed 2 commits and the uncommitted changes.',
+                  },
+                ],
+                unsaved: [
+                  {
+                    fullName: 'danielpang/notes',
+                    branch: 'drafts',
+                    note: 'The connection cannot push to this repository.',
+                  },
+                ],
+                runningSessions: [{ id: 's1', botId: BOT, repoFullName: 'danielpang/OpenBots' }],
+              },
+        );
+      }
+      if (pathname === '/api/v1/computer/reset') {
+        return answer === 'ok'
+          ? new Response(null, { status: 202 })
+          : Response.json(
+              {
+                title: 'Conflict',
+                code: 'RESET_NOT_PREPARED',
+                detail: 'Check for unpushed work first.',
+              },
+              { status: 409 },
+            );
+      }
+      if (pathname === '/api/v1/repos') return Response.json({ repos: [] });
+      return handle(request);
+    };
+  }
+
+  it(
+    'checks for unpushed work, shows what was saved and what was not, then resets',
+    { timeout: 15_000 },
+    async () => {
+      resetServer();
+      render(<ComputerPage />);
+      await until(() => !!button('Reset computer'), 'Reset computer');
+      expect(button('Restart')).toBeDefined();
+      click(button('Reset computer'));
+      await until(
+        () => !!document.body.textContent?.includes('Checking for unpushed work'),
+        'the check',
+      );
+      expect(button('Reset')!.disabled).toBe(true);
+      await until(() => !!document.querySelector('[data-reset="checked"]'), 'the results');
+      const dialog = document.querySelector('[data-reset]')!;
+      expect(
+        dialog.querySelector('[data-reset-pushed="danielpang/OpenBots"]')!.textContent,
+      ).toContain('openbots/rescue/2026-11-05T10-30');
+      expect(
+        dialog.querySelector('[data-reset-unsaved="danielpang/notes"]')!.textContent,
+      ).toContain('The connection cannot push to this repository.');
+      expect(dialog.textContent).toContain('1 coding session is running. Reset stops it.');
+      expect(document.body.textContent).toContain(
+        'The computer starts again with an empty home. Repositories marked keep cloned are cloned again.',
+      );
+      expect(document.body.textContent).not.toMatch(/[–—]| - /);
+      click(dialog.querySelector('input[name="resetSignIns"]'));
+      click(button('Reset'));
+      await until(() => posts('/api/v1/computer/reset').length === 1, 'the reset');
+      expect(JSON.parse(posts('/api/v1/computer/reset')[0]!)).toEqual({
+        requestId: 'r1',
+        confirm: true,
+        resetSignIns: true,
+      });
+      expect(posts('/api/v1/computer/reset/prepare')).toHaveLength(1);
+      await until(() => !document.querySelector('[data-reset]'), 'the dialog to close');
+    },
+  );
+
+  it('says so plainly when the server has no finished check', { timeout: 15_000 }, async () => {
+    resetServer('not-prepared');
+    render(<ComputerPage />);
+    await until(() => !!button('Reset computer'), 'Reset computer');
+    click(button('Reset computer'));
+    await until(() => !!document.querySelector('[data-reset="checked"]'), 'the results');
+    click(button('Reset'));
+    await until(
+      () => !!document.body.textContent?.includes('The check is out of date.'),
+      'the error',
+    );
+    expect(button('Reset')!.disabled).toBe(true);
+    click(button('Check again'));
+    await until(() => posts('/api/v1/computer/reset/prepare').length === 2, 'a new check');
+  });
+});
+
+describe('terminal attach (CA7, I15)', () => {
+  it('opens the terminal in a directory, as another user, with a command typed', async () => {
+    render(
+      <ComputerPage
+        attach={{
+          cwd: '/home/bot/repos/o/r/.worktrees/bot-x',
+          user: 'coder',
+          preset: 'claude --resume 7f3a',
+        }}
+      />,
+    );
+    await until(() => FakeSocket.sockets.length === 1, 'the terminal socket');
+    const url = new URL(FakeSocket.sockets[0]!.url);
+    expect(url.pathname).toBe('/api/v1/computer/pty');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      cols: '100',
+      rows: '30',
+      cwd: '/home/bot/repos/o/r/.worktrees/bot-x',
+      user: 'coder',
+      preset: 'claude --resume 7f3a',
+    });
+    expect(host.querySelector('[data-terminal-cwd]')?.textContent).toBe(
+      'coder in /home/bot/repos/o/r/.worktrees/bot-x',
+    );
+  });
+
+  it('builds the PTY URL with only the parameters given', () => {
+    expect(ptyUrl(80, 24, { cwd: '/home/bot/a b' })).toBe(
+      'ws://localhost:3000/api/v1/computer/pty?cols=80&rows=24&cwd=%2Fhome%2Fbot%2Fa+b',
+    );
+    expect(ptyUrl(80, 24)).toBe('ws://localhost:3000/api/v1/computer/pty?cols=80&rows=24');
+  });
+});
+
+describe('Repositories (GH3)', () => {
+  const REPO = '00000000-0000-4000-8000-0000000000r1';
+  const checkout = (over: object) => ({
+    state: 'ready',
+    path: '/home/bot/repos/danielpang/OpenBots',
+    ahead: 0,
+    behind: 0,
+    headSha: 'abc',
+    lastFetchAt: null,
+    error: null,
+    ...over,
+  });
+  const repo = (id: string, fullName: string, check: ReturnType<typeof checkout> | null) => ({
+    id,
+    fullName,
+    remoteUrl: `https://github.com/${fullName}.git`,
+    defaultBranch: 'main',
+    keepCloned: true,
+    pinned: false,
+    description: null,
+    lastUsedAt: null,
+    checkout: check,
+  });
+  let repos: ReturnType<typeof repo>[];
+
+  beforeEach(() => {
+    repos = [
+      repo(REPO, 'danielpang/OpenBots', checkout({})),
+      repo(
+        'r2',
+        'danielpang/openbots-relay',
+        checkout({ state: 'behind', behind: 6, path: '/home/bot/repos/danielpang/openbots-relay' }),
+      ),
+      repo('r3', 'danielpang/site', null),
+      repo('r4', 'danielpang/notes', checkout({ state: 'dirty' })),
+      repo('r5', 'danielpang/broken', checkout({ state: 'error', error: 'Authentication failed' })),
+      repo('r6', 'danielpang/big', checkout({ state: 'cloning', path: null })),
+    ];
+    const handle = server.handle;
+    server.handle = async (request) => {
+      const { pathname } = new URL(request.url);
+      if (pathname === '/api/v1/repos' && request.method === 'GET') return Response.json({ repos });
+      if (pathname === '/api/v1/repos' && request.method === 'POST') {
+        const body = (await request.json()) as { remoteUrl: string };
+        const added = repo('r7', 'danielpang/new', checkout({ state: 'cloning', path: null }));
+        added.remoteUrl = body.remoteUrl;
+        repos = [...repos, added];
+        return Response.json({ repo: added }, { status: 201 });
+      }
+      const match = /^\/api\/v1\/repos\/([^/]+)(?:\/(clone|update))?$/.exec(pathname);
+      if (match) {
+        const [, id, action] = match;
+        if (request.method === 'DELETE') {
+          repos = repos.filter((r) => r.id !== id);
+          return Response.json({
+            filesDeleted: false,
+            path: null,
+            note: 'The clone stays on the computer.',
+          });
+        }
+        const next = repos.find((r) => r.id === id)!;
+        const updated = {
+          ...next,
+          checkout: checkout({
+            state: action === 'clone' ? 'cloning' : 'ready',
+            path: next.checkout?.path ?? null,
+          }),
+        };
+        repos = repos.map((r) => (r.id === id ? updated : r));
+        return Response.json({ repo: updated });
+      }
+      return handle(request);
+    };
+  });
+
+  const row = (name: string) => host.querySelector<HTMLElement>(`[data-repo="${name}"]`)!;
+  const pill = (name: string) => row(name).querySelector('[data-state]')!.textContent;
+
+  it('lists each repository with its state, branch and path', async () => {
+    render(<ComputerPage />);
+    await until(() => !!row('danielpang/big'), 'the list');
+    expect(pill('danielpang/OpenBots')).toBe('Ready');
+    expect(pill('danielpang/openbots-relay')).toBe('Behind by 6');
+    expect(pill('danielpang/site')).toBe('Missing');
+    expect(pill('danielpang/notes')).toBe('Local changes');
+    expect(pill('danielpang/broken')).toBe('Error');
+    expect(row('danielpang/broken').textContent).toContain('Authentication failed');
+    expect(pill('danielpang/big')).toBe('Cloning');
+    expect(row('danielpang/big').querySelector('svg')).not.toBeNull();
+    expect(row('danielpang/OpenBots').textContent).toContain(
+      'main · /home/bot/repos/danielpang/OpenBots',
+    );
+    expect(row('danielpang/site').textContent).toContain('not on this computer');
+    expect(button('Clone', row('danielpang/site'))).toBeDefined();
+    expect(button('Update', row('danielpang/site'))).toBeUndefined();
+    expect(button('Open terminal', row('danielpang/big'))).toBeUndefined();
+    expect(host.textContent).not.toMatch(/[–—]| - /);
+  });
+
+  it('updates and clones', async () => {
+    render(<ComputerPage />);
+    await until(() => !!row('danielpang/site'), 'the list');
+    click(button('Update', row('danielpang/openbots-relay')));
+    await until(() => pill('danielpang/openbots-relay') === 'Ready', 'updated');
+    expect(posts('/api/v1/repos/r2/update')).toHaveLength(1);
+    click(button('Clone', row('danielpang/site')));
+    await until(() => pill('danielpang/site') === 'Cloning', 'cloning');
+    expect(posts('/api/v1/repos/r3/clone')).toHaveLength(1);
+  });
+
+  it('opens the terminal in a repository', async () => {
+    render(<ComputerPage />);
+    await until(() => FakeSocket.sockets.length === 1, 'the terminal socket');
+    await until(() => !!row('danielpang/OpenBots'), 'the list');
+    click(button('Open terminal', row('danielpang/OpenBots')));
+    await until(() => FakeSocket.sockets.length === 2, 'a new terminal socket');
+    expect(new URL(FakeSocket.sockets[1]!.url).searchParams.get('cwd')).toBe(
+      '/home/bot/repos/danielpang/OpenBots',
+    );
+  });
+
+  it('forgets a repository only after the inline confirm', async () => {
+    render(<ComputerPage />);
+    await until(() => !!row('danielpang/notes'), 'the list');
+    click(button('Forget', row('danielpang/notes')));
+    expect(row('danielpang/notes').textContent).toContain('Forget danielpang/notes?');
+    click(button('Keep it', row('danielpang/notes')));
+    expect(server.requests.some((r) => r.method === 'DELETE')).toBe(false);
+    click(button('Forget', row('danielpang/notes')));
+    click(button('Forget', row('danielpang/notes')));
+    await until(() => !row('danielpang/notes'), 'forgotten');
+    expect(server.requests.filter((r) => r.method === 'DELETE').map((r) => r.path)).toEqual([
+      '/api/v1/repos/r4',
+    ]);
+    await until(() => !!document.querySelector('[data-toast]'), 'the toast');
+    expect(document.querySelector('[data-toast]')!.textContent).toContain(
+      'The clone stays on the computer.',
+    );
+  });
+
+  it('adds a repository by URL, kept cloned by default', async () => {
+    render(<ComputerPage />);
+    await until(() => !!row('danielpang/OpenBots'), 'the list');
+    click(button('Add by URL'));
+    const form = host.querySelector<HTMLFormElement>('form[aria-label="Add repository"]')!;
+    expect(form.querySelector<HTMLInputElement>('input[name="keepCloned"]')!.checked).toBe(true);
+    const input = form.querySelector<HTMLInputElement>('input[name="remoteUrl"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+        input,
+        'https://github.com/danielpang/new.git',
+      );
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    act(() => form.requestSubmit());
+    await until(() => !!row('danielpang/new'), 'the new repository');
+    expect(posts('/api/v1/repos')).toEqual([
+      JSON.stringify({ remoteUrl: 'https://github.com/danielpang/new.git', keepCloned: true }),
+    ]);
+    expect(host.querySelector('form[aria-label="Add repository"]')).toBeNull();
+  });
+
+  it('refetches on computer.status', async () => {
+    render(<ComputerPage />);
+    await until(() => !!row('danielpang/OpenBots'), 'the list');
+    const before = server.requests.filter((r) => r.path === '/api/v1/repos').length;
+    repos = repos.map((r) => ({ ...r, checkout: null }));
+    live.emit('computer.status', { computerId: COMPUTER, status: 'running' }, { user_id: USER });
+    await until(() => pill('danielpang/OpenBots') === 'Missing', 'the refetch');
+    expect(server.requests.filter((r) => r.path === '/api/v1/repos').length).toBeGreaterThan(
+      before,
+    );
   });
 });
 

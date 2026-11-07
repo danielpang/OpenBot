@@ -28,6 +28,7 @@ Also in this pass, a fix rather than a removal: the approval widget's stored sta
 | -------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | New (⌘N / Ctrl+N)                                                    | Keep    | B2. One entry point for a Bot or a group.                                                                                                                      |
 | Tools, Skills, Computer, Settings links                              | Keep    | The account-level objects (principle 7).                                                                                                                       |
+| Coding sessions (below Computer, with a count of live sessions)      | Keep    | CA15. A toggle for the drawer, not a page: the sessions sit beside whatever Bot is open.                                                                       |
 | Bot row (avatar, name, label; hover tooltip with the current action) | Keep    | B1, I2, I3.                                                                                                                                                    |
 | Right-click menu: Pin/Unpin, Hide/Show, Duplicate, Delete            | Keep    | B1, B5, B7. Duplicate and Delete are also in Bot Settings. The menu has no visible trigger, so Settings is the discoverable path and the menu is the fast one. |
 | "Show hidden (N)" toggle                                             | Keep    | B1: hidden Bots must stay reachable without deletion.                                                                                                          |
@@ -84,12 +85,13 @@ Also in this pass, a fix rather than a removal: the approval widget's stored sta
 
 ### Right panel
 
-| Control                                                                                              | Verdict       | Answer                                         |
-| ---------------------------------------------------------------------------------------------------- | ------------- | ---------------------------------------------- |
-| Close (Activity, Thread, Preview, Artifact)                                                          | Keep          |                                                |
-| Activity log: steps with durations; footer                                                           | Keep, trimmed | I4. Model ID and token counts removed (above). |
-| Thread: Load earlier replies, thread composer                                                        | Keep          | C7.                                            |
-| Artifact viewer: Edit, Save, Cancel, Compare with its two version selects, Download, version history | Keep          | A2.                                            |
+| Control                                                                                                                                                               | Verdict       | Answer                                                                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Close (Activity, Thread, Preview, Artifact)                                                                                                                           | Keep          |                                                                                                                                                                      |
+| Activity log: steps with durations; footer                                                                                                                            | Keep, trimmed | I4. Model ID and token counts removed (above).                                                                                                                       |
+| Thread: Load earlier replies, thread composer                                                                                                                         | Keep          | C7.                                                                                                                                                                  |
+| Artifact viewer: Edit, Save, Cancel, Compare with its two version selects, Download, version history                                                                  | Keep          | A2.                                                                                                                                                                  |
+| Coding sessions drawer (wide): session rows; in a session Back, Stop, Terminal, Open in chat, Approve and Deny, actions folded to "N actions", the composer with Send | Keep          | CA15. Stop shows only while the session is live and the composer opens only once its turn ended; Terminal is the Computer page's terminal on the session's worktree. |
 
 ### Routines tab
 

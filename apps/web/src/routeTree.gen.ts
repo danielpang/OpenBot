@@ -25,6 +25,7 @@ import { Route as AppGroupsChatIdRouteImport } from './routes/_app/groups/$chatI
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index';
 import { Route as AppSettingsSectionRouteImport } from './routes/_app/settings/$section';
 import { Route as AppSettingsAccountRouteImport } from './routes/_app/settings/account';
+import { Route as AppSettingsCodingAgentsRouteImport } from './routes/_app/settings/coding-agents';
 import { Route as AppSettingsDevicesRouteImport } from './routes/_app/settings/devices';
 import { Route as AppSettingsEventsRouteImport } from './routes/_app/settings/events';
 import { Route as AppSettingsGeneralRouteImport } from './routes/_app/settings/general';
@@ -115,6 +116,11 @@ const AppSettingsAccountRoute = AppSettingsAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => AppSettingsRoute,
 } as any);
+const AppSettingsCodingAgentsRoute = AppSettingsCodingAgentsRouteImport.update({
+  id: '/coding-agents',
+  path: '/coding-agents',
+  getParentRoute: () => AppSettingsRoute,
+} as any);
 const AppSettingsDevicesRoute = AppSettingsDevicesRouteImport.update({
   id: '/devices',
   path: '/devices',
@@ -181,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/groups/$chatId': typeof AppGroupsChatIdRoute;
   '/settings/$section': typeof AppSettingsSectionRoute;
   '/settings/account': typeof AppSettingsAccountRoute;
+  '/settings/coding-agents': typeof AppSettingsCodingAgentsRoute;
   '/settings/devices': typeof AppSettingsDevicesRoute;
   '/settings/events': typeof AppSettingsEventsRoute;
   '/settings/general': typeof AppSettingsGeneralRoute;
@@ -206,6 +213,7 @@ export interface FileRoutesByTo {
   '/groups/$chatId': typeof AppGroupsChatIdRoute;
   '/settings/$section': typeof AppSettingsSectionRoute;
   '/settings/account': typeof AppSettingsAccountRoute;
+  '/settings/coding-agents': typeof AppSettingsCodingAgentsRoute;
   '/settings/devices': typeof AppSettingsDevicesRoute;
   '/settings/events': typeof AppSettingsEventsRoute;
   '/settings/general': typeof AppSettingsGeneralRoute;
@@ -235,6 +243,7 @@ export interface FileRoutesById {
   '/_app/groups/$chatId': typeof AppGroupsChatIdRoute;
   '/_app/settings/$section': typeof AppSettingsSectionRoute;
   '/_app/settings/account': typeof AppSettingsAccountRoute;
+  '/_app/settings/coding-agents': typeof AppSettingsCodingAgentsRoute;
   '/_app/settings/devices': typeof AppSettingsDevicesRoute;
   '/_app/settings/events': typeof AppSettingsEventsRoute;
   '/_app/settings/general': typeof AppSettingsGeneralRoute;
@@ -264,6 +273,7 @@ export interface FileRouteTypes {
     | '/groups/$chatId'
     | '/settings/$section'
     | '/settings/account'
+    | '/settings/coding-agents'
     | '/settings/devices'
     | '/settings/events'
     | '/settings/general'
@@ -289,6 +299,7 @@ export interface FileRouteTypes {
     | '/groups/$chatId'
     | '/settings/$section'
     | '/settings/account'
+    | '/settings/coding-agents'
     | '/settings/devices'
     | '/settings/events'
     | '/settings/general'
@@ -317,6 +328,7 @@ export interface FileRouteTypes {
     | '/_app/groups/$chatId'
     | '/_app/settings/$section'
     | '/_app/settings/account'
+    | '/_app/settings/coding-agents'
     | '/_app/settings/devices'
     | '/_app/settings/events'
     | '/_app/settings/general'
@@ -452,6 +464,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsAccountRouteImport;
       parentRoute: typeof AppSettingsRoute;
     };
+    '/_app/settings/coding-agents': {
+      id: '/_app/settings/coding-agents';
+      path: '/coding-agents';
+      fullPath: '/settings/coding-agents';
+      preLoaderRoute: typeof AppSettingsCodingAgentsRouteImport;
+      parentRoute: typeof AppSettingsRoute;
+    };
     '/_app/settings/devices': {
       id: '/_app/settings/devices';
       path: '/devices';
@@ -528,6 +547,7 @@ declare module '@tanstack/react-router' {
 interface AppSettingsRouteChildren {
   AppSettingsSectionRoute: typeof AppSettingsSectionRoute;
   AppSettingsAccountRoute: typeof AppSettingsAccountRoute;
+  AppSettingsCodingAgentsRoute: typeof AppSettingsCodingAgentsRoute;
   AppSettingsDevicesRoute: typeof AppSettingsDevicesRoute;
   AppSettingsEventsRoute: typeof AppSettingsEventsRoute;
   AppSettingsGeneralRoute: typeof AppSettingsGeneralRoute;
@@ -539,6 +559,7 @@ interface AppSettingsRouteChildren {
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsSectionRoute: AppSettingsSectionRoute,
   AppSettingsAccountRoute: AppSettingsAccountRoute,
+  AppSettingsCodingAgentsRoute: AppSettingsCodingAgentsRoute,
   AppSettingsDevicesRoute: AppSettingsDevicesRoute,
   AppSettingsEventsRoute: AppSettingsEventsRoute,
   AppSettingsGeneralRoute: AppSettingsGeneralRoute,

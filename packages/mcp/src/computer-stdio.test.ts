@@ -116,9 +116,11 @@ describe('ComputerStdioTransport', () => {
     await transport.start();
     await transport.send({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: {} });
     expect(written).toEqual(['{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{}}\n']);
-    await new Promise((r) => setTimeout(r, 60));
-    // Once for the send, then every 10 ms while the call runs.
-    expect(onActivity.mock.calls.length).toBeGreaterThan(3);
+    // Once for the send, then every 10 ms while the call runs. A loaded
+    // runner stretches the interval, so wait for the count, not the clock.
+    await vi.waitFor(() => expect(onActivity.mock.calls.length).toBeGreaterThan(3), {
+      timeout: 5000,
+    });
     // An answer split across frames.
     handlers.stdout('{"jsonrpc":"2.0","id":7,');
     handlers.stdout('"result":{}}\n');

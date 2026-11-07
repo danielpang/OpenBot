@@ -5,7 +5,9 @@ import { assertBotOwner } from '../ownership.js';
 
 // A Bot's usage over recent days (plan 5.8), for its Settings page: the sums
 // of `runs.usage` (tokens, model calls and the estimated cost the worker
-// stored with each run), in total, by UTC day and by model.
+// stored with each run), in total, by UTC day and by model, and the Bot's
+// coding sessions (`coding_sessions.usage`, what the agent's CLI reported)
+// beside them: a session on a plan sign-in counts its tokens but no cost.
 
 type Owner = Pick<CurrentUser, 'id' | 'workspaceId'>;
 
@@ -23,6 +25,17 @@ export interface UsageSums {
   unpricedRuns: number;
 }
 
+/** The Bot's coding sessions created in the window. */
+export interface CodingUsage {
+  sessions: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** What API billed sessions reported; null when none reported a cost. Plan sessions are left out. */
+  costUsd: number | null;
+  /** Sessions billed to a plan sign-in (`usage.billed` is `subscription`). */
+  onPlanSessions: number;
+}
+
 export interface BotUsage {
   days: number;
   /** The window's start: midnight UTC, `days - 1` days before today. */
@@ -32,6 +45,7 @@ export interface BotUsage {
   daily: (UsageSums & { date: string })[];
   /** Most expensive first, then most tokens. */
   models: (UsageSums & { model: string | null })[];
+  coding: CodingUsage;
 }
 
 const field = (name: string) =>
@@ -49,6 +63,22 @@ const sums = {
   unpricedRuns: sql`count(*) filter (where ${schema.runs.usage} ->> 'costUsd' is null)`.mapWith(
     Number,
   ),
+};
+
+const sessionUsage = schema.codingSessions.usage;
+const onPlan = sql`${sessionUsage} ->> 'billed' = 'subscription'`;
+const codingSums = {
+  sessions: sql`count(*)`.mapWith(Number),
+  inputTokens: sql`coalesce(sum((${sessionUsage} ->> 'input_tokens')::bigint), 0)`.mapWith(Number),
+  outputTokens: sql`coalesce(sum((${sessionUsage} ->> 'output_tokens')::bigint), 0)`.mapWith(
+    Number,
+  ),
+  costUsd: sql<
+    number | null
+  >`sum((${sessionUsage} ->> 'cost_usd')::double precision) filter (where not coalesce(${onPlan}, false))`.mapWith(
+    (v) => (v === null ? null : Number(v)),
+  ),
+  onPlanSessions: sql`count(*) filter (where ${onPlan})`.mapWith(Number),
 };
 
 export async function botUsage(
@@ -82,5 +112,11 @@ export async function botUsage(
     .where(where)
     .groupBy(schema.runs.model)
     .orderBy(desc(sql`coalesce(${sums.costUsd}, 0)`), desc(sums.inputTokens));
-  return { days, since, totals: totals!, daily, models };
+  const [coding] = await db
+    .select(codingSums)
+    .from(schema.codingSessions)
+    .where(
+      and(eq(schema.codingSessions.botId, botId), gte(schema.codingSessions.createdAt, since)),
+    );
+  return { days, since, totals: totals!, daily, models, coding: coding! };
 }

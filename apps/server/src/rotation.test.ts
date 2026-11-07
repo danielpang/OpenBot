@@ -98,6 +98,8 @@ describe('rotateMasterKey', () => {
       schema.accounts,
       schema.devices,
       schema.instanceKeys,
+      schema.gitConnections,
+      schema.instanceSettings,
     ]) {
       await t.db.delete(table);
     }
@@ -221,6 +223,33 @@ describe('rotateMasterKey', () => {
     expect(decryptSecretString(device!.pushToken!, ring)).toBe('abcdef0123456789');
     // The public key is no secret, and is left as it is.
     expect(device!.publicKey).toEqual(Buffer.alloc(32, 7));
+  });
+
+  it("re-seals a git connection's secrets and the install's settings (I17)", async () => {
+    await clear();
+    const [conn] = await t.db
+      .insert(schema.gitConnections)
+      .values({
+        workspaceId,
+        ownerId,
+        kind: 'token',
+        accountLogin: 'danielpang',
+        secrets: seal('{"token":"github_pat_x"}'),
+      })
+      .returning();
+    await t.db
+      .insert(schema.instanceSettings)
+      .values({ key: 'github_app', value: seal('{"appId":"1"}') });
+
+    const report = await rotateMasterKey({ db: t.db, config: rotating });
+    expect(report).toEqual({ resealed: 2, current: 0, failed: [] });
+
+    const ring = keyringFromConfig(after);
+    const [c] = await t.db.select().from(schema.gitConnections);
+    const [s] = await t.db.select().from(schema.instanceSettings);
+    expect(decryptSecretString(c!.secrets!, ring)).toBe('{"token":"github_pat_x"}');
+    expect(decryptSecretString(s!.value, ring)).toBe('{"appId":"1"}');
+    expect(c!.updatedAt).toEqual(conn!.updatedAt);
   });
 
   it('resumes where an interrupted run stopped', async () => {

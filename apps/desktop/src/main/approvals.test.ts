@@ -25,6 +25,7 @@ const listed = (
 ) => ({
   ...approval(id),
   messageId: null,
+  sessionId: null,
   note: null,
   decidedBy: null,
   decidedAt: null,

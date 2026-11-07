@@ -132,12 +132,32 @@ const samples: WsEvent[] = [
     { messageId: message.id, emoji: '👍', reactorType: 'user', reactorId: chat },
     { chat_id: chat, seq: 7 },
   ),
+  wsEvent(
+    'coding_session.updated',
+    { session: { id: run, botId: bot, agent: 'claude', status: 'running' } },
+    { user_id: chat, workspace_id: bot },
+  ),
+  wsEvent(
+    'coding_session.events',
+    {
+      sessionId: run,
+      entries: [
+        {
+          seq: 1,
+          turn: 1,
+          at: '2026-01-01T00:00:00.000Z',
+          event: { type: 'prompt', text: 'Fix the tests', by: 'bot' },
+        },
+      ],
+    },
+    { user_id: chat, workspace_id: bot },
+  ),
 ];
 
 describe('WS events', () => {
   it('has a sample for every event type', () => {
     expect(new Set(samples.map((e) => e.type))).toEqual(new Set(WS_EVENT_TYPES));
-    expect(WS_EVENT_TYPES).toHaveLength(22);
+    expect(WS_EVENT_TYPES).toHaveLength(24);
   });
 
   it.each(samples.map((e) => [e.type, e] as const))('%s round-trips through JSON', (_, event) => {

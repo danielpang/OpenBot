@@ -76,6 +76,40 @@ COPY docker/mcp-catalog/package.json docker/mcp-catalog/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund --cache /tmp/npm-cache \
     && rm -rf /tmp/npm-cache
 
+# --- coders: the coding agents, from their lockfile (I1) ----------------------
+# Claude Code, Codex and pi, pinned in docker/coders/package-lock.json and
+# installed once here, root-owned in the final image: nothing is downloaded at
+# run time (S-20). The lockfile lists every platform's native package; npm
+# installs the one for the build's platform, so each architecture builds its
+# own. Install scripts stay off for every package. The one that matters is
+# Claude Code's: its postinstall puts the native binary from
+# @anthropic-ai/claude-code-linux-<arch> in place of the bin/claude.exe stub,
+# so it runs here, by hand, and the build fails unless each CLI then answers
+# --version. Codex's bin is a JS launcher that finds its platform package
+# itself; pi is a single JS bundle. The other packages with scripts
+# (@google/genai's is a no-op, protobufjs's a version notice) need none.
+FROM ${NODE_RUNTIME_IMAGE} AS coders
+WORKDIR /opt/openbots/coders
+COPY docker/coders/package.json docker/coders/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund --cache /tmp/npm-cache \
+    && rm -rf /tmp/npm-cache \
+    && node node_modules/@anthropic-ai/claude-code/install.cjs \
+    && node_modules/@anthropic-ai/claude-code/bin/claude.exe --version \
+    && node node_modules/@openai/codex/bin/codex.js --version \
+    && node node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js --version
+# Each installed CLI must be exactly the pinned version: a lockfile drift or a
+# package that resolves to another build fails the image here, not on a Bot's
+# computer (design: Testing, "a CI check runs <cli> --version and fails when it
+# differs from the pin"). The template literals are for node, not the shell.
+# hadolint ignore=SC2016
+RUN node -e ' \
+      const want = require("./package.json").dependencies; \
+      for (const name of Object.keys(want)) { \
+        const have = require(`./node_modules/${name}/package.json`).version; \
+        if (have !== want[name]) { console.error(`${name}: installed ${have}, pinned ${want[name]}`); process.exit(1); } \
+        console.log(`${name} ${have}`); \
+      }'
+
 # --- runtime --------------------------------------------------------------------
 FROM ${UBUNTU_IMAGE} AS runtime
 ARG DEBIAN_FRONTEND=noninteractive
@@ -103,6 +137,31 @@ RUN apt-get update \
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 # Owned by root: the bot user can run the catalog servers but not change them.
 COPY --from=mcp-catalog /opt/openbots/mcp /opt/openbots/mcp
+# Root's too: the coder user runs the coding agents and cannot change them.
+COPY --from=coders /opt/openbots/coders /opt/openbots/coders
+
+# The coding agents on PATH for the coder user and the terminal (I1), and git's
+# credential helper (I5, apps/computer-agent/src/git-credential-helper.ts),
+# which every git call in the computer asks: it answers only for a running
+# coding session, over that session's unix socket with the secret the agent
+# put in the session's environment. The rest of git's system
+# config: worktrees start on main. Each clone sets core.sharedRepository
+# itself (the server's checkout), so the coder user and the bot user share it.
+# hadolint ignore=SC2016
+RUN agents=/opt/openbots/coders/node_modules \
+    && printf '#!/bin/sh\nexec %s "$@"\n' "$agents/@anthropic-ai/claude-code/bin/claude.exe" \
+         > /usr/local/bin/claude \
+    && printf '#!/bin/sh\nexec node %s "$@"\n' "$agents/@openai/codex/bin/codex.js" \
+         > /usr/local/bin/codex \
+    && printf '#!/bin/sh\nexec node %s "$@"\n' "$agents/@earendil-works/pi-coding-agent/dist/bundle/cli.js" \
+         > /usr/local/bin/pi \
+    && printf '#!/bin/sh\nexec node %s "$@"\n' /app/apps/computer-agent/dist/git-credential-helper.js \
+         > /usr/local/bin/openbots-git-credential \
+    && chmod 0755 /usr/local/bin/claude /usr/local/bin/codex /usr/local/bin/pi \
+         /usr/local/bin/openbots-git-credential \
+    && git config --system credential.helper /usr/local/bin/openbots-git-credential \
+    && git config --system credential.useHttpPath true \
+    && git config --system init.defaultBranch main
 WORKDIR /app
 COPY --from=prod-deps /app /app
 COPY --from=build /out /app
@@ -116,14 +175,25 @@ RUN node apps/computer-agent/node_modules/playwright-core/cli.js install --with-
 
 # The Bot user owns the persistent home; Ubuntu's own uid 1000 makes way.
 # Screen n runs as screen-n (uid and gid 2000+n, apps/computer-agent/src/
-# users.ts), and the shared cookie store is the cookies user's (1900); the
-# names are for ps and ls, the agent uses the numbers. The state volume's
-# mount point is root's, so a new volume starts out that way.
+# users.ts), the shared cookie store is the cookies user's (1900), and the
+# coding agents run as coder (1800), whose home, writable and its own, is on
+# the state volume (the agent lays it out), and whose group, coders, the bot
+# user shares for the repositories (I2). The server's own git operations run
+# as coder-runner (1801, group coders), so no coding session shares their uid
+# and can read their environment; the names are for ps and ls, the
+# agent uses the numbers. The state volume's mount point is root's, so a new
+# volume starts out that way.
 RUN userdel --remove ubuntu \
     && useradd --uid 1000 --user-group --create-home --home-dir /home/bot --shell /bin/bash bot \
     && groupadd --gid 1900 cookies \
     && useradd --uid 1900 --gid 1900 --no-create-home --home-dir /var/lib/openbots/cookies \
          --shell /usr/sbin/nologin cookies \
+    && groupadd --gid 1800 coders \
+    && useradd --uid 1800 --gid 1800 --no-create-home --home-dir /var/lib/openbots/coders/home \
+         --shell /bin/bash coder \
+    && useradd --uid 1801 --gid 1800 --no-create-home --home-dir /var/lib/openbots/coders/runner-home \
+         --shell /usr/sbin/nologin coder-runner \
+    && usermod -aG coders bot \
     && for n in $(seq 0 89); do \
          groupadd --gid $((2000 + n)) "screen-$n" \
          && useradd --uid $((2000 + n)) --gid $((2000 + n)) --no-create-home \

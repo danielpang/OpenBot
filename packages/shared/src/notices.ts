@@ -3,11 +3,20 @@ import { parseMentions } from './parts.js';
 
 // Which realtime events become a notification (N1): approvals, questions
 // (and any other widget that waits on the owner), mentions of the owner,
-// Routine exceptions and long tasks that finished. One watcher for both
+// Routine exceptions, long tasks that finished, and repositories the
+// computer could not clone again after it started. One watcher for both
 // clients: the Mac app's main process shows them natively, and the web app
 // shows browser notifications when it runs outside the Mac app.
 
-export type NoticeKind = 'approval' | 'question' | 'mention' | 'routine' | 'long_task';
+export type NoticeKind =
+  'approval' | 'question' | 'mention' | 'routine' | 'long_task' | 'repos_clone_failed';
+
+/**
+ * The event part the server posts in the main Bot's transcript when the
+ * reconcile after a computer start could not clone repositories again; its
+ * `data` holds `botId` and `failed` (`fullName`, `error`).
+ */
+export const REPOS_CLONE_FAILED = 'repos_clone_failed';
 
 /** Where a notice opens: the message, in its thread when it is a reply. */
 export interface NoticeTarget {
@@ -262,6 +271,27 @@ export function createNoticeWatcher(context: () => NoticeContext) {
             tag: `routine:${message.id}`,
             title: `${routine} ${run.outcome === 'cancelled' ? 'was cancelled' : 'failed'}`,
             body: truncate(exception || `${nameOf(botId)}'s Routine did not finish.`),
+            target: target(botId, message.chatId, message.seq, message.threadRootId),
+          });
+        }
+        if (message.authorType === 'system') {
+          const failed = parts.find((p) => p?.type === 'event' && p.kind === REPOS_CLONE_FAILED) as
+            | (PartLike & { data?: { botId?: unknown; failed?: { fullName?: unknown }[] } })
+            | undefined;
+          const botId = typeof failed?.data?.botId === 'string' ? failed.data.botId : undefined;
+          if (!failed || !botId) return null;
+          const names = (failed.data?.failed ?? [])
+            .map((f) => f?.fullName)
+            .filter((n): n is string => typeof n === 'string');
+          return once({
+            kind: 'repos_clone_failed',
+            tag: `repos_clone_failed:${message.id}`,
+            title: 'Repositories could not be cloned',
+            body: truncate(
+              names.length
+                ? `The computer could not clone ${names.join(', ')} again. Open to see why.`
+                : 'The computer could not clone some repositories again. Open to see why.',
+            ),
             target: target(botId, message.chatId, message.seq, message.threadRootId),
           });
         }

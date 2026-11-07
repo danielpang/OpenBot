@@ -1,4 +1,4 @@
-import type { JobHandler } from '@openbots/shared';
+import { CODERS_QUEUE, REPO_FETCH_INTERVAL_MS, type JobHandler } from '@openbots/shared';
 import type { AppDeps } from './context.js';
 import { forEachWorkspace } from './db/scope.js';
 import {
@@ -10,11 +10,15 @@ import {
 import { APPROVALS_QUEUE, expireDueApprovals, expiryHandler } from './services/approvals.js';
 import { AUDIT_TRIM_MS, trimAuditLog } from './services/audit.js';
 import { BOT_STATE_QUEUE, settleHandler } from './services/bot-state.js';
+import { recoverInterruptedCoderSessions } from './services/coder-recovery.js';
+import { createCoderWorker } from './services/coder-runner.js';
 import { PAIRING_SWEEP_MS, expireDuePairings } from './services/devices.js';
 import { IDLE_SWEEP_MS, refreshSandboxImage, sweepIdleComputers } from './services/computer.js';
 import { expireDueLoginRequests, LOGINS_QUEUE, loginExpiryHandler } from './services/logins.js';
 import { MEMORIES_QUEUE, reembedHandler } from './services/memories.js';
 import { startRoutineScheduler } from './services/routines.js';
+import { queueRepoReconciles, queueRepoRefreshes } from './services/repos-refresh.js';
+import { queueRepoScans } from './services/repos-scan.js';
 import { RUNS_QUEUE } from './services/runs.js';
 import { startPushWorker } from './workers/push.js';
 import { createRunWorker, recoverInterruptedRuns } from './workers/runs.js';
@@ -40,6 +44,8 @@ export const JOB_HANDLERS: Record<
     handler: (deps) => eventDeliveryHandler(deps) as JobHandler,
     concurrency: 4,
   },
+  // One job per coding session, checkout or agent sign-in (I12).
+  [CODERS_QUEUE]: { handler: (deps) => createCoderWorker(deps) as JobHandler, concurrency: 8 },
   // A Bot's memories re-embedded after its embedding source changed (M1).
   [MEMORIES_QUEUE]: { handler: (deps) => reembedHandler(deps) as JobHandler, concurrency: 2 },
 };
@@ -63,6 +69,8 @@ export async function startWorkers(deps: AppDeps): Promise<{ stop(): Promise<voi
   if (infra.kind === 'memory') {
     const recovered = await inEveryOrganization(deps, () => recoverInterruptedRuns(deps));
     if (recovered) logger.warn({ runs: recovered }, 'took over runs interrupted by a restart');
+    const sessions = await inEveryOrganization(deps, () => recoverInterruptedCoderSessions(deps));
+    if (sessions) logger.warn({ sessions }, 'recovered coding sessions interrupted by a restart');
     const requeued = await inEveryOrganization(deps, () => requeuePendingEventDeliveries(deps));
     if (requeued) logger.info({ deliveries: requeued }, 'requeued pending event deliveries');
   }
@@ -87,6 +95,22 @@ export async function startWorkers(deps: AppDeps): Promise<{ stop(): Promise<voi
     );
   }, IDLE_SWEEP_MS);
   sweep.unref();
+  // Every running computer gets its repositories back now (GH4): it may have
+  // started while no worker ran, or its reconcile job been lost.
+  inEveryOrganization(deps, () => queueRepoReconciles(deps)).catch((err: unknown) =>
+    logger.error({ err }, 'queueing repository reconciles failed'),
+  );
+  // Each running computer's checkouts are fetched for their state every 15
+  // minutes (GH3), and its clones nobody remembered looked for (GH6).
+  const refreshRepos = setInterval(() => {
+    inEveryOrganization(deps, () => queueRepoRefreshes(deps)).catch((err: unknown) =>
+      logger.error({ err }, 'queueing repository refreshes failed'),
+    );
+    inEveryOrganization(deps, () => queueRepoScans(deps)).catch((err: unknown) =>
+      logger.error({ err }, 'queueing repository scans failed'),
+    );
+  }, REPO_FETCH_INTERVAL_MS);
+  refreshRepos.unref();
   // Audit rows past the workspace's retention (default 180 days, S-11); now and hourly.
   const trimAudit = () =>
     inEveryOrganization(deps, () => trimAuditLog(deps)).then(
@@ -117,6 +141,7 @@ export async function startWorkers(deps: AppDeps): Promise<{ stop(): Promise<voi
   return {
     stop: async () => {
       clearInterval(sweep);
+      clearInterval(refreshRepos);
       clearInterval(trim);
       clearInterval(pairings);
       stopScheduler();

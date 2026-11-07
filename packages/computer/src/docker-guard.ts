@@ -147,8 +147,9 @@ export function checkDockerRequest(
 
   // Volumes: a computer's home and state volumes, on the local driver with no
   // options (`DriverOpts` with `o=bind` would mount a host path).
-  if (method === 'GET' && (match = /^\/volumes\/(.+)$/.exec(path))) {
+  if ((method === 'GET' || method === 'DELETE') && (match = /^\/volumes\/(.+)$/.exec(path))) {
     if (!computerVolume(match[1]!)) return refuse('only computer volumes');
+    // Removed only by a reset (GH5), never forced: a volume a container still uses stays.
     return { allow: true, url: forward(path) };
   }
   if (method === 'POST' && path === '/volumes/create') {

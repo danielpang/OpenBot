@@ -1,4 +1,5 @@
 import { unwrap, type components } from '@openbots/api-client';
+import type { CodingRoutineTemplate } from '@openbots/shared';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../app/api.js';
 import { endpointsQuery } from '../webhooks/api.js';
@@ -13,6 +14,14 @@ export type CreateRoutine = components['schemas']['CreateRoutine'];
 export type UpdateRoutine = components['schemas']['UpdateRoutine'];
 
 export const ROUTINES_REFRESH_MS = 15_000;
+
+/** The coding Routine templates New Routine offers (CA11). */
+export const routineTemplatesQuery = queryOptions({
+  queryKey: ['routine-templates'],
+  queryFn: async () =>
+    (await unwrap(api.GET('/api/v1/routines/templates'))).templates as CodingRoutineTemplate[],
+  staleTime: Infinity,
+});
 
 export const routinesQuery = (botId: string) =>
   queryOptions({

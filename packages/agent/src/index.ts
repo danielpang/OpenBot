@@ -16,5 +16,6 @@ export * from './run/call.js';
 export * from './run/errors.js';
 export * from './run/execute.js';
 export * from './run/state.js';
+export * from './skills/builtin.js';
 export * from './skills/draft.js';
 export * from './tools/index.js';

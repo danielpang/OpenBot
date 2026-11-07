@@ -14,6 +14,8 @@ import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
 import { ensureInbox } from '../hooks/inbox.js';
 import { assertBotOwner } from '../ownership.js';
+import { seedBuiltinSkills } from './builtin-skills.js';
+import { computerAvailable } from './computer.js';
 import { assertBotModel } from './providers.js';
 import type { Config } from '../config.js';
 import { organizationSettings, raiseLimitHint } from '../workspace.js';
@@ -126,6 +128,9 @@ export async function createBot(deps: BotsDeps, owner: Owner, input: BotInput): 
       toolPolicy: input.toolPolicy ?? {},
     });
     await audit(tx, owner, 'bot.create', bot.id, { handle, name: bot.name });
+    // "Working in a repository" (CA12), enabled for it, where Bots can code:
+    // `code_task` is offered only on an install with a computer.
+    if (computerAvailable(deps as AppDeps)) await seedBuiltinSkills(tx, owner, bot.id);
     return { botId: bot.id, hello: await storeGreeting(tx, owner, bot) };
   });
   await announceMessage(deps, hello);
