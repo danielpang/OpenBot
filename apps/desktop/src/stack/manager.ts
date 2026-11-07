@@ -120,6 +120,8 @@ export interface StackFiles {
 
 export interface StackManagerOptions {
   paths: StackPaths;
+  /** A separate namespace for side-by-side previews; existing .env projects stay authoritative. */
+  projectName?: string;
   /**
    * The app's release: the image tag written to OPENBOTS_VERSION in a new
    * `.env`, and the one an older `.env` moves to. The template's when omitted
@@ -630,10 +632,12 @@ export function createStackManager(options: StackManagerOptions): StackManager {
    * hasLegacyContainers), else PROJECT_NAME. A start records it in `.env`.
    */
   async function project(cli: string): Promise<string> {
-    if (!(await files.exists(paths.envFile))) return PROJECT_NAME;
+    if (!(await files.exists(paths.envFile))) return options.projectName ?? PROJECT_NAME;
     const recorded = envValue(await files.readFile(paths.envFile), 'COMPOSE_PROJECT_NAME')?.trim();
     if (recorded && isProjectName(recorded)) return recorded;
-    return (await hasLegacyContainers(cli)) ? LEGACY_PROJECT_NAME : PROJECT_NAME;
+    return (await hasLegacyContainers(cli))
+      ? LEGACY_PROJECT_NAME
+      : (options.projectName ?? PROJECT_NAME);
   }
 
   async function services(cli: string, name: string): Promise<ServiceState[]> {

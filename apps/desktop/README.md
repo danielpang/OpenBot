@@ -110,6 +110,9 @@ its files.
     restarts; a new version brings the notice back. App and tray menus show checking, downloading,
     ready and preparing states. Manual checks report up-to-date, failed or skipped checks in-app;
     repeated clicks share the request and network lookups time out after 30 seconds.
+    Side-by-side packaged previews use a distinct product name/app ID and `openbots.preview: true`
+    in package metadata. They do not claim the installed app's `openbots://` handler and use the
+    `openbots-preview` Docker project; their product name also separates Electron's user-data folder.
     `update-service.ts` verifies Developer ID signing before allowing automatic installation,
     requires restart consent (Later is the default), and stages/verifies with native Squirrel
     before disconnecting the app and installing. Ordinary quit never installs an update. The

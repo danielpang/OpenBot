@@ -36,7 +36,7 @@ import {
   repositoryFromAppUpdateYml,
 } from '../images/release-archive.js';
 import { createStackManager, devImageOverrides } from '../stack/manager.js';
-import { cloudUrl } from './app-config.js';
+import { cloudUrl, isPreviewBuild } from './app-config.js';
 import { aboutPanelOptions } from './about.js';
 import {
   pairedByThis,
@@ -144,9 +144,11 @@ const SHARED_RELAY_URL = sharedRelayUrl({
   env: process.env,
 });
 
+const PREVIEW_BUILD = isPreviewBuild(packageJson());
 const paths = stackPaths();
 const stack = createStackManager({
   paths,
+  projectName: PREVIEW_BUILD ? 'openbots-preview' : undefined,
   defaultRelayUrl: SHARED_RELAY_URL,
   retiredRelayUrls: RETIRED_SHARED_RELAY_URLS,
   serverVersion: app.isPackaged ? app.getVersion() : undefined,
@@ -897,10 +899,11 @@ if (!app.requestSingleInstanceLock()) {
     handleLink(url);
   });
 
-  if (process.defaultApp && process.argv[1]) {
+  // A side-by-side preview must not take over the installed app's deep links.
+  if (!PREVIEW_BUILD && process.defaultApp && process.argv[1]) {
     // `electron .` in development: register the app with its script path.
     app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [resolve(process.argv[1])]);
-  } else {
+  } else if (!PREVIEW_BUILD) {
     app.setAsDefaultProtocolClient(PROTOCOL);
   }
 

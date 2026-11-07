@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { cloudUrl, parseCloudUrl } from './app-config.js';
+import { cloudUrl, isPreviewBuild, parseCloudUrl } from './app-config.js';
+
+describe('preview build isolation', () => {
+  it('requires an explicit preview flag in packaged metadata', () => {
+    expect(isPreviewBuild({ openbots: { preview: true } })).toBe(true);
+    for (const value of [
+      null,
+      undefined,
+      {},
+      { openbots: null },
+      { openbots: { preview: 'true' } },
+      { openbots: { preview: false } },
+    ]) {
+      expect(isPreviewBuild(value)).toBe(false);
+    }
+  });
+});
 
 describe('the cloud URL from the build', () => {
   it('takes an https origin, and nothing else', () => {
