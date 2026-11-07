@@ -86,7 +86,10 @@ describe('GitHub connector device authorization', () => {
       items: { id: string; oauth: { deviceFlow?: boolean } | null }[];
     };
     expect(catalog.items.find((e) => e.id === 'github')?.oauth?.deviceFlow).toBe(true);
-    const c = await newConnector();
+    // Exactly what the catalog button sends: do not force auth:'oauth'.
+    const created = await call('POST', '/connectors', { catalogId: 'github' });
+    expect(created.status).toBe(201);
+    const c = (await created.json()) as { id: string; oauth: { clientConfigured: boolean } };
     expect(c.oauth.clientConfigured).toBe(true);
     await start(c.id);
     expect(request.mock.calls[0]![0]).toBe('https://github.com/login/device/code');

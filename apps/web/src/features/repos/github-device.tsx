@@ -23,12 +23,14 @@ export function useGitDeviceConnection(onConnected: (connection: GitConnectionVi
   const [stage, setStage] = useState<'authorization' | 'installation'>('authorization');
   const [error, setError] = useState<Error | null>(null);
   const generation = useRef(0);
+  const starting = useRef(false);
   const provider = useRef<SignInWindow | null>(null);
   const connected = useRef(onConnected);
   connected.current = onConnected;
 
   const cancel = useCallback(() => {
     generation.current++;
+    starting.current = false;
     provider.current?.close();
     provider.current = null;
     setFlow(null);
@@ -44,6 +46,8 @@ export function useGitDeviceConnection(onConnected: (connection: GitConnectionVi
 
   const begin = useCallback(
     (input: GitDeviceInput = {}) => {
+      if (starting.current) return;
+      starting.current = true;
       const version = ++generation.current;
       provider.current?.close();
       const popup = openSignInWindow();
@@ -67,6 +71,9 @@ export function useGitDeviceConnection(onConnected: (connection: GitConnectionVi
           popup.close();
           setWorking(false);
           setError(cause instanceof Error ? cause : new Error('Could not connect GitHub.'));
+        })
+        .finally(() => {
+          if (generation.current === version) starting.current = false;
         });
     },
     [queryClient],

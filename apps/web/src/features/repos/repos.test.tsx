@@ -555,6 +555,19 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
     await until(() => !host.textContent!.includes('ABCD-EFGH'), 'cancelled code');
   });
 
+  it('coalesces repeated coding-repository Connect clicks before the busy render', async () => {
+    render(<GithubCard admin />);
+    await until(() => !!button('Connect GitHub'), 'device connect');
+    act(() => {
+      const connect = button('Connect GitHub')!;
+      connect.click();
+      connect.click();
+      connect.click();
+    });
+    await until(() => host.textContent!.includes('ABCD-EFGH'), 'one device flow');
+    expect(sent('POST', '/api/v1/git-connections/github-app/device')).toEqual([{}]);
+  });
+
   it('opens the actual repository picker after authorization and remembers selected repositories', async () => {
     deviceNext = 'connected';
     render(<GithubCard admin />);

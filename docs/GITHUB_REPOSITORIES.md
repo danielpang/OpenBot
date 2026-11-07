@@ -68,6 +68,22 @@ webhook for event Routines instead; scheduled work does not need a webhook.
   selection; choose a server-managed App if you need GitHub-enforced per-repository read tokens.
   PRs use the authorizing user's identity. Existing push and PR approvals are unchanged.
 
+## Connection recovery and duplicate protection
+
+The legacy MCP path also defaults a bare GitHub Connect request to OAuth/device authorization,
+not bearer auth. A supplied PAT or explicit auth choice still selects the requested mode.
+Repeated default sign-ins reuse the owned catalog connection under a database lock; the UI
+coalesces rapid clicks and retains a created connection across failed/cancelled starts.
+Named/custom connections remain independent. Startup repairs old empty GitHub bearer records
+so they offer authorization again, without overwriting PATs or deleting duplicate records/Bot bindings.
+
+Server worker/all startup rechecks usable MCP connections in each workspace in the background,
+with bounded concurrency and live status updates. Opening Connectors after a new Mac/browser
+session also refreshes existing connection status once, even if Docker kept running. Missing
+credentials or consent, blocked connectors, suspended members, and built-ins are not tested.
+Server startup does not start a stopped computer merely to test its stdio MCPs. Real failures
+remain failures; these checks do not authorize accounts or mark them healthy without a test.
+
 ## Verification
 
 Automated coverage in `apps/server/src/routes/git-device.test.ts` and

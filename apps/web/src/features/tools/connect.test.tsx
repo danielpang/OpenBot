@@ -31,6 +31,7 @@ const server = vi.hoisted(() => {
     discovery: null as Record<string, unknown> | null,
     /** The start answer: a URL, or a problem code. */
     start: null as string | null,
+    testHealthy: false,
     device: null as {
       userCode: string;
       verificationUrl: string;
@@ -57,6 +58,19 @@ const server = vi.hoisted(() => {
       });
     }
     if (path.endsWith('/oauth/device')) return Response.json(state.devicePoll);
+    if (path === '/api/v1/git-connections') return Response.json({ connections: [] });
+    if (path === '/api/v1/git-connections/github-app')
+      return Response.json({
+        deviceFlowAvailable: true,
+        deviceAppSlug: 'openbots-github',
+        deviceInstallationUrl: 'https://github.com/apps/openbots-github/installations/new',
+        configured: false,
+        source: null,
+        slug: null,
+        manifestAvailable: false,
+        publicUrlOk: false,
+        installUrlAvailable: false,
+      });
     if (path === '/api/v1/connectors/discover') return Response.json(state.discovery);
     if (path === '/api/v1/connectors/catalog') {
       return Response.json({ items: state.catalog, oauthCallbackUrl: CALLBACK });
@@ -65,7 +79,20 @@ const server = vi.hoisted(() => {
       return Response.json(state.created, { status: 201 });
     }
     if (path === '/api/v1/connectors') return Response.json({ items: state.connectors });
-    if (path.endsWith('/test')) return Response.json({ connector: state.created, tools: [] });
+    if (path.endsWith('/test')) {
+      if (state.testHealthy)
+        state.connectors = state.connectors.map((connector) =>
+          connector.id === path.split('/').at(-2)
+            ? {
+                ...connector,
+                status: 'ok',
+                lastError: null,
+                lastCheckedAt: new Date().toISOString(),
+              }
+            : connector,
+        );
+      return Response.json({ connector: state.created, tools: [] });
+    }
     return Response.json({});
   };
   return state;
@@ -164,6 +191,7 @@ beforeEach(() => {
   server.created = connector();
   server.discovery = null;
   server.start = null;
+  server.testHealthy = false;
   server.device = null;
   server.devicePoll = { status: 'pending', interval: 1 };
   popup = {
@@ -257,6 +285,68 @@ describe('one-click Connect', () => {
     server.devicePoll = { status: 'connected' };
     await until(tested, 'the connected tools');
     expect(host.textContent).not.toContain('ABCD-EFGH');
+  });
+
+  it('coalesces rapid Connect clicks before React renders the busy state', async () => {
+    render(<CatalogCard entry={entry()} added={false} />);
+    act(() => {
+      const connect = button('Connect')!;
+      connect.click();
+      connect.click();
+      connect.click();
+    });
+    await until(() => !!started(), 'one sign-in start');
+    expect(
+      server.requests.filter(
+        (request) => request.method === 'POST' && request.path === '/api/v1/connectors',
+      ),
+    ).toHaveLength(1);
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses the created connector after a failed start even before the list refetch sees it', async () => {
+    server.start = 'GITHUB_DEVICE_FAILED';
+    render(<CatalogCard entry={entry()} added={false} />);
+    act(() => button('Connect')!.click());
+    await until(
+      () => !!host.textContent?.includes('Needs a client') && !button('Connect')!.disabled,
+      'failed start',
+    );
+    server.start = null;
+    act(() => button('Connect')!.click());
+    await until(
+      () => server.requests.filter((request) => request.path.endsWith('/oauth/start')).length === 2,
+      'retry',
+    );
+    expect(
+      server.requests.filter(
+        (request) => request.method === 'POST' && request.path === '/api/v1/connectors',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('reuses the pending connector after cancelling device authorization', async () => {
+    server.device = {
+      userCode: 'ABCD-EFGH',
+      verificationUrl: 'https://github.com/login/device',
+      installationUrl: 'https://github.com/apps/test/installations/new',
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      interval: 60,
+    };
+    render(<CatalogCard entry={entry()} added={false} />);
+    act(() => button('Connect')!.click());
+    await until(() => !!host.textContent?.includes('ABCD-EFGH'), 'device code');
+    act(() => button('Cancel')!.click());
+    act(() => button('Connect')!.click());
+    await until(
+      () => server.requests.filter((request) => request.path.endsWith('/oauth/start')).length === 2,
+      'retry',
+    );
+    expect(
+      server.requests.filter(
+        (request) => request.method === 'POST' && request.path === '/api/v1/connectors',
+      ),
+    ).toHaveLength(1);
   });
 
   it('stops device polling when cancelled', async () => {
@@ -515,6 +605,48 @@ describe('one GitHub connection entry in settings', () => {
     await until(() => !!host.querySelector('[data-legacy-github]'), 'legacy connection');
     expect(host.querySelector<HTMLDetailsElement>('[data-legacy-github]')!.open).toBe(true);
     expect(host.querySelector(`[data-connector="${ID}"]`)?.className).toContain('ring-2');
+  });
+});
+
+describe('connection checks after a fresh app boot', () => {
+  it('automatically checks stale status without looping, and checks again on a new boot', async () => {
+    server.connectors = [
+      connector({
+        auth: 'none',
+        oauth: null,
+        status: 'error',
+        lastError: 'Previous connection closed',
+      }),
+    ];
+    server.testHealthy = true;
+    render(<ToolsPage search={{}} />);
+    await until(
+      () =>
+        host.querySelector('[data-connector] [data-status]')?.textContent?.startsWith('Working') ===
+        true,
+      'automatic health check',
+    );
+    const tests = () => server.requests.filter((request) => request.path.endsWith('/test'));
+    expect(tests()).toHaveLength(1);
+    live.emit('connector.updated', { connectorId: ID });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    expect(tests()).toHaveLength(1);
+    render(<ToolsPage search={{}} />);
+    await until(() => tests().length === 2, 'new boot check');
+  });
+
+  it('skips missing OAuth credentials, blocked MCPs, built-ins, and empty bearer tokens', async () => {
+    server.connectors = [
+      connector(),
+      connector({ id: 'blocked', auth: 'none', oauth: null, disabledByAdmin: true }),
+      connector({ id: 'builtin', kind: 'builtin', oauth: null }),
+      connector({ id: 'pat', auth: 'bearer', oauth: null }),
+    ];
+    render(<ToolsPage search={{}} />);
+    await until(() => host.querySelectorAll('[data-connector]').length === 4, 'connections');
+    await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+    expect(server.requests.some((request) => request.path.endsWith('/test'))).toBe(false);
+    expect(open).not.toHaveBeenCalled();
   });
 });
 

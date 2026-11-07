@@ -11,7 +11,7 @@ import { CustomServerForm, ImportForm } from './custom-server.js';
 import { ErrorText } from './fields.js';
 import { GithubCard } from './github-card.js';
 import { isLegacyGitHubTool, stdioAvailability } from './forms.js';
-import { useTestConnector } from './hooks.js';
+import { useBootConnectorChecks, useTestConnector } from './hooks.js';
 import { useRealtime } from '../transcript/realtime.js';
 
 // The account-level Connectors page (T1 to T3, PRD section 5): the owner's
@@ -78,6 +78,7 @@ export function ToolsPage({
 
   const target = search.connector;
   const items = connectors.data?.items;
+  useBootConnectorChecks(items);
   useEffect(() => {
     if (!target || !items?.some((c) => c.id === target)) return;
     document

@@ -49,7 +49,7 @@ import {
   type TransportConfig,
 } from '@openbots/mcp';
 import { wsEvent, type Unsubscribe } from '@openbots/shared';
-import { and, asc, count, eq, inArray, isNull, notInArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import { isPublicAddress, netFetch, type NetOptions } from '../builtins/net.js';
 import { publishEvent } from '../infra/index.js';
 import type { StdioRunner } from '../config.js';
@@ -292,7 +292,13 @@ function configFromCatalog(entry: CatalogEntry, input: ConnectorInput): Transpor
     const hasBearer = Boolean(
       entry.http.bearer_secret && input.secrets?.[entry.http.bearer_secret],
     );
-    const auth = input.auth ?? (hasBearer ? 'bearer' : entry.http.auth[0]!);
+    const auth =
+      input.auth ??
+      (hasBearer
+        ? 'bearer'
+        : entry.oauth && entry.http.auth.includes('oauth')
+          ? 'oauth'
+          : entry.http.auth[0]!);
     if (!entry.http.auth.includes(auth)) {
       throw invalid(
         'INVALID_AUTH',
@@ -898,8 +904,44 @@ export async function createConnector(
   }
   const slug = input.slug ?? (await freeSlug(deps.db, viewer, slugify(entry?.id ?? name)));
   let row: ConnectorRow;
+  let reused = false;
   try {
     row = await deps.db.transaction(async (tx) => {
+      // Bare catalog Connect requests are one owned sign-in, not an instruction
+      // to add a new named account. Serialize across tabs/processes; preserve
+      // explicitly named/configured connectors as independent connections.
+      if (
+        entry?.oauth &&
+        transport.transport === 'http' &&
+        transport.auth === 'oauth' &&
+        !input.name &&
+        !input.slug &&
+        !input.auth &&
+        !input.oauthClient &&
+        !Object.keys(input.params ?? {}).length &&
+        !Object.keys(input.secrets ?? {}).length
+      ) {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`connector-signin:${viewer.workspaceId}:${viewer.id}:${entry.id}`}, 0))`,
+        );
+        const [existing] = await tx
+          .select()
+          .from(schema.connectors)
+          .where(
+            and(
+              eq(schema.connectors.workspaceId, viewer.workspaceId),
+              eq(schema.connectors.ownerId, viewer.id),
+              eq(schema.connectors.catalogId, entry.id),
+              sql`${schema.connectors.config}->>'auth' = 'oauth'`,
+            ),
+          )
+          .orderBy(asc(schema.connectors.createdAt))
+          .limit(1);
+        if (existing) {
+          reused = true;
+          return existing;
+        }
+      }
       const [inserted] = await tx
         .insert(schema.connectors)
         .values({
@@ -921,7 +963,7 @@ export async function createConnector(
     if (isUniqueViolation(err)) throw slugTaken();
     throw err;
   }
-  return toRecord(deps, row, rules, 0, false);
+  return reused ? getConnector(deps, viewer, row.id) : toRecord(deps, row, rules, 0, false);
 }
 
 export async function updateConnector(
@@ -1647,6 +1689,7 @@ async function recordSnapshot(
       lastCheckedAt: new Date(),
     })
     .where(eq(schema.connectors.id, id));
+  await publishConnectorUpdated(deps, row, {});
 }
 
 export function errorStatus(error: Error): ConnectorStatus {
@@ -1666,6 +1709,7 @@ export async function recordError(deps: ConnectorsDeps, id: string, error: Error
     .update(schema.connectors)
     .set({ status: errorStatus(error), lastError: message, lastCheckedAt: new Date() })
     .where(eq(schema.connectors.id, id));
+  await publishConnectorUpdated(deps, row, {});
 }
 
 function describeError(deps: Pick<AppDeps, 'config'>, row: ConnectorRow, error: Error): string {
@@ -1679,6 +1723,63 @@ function describeError(deps: Pick<AppDeps, 'config'>, row: ConnectorRow, error: 
   const base =
     code === 'ENOENT' ? `Command not found: ${error.message}` : error.message || String(error);
   return scrub(base, secrets);
+}
+
+/** Repair the old default-bearer bug without touching working PATs or
+ * deleting duplicate rows/Bot bindings. Authorization still needs consent.
+ */
+export async function repairEmptyGitHubAuth(deps: Pick<AppDeps, 'db' | 'config'>): Promise<number> {
+  const rows = await deps.db
+    .select()
+    .from(schema.connectors)
+    .where(eq(schema.connectors.catalogId, 'github'));
+  let repaired = 0;
+  for (const row of rows) {
+    let stored: StoredConfig;
+    try {
+      stored = readConfig(row);
+    } catch {
+      continue;
+    }
+    const transport = stored.transport;
+    if (transport.transport !== 'http' || transport.auth !== 'bearer') continue;
+    let secrets: SealedSecrets;
+    // A stale key/corrupt credential must not turn optional repair into a
+    // server startup failure. Never replace a credential we cannot read.
+    try {
+      secrets = openSecrets(deps, row);
+    } catch {
+      continue;
+    }
+    if (
+      secrets.values[transport.bearerSecret ?? 'GITHUB_PERSONAL_ACCESS_TOKEN'] ||
+      Object.keys(transport.headers ?? {}).some((key) => key.toLowerCase() === 'authorization') ||
+      Object.keys(transport.secretHeaders ?? {}).some(
+        (key) => key.toLowerCase() === 'authorization',
+      )
+    )
+      continue;
+    const saved = await deps.db
+      .update(schema.connectors)
+      .set({
+        config: writeConfig({ ...stored, transport: { ...transport, auth: 'oauth' } }),
+        status: 'untested',
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.connectors.id, row.id),
+          row.secrets
+            ? eq(schema.connectors.secrets, row.secrets)
+            : isNull(schema.connectors.secrets),
+          sql`${schema.connectors.config} = ${JSON.stringify(row.config)}::jsonb`,
+        ),
+      )
+      .returning({ id: schema.connectors.id });
+    repaired += saved.length;
+  }
+  return repaired;
 }
 
 /** Connects, lists tools and stores the outcome in `status`, `last_error` and `connector_tools`. */

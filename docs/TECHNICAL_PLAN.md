@@ -1144,6 +1144,10 @@ Widgets (section 12.2), both posted only by the system: `coding_session` (`packa
 
 Constants in `packages/shared/src/coders.ts` for now, per account in `limits` later: 3 concurrent sessions per account (the next queues), 60 minutes per session (5 to 240 when it becomes a setting), 200 agent turns per session (`--max-turns`), 50 remembered repositories. A vendor rate limit is waited out once, for at most 30 minutes (22.2).
 
+### Connector startup recovery
+
+`services/connector-startup.ts` runs bounded MCP checks after worker/all startup, in each organization's RLS scope, for active members and usable authenticated connectors. It skips blocked/missing-credential/built-in connections and stdio MCPs whose computer is stopped. Shutdown stops dequeuing checks. Snapshot/error persistence publishes `connector.updated`, so open settings refresh without a reload. `useBootConnectorChecks` also checks the initial list once per frontend session, without a refetch loop or racing newly added/signing-in connectors. `repairEmptyGitHubAuth` upgrades old empty bearer GitHub records to OAuth using compare-and-swap, preserving working PATs and Bot bindings. Bare catalog OAuth create requests are owner/workspace-scoped and advisory-lock serialized; named/explicitly configured connections remain independent. Regression coverage: `services/connector-recovery.test.ts`, `routes/github-device.test.ts` (the bare create body), and `features/tools/connect.test.tsx` (rapid clicks, retry/cancel, boot checks).
+
 ### 22.12 GitHub connections (Phase 2)
 
 Phase 2 replaced "the owner's token for everything" with git connections, and made the remembered repositories outlive the computer's home. The shared vocabulary (connection kinds, `act_as`, statuses, checkout states, the views, the webhook path and events, the job intervals, rescue branch naming and the Routine templates) is `packages/shared/src/git.ts`.

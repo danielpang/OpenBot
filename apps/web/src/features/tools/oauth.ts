@@ -133,6 +133,8 @@ export function useOAuthConnect() {
   const test = useTestConnector();
   const [state, setState] = useState<ConnectState>(IDLE);
   const flow = useRef<Flow | null>(null);
+  // React state does not update until after the click handler returns.
+  const preparing = useRef(false);
 
   const finish = useCallback(
     (connectorId: string, status: 'connected' | 'error', reason?: string | null) => {
@@ -247,6 +249,8 @@ export function useOAuthConnect() {
 
   const connect = useCallback(
     (prepare: () => Promise<Connector>, options: { prefetch?: boolean } = {}) => {
+      if (preparing.current) return;
+      preparing.current = true;
       const signIn = openSignInWindow(options);
       setState({ phase: 'working' });
       void (async () => {
@@ -281,6 +285,8 @@ export function useOAuthConnect() {
           signIn.close();
           flow.current = null;
           setState({ phase: 'idle', error: err as Error, connectedId: null });
+        } finally {
+          preparing.current = false;
         }
       })();
     },
