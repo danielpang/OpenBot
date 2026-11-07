@@ -308,8 +308,8 @@ export interface Config {
 }
 
 /** Set these public identifiers after creating the shared GitHub App. Never put secrets here. */
-export const DEFAULT_GITHUB_CONNECTOR_CLIENT_ID = '';
-export const DEFAULT_GITHUB_CONNECTOR_APP_SLUG = '';
+export const DEFAULT_GITHUB_CONNECTOR_CLIENT_ID = 'Iv23liyL74CRKUWIUXhq';
+export const DEFAULT_GITHUB_CONNECTOR_APP_SLUG = 'openbots-github';
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const secrets = resolveSecretFiles(env);

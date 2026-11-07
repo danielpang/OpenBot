@@ -559,8 +559,10 @@ pnpm dev
 ```
 
 The GitHub connector uses a public GitHub App installed on selected repositories, with device
-authorization and automatic token refresh. Set `OPENBOTS_GITHUB_CLIENT_ID` and
-`OPENBOTS_GITHUB_APP_SLUG` on the server, or bundle both public defaults when releasing.
+authorization and automatic token refresh. The `openbots-github` app is used by default,
+including in the Mac app. To use your own GitHub App, enter its client ID and slug under the
+connector's Advanced settings, or set `OPENBOTS_GITHUB_CLIENT_ID` and
+`OPENBOTS_GITHUB_APP_SLUG` on the server.
 No private key, client secret, public callback or central auth broker is needed. See [GitHub connector setup](docs/GITHUB_CONNECTOR.md)
 for creating the app, sharing it with self-hosters and permission tradeoffs.
 

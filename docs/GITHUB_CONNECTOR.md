@@ -52,9 +52,15 @@ No Marketplace listing is required. Organization owners may need to approve an i
 Public visibility permits installation; it does not grant access to anyone's repositories by
 itself. Installation and user authorization are separate steps.
 
-## Configure an instance
+## Default app and custom overrides
 
-Set both public identifiers on the OpenBots **server**, then restart it:
+OpenBots, including the server used by the Mac app, defaults to the public
+[`openbots-github`](https://github.com/apps/openbots-github) GitHub App. No app registration
+or environment configuration is required: press Connect, install it on selected repositories,
+and approve device authorization.
+
+To replace it with your own GitHub App, set both public identifiers on the OpenBots **server**,
+then restart it:
 
 ```dotenv
 OPENBOTS_GITHUB_CLIENT_ID=your_github_app_client_id
@@ -76,15 +82,15 @@ existing OpenBots sign-in settings.
 
 ## Bundle the public app for every self-hoster
 
-Set both constants in `apps/server/src/config.ts`, then build and release normally:
+These public constants in `apps/server/src/config.ts` are included in server builds, including
+the server image used by the Mac app:
 
 ```ts
-export const DEFAULT_GITHUB_CONNECTOR_CLIENT_ID = 'your_github_app_client_id';
-export const DEFAULT_GITHUB_CONNECTOR_APP_SLUG = 'your-app-slug';
+export const DEFAULT_GITHUB_CONNECTOR_CLIENT_ID = 'Iv23liyL74CRKUWIUXhq';
+export const DEFAULT_GITHUB_CONNECTOR_APP_SLUG = 'openbots-github';
 ```
 
-Both defaults are intentionally empty until the real GitHub App exists. A secret or private
-key must never be added alongside them. Self-hosters can override both environment variables
+A secret or private key must never be added alongside them. Self-hosters can override both environment variables
 to use their own GitHub App without rebuilding. A client-ID override does not inherit the
 bundled app's slug, which could otherwise link users to the wrong app.
 

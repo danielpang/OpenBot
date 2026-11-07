@@ -294,10 +294,13 @@ describe('/api/v1/connectors', () => {
     expect(res.status).toBe(400);
 
     const github = await create(member, { catalogId: 'github', auth: 'oauth' });
-    expect(github.oauth).toEqual({ clientConfigured: false, connected: false, expiresAt: null });
-    res = await call(member, 'GET', `/connectors/${github.id}/oauth/start`);
-    // GitHub has no dynamic registration; the connector needs a client id (checked without network in a later test).
-    expect([400, 502]).toContain(res.status);
+    expect(github.oauth).toEqual({
+      clientConfigured: true,
+      connected: false,
+      expiresAt: null,
+      installationUrl: 'https://github.com/apps/openbots-github/installations/new',
+    });
+    // Device authorization itself is tested with a mocked GitHub endpoint in github-device.test.ts.
   });
 
   it('runs a stdio connector, caches its tools and stores resources and prompts', async () => {
