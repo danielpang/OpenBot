@@ -57,6 +57,18 @@ eas build --platform ios --profile production        # App Store release
 
 The release profiles explicitly disable `developmentClient`. Store builds still require Apple signing, EAS project configuration and the release prerequisites below; a simulator build cannot be submitted to the App Store.
 
+### EAS dependency-install failures
+
+All EAS build profiles inherit Node 22.23.4 and pnpm 12.11.2 from the `base` profile in `eas.json`. Keep these aligned with the root Node requirement and `packageManager` when upgrading the workspace. Do not rely on the build image's preinstalled versions: the Xcode 26.2 image defaults to Node 20 and pnpm 10, which can fail before installation while switching to pnpm 12 (`Failed to switch pnpm`, `Unknown system error -8`).
+
+After changing the build toolchain, retry from `apps/mobile`, for example:
+
+```sh
+eas build --platform ios --profile preview --clear-cache
+```
+
+This creates a new cloud build; retrying the old build without uploading the updated configuration will not apply the fix. Signing credentials do not need to be recreated for this dependency-install error.
+
 ### Open the workspace when building in Xcode
 
 After generating `ios/` and installing CocoaPods, open the workspace from the repository root:
