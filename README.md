@@ -22,8 +22,7 @@ several into a group, and use Routines to start work on a schedule.
   across conversations.
 - **Built in the open, with the community:** inspect the source, suggest ideas and contribute fixes
   or Skills. Help shape what comes next.
-- **Free to self-host:** no OpenBots subscription for personal or internal use. Model API usage and
-  any rented hosting are separate costs.
+- **Free to self-host:** Always free to self-host. Model API usage are charged through providers.
 
 OpenBots is **source-available under [BSL 1.1](LICENSE)**, not an OSI-approved open-source license.
 Hosting it for third parties or selling setup/support services requires a separate agreement.
@@ -37,9 +36,6 @@ Hosting it for third parties or selling setup/support services requires a separa
    Applications. It supports Apple Silicon and Intel Macs.
 3. Open OpenBots and choose **Run OpenBots on this Mac**. Let it download and start the local stack.
 4. Follow setup to create your account, add a model provider key and create your first Bot.
-
-If the release is unsigned, right-click the app and choose **Open** the first time; unsigned
-builds need manual updates.
 
 **iOS and Android apps are on their way.** When you have a compatible mobile build, choose
 **Pair your phone** in the Mac app and scan the QR code. This Mac uses the shared OpenBots relay
@@ -56,7 +52,7 @@ is end-to-end encrypted.
 
 The Mac app can also connect to an existing self-hosted server instead of running one locally.
 Prefer to operate the relay yourself? Follow the optional [private relay setup](docs/PRIVATE_RELAY_SETUP.md).
-A private relay replaces the shared connection service; it does not run your Bots.
+A private relay replaces the shared connection service that allows the OpenBots mobile app to pair with Openbots running on your machine; it does not run your Bots.
 
 ## Go further
 
