@@ -164,11 +164,13 @@ beforeEach(() => {
       });
     }
     if (pathname === `/api/v1/git-connections/${CONN}/device`) {
-      if (deviceNext === 'error')
+      if (deviceNext === 'error') {
+        connections = connections.map((connection) => ({ ...connection, status: 'error' }));
         return Response.json({
           status: 'error',
           message: 'GitHub authorization was cancelled. Connect again for a new code.',
         });
+      }
       if (deviceNext !== 'connected')
         return Response.json({ status: 'pending', stage: deviceNext, interval: 1 });
       connections = connections.map((connection) => ({ ...connection, status: 'connected' }));
@@ -555,6 +557,62 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
     await until(() => !host.textContent!.includes('ABCD-EFGH'), 'cancelled code');
   });
 
+  it('shows a saved pending connection inline with one status and one Finish action', async () => {
+    connections = [
+      connection({
+        kind: 'device',
+        accountLogin: 'GitHub',
+        status: 'pending',
+        installationId: null,
+        repoCount: 0,
+      }),
+    ];
+    render(<GithubCard admin />);
+    await until(() => !!button('Finish connecting'), 'resume pending authorization');
+    expect(host.querySelectorAll('[data-github-card]')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-status]')).toHaveLength(1);
+    expect(host.querySelector('[data-status]')!.textContent).toBe('Awaiting authorization');
+    expect(
+      host.querySelector('[aria-label="GitHub connections"]')!.classList.contains('border'),
+    ).toBe(false);
+    expect(host.querySelector('[data-connection]')!.textContent).not.toContain('GitHub App');
+    expect(button('Connect GitHub')).toBeUndefined();
+    expect(button('Sync')).toBeUndefined();
+    expect(button('Pick repositories')).toBeUndefined();
+    click(button('Finish connecting'));
+    await until(() => host.textContent!.includes('ABCD-EFGH'), 'resumed code');
+    expect(sent('POST', '/api/v1/git-connections/github-app/device')).toEqual([
+      { connectionId: CONN },
+    ]);
+    expect(host.querySelector('[data-status]')!.textContent).toBe('Authorizing');
+    expect(button('Finish connecting')).toBeUndefined();
+    expect(button('Connect GitHub')).toBeUndefined();
+    expect(button('Cancel authorization')).toBeDefined();
+  });
+
+  it('shows connected account controls in the same card and returns to Connect on disconnect', async () => {
+    connections = [
+      connection({ kind: 'device', accountLogin: 'alice', installationId: null, actAs: 'owner' }),
+    ];
+    render(<GithubCard admin />);
+    await until(() => !!button('Pick repositories'), 'connected controls');
+    expect(host.querySelectorAll('[data-github-card]')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-status="connected"]')).toHaveLength(1);
+    expect(host.querySelector('[data-connection]')!.textContent).toContain('alice');
+    expect(host.querySelector('[data-connection]')!.textContent).toContain('2 repositories');
+    expect(
+      host.querySelector('[aria-label="GitHub connections"]')!.classList.contains('border'),
+    ).toBe(false);
+    expect(button('Connect GitHub')).toBeUndefined();
+    expect(button('Reconnect GitHub')).toBeUndefined();
+    expect(host.textContent).not.toContain('No public URL needed.');
+    click(button('Disconnect'));
+    click(button('Disconnect'));
+    await until(() => !!button('Connect GitHub'), 'connect after disconnect');
+    expect(host.querySelector('[data-connection]')).toBeNull();
+    expect(host.querySelectorAll('[data-github-card]')).toHaveLength(1);
+  });
+
   it('coalesces repeated coding-repository Connect clicks before the busy render', async () => {
     render(<GithubCard admin />);
     await until(() => !!button('Connect GitHub'), 'device connect');
@@ -578,7 +636,9 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
       'the coding repository picker',
     );
     expect(host.textContent).toContain('GitHub is connected');
-    expect(host.querySelector('[data-connection]')!.textContent).toContain('device authorization');
+    expect(host.querySelector('[data-connection]')!.textContent).toContain('alice');
+    expect(host.querySelectorAll('[data-status="connected"]')).toHaveLength(1);
+    expect(button('Connect GitHub')).toBeUndefined();
     expect(host.querySelector('[data-connection] select')).toBeNull();
     click(document.querySelector('[data-remote="danielpang/site"] input'));
     click(button('Keep on the computer') ?? button('Keep 1 on the computer'));
@@ -618,7 +678,9 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
       'authorization error',
     );
     expect(document.querySelector('[data-remote]')).toBeNull();
-    expect(button('Connect GitHub')!.disabled).toBe(false);
+    await until(() => !!button('Reconnect GitHub'), 'retry on the same connection');
+    expect(button('Reconnect GitHub')!.disabled).toBe(false);
+    expect(button('Connect GitHub')).toBeUndefined();
   });
 
   it('accepts only public custom identifiers and does not ask for a secret', async () => {

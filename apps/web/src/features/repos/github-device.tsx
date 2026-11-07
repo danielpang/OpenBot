@@ -144,23 +144,33 @@ export function useGitDeviceConnection(onConnected: (connection: GitConnectionVi
   return { flow, working, stage, error, begin, cancel, open };
 }
 
-export function GitDeviceConnect({ state }: { state: ReturnType<typeof useGitDeviceConnection> }) {
+export function GitDeviceConnect({
+  state,
+  showConnect = true,
+}: {
+  state: ReturnType<typeof useGitDeviceConnection>;
+  showConnect?: boolean;
+}) {
   const [clientId, setClientId] = useState('');
   const [appSlug, setAppSlug] = useState('');
   const busy = state.working || state.flow !== null;
   return (
     <div className="flex flex-col gap-3" data-git-device-connect>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled={busy} onClick={() => state.begin()}>
-          {state.working ? 'Connecting…' : 'Connect GitHub'}
-        </Button>
-      </div>
+      {showConnect && !busy && (
+        <div>
+          <Button size="sm" onClick={() => state.begin()}>
+            Connect GitHub
+          </Button>
+        </div>
+      )}
+      {state.working && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Starting GitHub authorization…
+        </p>
+      )}
       <ErrorText error={state.error} />
       {state.flow && (
-        <div
-          className="flex flex-col gap-3 rounded-md border p-3"
-          aria-label="Authorize GitHub repositories"
-        >
+        <div className="flex flex-col gap-3" aria-label="Authorize GitHub repositories">
           <ol className="flex list-inside list-decimal flex-col gap-2 text-sm">
             <li>
               <a

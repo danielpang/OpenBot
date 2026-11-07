@@ -30,7 +30,7 @@ import { ConnectorIcon } from './icons.js';
 // The Connectors page's GitHub card for coding agents (GH1, GH2, GH8): install
 // the OpenBots GitHub App (or, on a self-hosted install without one, create
 // it through GitHub's manifest flow), or paste a fine-grained token. Each
-// connection is a row with its account, status, repository count, who pull
+// connection shows inline account details, status, repository count, who pull
 // requests are opened as (App connections only), Sync, Disconnect and Pick
 // repositories. A sync that finds GitHub wants the owner to grant access
 // again offers Re-check access. GitHub sends the browser back with
@@ -126,6 +126,13 @@ export function GithubCard({
   }, [list]);
 
   const status = app.data;
+  const single = list?.length === 1 ? list[0] : undefined;
+  const connectionStatus =
+    device.working || device.flow
+      ? { label: 'Authorizing', tone: 'bg-muted text-muted-foreground', state: 'pending' }
+      : single
+        ? { ...STATUS[single.status], state: single.status }
+        : undefined;
   return (
     <section
       className="flex flex-col gap-3 rounded-lg border p-3 text-sm"
@@ -135,9 +142,22 @@ export function GithubCard({
       <div className="flex items-start gap-3">
         <ConnectorIcon icon="github" name="GitHub" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <h2 id="github-repos-title" className="font-medium">
-            GitHub for coding agents
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 id="github-repos-title" className="font-medium">
+              GitHub for coding agents
+            </h2>
+            {connectionStatus && (
+              <span
+                data-status={connectionStatus.state}
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-xs font-medium',
+                  connectionStatus.tone,
+                )}
+              >
+                {connectionStatus.label}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
             Connect GitHub so coding agents can clone your repositories, push branches and open pull
             requests.
@@ -145,12 +165,29 @@ export function GithubCard({
         </div>
       </div>
       {notice && (
-        <p role="status" className="rounded-md border px-3 py-2">
+        <p role="status" className="text-xs text-muted-foreground">
           {notice}
         </p>
       )}
       <ErrorText error={app.error} />
-      {status?.deviceFlowAvailable && <GitDeviceConnect state={device} />}
+      <ErrorText error={connections.error} />
+      {!!list?.length && (
+        <ul className="divide-y" aria-label="GitHub connections">
+          {list.map((connection) => (
+            <ConnectionRow
+              key={connection.id}
+              connection={connection}
+              inline={list.length === 1}
+              onPick={() => setPicking(connection)}
+              onReconnect={() => device.begin({ connectionId: connection.id })}
+              connecting={device.working || device.flow !== null}
+            />
+          ))}
+        </ul>
+      )}
+      {status?.deviceFlowAvailable && (
+        <GitDeviceConnect state={device} showConnect={!list?.length} />
+      )}
       {status?.deviceFlowAvailable && (status.configured || status.manifestAvailable) && (
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer">Advanced: server-managed GitHub App</summary>
@@ -184,25 +221,11 @@ export function GithubCard({
           }}
         />
       )}
-      <ErrorText error={connections.error} />
-      {!!list?.length && (
-        <>
-          <ul className="divide-y rounded-md border" aria-label="GitHub connections">
-            {list.map((connection) => (
-              <ConnectionRow
-                key={connection.id}
-                connection={connection}
-                onPick={() => setPicking(connection)}
-                onReconnect={() => device.begin({ connectionId: connection.id })}
-                connecting={device.working || device.flow !== null}
-              />
-            ))}
-          </ul>
-          <p className="text-xs text-muted-foreground" data-reach-note>
-            The repositories listed are the ones the GitHub account that connected can reach, and a
-            coding agent can push a branch only where that account has push access.
-          </p>
-        </>
+      {list?.some((connection) => connection.status === 'connected') && (
+        <p className="text-xs text-muted-foreground" data-reach-note>
+          The repositories listed are the ones the GitHub account that connected can reach, and a
+          coding agent can push a branch only where that account has push access.
+        </p>
       )}
       <RepoPicker connection={picking} onClose={() => setPicking(null)} />
     </section>
@@ -399,8 +422,10 @@ function ConnectionRow({
   onPick,
   onReconnect,
   connecting,
+  inline,
 }: {
   connection: GitConnectionView;
+  inline: boolean;
   onPick(): void;
   onReconnect(): void;
   connecting: boolean;
@@ -437,42 +462,55 @@ function ConnectionRow({
   const status = STATUS[connection.status];
   const synced = ago(connection.lastSyncedAt);
   const usable = connection.status === 'connected';
+  const pending = connection.kind === 'device' && connection.status === 'pending';
+  const awaitingIdentity =
+    connection.kind === 'device' && (pending || connection.accountLogin === 'GitHub');
+  if (inline && pending && connecting) return null;
 
   return (
-    <li className="flex flex-col gap-2 px-3 py-2.5" data-connection={connection.id}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{connection.accountLogin}</span>
-            <span
-              data-status={connection.status}
-              className={cn('rounded-full px-2 py-0.5 text-xs font-medium', status.tone)}
-            >
-              {status.label}
+    <li className="flex flex-col gap-2 py-2" data-connection={connection.id}>
+      {!(inline && awaitingIdentity) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">{connection.accountLogin}</span>
+              {!inline && (
+                <span
+                  data-status={connection.status}
+                  className={cn('rounded-full px-2 py-0.5 text-xs font-medium', status.tone)}
+                >
+                  {status.label}
+                </span>
+              )}
             </span>
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {connection.accountType === 'organization' ? 'Organization' : 'User'} ·{' '}
-            {KIND[connection.kind]} · {repoCount(connection.repoCount)}
-            {synced && ` · synced ${synced}`}
-          </span>
+            <span className="text-xs text-muted-foreground">
+              {!inline && (
+                <>
+                  {connection.accountType === 'organization' ? 'Organization' : 'User'} ·{' '}
+                  {KIND[connection.kind]} ·{' '}
+                </>
+              )}
+              {repoCount(connection.repoCount)}
+              {synced && ` · synced ${synced}`}
+            </span>
+          </div>
+          {connection.kind === 'app' && (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              Act as
+              <select
+                aria-label={`Act as for ${connection.accountLogin}`}
+                className={selectClass}
+                value={connection.actAs}
+                disabled={actAs.isPending}
+                onChange={(e) => actAs.mutate(e.target.value as GitActAs)}
+              >
+                <option value="bot">The Bot (OpenBots app)</option>
+                <option value="owner">Me</option>
+              </select>
+            </label>
+          )}
         </div>
-        {connection.kind === 'app' && (
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            Act as
-            <select
-              aria-label={`Act as for ${connection.accountLogin}`}
-              className={selectClass}
-              value={connection.actAs}
-              disabled={actAs.isPending}
-              onChange={(e) => actAs.mutate(e.target.value as GitActAs)}
-            >
-              <option value="bot">The Bot (OpenBots app)</option>
-              <option value="owner">Me</option>
-            </select>
-          </label>
-        )}
-      </div>
+      )}
       {connection.error && (
         <p className="break-words text-xs text-destructive">{connection.error}</p>
       )}
@@ -485,10 +523,12 @@ function ConnectionRow({
       <div className="flex flex-wrap gap-1.5">
         {connection.kind === 'device' && (
           <>
-            <Button size="sm" variant="outline" disabled={connecting} onClick={onReconnect}>
-              {connection.status === 'pending' ? 'Finish connecting' : 'Reconnect GitHub'}
-            </Button>
-            {connection.appSlug && (
+            {!usable && (
+              <Button size="sm" variant="outline" disabled={connecting} onClick={onReconnect}>
+                {connection.status === 'pending' ? 'Finish connecting' : 'Reconnect GitHub'}
+              </Button>
+            )}
+            {connection.appSlug && !pending && (
               <a
                 className="self-center px-2 text-xs font-medium underline underline-offset-2"
                 href={`https://github.com/apps/${encodeURIComponent(connection.appSlug)}/installations/new`}
@@ -510,9 +550,16 @@ function ConnectionRow({
             Reinstall the app
           </Button>
         )}
-        <Button size="sm" variant="outline" disabled={sync.isPending} onClick={() => sync.mutate()}>
-          {sync.isPending ? 'Syncing…' : 'Sync'}
-        </Button>
+        {!pending && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={sync.isPending}
+            onClick={() => sync.mutate()}
+          >
+            {sync.isPending ? 'Syncing…' : 'Sync'}
+          </Button>
+        )}
         {reauthorize && (
           <Button size="sm" onClick={() => goToReauthorize(connection.id)}>
             Re-check access
