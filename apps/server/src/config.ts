@@ -141,6 +141,13 @@ const envSchema = z.object({
   XAI_API_KEY: optional(z.string()),
   GOOGLE_GENERATIVE_AI_API_KEY: optional(z.string()),
   OLLAMA_BASE_URL: optional(z.url()),
+  OPENBOTS_GITHUB_CLIENT_ID: optional(z.string()),
+  OPENBOTS_GITHUB_APP_SLUG: optional(
+    z
+      .string()
+      .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/)
+      .max(100),
+  ),
   GITHUB_CLIENT_ID: optional(z.string()),
   GITHUB_CLIENT_SECRET: optional(z.string()),
   GOOGLE_CLIENT_ID: optional(z.string()),
@@ -284,6 +291,9 @@ export interface Config {
     google?: string;
     ollamaBaseUrl?: string;
   };
+  /** Public GitHub App identifiers for repository installation and device authorization. */
+  githubConnectorClientId?: string;
+  githubConnectorAppSlug?: string;
   /** Sign-in providers (U1), each enabled only when both its id and secret are set. */
   oauth: {
     github?: OAuthClient;
@@ -296,6 +306,10 @@ export interface Config {
    */
   processLimits: ProcessLimits;
 }
+
+/** Set these public identifiers after creating the shared GitHub App. Never put secrets here. */
+export const DEFAULT_GITHUB_CONNECTOR_CLIENT_ID = 'Iv23liyL74CRKUWIUXhq';
+export const DEFAULT_GITHUB_CONNECTOR_APP_SLUG = 'openbots-github';
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const secrets = resolveSecretFiles(env);
@@ -394,6 +408,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       google: e.GOOGLE_GENERATIVE_AI_API_KEY,
       ollamaBaseUrl: e.OLLAMA_BASE_URL,
     },
+    githubConnectorClientId:
+      e.OPENBOTS_GITHUB_CLIENT_ID || DEFAULT_GITHUB_CONNECTOR_CLIENT_ID || undefined,
+    // An overridden client must never inherit another app's installation URL.
+    githubConnectorAppSlug: e.OPENBOTS_GITHUB_CLIENT_ID
+      ? e.OPENBOTS_GITHUB_APP_SLUG
+      : e.OPENBOTS_GITHUB_APP_SLUG || DEFAULT_GITHUB_CONNECTOR_APP_SLUG || undefined,
     oauth: {
       github: oauthClient(e.GITHUB_CLIENT_ID, e.GITHUB_CLIENT_SECRET),
       google: oauthClient(e.GOOGLE_CLIENT_ID, e.GOOGLE_CLIENT_SECRET),

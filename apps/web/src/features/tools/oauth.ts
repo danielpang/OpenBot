@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { desktopOAuth, platform } from '../../app/platform.js';
 import { useRealtime } from '../transcript/realtime.js';
-import { startOAuth, type Connector, type OAuthMode } from './api.js';
+import { pollDeviceOAuth, startOAuth, type Connector, type OAuthMode } from './api.js';
 import { useConnectorsAdded, useTestConnector } from './hooks.js';
 
 // One-click Connect (plan 8): the button creates the connector if needed and
@@ -100,6 +100,15 @@ export type ConnectState =
   /** `connectedId`: the connector the last Connect added or signed in. */
   | { phase: 'idle'; error: Error | null; connectedId: string | null }
   | { phase: 'working' }
+  | {
+      phase: 'device';
+      connectorId: string;
+      userCode: string;
+      verificationUrl: string;
+      installationUrl: string;
+      expiresAt: string;
+      interval: number;
+    }
   | { phase: 'waiting'; connectorId: string; mode: OAuthMode }
   /** No window could open: the owner clicks the link. */
   | { phase: 'blocked'; connectorId: string; url: string };
@@ -182,6 +191,60 @@ export function useOAuthConnect() {
     return () => clearInterval(timer);
   }, [state]);
 
+  // Poll only while this card is showing its device code. GitHub's secret
+  // device_code never leaves the server. Closing the provider window is fine.
+  useEffect(() => {
+    if (state.phase !== 'device') return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const expiry = setTimeout(
+      () => {
+        flow.current = null;
+        setState({
+          phase: 'idle',
+          connectedId: null,
+          error: new SignInFailed('The GitHub code expired. Connect again for a new code.'),
+        });
+      },
+      Math.max(0, Date.parse(state.expiresAt) - Date.now()),
+    );
+    const poll = async () => {
+      if (Date.now() >= Date.parse(state.expiresAt)) {
+        flow.current = null;
+        setState({
+          phase: 'idle',
+          connectedId: null,
+          error: new SignInFailed('The GitHub code expired. Connect again for a new code.'),
+        });
+        return;
+      }
+      try {
+        const result = await pollDeviceOAuth(state.connectorId);
+        if (cancelled) return;
+        if (result.status === 'connected') {
+          finish(state.connectorId, 'connected');
+        } else if (result.status === 'error') {
+          finish(state.connectorId, 'error', result.message);
+        } else {
+          timer = setTimeout(poll, result.interval * 1000);
+        }
+      } catch (error) {
+        if (!cancelled)
+          finish(
+            state.connectorId,
+            'error',
+            error instanceof Error ? error.message : 'Could not finish GitHub authorization.',
+          );
+      }
+    };
+    timer = setTimeout(poll, state.interval * 1000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      clearTimeout(expiry);
+    };
+  }, [state, finish]);
+
   const connect = useCallback(
     (prepare: () => Promise<Connector>, options: { prefetch?: boolean } = {}) => {
       const signIn = openSignInWindow(options);
@@ -196,8 +259,18 @@ export function useOAuthConnect() {
             return;
           }
           void queryClient.invalidateQueries({ queryKey: ['connectors'] });
-          const { authorizationUrl } = await startOAuth(connector.id, signIn.mode);
-          flow.current = { connectorId: connector.id, until: Date.now() + FLOW_MS, window: signIn };
+          const { authorizationUrl, device } = await startOAuth(connector.id, signIn.mode);
+          flow.current = {
+            connectorId: connector.id,
+            until: device ? Date.parse(device.expiresAt) : Date.now() + FLOW_MS,
+            window: signIn,
+          };
+          if (device) {
+            setState({ phase: 'device', connectorId: connector.id, ...device });
+            // The code and a manual link remain visible even if opening fails.
+            await signIn.go(device.installationUrl).catch(() => false);
+            return;
+          }
           const opened = await signIn.go(authorizationUrl);
           setState(
             opened
@@ -214,7 +287,10 @@ export function useOAuthConnect() {
     [onAdded, queryClient],
   );
 
-  const reset = useCallback(() => setState(IDLE), []);
+  const reset = useCallback(() => {
+    flow.current = null;
+    setState(IDLE);
+  }, []);
   return { state, connect, reset };
 }
 

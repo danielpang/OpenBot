@@ -69,6 +69,29 @@ first. `from-tag v1.2.0` prints metadata without modifying files. `pnpm release:
 remains an optional development helper, and `pnpm release:check v1.2.0` can verify stamped files;
 neither is a prerequisite for pushing a release tag.
 
+The native About panel displays the packaged version stamped from the release tag, without a
+second duplicate build number. Unstamped local builds embed the nearest reachable release tag
+at build time and label it development; without Git or a release tag they show "Development
+build". Installed apps do not need Git. This About-only fallback does not change the local
+package version, updater identity or the server image version; use the stamp command above
+when making a versioned package.
+
+Update discovery follows Bento's desktop lifecycle: the first background check is 30 seconds
+after launch, then every six hours. Updates appear in an OpenBots-themed bottom-right in-app
+notice (Update or Restart and update), never an OS notification. Dismissing hides that version
+for the app session across documents; a newer version brings it back. The app and tray menus
+show checking, downloading, ready and preparing states. Manual Check for Updates reports
+up-to-date, skipped and failed checks in native dialogs. Lookup requests time out after 30
+seconds and downloads after ten minutes; repeated clicks share one operation.
+
+Restart requires consent with Later as the default. Native Squirrel verifies/stages the update
+before the app disconnects and quits; ordinary quit never installs an update. OpenBots's Docker
+stack is independent of the app and stays running, as do remote agents. The existing local
+stack-upgrade flow handles newer images after relaunch. Source/development builds do not check
+for updates; unsigned versioned packages offer a universal DMG from the configured release
+repository instead. A matching ZIP also identifies older releases whose update metadata omitted
+the DMG; the app verifies the derived installer exists before opening it in the browser.
+
 A failed job can be rerun from the Actions tab. Rerunning `GitHub Release` finishes the release
 that exists instead of failing: a draft gets its files and is published, and a published release
 gets its files again with `latest-mac.yml` last.
@@ -125,7 +148,9 @@ Without all five secrets below, the Mac job fails and nothing is published. Squi
 installs updates signed by the same Developer ID, so electron-updater cannot update an unsigned
 app: an unsigned release would leave everyone who installs it on that version until they replace
 it by hand. Set the secrets, then release the tag again (Cutting a release, above).
-Local unsigned builds are ad-hoc signed and cannot update themselves.
+Local unsigned builds are ad-hoc signed and cannot update themselves automatically. If they
+have a stamped version, they can discover updates and offer the universal DMG for manual
+replacement; unstamped `0.0.0` development builds leave update checks disabled.
 
 | Secret                    | Value                                                                |
 | ------------------------- | -------------------------------------------------------------------- |

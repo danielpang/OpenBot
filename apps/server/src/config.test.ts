@@ -19,6 +19,8 @@ describe('loadConfig', () => {
       databaseUrl: base.DATABASE_URL,
       sandboxImage: 'ghcr.io/danielpang/openbots/computer:latest',
       deployment: 'self_hosted',
+      githubConnectorClientId: 'Iv23liyL74CRKUWIUXhq',
+      githubConnectorAppSlug: 'openbots-github',
       signupMode: 'first_user_admin',
       filesDir: '/data/files',
       mcpCatalog: { dir: '/opt/openbots/mcp', allowNpx: false },
@@ -210,6 +212,29 @@ describe('loadConfig', () => {
       webFetchMaxChars: 8000,
       webFetchTimeoutSeconds: 10,
     });
+  });
+
+  it('configures the GitHub App with public identifiers, independently of sign-in', () => {
+    const config = loadConfig({
+      ...base,
+      OPENBOTS_GITHUB_CLIENT_ID: 'shared-public-id',
+      OPENBOTS_GITHUB_APP_SLUG: 'openbots-test',
+    });
+    expect(config.githubConnectorClientId).toBe('shared-public-id');
+    expect(config.githubConnectorAppSlug).toBe('openbots-test');
+    expect(() => loadConfig({ ...base, OPENBOTS_GITHUB_APP_SLUG: '../bad-app' })).toThrow(
+      /OPENBOTS_GITHUB_APP_SLUG/,
+    );
+    expect(config.oauth.github).toBeUndefined();
+  });
+
+  it('uses the shared GitHub App in Mac local mode and does not inherit its slug for a custom client', () => {
+    const local = loadConfig({ ...base, OPENBOTS_LOCAL_TOKEN: 'k'.repeat(43) });
+    expect(local.githubConnectorClientId).toBe('Iv23liyL74CRKUWIUXhq');
+    expect(local.githubConnectorAppSlug).toBe('openbots-github');
+    const custom = loadConfig({ ...base, OPENBOTS_GITHUB_CLIENT_ID: 'own-app-id' });
+    expect(custom.githubConnectorClientId).toBe('own-app-id');
+    expect(custom.githubConnectorAppSlug).toBeUndefined();
   });
 
   it('enables an OAuth provider only when both its id and secret are set', () => {

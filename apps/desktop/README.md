@@ -98,7 +98,29 @@ its files.
   - `navigation.ts`: the main window stays on the server and the authorization and sign-in pages
     of GitHub and Google sign-in, for navigations and redirects alike; other links, other GitHub
     and Google pages included, open in the browser.
+  - `about.ts`: the native About panel uses the packaged version stamped from the release tag.
+    Unstamped local builds show the nearest Git release tag embedded at build time, labelled
+    development. No Git tags or a source archive shows "Development build" instead of 0.0.0.
+    The installed app never runs Git to determine its version.
   - `updater.ts`: electron-updater against the GitHub Releases in `electron-builder.publish.cjs`.
+    Adapted from Bento's lifecycle: check 30 seconds after launch and every six hours. An
+    OpenBots-styled bottom-right notice uses the app's own theme tokens, with Update for a
+    manual installer or Restart and update for a downloaded signed update. No update path uses
+    macOS notifications. Dismissal is shared across documents for that version until the app
+    restarts; a new version brings the notice back. App and tray menus show checking, downloading,
+    ready and preparing states. Manual checks report up-to-date, failed or skipped checks in-app;
+    repeated clicks share the request and network lookups time out after 30 seconds.
+    Side-by-side packaged previews use a distinct product name/app ID and `openbots.preview: true`
+    in package metadata. They do not claim the installed app's `openbots://` handler and use the
+    `openbots-preview` Docker project; their product name also separates Electron's user-data folder.
+    `update-service.ts` verifies Developer ID signing before allowing automatic installation,
+    requires restart consent (Later is the default), and stages/verifies with native Squirrel
+    before disconnecting the app and installing. Ordinary quit never installs an update. The
+    independent Docker stack keeps running; any stack upgrade is offered after relaunch.
+    Unsigned versioned packages offer the matching universal DMG from their release repository,
+    verified to exist before opening the browser. `preload/update-toast.ts` owns the persistent
+    notice in the isolated main-frame preload; update IPC is restricted to app pages and the
+    active server's top-level page, without exposing installation primitives to the web bridge.
   - `ipc.ts`: the app pages' IPC handlers.
 - `src/preload`: the preload (sandboxed, `contextIsolation` on, no Node integration), built as one
   CommonJS file. `bridge.ts` is what it exposes as `window.openbots`: every page gets `platform`,

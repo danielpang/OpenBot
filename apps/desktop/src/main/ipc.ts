@@ -1,5 +1,6 @@
 import {
   DESKTOP_CHANNELS,
+  type DesktopUpdateNotice,
   type ConnectionInfo,
   type ConnectOptions,
   type PairCode,
@@ -23,6 +24,9 @@ import type { IpcInvokeEvent, IpcMainLike } from '../stack/bridge.js';
 // finishes, bring the window back (./oauth.ts).
 
 export interface DesktopHandlers {
+  updateStatus(): DesktopUpdateNotice | null;
+  checkUpdates(): Promise<void>;
+  dismissUpdate(): void;
   listProfiles(): Promise<ProfilesView>;
   addProfile(input: { name?: string; url: string }): Promise<ServerProfile>;
   removeProfile(id: string): Promise<ProfilesView>;
@@ -96,6 +100,9 @@ export function registerDesktopIpc(
     handlers.connectServer(text(url, 'The server address')),
   );
   handle(DESKTOP_CHANNELS.connectLocal, () => handlers.connectLocal());
+  handleConnection(DESKTOP_CHANNELS.updateStatus, () => handlers.updateStatus());
+  handleConnection(DESKTOP_CHANNELS.updateCheck, () => handlers.checkUpdates());
+  handleConnection(DESKTOP_CHANNELS.updateDismiss, () => handlers.dismissUpdate());
   handleConnection(DESKTOP_CHANNELS.connectionInfo, () => handlers.connectionInfo());
   handleConnection(DESKTOP_CHANNELS.connectionChange, () => handlers.changeConnection());
   handleConnection(DESKTOP_CHANNELS.connectionStart, () => handlers.startLocal());

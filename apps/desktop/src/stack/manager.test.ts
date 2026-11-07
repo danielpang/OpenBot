@@ -347,6 +347,25 @@ describe('pendingUpgrade', () => {
 });
 
 describe('createStackManager', () => {
+  it('keeps preview compose resources apart from the installed app', async () => {
+    const files = memoryFiles({ [paths.envTemplate]: TEMPLATE });
+    const exec = composeExec();
+    const manager = createStackManager({
+      paths,
+      files,
+      exec,
+      portFree: allFree,
+      detect: async () => READY,
+      serverVersion: '0.0.1',
+      projectName: 'openbots-preview',
+    });
+    await manager.start();
+    expect(envValue(files.data.get(paths.envFile)!, 'COMPOSE_PROJECT_NAME')).toBe(
+      'openbots-preview',
+    );
+    expect(projects(exec).every((name) => name === 'openbots-preview')).toBe(true);
+  });
+
   it('creates .env with a 32-byte master key on first start, then runs compose up', async () => {
     const files = memoryFiles({ [paths.envTemplate]: TEMPLATE });
     const exec = composeExec({

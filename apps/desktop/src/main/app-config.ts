@@ -4,6 +4,11 @@
 // package.json as `openbots.cloudUrl`. A development run reads the variable
 // itself. Without it the choice is shown, but disabled.
 
+/** Side-by-side previews must not claim production deep links or Docker resources. */
+export function isPreviewBuild(packageJson: unknown): boolean {
+  return (packageJson as { openbots?: { preview?: unknown } } | null)?.openbots?.preview === true;
+}
+
 /** The hosted server's origin when `value` is an https URL (http only for this Mac, in development). */
 export function parseCloudUrl(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim() === '') return null;

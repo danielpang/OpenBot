@@ -167,6 +167,7 @@ export function trayMenu(input: {
   /** The header line, the connection's kind and host (./launcher.ts), or null before a window opens. */
   connection?: string | null;
   connected: boolean;
+  update?: { label: string; enabled: boolean };
   actions: TrayActions;
 }): TrayItem[] {
   const { approvals, actions } = input;
@@ -213,7 +214,7 @@ export function trayMenu(input: {
     { label: 'Pair your phone…', click: () => actions.pairPhone() },
     { label: 'Change connection…', click: () => actions.changeConnection() },
     { type: 'separator' },
-    { label: 'Check for Updates…', click: () => actions.checkForUpdates() },
+    { label: 'Check for Updates…', ...input.update, click: () => actions.checkForUpdates() },
     { label: 'Quit OpenBots', accelerator: 'CommandOrControl+Q', click: () => actions.quit() },
   );
   return items;

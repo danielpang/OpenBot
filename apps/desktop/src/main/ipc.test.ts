@@ -19,6 +19,9 @@ function setup(trusted = true, serverPage = false) {
   };
   const relay = { local: true, sharedUrl: 'wss://relay.example', current: null };
   const desktop: DesktopHandlers = {
+    updateStatus: vi.fn(() => ({ version: '1.2.3', action: 'restart' as const, busy: false })),
+    checkUpdates: vi.fn(async () => undefined),
+    dismissUpdate: vi.fn(),
     listProfiles: vi.fn(async () => ({ activeId: 'local', profiles: [], chosen: true })),
     addProfile: vi.fn(async (input) => ({
       id: 'p1',
@@ -69,6 +72,7 @@ describe('registerDesktopIpc', () => {
       DESKTOP_CHANNELS.navigate,
       DESKTOP_CHANNELS.newItem,
       DESKTOP_CHANNELS.pairPaired,
+      DESKTOP_CHANNELS.updateNotice,
     ];
     for (const channel of Object.values(DESKTOP_CHANNELS)) {
       if (sent.includes(channel)) continue;
@@ -132,6 +136,26 @@ describe('registerDesktopIpc', () => {
     await expect(invoke(DESKTOP_CHANNELS.connectionInfo)).rejects.toThrow(/may not use/);
     await expect(invoke(DESKTOP_CHANNELS.connectionStop)).rejects.toThrow(/may not use/);
     expect(desktop.stopLocal).not.toHaveBeenCalled();
+  });
+
+  it('shares update state and actions with trusted app and active server pages only', async () => {
+    for (const [trusted, serverPage] of [
+      [true, false],
+      [false, true],
+      [false, false],
+    ]) {
+      const { desktop, invoke } = setup(trusted, serverPage);
+      for (const channel of [
+        DESKTOP_CHANNELS.updateStatus,
+        DESKTOP_CHANNELS.updateCheck,
+        DESKTOP_CHANNELS.updateDismiss,
+      ]) {
+        if (trusted || serverPage) await invoke(channel);
+        else await expect(invoke(channel)).rejects.toThrow(/may not use/);
+      }
+      expect(desktop.checkUpdates).toHaveBeenCalledTimes(trusted || serverPage ? 1 : 0);
+      expect(desktop.dismissUpdate).toHaveBeenCalledTimes(trusted || serverPage ? 1 : 0);
+    }
   });
 
   it('checks argument types', async () => {
