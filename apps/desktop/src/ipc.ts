@@ -7,6 +7,11 @@ export const DESKTOP_CHANNELS = {
   navigate: 'openbots:navigate',
   /** main → renderer: the File menu's New (Cmd+N) opens the web app's New dialog. */
   newItem: 'openbots:new',
+  updateStatus: 'openbots:update:status',
+  updateCheck: 'openbots:update:check',
+  updateDismiss: 'openbots:update:dismiss',
+  /** main → renderer: the same update notice in every main-window document. */
+  updateNotice: 'openbots:update:notice',
   profilesList: 'openbots:profiles:list',
   profilesAdd: 'openbots:profiles:add',
   profilesRemove: 'openbots:profiles:remove',
@@ -43,6 +48,12 @@ export const DESKTOP_CHANNELS = {
  * What the web app reads as `window.openbots.platform` to turn on native
  * features. A browser has no `window.openbots`.
  */
+export interface DesktopUpdateNotice {
+  version: string;
+  action: 'download' | 'restart';
+  busy: boolean;
+}
+
 export interface PlatformInfo {
   kind: 'desktop';
   /** `process.platform` of the Mac app's host: 'darwin', later 'win32' and 'linux'. */

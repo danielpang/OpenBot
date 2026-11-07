@@ -1,178 +1,268 @@
-// Auto-update (plan 14.4) with electron-updater against GitHub Releases.
-// Manual checks use an in-app dialog, not OS notifications that may be denied
-// or hidden by Focus. Background checks remain quiet unless an update is ready.
+import type { AppUpdater, UpdateInfo } from 'electron-updater';
+import type { DesktopUpdateNotice } from '../ipc.js';
 
-export interface UpdateCheckResultLike {
-  isUpdateAvailable: boolean;
-  updateInfo: { version: string };
+type Phase = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing';
+export type UpdateDriver = Pick<
+  AppUpdater,
+  | 'autoDownload'
+  | 'autoInstallOnAppQuit'
+  | 'allowPrerelease'
+  | 'allowDowngrade'
+  | 'on'
+  | 'checkForUpdates'
+  | 'quitAndInstall'
+>;
+export interface UpdateUi {
+  changed(): void;
+  message(message: string, detail: string): Promise<void>;
+  confirmRestart(version: string): Promise<boolean>;
+  prepareInstall(): Promise<void>;
+  shutdown(): Promise<void>;
+  shutdownFailed(): void;
 }
 
-/** The slice of electron-updater's autoUpdater used here. */
-export interface AutoUpdaterLike {
-  autoDownload: boolean;
-  autoInstallOnAppQuit: boolean;
-  checkForUpdates(): Promise<UpdateCheckResultLike | null>;
-  quitAndInstall(): void;
-  on(event: 'update-downloaded', listener: (info: { version: string }) => void): unknown;
-  on(event: 'update-not-available', listener: () => void): unknown;
-  on(event: 'error', listener: (error: Error) => void): unknown;
+export interface ManualUpdateOptions {
+  repository: string;
+  confirmDownload(version: string): Promise<boolean>;
+  openDownload(url: string): Promise<void>;
 }
 
-export interface UpdateMessage {
-  title: string;
-  body: string;
-  onClick?: () => void;
+/** Only open a fixed installer in this app's release repository, never a feed-supplied URL.
+ * Older latest-mac.yml manifests list only the ZIP (dmg.writeUpdateInfo is false).
+ * That exact version's ZIP also identifies the release; the service verifies the DMG exists.
+ */
+export function manualDownloadUrl(info: UpdateInfo, repository = 'danielpang/OpenBots'): string {
+  const version = info.version;
+  const tag = (info as UpdateInfo & { tag?: unknown }).tag;
+  const name = `OpenBots-${version}-universal.dmg`;
+  if (
+    !/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(repository) ||
+    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version) ||
+    (tag !== `v${version}` && tag !== version) ||
+    !info.files.some(
+      (file) => file.url === name || file.url === `OpenBots-${version}-universal-mac.zip`,
+    )
+  ) {
+    throw Object.assign(new Error('This release does not include a matching Mac installer.'), {
+      code: 'OPENBOTS_INSTALLER_NOT_FOUND',
+    });
+  }
+  return `https://github.com/${repository}/releases/download/${tag}/${name}`;
 }
 
-export interface UpdaterOptions {
-  autoUpdater: AutoUpdaterLike;
-  /** False for unpackaged runs: there is nothing to update. */
-  enabled: boolean;
-  /** Passive notification for a background download. */
-  notify(message: UpdateMessage): void;
-  /** Visible in-app result for an explicit menu click, independent of OS permissions. */
-  report(message: UpdateMessage): void;
-  log(message: string, error?: unknown): void;
-  intervalMs?: number;
-  checkTimeoutMs?: number;
+export function updateErrorDetail(error: unknown): string {
+  const code = (error as { code?: string })?.code;
+  if (
+    [
+      'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND',
+      'ERR_UPDATER_NO_PUBLISHED_VERSIONS',
+      'ERR_UPDATER_LATEST_VERSION_NOT_FOUND',
+      'OPENBOTS_INSTALLER_NOT_FOUND',
+    ].includes(code ?? '')
+  ) {
+    return 'A macOS update is not available from the release service yet. Please try again later.';
+  }
+  return 'OpenBots could not download or verify the update. Check your internet connection and try again later. Your current app and projects are kept.';
 }
 
-export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
-export const UPDATE_CHECK_TIMEOUT_MS = 30_000;
+/** Owns one check/download at a time. Installation always requires consent. */
+/** Bound network waits without abandoning observation of the underlying promise. */
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Update request timed out.')), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
-export function createUpdater(options: UpdaterOptions) {
-  const { autoUpdater, enabled, notify, report, log } = options;
-  let manual = false;
-  let manualDownload = false;
-  let downloadedVersion: string | null = null;
-  let timer: ReturnType<typeof setInterval> | undefined;
-  let inFlight: Promise<UpdateCheckResultLike | null> | undefined;
-  let manualCheck: Promise<void> | undefined;
+// Adapted from Bento's desktop updater. The persistent in-app notice replaces
+// OS notifications; installing never happens on ordinary application quit.
+export class DesktopUpdates {
+  private phase: Phase = 'idle';
+  private version = '';
+  private manualUrl: string | undefined;
+  private dismissedVersion = '';
+  private task: Promise<void> | undefined;
+  private interactive = false;
+  private prompting = false;
+  private disposed = false;
+  private timers: ReturnType<typeof setTimeout>[] = [];
 
-  const ready = (version: string): UpdateMessage => ({
-    title: `OpenBots ${version} is ready`,
-    body: 'Restart to update now, or it installs when you quit.',
-    onClick: () => autoUpdater.quitAndInstall(),
-  });
-  const failed = (error: unknown) => {
-    log('update check failed', error);
-    if (manual || manualDownload) {
-      manual = false;
-      manualDownload = false;
-      report({
-        title: 'Could not check for updates',
-        body: error instanceof Error ? error.message : 'Please try again later.',
-      });
-    }
-  };
+  constructor(
+    private driver: UpdateDriver,
+    private ui: UpdateUi,
+    private disabledReason?: string,
+    private manual?: ManualUpdateOptions,
+  ) {
+    driver.autoDownload = !manual;
+    // On macOS this also defers handing the ZIP to Squirrel until consent.
+    driver.autoInstallOnAppQuit = false;
+    driver.allowPrerelease = false;
+    driver.allowDowngrade = false;
+    driver.on('error', (error) => {
+      console.warn('[updates]', error);
+      // checkForUpdates/downloadPromise reject as well. Their owner shows the
+      // one requested dialog; background failures never interrupt local work.
+    });
+    driver.on('update-available', () => {
+      if (!this.manual) this.setPhase('downloading');
+    });
+    driver.on('update-downloaded', (info) => {
+      if (this.disposed || this.manual) return;
+      this.version = info.version;
+      this.setPhase('ready');
+    });
+  }
 
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on('update-downloaded', ({ version }) => {
-    downloadedVersion = version;
-    if (manualDownload || manual) {
-      manual = false;
-      manualDownload = false;
-      report(ready(version));
-    } else {
-      notify(ready(version));
-    }
-  });
-  autoUpdater.on('update-not-available', () => {
-    if (manual) {
-      manual = false;
-      report({ title: 'OpenBots is up to date', body: 'You have the latest version.' });
-    }
-  });
-  autoUpdater.on('error', failed);
+  get menu() {
+    const labels: Record<Phase, string> = {
+      idle: 'Check for Updates...',
+      checking: 'Checking for Updates...',
+      downloading: 'Downloading Update...',
+      ready: 'Restart to Update...',
+      installing: 'Preparing Update...',
+    };
+    return { label: labels[this.phase], enabled: !this.disposed && this.phase !== 'installing' };
+  }
 
-  // Join a running startup/periodic check instead of launching overlapping requests.
-  const check = () => {
-    if (inFlight) return inFlight;
-    const pending = Promise.resolve().then(() => autoUpdater.checkForUpdates());
-    inFlight = pending;
-    // Use both handlers rather than an unobserved finally promise on rejection.
-    void pending.then(
-      () => {
-        if (inFlight === pending) inFlight = undefined;
-      },
-      () => {
-        if (inFlight === pending) inFlight = undefined;
-      },
-    );
-    return pending;
-  };
+  get notice(): DesktopUpdateNotice | null {
+    if (
+      this.disposed ||
+      this.disabledReason ||
+      !this.version ||
+      this.dismissedVersion === this.version
+    )
+      return null;
+    if (this.manual ? !this.manualUrl : this.phase !== 'ready' && this.phase !== 'installing')
+      return null;
+    return {
+      version: this.version,
+      action: this.manual ? 'download' : 'restart',
+      busy: this.phase === 'checking' || this.phase === 'installing' || this.prompting,
+    };
+  }
 
-  return {
-    start() {
-      if (!enabled || timer) return;
-      void check().catch(failed);
-      timer = setInterval(
-        () => void check().catch(failed),
-        options.intervalMs ?? UPDATE_CHECK_INTERVAL_MS,
-      );
-      timer.unref?.();
-    },
-    /** Every explicit check reports an outcome, including skipped checks and rejections. */
-    checkNow(): Promise<void> {
-      if (manualCheck) return manualCheck;
-      if (!enabled) {
-        report({
-          title: 'Updates are off',
-          body: 'This is a development build; it does not update itself.',
-        });
-        return Promise.resolve();
-      }
-      if (downloadedVersion) {
-        report(ready(downloadedVersion));
-        return Promise.resolve();
-      }
-      manual = true;
-      manualCheck = (async () => {
-        let timeout: ReturnType<typeof setTimeout> | undefined;
+  dismissNotice() {
+    this.dismissedVersion = this.version;
+    this.ui.changed();
+  }
+
+  start() {
+    if (this.disabledReason || this.disposed || this.timers.length) return;
+    this.timers.push(setTimeout(() => void this.check(), 30_000));
+    this.timers.push(setInterval(() => void this.check(), 6 * 60 * 60 * 1000));
+    for (const timer of this.timers) timer.unref();
+  }
+
+  dispose() {
+    this.disposed = true;
+    for (const timer of this.timers) clearTimeout(timer);
+    this.timers = [];
+  }
+
+  async check(interactive = false): Promise<void> {
+    if (this.disposed || this.phase === 'installing') return;
+    if (this.disabledReason) {
+      if (interactive && !this.prompting) {
+        this.prompting = true;
         try {
-          const result = await Promise.race([
-            check(),
-            new Promise<never>((_, reject) => {
-              timeout = setTimeout(
-                () =>
-                  reject(
-                    new Error('The update check timed out. Check your connection and try again.'),
-                  ),
-                options.checkTimeoutMs ?? UPDATE_CHECK_TIMEOUT_MS,
-              );
-            }),
-          ]);
-          // An event may already have reported the outcome.
-          if (!manual) return;
-          manual = false;
-          if (!result) {
-            report({
-              title: 'Updates are unavailable',
-              body: 'This build cannot check for updates. Install an official OpenBots release to enable automatic updates.',
-            });
-          } else if (result.isUpdateAvailable) {
-            manualDownload = true;
-            report({
-              title: `OpenBots ${result.updateInfo.version} is available`,
-              body: 'The update is downloading. You will be asked to restart when it is ready.',
-            });
-          } else {
-            report({ title: 'OpenBots is up to date', body: 'You have the latest version.' });
-          }
-        } catch (error) {
-          failed(error);
+          await this.ui.message('Updates are unavailable', this.disabledReason);
         } finally {
-          if (timeout) clearTimeout(timeout);
-          manual = false;
-          manualCheck = undefined;
+          this.prompting = false;
         }
-      })();
-      return manualCheck;
-    },
-    stop() {
-      if (timer) clearInterval(timer);
-      timer = undefined;
-    },
-  };
+      }
+      return;
+    }
+    this.interactive ||= interactive;
+    if (this.task) return this.task;
+    if (this.phase === 'ready') {
+      if (interactive) await this.offerRestart();
+      return;
+    }
+    this.setPhase('checking');
+    this.task = this.performCheck();
+    try {
+      await this.task;
+    } finally {
+      this.task = undefined;
+      this.interactive = false;
+    }
+  }
+
+  private async performCheck() {
+    try {
+      const result = await withTimeout(this.driver.checkForUpdates(), 30_000);
+      if (this.manual && result?.isUpdateAvailable) {
+        if (this.disposed) return;
+        const url = manualDownloadUrl(result.updateInfo, this.manual.repository);
+        this.version = result.updateInfo.version;
+        this.manualUrl = url;
+        if (
+          this.interactive &&
+          (await this.manual.confirmDownload(result.updateInfo.version)) &&
+          !this.disposed
+        ) {
+          await this.manual.openDownload(url);
+          this.dismissedVersion = this.version;
+        }
+        this.setPhase('idle');
+        return;
+      }
+      if (result?.downloadPromise) await withTimeout(result.downloadPromise, 10 * 60_000);
+      if (this.disposed) return;
+      if (this.phase === 'ready') {
+        if (this.interactive) await this.offerRestart();
+      } else {
+        this.manualUrl = undefined;
+        this.setPhase('idle');
+        if (this.interactive)
+          await this.ui.message(
+            result ? 'OpenBots is up to date' : 'Updates are unavailable',
+            result
+              ? 'You have the latest stable version of OpenBots.'
+              : 'This build cannot check for updates. Install an official OpenBots release or try again later.',
+          );
+      }
+    } catch (error) {
+      this.setPhase('idle');
+      if (this.interactive && !this.disposed)
+        await this.ui.message('Could not check for updates', updateErrorDetail(error));
+    }
+  }
+
+  private async offerRestart() {
+    if (this.prompting || this.disposed) return;
+    this.prompting = true;
+    this.ui.changed();
+    try {
+      if (!(await this.ui.confirmRestart(this.version)) || this.disposed) return;
+      this.setPhase('installing');
+      // Verify/stage with native Squirrel before stopping a working server.
+      await this.ui.prepareInstall();
+      if (this.disposed) return;
+      await this.ui.shutdown();
+      this.driver.quitAndInstall();
+    } catch (error) {
+      console.warn('[updates] Could not install', error);
+      this.ui.shutdownFailed();
+      this.setPhase('ready');
+      if (!this.disposed)
+        await this.ui.message('Could not install the update', updateErrorDetail(error));
+    } finally {
+      this.prompting = false;
+      this.interactive = false;
+      if (!this.disposed) this.ui.changed();
+    }
+  }
+
+  private setPhase(phase: Phase) {
+    this.phase = phase;
+    if (!this.disposed) this.ui.changed();
+  }
 }

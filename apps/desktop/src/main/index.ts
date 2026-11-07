@@ -7,7 +7,6 @@ import type { WebSocketLike } from '@openbots/api-client';
 import {
   app,
   BrowserWindow,
-  dialog,
   globalShortcut,
   ipcMain,
   Menu,
@@ -20,7 +19,6 @@ import {
   type IpcMainInvokeEvent,
   type Session,
 } from 'electron';
-import electronUpdater from 'electron-updater';
 import WebSocket from 'ws';
 import {
   DESKTOP_CHANNELS,
@@ -73,7 +71,8 @@ import { createProfileStore, localServerUrl, type ProfileFiles } from './profile
 import { createServerGate, verifyServer, type Refusal } from './server-gate.js';
 import { createTokenStore, sessionCookieChange, type SessionToken } from './tokens.js';
 import { trayIconPath, trayTitle } from './tray-icon.js';
-import { createUpdater } from './updater.js';
+import { createUpdates } from './update-service.js';
+import type { DesktopUpdates } from './updater.js';
 
 // The Electron main process (plan 14.4, 18.8). The main window shows the
 // active server profile's web app, once that server answers as OpenBots
@@ -241,30 +240,15 @@ let pendingLink: DeepLink | null = null;
 // Notifications are kept until clicked or closed, or macOS drops their handlers.
 const notifications = new Set<Notification>();
 
-const updater = createUpdater({
-  autoUpdater: electronUpdater.autoUpdater,
-  enabled: app.isPackaged,
-  notify: ({ title, body, onClick }) => showNotification(title, body, onClick),
-  report: ({ title, body, onClick }) => {
-    app.focus({ steal: true });
-    void dialog
-      .showMessageBox({
-        type: 'info',
-        title,
-        message: title,
-        detail: body,
-        buttons: onClick ? ['Restart and update', 'Later'] : ['OK'],
-        defaultId: 0,
-        cancelId: onClick ? 1 : 0,
-        noLink: true,
-      })
-      .then(({ response }) => {
-        if (onClick && response === 0) onClick();
-      })
-      .catch((error: unknown) => console.error('[updater] could not show update result', error));
-  },
-  log: (message, error) => console.error(`[updater] ${message}`, error),
-});
+let updater: DesktopUpdates | undefined;
+
+function refreshUpdates() {
+  Menu.setApplicationMenu(applicationMenu());
+  updateTray();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(DESKTOP_CHANNELS.updateNotice, updater?.notice ?? null);
+  }
+}
 
 function platformInfo(): PlatformInfo {
   return {
@@ -275,7 +259,7 @@ function platformInfo(): PlatformInfo {
   };
 }
 
-function webPreferences(partition?: Session): Electron.WebPreferences {
+function webPreferences(partition?: Session, updates = false): Electron.WebPreferences {
   return {
     preload: PRELOAD,
     contextIsolation: true,
@@ -284,6 +268,7 @@ function webPreferences(partition?: Session): Electron.WebPreferences {
     webSecurity: true,
     ...(partition ? { session: partition } : {}),
     additionalArguments: [
+      `--openbots-updates=${updates}`,
       `--openbots-platform=${JSON.stringify(platformInfo())}`,
       `--openbots-app-base=${RENDERER_URL ?? ''}`,
     ],
@@ -293,7 +278,7 @@ function webPreferences(partition?: Session): Electron.WebPreferences {
 /** Only the app's own pages may use the app bridge and the local stack. */
 function isTrusted(event: { sender: unknown }): boolean {
   const frame = (event as IpcMainInvokeEvent).senderFrame;
-  return frame != null && isAppPage(frame.url, RENDERER_URL);
+  return frame != null && frame.parent == null && isAppPage(frame.url, RENDERER_URL);
 }
 
 /** The web app's indicator: the active server's own top page in the main window. */
@@ -543,7 +528,7 @@ async function createMainWindow(profile: ServerProfile): Promise<BrowserWindow> 
     // Windows and Linux show it on the window and taskbar; macOS uses the Dock icon.
     icon: DEV_ICON,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    webPreferences: webPreferences(ses),
+    webPreferences: webPreferences(ses, true),
   });
   mainWindow = window;
   window.once('ready-to-show', () => window.show());
@@ -827,6 +812,7 @@ function updateTray() {
     profileName: activeProfile?.name ?? 'OpenBots',
     connection: activeProfile ? connectionHeader(activeProfile) : null,
     connected: connection != null,
+    update: updater?.menu,
     actions: {
       open: (link) => void openLink(link),
       decide: (id, decision) => {
@@ -840,7 +826,7 @@ function updateTray() {
       quickAsk: toggleQuickAsk,
       pairPhone: () => openPairWindow(),
       changeConnection: () => void launcher.changeConnection(),
-      checkForUpdates: () => updater.checkNow(),
+      checkForUpdates: () => void updater?.check(true),
       quit: () => app.quit(),
     },
   });
@@ -860,7 +846,11 @@ function applicationMenu() {
       label: app.name,
       submenu: [
         { role: 'about' },
-        { label: 'Check for Updates…', click: () => updater.checkNow() },
+        {
+          ...updater?.menu,
+          label: updater?.menu.label ?? 'Check for Updates…',
+          click: () => void updater?.check(true),
+        },
         { type: 'separator' },
         { label: 'Relay…', click: () => openPairWindow('relay') },
         {
@@ -915,10 +905,28 @@ if (!app.requestSingleInstanceLock()) {
   }
 
   void app.whenReady().then(async () => {
+    updater = await createUpdates({
+      repository: releaseRepository(),
+      changed: refreshUpdates,
+      // Unlike Bento's child server, our Docker stack is independent of the app.
+      // Keep it and its agents running; the next launch offers a stack upgrade.
+      shutdown: async () => {
+        quitting = true;
+        disconnect();
+      },
+      shutdownFailed: () => {
+        quitting = false;
+      },
+    });
     registerStackIpc(ipcMain, stack, isTrusted);
     registerDesktopIpc(
       ipcMain,
       {
+        updateStatus: () => updater?.notice ?? null,
+        checkUpdates: async () => {
+          await updater?.check(true);
+        },
+        dismissUpdate: () => updater?.dismissNotice(),
         listProfiles: () => profiles.list(),
         addProfile: (input) => profiles.add(input),
         removeProfile: async (id) => {
@@ -1026,7 +1034,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
-    updater.stop();
+    updater?.dispose();
     connection?.close();
   });
   app.on('window-all-closed', () => {
