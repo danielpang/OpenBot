@@ -7768,7 +7768,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Whether this install has a GitHub App, and where it comes from */
+    /** Shared device-authorized App and optional server-managed GitHub App */
     get: {
       parameters: {
         query?: never;
@@ -7849,6 +7849,153 @@ export interface paths {
         };
       };
     };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/github-app/device': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start GitHub App device authorization for coding repositories
+     * @description Install the shared App on selected repositories, then approve the user code. Works on localhost: no callback, public HTTPS URL, client secret or App private key. Optional public identifiers select a custom App; connectionId reauthorizes an owned device connection.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['GitDeviceInput'];
+        };
+      };
+      responses: {
+        /** @description Public installation and device authorization instructions */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['GitDeviceStart'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such connection */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Cannot start this connection */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description GitHub failed or could not be reached */
+        502: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-connections/{id}/device': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Poll an owned coding-repository device authorization
+     * @description Enforces GitHub polling limits on the server. After authorization, waits for an active installation of the selected App visible to this user. Tokens and device_code are never returned.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Authorization pending, connected, or ended */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['GitDevicePoll'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such connection */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No device authorization to poll */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -13327,7 +13474,8 @@ export interface components {
       /** @enum {string} */
       provider: 'github';
       /** @enum {string} */
-      kind: 'app' | 'oauth' | 'token';
+      kind: 'app' | 'device' | 'oauth' | 'token';
+      appSlug?: string;
       installationId: string | null;
       accountLogin: string;
       /** @enum {string|null} */
@@ -13338,7 +13486,7 @@ export interface components {
        */
       actAs: 'bot' | 'owner';
       /** @enum {string} */
-      status: 'connected' | 'needs_reinstall' | 'revoked' | 'error';
+      status: 'pending' | 'connected' | 'needs_reinstall' | 'revoked' | 'error';
       /** Format: date-time */
       lastSyncedAt: string | null;
       repoCount: number;
@@ -13353,6 +13501,9 @@ export interface components {
       token: string;
     };
     GithubAppStatus: {
+      deviceFlowAvailable: boolean;
+      deviceAppSlug: string | null;
+      deviceInstallationUrl: string | null;
       /** @description This install has a GitHub App */
       configured: boolean;
       /**
@@ -13368,6 +13519,43 @@ export interface components {
       /** @description OPENBOTS_PUBLIC_URL is https, which GitHub needs to reach the install; without it there is no manifest flow */
       publicUrlOk: boolean;
     };
+    GitDeviceStart: {
+      /** Format: uuid */
+      connectionId: string;
+      device: {
+        userCode: string;
+        /** @enum {string} */
+        verificationUrl: 'https://github.com/login/device';
+        installationUrl: string;
+        /** Format: date-time */
+        expiresAt: string;
+        interval: number;
+      };
+    };
+    GitDeviceInput: {
+      /** Format: uuid */
+      connectionId?: string;
+      clientId?: string;
+      appSlug?: string;
+    };
+    GitDevicePoll:
+      | {
+          /** @enum {string} */
+          status: 'pending';
+          /** @enum {string} */
+          stage: 'authorization' | 'installation';
+          interval: number;
+        }
+      | {
+          /** @enum {string} */
+          status: 'connected';
+          connection: components['schemas']['GitConnection'];
+        }
+      | {
+          /** @enum {string} */
+          status: 'error';
+          message: string;
+        };
     GithubAppManifest: {
       /** Format: uri */
       url: string;

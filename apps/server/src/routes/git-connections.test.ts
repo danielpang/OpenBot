@@ -87,6 +87,9 @@ describe('git connection routes', () => {
   it('says which App the install has', async () => {
     const res = await call(alice, 'GET', '/git-connections/github-app');
     expect(await res.json()).toEqual({
+      deviceFlowAvailable: true,
+      deviceAppSlug: 'openbots-github',
+      deviceInstallationUrl: 'https://github.com/apps/openbots-github/installations/new',
       configured: true,
       source: 'config',
       slug: 'openbots-test',

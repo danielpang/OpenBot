@@ -1,5 +1,9 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { GitActAsSchema } from '@openbots/shared';
+import {
+  GitActAsSchema,
+  GitConnectionKindSchema,
+  GitConnectionStatusSchema,
+} from '@openbots/shared';
 import type { Context } from 'hono';
 import type { AppEnv, CurrentUser } from '../context.js';
 import { inWorkspace } from '../db/scope.js';
@@ -35,6 +39,8 @@ import {
   type GithubStatePurpose,
   type VerifiedGithubState,
 } from '../services/github-app.js';
+import { defaultDeviceClient, pollGitDevice, startGitDevice } from '../services/git-device.js';
+import { githubInstallationUrl } from '../services/github-device.js';
 import { clearGithubApp, loadGithubApp } from '../services/github-app-store.js';
 
 // Git connections and the GitHub App (docs/TECHNICAL_PLAN.md 22.12; GH1 to
@@ -54,14 +60,15 @@ const GitConnectionSchema = z
   .object({
     id: z.uuid(),
     provider: z.literal('github'),
-    kind: z.enum(['app', 'oauth', 'token']),
+    kind: GitConnectionKindSchema,
+    appSlug: z.string().optional(),
     installationId: z.string().nullable(),
     accountLogin: z.string(),
     accountType: z.enum(['user', 'organization']).nullable(),
     actAs: z.enum(['bot', 'owner']).openapi({
       description: '`bot` opens pull requests as the App, `owner` with the owner OAuth token',
     }),
-    status: z.enum(['connected', 'needs_reinstall', 'revoked', 'error']),
+    status: GitConnectionStatusSchema,
     lastSyncedAt: z.iso.datetime({ offset: true }).nullable(),
     repoCount: z.number().int().nonnegative(),
     error: z.string().nullable(),
@@ -85,6 +92,9 @@ const RemoteRepoSchema = z
 
 const GithubAppStatusSchema = z
   .object({
+    deviceFlowAvailable: z.boolean(),
+    deviceAppSlug: z.string().nullable(),
+    deviceInstallationUrl: z.string().nullable(),
     configured: z.boolean().openapi({ description: 'This install has a GitHub App' }),
     source: z.enum(['config', 'instance']).nullable().openapi({
       description: '`config` from GITHUB_APP_*, `instance` made through the manifest flow',
@@ -112,6 +122,51 @@ const html = (description: string) => ({
   description,
   content: { 'text/html': { schema: z.string() } },
 });
+
+const deviceStartInput = z
+  .strictObject({
+    connectionId: z.uuid().optional(),
+    clientId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .regex(/^[A-Za-z0-9._-]+$/)
+      .optional(),
+    appSlug: z
+      .string()
+      .trim()
+      .max(100)
+      .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/)
+      .optional(),
+  })
+  .refine(
+    (value) => Boolean(value.clientId) === Boolean(value.appSlug),
+    'Set both the GitHub App client ID and slug',
+  );
+const deviceStartSchema = z
+  .object({
+    connectionId: z.uuid(),
+    device: z.object({
+      userCode: z.string(),
+      verificationUrl: z.literal('https://github.com/login/device'),
+      installationUrl: z.string(),
+      expiresAt: z.iso.datetime({ offset: true }),
+      interval: z.number().int().positive(),
+    }),
+  })
+  .openapi('GitDeviceStart');
+const devicePollSchema = z
+  .union([
+    z.object({
+      status: z.literal('pending'),
+      stage: z.enum(['authorization', 'installation']),
+      interval: z.number().int().positive(),
+    }),
+    z.object({ status: z.literal('connected'), connection: GitConnectionSchema }),
+    z.object({ status: z.literal('error'), message: z.string() }),
+  ])
+  .openapi('GitDevicePoll');
 
 const idParam = z.object({ id: z.uuid() });
 const connectionBody = json(z.object({ connection: GitConnectionSchema }), 'The connection');
@@ -260,7 +315,7 @@ export const gitConnectionRoutes = createRouter()
       method: 'get',
       path: '/git-connections/github-app',
       tags: ['git-connections'],
-      summary: 'Whether this install has a GitHub App, and where it comes from',
+      summary: 'Shared device-authorized App and optional server-managed GitHub App',
       middleware: [requireUser] as const,
       security: authenticated,
       responses: {
@@ -272,8 +327,12 @@ export const gitConnectionRoutes = createRouter()
       const deps = c.var.deps;
       const loaded = await loadGithubApp(deps);
       const publicUrlOk = isHttps(deps.config.publicUrl);
+      const device = defaultDeviceClient(deps);
       return c.json(
         {
+          deviceFlowAvailable: Boolean(device),
+          deviceAppSlug: device?.appSlug ?? null,
+          deviceInstallationUrl: device ? githubInstallationUrl(device.appSlug) : null,
           configured: Boolean(loaded),
           source: loaded?.source ?? null,
           slug: loaded?.app.slug ?? null,
@@ -283,6 +342,58 @@ export const gitConnectionRoutes = createRouter()
         },
         200,
       );
+    },
+  )
+  .openapi(
+    createRoute({
+      method: 'post',
+      path: '/git-connections/github-app/device',
+      tags: ['git-connections'],
+      summary: 'Start GitHub App device authorization for coding repositories',
+      description:
+        'Install the shared App on selected repositories, then approve the user code. Works on localhost: no callback, public HTTPS URL, client secret or App private key. Optional public identifiers select a custom App; connectionId reauthorizes an owned device connection.',
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: {
+        body: {
+          content: { 'application/json': { schema: deviceStartInput.openapi('GitDeviceInput') } },
+          required: true,
+        },
+      },
+      responses: {
+        200: json(deviceStartSchema, 'Public installation and device authorization instructions'),
+        404: problemResponse('No such connection'),
+        409: problemResponse('Cannot start this connection'),
+        ...githubProblem,
+        ...authProblems,
+      },
+    }),
+    async (c) => {
+      c.header('cache-control', 'no-store');
+      return c.json(await startGitDevice(c.var.deps, c.var.user, c.req.valid('json')), 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: 'post',
+      path: '/git-connections/{id}/device',
+      tags: ['git-connections'],
+      summary: 'Poll an owned coding-repository device authorization',
+      description:
+        'Enforces GitHub polling limits on the server. After authorization, waits for an active installation of the selected App visible to this user. Tokens and device_code are never returned.',
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: { params: idParam },
+      responses: {
+        200: json(devicePollSchema, 'Authorization pending, connected, or ended'),
+        404: problemResponse('No such connection'),
+        409: problemResponse('No device authorization to poll'),
+        ...authProblems,
+      },
+    }),
+    async (c) => {
+      c.header('cache-control', 'no-store');
+      return c.json(await pollGitDevice(c.var.deps, c.var.user, c.req.valid('param').id), 200);
     },
   )
   .openapi(

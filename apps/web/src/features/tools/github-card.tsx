@@ -23,6 +23,7 @@ import {
 } from '../repos/api.js';
 import { connectorsQuery } from './api.js';
 import { RepoPicker } from '../repos/picker.js';
+import { GitDeviceConnect, useGitDeviceConnection } from '../repos/github-device.js';
 import { ErrorText } from './fields.js';
 import { ConnectorIcon } from './icons.js';
 
@@ -42,6 +43,7 @@ export interface GithubArrival {
 }
 
 const STATUS: Record<GitConnectionView['status'], { label: string; tone: string }> = {
+  pending: { label: 'Awaiting authorization', tone: 'bg-muted text-muted-foreground' },
   connected: {
     label: 'Connected',
     tone: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
@@ -56,6 +58,7 @@ const STATUS: Record<GitConnectionView['status'], { label: string; tone: string 
 
 const KIND: Record<GitConnectionView['kind'], string> = {
   app: 'GitHub App',
+  device: 'GitHub App · device authorization',
   oauth: 'Signed in with GitHub',
   token: 'Token',
 };
@@ -92,6 +95,10 @@ export function GithubCard({
   const [pasting, setPasting] = useState(false);
   const [picking, setPicking] = useState<GitConnectionView | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const device = useGitDeviceConnection((connection) => {
+    setNotice('GitHub is connected. Pick the repositories to keep on the computer.');
+    setPicking(connection);
+  });
 
   // Back from GitHub: say what happened once, and open the picker for a new install.
   const handled = useRef(false);
@@ -143,18 +150,19 @@ export function GithubCard({
         </p>
       )}
       <ErrorText error={app.error} />
+      {status?.deviceFlowAvailable && <GitDeviceConnect state={device} />}
+      {status?.deviceFlowAvailable && (status.configured || status.manifestAvailable) && (
+        <details className="text-xs text-muted-foreground">
+          <summary className="cursor-pointer">Advanced: server-managed GitHub App</summary>
+          <div className="mt-2">
+            <ServerAppSetup status={status} admin={admin} managed={managed} />
+          </div>
+        </details>
+      )}
       {status && (
         <div className="flex flex-wrap items-center gap-2">
-          {status.configured ? (
-            <Button size="sm" onClick={goToInstall}>
-              Install the OpenBots app
-            </Button>
-          ) : managed ? null : status.manifestAvailable && admin ? (
-            <CreateApp />
-          ) : (
-            <p className="text-xs text-muted-foreground" data-no-app>
-              {noAppText(status, admin)}
-            </p>
+          {!status.deviceFlowAvailable && (
+            <ServerAppSetup status={status} admin={admin} managed={managed} />
           )}
           {!pasting && (
             <button
@@ -185,6 +193,8 @@ export function GithubCard({
                 key={connection.id}
                 connection={connection}
                 onPick={() => setPicking(connection)}
+                onReconnect={() => device.begin({ connectionId: connection.id })}
+                connecting={device.working || device.flow !== null}
               />
             ))}
           </ul>
@@ -196,6 +206,30 @@ export function GithubCard({
       )}
       <RepoPicker connection={picking} onClose={() => setPicking(null)} />
     </section>
+  );
+}
+
+function ServerAppSetup({
+  status,
+  admin,
+  managed,
+}: {
+  status: GithubAppStatus;
+  admin: boolean | undefined;
+  managed: boolean;
+}) {
+  if (status.configured)
+    return (
+      <Button size="sm" onClick={goToInstall}>
+        Install the OpenBots app
+      </Button>
+    );
+  if (managed) return null;
+  if (status.manifestAvailable && admin) return <CreateApp />;
+  return (
+    <p className="text-xs text-muted-foreground" data-no-app>
+      {noAppText(status, admin)}
+    </p>
   );
 }
 
@@ -360,7 +394,17 @@ function TokenForm({ onDone }: { onDone(connection?: GitConnectionView): void })
   );
 }
 
-function ConnectionRow({ connection, onPick }: { connection: GitConnectionView; onPick(): void }) {
+function ConnectionRow({
+  connection,
+  onPick,
+  onReconnect,
+  connecting,
+}: {
+  connection: GitConnectionView;
+  onPick(): void;
+  onReconnect(): void;
+  connecting: boolean;
+}) {
   const queryClient = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const write = (next: GitConnectionView) =>
@@ -432,7 +476,30 @@ function ConnectionRow({ connection, onPick }: { connection: GitConnectionView; 
       {connection.error && (
         <p className="break-words text-xs text-destructive">{connection.error}</p>
       )}
+      {connection.kind === 'device' && connection.status !== 'pending' && (
+        <p className="text-xs text-muted-foreground">
+          Pull requests are opened as {connection.accountLogin}. Access is limited to the App’s
+          selected repositories and your GitHub permissions.
+        </p>
+      )}
       <div className="flex flex-wrap gap-1.5">
+        {connection.kind === 'device' && (
+          <>
+            <Button size="sm" variant="outline" disabled={connecting} onClick={onReconnect}>
+              {connection.status === 'pending' ? 'Finish connecting' : 'Reconnect GitHub'}
+            </Button>
+            {connection.appSlug && (
+              <a
+                className="self-center px-2 text-xs font-medium underline underline-offset-2"
+                href={`https://github.com/apps/${encodeURIComponent(connection.appSlug)}/installations/new`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Manage repositories
+              </a>
+            )}
+          </>
+        )}
         {usable && (
           <Button size="sm" onClick={onPick}>
             Pick repositories

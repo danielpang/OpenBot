@@ -5,6 +5,8 @@ personal account or organization, select repositories, then authorize a user acc
 GitHub's device flow. This connects repositories, issues and pull requests to Bots without
 adding an OpenBots account system or changing how the owner accesses OpenBots.
 
+**Coding-agent repository access is a separate connection.** Use **Repositories for coding agents → Connect GitHub**; authorizing this MCP connector alone does not connect the repository picker or git credentials. Both flows use the same public App defaults, but keep separate owned credentials. See [GITHUB_REPOSITORIES.md](GITHUB_REPOSITORIES.md).
+
 The separate `github_builtin` connector still uses a personal access token.
 
 ## Create a public GitHub App

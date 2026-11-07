@@ -6221,7 +6221,10 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["app", "oauth", "token"]
+            "enum": ["app", "device", "oauth", "token"]
+          },
+          "appSlug": {
+            "type": "string"
           },
           "installationId": {
             "type": ["string", "null"]
@@ -6240,7 +6243,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["connected", "needs_reinstall", "revoked", "error"]
+            "enum": ["pending", "connected", "needs_reinstall", "revoked", "error"]
           },
           "lastSyncedAt": {
             "type": ["string", "null"],
@@ -6288,6 +6291,15 @@
       "GithubAppStatus": {
         "type": "object",
         "properties": {
+          "deviceFlowAvailable": {
+            "type": "boolean"
+          },
+          "deviceAppSlug": {
+            "type": ["string", "null"]
+          },
+          "deviceInstallationUrl": {
+            "type": ["string", "null"]
+          },
           "configured": {
             "type": "boolean",
             "description": "This install has a GitHub App"
@@ -6314,12 +6326,118 @@
           }
         },
         "required": [
+          "deviceFlowAvailable",
+          "deviceAppSlug",
+          "deviceInstallationUrl",
           "configured",
           "source",
           "slug",
           "installUrlAvailable",
           "manifestAvailable",
           "publicUrlOk"
+        ]
+      },
+      "GitDeviceStart": {
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "userCode": {
+                "type": "string"
+              },
+              "verificationUrl": {
+                "type": "string",
+                "enum": ["https://github.com/login/device"]
+              },
+              "installationUrl": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "interval": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": ["userCode", "verificationUrl", "installationUrl", "expiresAt", "interval"]
+          }
+        },
+        "required": ["connectionId", "device"]
+      },
+      "GitDeviceInput": {
+        "type": "object",
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "clientId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[A-Za-z0-9._-]+$"
+          },
+          "appSlug": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "GitDevicePoll": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["pending"]
+              },
+              "stage": {
+                "type": "string",
+                "enum": ["authorization", "installation"]
+              },
+              "interval": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": ["status", "stage", "interval"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["connected"]
+              },
+              "connection": {
+                "$ref": "#/components/schemas/GitConnection"
+              }
+            },
+            "required": ["status", "connection"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["error"]
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["status", "message"]
+          }
         ]
       },
       "GithubAppManifest": {
@@ -17003,7 +17121,7 @@
     "/api/v1/git-connections/github-app": {
       "get": {
         "tags": ["git-connections"],
-        "summary": "Whether this install has a GitHub App, and where it comes from",
+        "summary": "Shared device-authorized App and optional server-managed GitHub App",
         "security": [
           {
             "session": []
@@ -17073,6 +17191,151 @@
           },
           "409": {
             "description": "The App comes from GITHUB_APP_* (`GITHUB_APP_FROM_CONFIG`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/github-app/device": {
+      "post": {
+        "tags": ["git-connections"],
+        "summary": "Start GitHub App device authorization for coding repositories",
+        "description": "Install the shared App on selected repositories, then approve the user code. Works on localhost: no callback, public HTTPS URL, client secret or App private key. Optional public identifiers select a custom App; connectionId reauthorizes an owned device connection.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitDeviceInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Public installation and device authorization instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitDeviceStart"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such connection",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Cannot start this connection",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "GitHub failed or could not be reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-connections/{id}/device": {
+      "post": {
+        "tags": ["git-connections"],
+        "summary": "Poll an owned coding-repository device authorization",
+        "description": "Enforces GitHub polling limits on the server. After authorization, waits for an active installation of the selected App visible to this user. Tokens and device_code are never returned.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorization pending, connected, or ended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitDevicePoll"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such connection",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No device authorization to poll",
             "content": {
               "application/problem+json": {
                 "schema": {

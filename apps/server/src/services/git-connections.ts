@@ -11,7 +11,9 @@ import { schema, type Db } from '../db/client.js';
 import { asDirectory } from '../db/scope.js';
 import { DomainError, notFound } from '../errors.js';
 import { isOrgAdmin, type Role } from '../workspace.js';
-import { decryptSecretString, encryptSecret, keyringFromConfig } from '../secrets.js';
+import { openConnectionSecrets, sealConnectionSecrets } from './git-connection-secrets.js';
+import { deviceAuthorization } from './git-device-token.js';
+import { userAppRepositories } from './github-user-app.js';
 import { ownerOAuthToken } from './git-credentials.js';
 import { GithubApiError, githubAppFor, type GithubApp } from './github-app.js';
 import type { GitCredentialScope, GithubPermissionLevel } from './github-app-types.js';
@@ -43,21 +45,8 @@ type ConnectionDeps = Pick<AppDeps, 'db' | 'config'> & Partial<Pick<AppDeps, 'ne
 type Owner = Pick<CurrentUser, 'id' | 'workspaceId'>;
 export type ConnectionRow = typeof schema.gitConnections.$inferSelect;
 
-/** What `git_connections.secrets` holds, sealed. */
-interface ConnectionSecrets {
-  /** The `token` kind's token, or the `oauth` kind's access token. */
-  token?: string;
-}
-
-/** The username GitHub expects beside an installation token (and accepts beside any token). */
+/** The username accepted by GitHub beside installation or user tokens. */
 export const TOKEN_USERNAME = 'x-access-token';
-
-const keyring = (deps: Pick<AppDeps, 'config'>) => keyringFromConfig(deps.config);
-
-function openConnectionSecrets(deps: Pick<AppDeps, 'config'>, row: ConnectionRow) {
-  if (!row.secrets) return {} as ConnectionSecrets;
-  return JSON.parse(decryptSecretString(row.secrets, keyring(deps))) as ConnectionSecrets;
-}
 
 const ownedBy = (owner: Owner) =>
   and(
@@ -100,8 +89,10 @@ export function allowsOn(
   row: Pick<ConnectionRow, 'kind' | 'accountLogin' | 'repositories'>,
   fullName: string,
 ): { read: boolean; write: boolean } {
-  if (row.kind !== 'app') return { read: true, write: true };
-  const entry = ofAccount(row, fullName) ? accessOf(row, fullName) : null;
+  if (row.kind !== 'app' && row.kind !== 'device') return { read: true, write: true };
+  // A device token can cover installations on several accounts. Its explicit
+  // user+installation intersection, not accountLogin (the signed-in user), is authoritative.
+  const entry = row.kind === 'device' || ofAccount(row, fullName) ? accessOf(row, fullName) : null;
   return { read: Boolean(entry), write: entry?.push === true };
 }
 
@@ -129,11 +120,16 @@ export async function connectionAllows(
   return row ? allowsOn(row, fullName) : null;
 }
 
-export function toConnectionView(row: ConnectionRow, repoCount: number): GitConnectionView {
+export function toConnectionView(
+  row: ConnectionRow,
+  repoCount: number,
+  appSlug?: string,
+): GitConnectionView {
   return {
     id: row.id,
     provider: 'github',
     kind: row.kind as GitConnectionView['kind'],
+    ...(appSlug ? { appSlug } : {}),
     installationId: row.installationId,
     accountLogin: row.accountLogin,
     accountType: (row.accountType as GitConnectionView['accountType']) ?? null,
@@ -161,13 +157,17 @@ async function repoCounts(deps: Pick<AppDeps, 'db'>, owner: Owner) {
   return new Map(rows.map((r) => [r.connectionId!, Number(r.count)]));
 }
 
-async function viewOf(deps: Pick<AppDeps, 'db'>, owner: Owner, row: ConnectionRow) {
-  return toConnectionView(row, (await repoCounts(deps, owner)).get(row.id) ?? 0);
+async function viewOf(deps: Pick<AppDeps, 'db' | 'config'>, owner: Owner, row: ConnectionRow) {
+  return toConnectionView(
+    row,
+    (await repoCounts(deps, owner)).get(row.id) ?? 0,
+    row.kind === 'device' ? openConnectionSecrets(deps, row).githubDevice?.appSlug : undefined,
+  );
 }
 
 /** The owner's connections, oldest first. */
 export async function listConnections(
-  deps: Pick<AppDeps, 'db'>,
+  deps: Pick<AppDeps, 'db' | 'config'>,
   owner: Owner,
 ): Promise<GitConnectionView[]> {
   const [rows, counts] = await Promise.all([
@@ -178,7 +178,13 @@ export async function listConnections(
       .orderBy(schema.gitConnections.createdAt),
     repoCounts(deps, owner),
   ]);
-  return rows.map((row) => toConnectionView(row, counts.get(row.id) ?? 0));
+  return rows.map((row) =>
+    toConnectionView(
+      row,
+      counts.get(row.id) ?? 0,
+      row.kind === 'device' ? openConnectionSecrets(deps, row).githubDevice?.appSlug : undefined,
+    ),
+  );
 }
 
 /** One of the owner's connections; 404 for anyone else's. */
@@ -195,13 +201,17 @@ export async function getConnection(
   return row;
 }
 
-export async function getConnectionView(deps: Pick<AppDeps, 'db'>, owner: Owner, id: string) {
+export async function getConnectionView(
+  deps: Pick<AppDeps, 'db' | 'config'>,
+  owner: Owner,
+  id: string,
+) {
   return viewOf(deps, owner, await getConnection(deps, owner, id));
 }
 
 /** The owner's `app` connection for an installation, made or brought up to date. */
 export async function createFromInstallation(
-  deps: Pick<AppDeps, 'db'>,
+  deps: Pick<AppDeps, 'db' | 'config'>,
   owner: Owner,
   input: {
     installationId: string;
@@ -361,7 +371,7 @@ export async function createTokenConnection(
       kind: 'token',
       accountLogin: user.login,
       accountType: user.type,
-      secrets: encryptSecret(JSON.stringify({ token } satisfies ConnectionSecrets), keyring(deps)),
+      secrets: sealConnectionSecrets(deps, { token }),
       status: 'connected',
     })
     .returning();
@@ -401,6 +411,42 @@ export async function setActAs(
 /** Every repository the connection reaches, from GitHub. */
 async function reachable(deps: ConnectionDeps, row: ConnectionRow) {
   const github = githubAppFor(deps);
+  if (row.kind === 'device') {
+    const auth = await deviceAuthorization(deps, row);
+    const access = await userAppRepositories(deps, auth.token, auth.appSlug);
+    if (!access.installed)
+      throw new GithubApiError(
+        403,
+        'Install the GitHub App on selected repositories, or request organization approval, then reconnect.',
+      );
+    const repositories = access.repositories.map(({ fullName, push, admin }) => ({
+      fullName,
+      push,
+      admin,
+    }));
+    const saved = await deps.db
+      .update(schema.gitConnections)
+      .set({
+        repositories,
+        repositoriesSyncedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.gitConnections.id, row.id),
+          eq(schema.gitConnections.secrets, auth.row.secrets!),
+        ),
+      )
+      .returning({ id: schema.gitConnections.id });
+    if (!saved.length)
+      throw new DomainError(
+        409,
+        'GITHUB_CONNECTION_CHANGED',
+        'The GitHub connection changed. Try again.',
+      );
+    row.repositories = repositories;
+    return access.repositories;
+  }
   if (row.kind === 'app') {
     if (!row.installationId) throw new DomainError(409, 'NO_INSTALLATION', NO_INSTALLATION);
     return github.listInstallationRepos(row.installationId);
@@ -413,7 +459,10 @@ async function reachable(deps: ConnectionDeps, row: ConnectionRow) {
 /** The status GitHub's error means for the connection. */
 function statusOf(row: ConnectionRow, error: unknown) {
   if (error instanceof GithubApiError) {
-    if (row.kind === 'app' && (error.githubStatus === 404 || error.githubStatus === 403)) {
+    if (
+      (row.kind === 'app' || row.kind === 'device') &&
+      (error.githubStatus === 404 || error.githubStatus === 403)
+    ) {
       return {
         status: 'needs_reinstall',
         error: 'GitHub no longer finds this installation. Install the App again.',
@@ -556,7 +605,9 @@ export async function connectionForRepo(
   return (
     connections.find(
       (c) =>
-        c.kind === 'app' && c.status === 'connected' && c.accountLogin.toLowerCase() === account,
+        c.status === 'connected' &&
+        ((c.kind === 'app' && c.accountLogin.toLowerCase() === account) ||
+          (c.kind === 'device' && allowsOn(c, fullName).read)),
     ) ?? null
   );
 }
@@ -581,6 +632,20 @@ export async function tokenForConnection(
   scope: GitCredentialScope,
   permissions: Record<string, GithubPermissionLevel> = permissionsFor(scope.write),
 ): Promise<{ username: string; password: string } | null> {
+  if (connection.kind === 'device') {
+    const auth = await deviceAuthorization(deps, connection);
+    const allowed = allowsOn(auth.row, scope.repoFullName);
+    if (!allowed.read)
+      throw connectionNoAccess(
+        'This GitHub App connection does not include this repository. Sync or reconnect it on the Connectors page.',
+      );
+    if ((scope.write || Object.values(permissions).includes('write')) && !allowed.write) {
+      throw connectionNoAccess(
+        `You can read ${scope.repoFullName} through this GitHub App but not push to it`,
+      );
+    }
+    return { username: TOKEN_USERNAME, password: auth.token };
+  }
   if (connection.kind === 'app') {
     if (!connection.installationId) throw connectionNoAccess(NO_INSTALLATION);
     const fullName = normalizeFullName(scope.repoFullName) ?? scope.repoFullName.trim();

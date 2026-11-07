@@ -18,11 +18,12 @@ import {
 //
 // What is served depends on the repository's git connection
 // (git-connections.ts):
-// - A GitHub App connection mints an installation token narrowed to that one
+// - A server-managed App connection (kind 'app') mints a token narrowed to that one
 //   repository: `contents: read` for a fetch, and `contents: write,
 //   pull_requests: write` only once the push is allowed. GitHub enforces it:
 //   a push with the read token answers 403 whatever the agent does.
-// - A token or OAuth connection, or with no connection the GitHub
+// - A device-authorized App user token (kind 'device'), token or OAuth
+//   connection, or with no connection the GitHub
 //   connector's token (`githubTokenFor`), cannot be narrowed. The runner's
 //   own clone and fetch get it; a session gets it only once its push is
 //   allowed, and then only for the push url. The runner fetched the worktree
