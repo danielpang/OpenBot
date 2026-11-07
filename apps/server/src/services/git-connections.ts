@@ -413,6 +413,8 @@ async function reachable(deps: ConnectionDeps, row: ConnectionRow) {
   const github = githubAppFor(deps);
   if (row.kind === 'device') {
     const auth = await deviceAuthorization(deps, row);
+    // Guard both successful and failed syncs against this authorization version.
+    row.secrets = auth.row.secrets;
     const access = await userAppRepositories(deps, auth.token, auth.appSlug);
     if (!access.installed)
       throw new GithubApiError(
@@ -499,15 +501,32 @@ export async function syncConnection(
     }
   } catch (error) {
     // GitHub out of reach says nothing about the connection.
-    if (error instanceof DomainError && error.code === 'GITHUB_UNAVAILABLE') throw error;
+    if (
+      error instanceof DomainError &&
+      (error.code === 'GITHUB_UNAVAILABLE' || error.code === 'GITHUB_CONNECTION_CHANGED')
+    )
+      throw error;
     set = statusOf(row, error);
   }
   const [updated] = await deps.db
     .update(schema.gitConnections)
     .set({ ...set, updatedAt: new Date() })
-    .where(eq(schema.gitConnections.id, row.id))
+    .where(
+      and(
+        eq(schema.gitConnections.id, row.id),
+        row.kind === 'device' && row.secrets
+          ? eq(schema.gitConnections.secrets, row.secrets)
+          : undefined,
+      ),
+    )
     .returning();
-  return { connection: await viewOf(deps, owner, updated!), needsReauthorize: row.kind === 'app' };
+  if (!updated)
+    throw new DomainError(
+      409,
+      'GITHUB_CONNECTION_CHANGED',
+      'The GitHub connection changed. Try again.',
+    );
+  return { connection: await viewOf(deps, owner, updated), needsReauthorize: row.kind === 'app' };
 }
 
 /** Forgets the connection; its repositories keep their rows with `connection_id` null. */

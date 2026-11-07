@@ -219,7 +219,7 @@ export function GitDeviceConnect({ state }: { state: ReturnType<typeof useGitDev
           }}
         >
           <p>
-            Enable Device Flow on your App. Only its public client ID and slug are needed—not a
+            Enable Device Flow on your App. Only its public client ID and slug are needed, not a
             client secret or private key.
           </p>
           <label className="flex flex-col gap-1">

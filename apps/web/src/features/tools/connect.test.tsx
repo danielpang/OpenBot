@@ -404,6 +404,13 @@ describe('one-click Connect', () => {
     expect(host.textContent).not.toContain('Finish signing in');
   });
 
+  it('shows Connected instead of another Add action for an existing plain catalog connector', async () => {
+    render(<CatalogCard entry={entry({ kind: 'builtin', oauth: null })} added={true} />);
+    expect(host.textContent).toContain('Connected');
+    expect(button('Add')).toBeUndefined();
+    expect(server.requests.some((request) => request.method === 'POST')).toBe(false);
+  });
+
   it('just adds a connector that needs no sign-in, closing the window', async () => {
     server.created = connector({ auth: 'none', oauth: null, catalogId: null });
     server.discovery = {
@@ -628,6 +635,7 @@ describe('connection checks after a fresh app boot', () => {
     );
     const tests = () => server.requests.filter((request) => request.path.endsWith('/test'));
     expect(tests()).toHaveLength(1);
+    expect(tests()[0]!.search).toBe('?automatic=true');
     live.emit('connector.updated', { connectorId: ID });
     await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
     expect(tests()).toHaveLength(1);

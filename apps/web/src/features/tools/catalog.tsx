@@ -30,7 +30,7 @@ import { needsClient, useOAuthConnect, waitingText, type ConnectState } from './
 // entry whose provider registers OpenBots itself (dynamic registration) adds
 // it and opens the provider's sign-in at once. An entry with required
 // settings or keys asks for them first, then signs in. GitHub, Slack and
-// Google need the owner's own OAuth app for now, entered under Advanced; a
+// Google can use custom OAuth clients under Advanced; GitHub uses our shared App. A
 // token works instead where the entry takes one. Blocked entries say
 // "Disabled by admin", or "Blocked by policy" on a self-hosted install (T3).
 
@@ -138,7 +138,7 @@ export function CatalogCard({ entry, added }: { entry: CatalogEntry; added: bool
     action = <span className="text-xs text-muted-foreground">{blockedText(managed)}</span>;
   } else if (ALWAYS_ON.has(entry.id)) {
     action = <span className="text-xs text-muted-foreground">Always on</span>;
-  } else if (connected) {
+  } else if (connected || (added && kind === 'plain')) {
     action = <span className="text-xs text-emerald-600">Connected</span>;
   } else if (!form && !askClient) {
     action = (

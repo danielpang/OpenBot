@@ -2,6 +2,7 @@ import { TEST_STDIO_SERVER } from '@openbots/mcp/testing';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
+import { encryptSecret, keyringFromConfig } from '../secrets.js';
 import { createTestApp, type TestApp } from '../test-app.js';
 import * as connectors from './connectors.js';
 import { recheckConnectorsOnBoot } from './connector-startup.js';
@@ -48,6 +49,7 @@ describe('default GitHub auth, retries and boot recovery', () => {
   });
   beforeEach(async () => {
     await connectors.closeMcpManager(t.ownerDeps);
+    await t.db.delete(schema.bots);
     await t.db.delete(schema.connectors);
   });
   afterEach(() => vi.restoreAllMocks());
@@ -95,7 +97,255 @@ describe('default GitHub auth, retries and boot recovery', () => {
     ).not.toBe(rows[0]!.id);
   });
 
-  it('repairs empty legacy bearer rows without deleting duplicates or overwriting working PATs', async () => {
+  it('reuses one plain catalog connector across concurrent Connect requests', async () => {
+    const responses = await Promise.all([
+      post({ catalogId: 'web_search' }),
+      post({ catalogId: 'web_search' }),
+    ]);
+    const rows = await Promise.all(
+      responses.map(async (response) => {
+        expect(response.status, await response.clone().text()).toBe(201);
+        return response.json() as Promise<{ id: string }>;
+      }),
+    );
+    expect(rows[0]!.id).toBe(rows[1]!.id);
+    expect(await t.db.select().from(schema.connectors)).toHaveLength(1);
+  });
+
+  it('reuses a default connector after successful discovery has added cached metadata', async () => {
+    const c = await create({ catalogId: 'github' });
+    const [row] = await t.db.select().from(schema.connectors).where(eq(schema.connectors.id, c.id));
+    await t.db
+      .update(schema.connectors)
+      .set({
+        config: {
+          ...(row!.config as object),
+          discovered: { server: { name: 'GitHub', version: '1' }, resources: [], prompts: [] },
+        },
+        status: 'ok',
+        lastCheckedAt: new Date(),
+      })
+      .where(eq(schema.connectors.id, c.id));
+    expect((await create({ catalogId: 'github' })).id).toBe(c.id);
+    expect(await t.db.select().from(schema.connectors)).toHaveLength(1);
+  });
+
+  it.each([true, false])(
+    'preserves inherited denial when merging duplicate Bot permissions (canonical inherits: %s)',
+    async (canonicalInherits) => {
+      const canonical = await create({ catalogId: 'github' });
+      const duplicate = await create({ catalogId: 'github', auth: 'bearer' });
+      const [row] = await t.db
+        .select()
+        .from(schema.connectors)
+        .where(eq(schema.connectors.id, canonical.id));
+      const secrets = connectors.openSecrets(t.deps, row!);
+      secrets.oauth = { tokens: { access_token: 'ghu_keep', token_type: 'bearer' } };
+      await t.db
+        .update(schema.connectors)
+        .set({ secrets: encryptSecret(JSON.stringify(secrets), keyringFromConfig(t.deps.config)) })
+        .where(eq(schema.connectors.id, canonical.id));
+      const [bot] = await t.db
+        .insert(schema.bots)
+        .values({
+          workspaceId: owner.workspaceId,
+          ownerId: owner.id,
+          handle: `inherit-${canonicalInherits}`,
+          name: 'Inherited denial',
+          toolPolicy: { groups: { connector: 'deny' } },
+        })
+        .returning();
+      await t.db.insert(schema.botConnectors).values([
+        {
+          workspaceId: owner.workspaceId,
+          botId: bot!.id,
+          connectorId: canonical.id,
+          approvalOverride: canonicalInherits ? null : 'ask',
+        },
+        {
+          workspaceId: owner.workspaceId,
+          botId: bot!.id,
+          connectorId: duplicate.id,
+          approvalOverride: canonicalInherits ? 'ask' : null,
+        },
+      ]);
+      await t.inOrganization(() => connectors.repairEmptyGitHubAuth(t.deps));
+      expect(
+        await t.db
+          .select()
+          .from(schema.botConnectors)
+          .where(eq(schema.botConnectors.botId, bot!.id)),
+      ).toMatchObject([{ connectorId: canonical.id, approvalOverride: 'deny' }]);
+      expect(await t.db.select().from(schema.connectors)).toHaveLength(1);
+    },
+  );
+
+  it.each(['bot', 'webhook'])(
+    'preserves configured compatibility rows whose slug has a specific %s policy',
+    async (location) => {
+      const canonical = await create({ catalogId: 'github' });
+      const duplicate = await create({ catalogId: 'github', auth: 'bearer' });
+      const [row] = await t.db
+        .select()
+        .from(schema.connectors)
+        .where(eq(schema.connectors.id, canonical.id));
+      const secrets = connectors.openSecrets(t.deps, row!);
+      secrets.oauth = { tokens: { access_token: 'ghu_keep', token_type: 'bearer' } };
+      await t.db
+        .update(schema.connectors)
+        .set({ secrets: encryptSecret(JSON.stringify(secrets), keyringFromConfig(t.deps.config)) })
+        .where(eq(schema.connectors.id, canonical.id));
+      const [old] = await t.db
+        .select()
+        .from(schema.connectors)
+        .where(eq(schema.connectors.id, duplicate.id));
+      const policy = { tools: { [`${old!.slug}__write`]: 'deny' } };
+      const [bot] = await t.db
+        .insert(schema.bots)
+        .values({
+          workspaceId: owner.workspaceId,
+          ownerId: owner.id,
+          handle: 'slug-policy',
+          name: 'Specific denial',
+          toolPolicy: location === 'bot' ? policy : {},
+        })
+        .returning();
+      await t.db
+        .insert(schema.botConnectors)
+        .values({ workspaceId: owner.workspaceId, botId: bot!.id, connectorId: duplicate.id });
+      if (location === 'webhook')
+        await t.db.insert(schema.webhookEndpoints).values({
+          workspaceId: owner.workspaceId,
+          botId: bot!.id,
+          slug: 'legacy-policy',
+          tokenHash: 'test-hash',
+          toolPolicyOverride: policy,
+        });
+      await t.inOrganization(() => connectors.repairEmptyGitHubAuth(t.deps));
+      expect(new Set((await t.db.select().from(schema.connectors)).map((row) => row.id))).toEqual(
+        new Set([canonical.id, duplicate.id]),
+      );
+      expect(
+        (
+          await t.db
+            .select()
+            .from(schema.botConnectors)
+            .where(eq(schema.botConnectors.botId, bot!.id))
+        )[0]!.connectorId,
+      ).toBe(duplicate.id);
+      expect(
+        (await t.db.select().from(schema.bots).where(eq(schema.bots.id, bot!.id)))[0]!.toolPolicy,
+      ).toEqual(location === 'bot' ? policy : {});
+    },
+  );
+
+  it('consolidates empty default GitHub duplicates and preserves Bot permissions and credentials', async () => {
+    const first = await create({ catalogId: 'github', auth: 'bearer' });
+    const duplicate = await create({ catalogId: 'github', auth: 'bearer' });
+    const third = await create({ catalogId: 'github', auth: 'bearer' });
+    const working = await create({ catalogId: 'github' });
+    const pat = await create({
+      catalogId: 'github',
+      secrets: { GITHUB_PERSONAL_ACCESS_TOKEN: 'github_pat_keep' },
+    });
+    const named = await create({
+      catalogId: 'github',
+      name: 'Deliberate separate account',
+      auth: 'bearer',
+    });
+    const other = await create({
+      catalogId: 'github',
+      oauthClient: { clientId: 'Iv.custom', githubAppSlug: 'custom-app' },
+    });
+    const [row] = await t.db
+      .select()
+      .from(schema.connectors)
+      .where(eq(schema.connectors.id, working.id));
+    const secrets = connectors.openSecrets(t.deps, row!);
+    secrets.oauth = { tokens: { access_token: 'ghu_keep', token_type: 'bearer' } };
+    await t.db
+      .update(schema.connectors)
+      .set({
+        secrets: encryptSecret(JSON.stringify(secrets), keyringFromConfig(t.deps.config)),
+        config: {
+          ...(row!.config as object),
+          discovered: { server: { name: 'GitHub', version: '1' } },
+        },
+        status: 'ok',
+      })
+      .where(eq(schema.connectors.id, working.id));
+    const [bot, onlyDuplicateBot] = await t.db
+      .insert(schema.bots)
+      .values([
+        { workspaceId: owner.workspaceId, ownerId: owner.id, handle: 'dedup-both', name: 'Both' },
+        { workspaceId: owner.workspaceId, ownerId: owner.id, handle: 'dedup-one', name: 'One' },
+      ])
+      .returning();
+    await t.db.insert(schema.botConnectors).values([
+      {
+        workspaceId: owner.workspaceId,
+        botId: bot!.id,
+        connectorId: first.id,
+        toolAllowlist: ['read', 'write'],
+        toolDenylist: ['danger'],
+        approvalOverride: 'ask',
+      },
+      {
+        workspaceId: owner.workspaceId,
+        botId: bot!.id,
+        connectorId: working.id,
+        toolAllowlist: ['read'],
+        approvalOverride: 'auto',
+      },
+      {
+        workspaceId: owner.workspaceId,
+        botId: onlyDuplicateBot!.id,
+        connectorId: duplicate.id,
+        toolAllowlist: ['read'],
+        approvalOverride: 'deny',
+      },
+    ]);
+    expect(await t.inOrganization(() => connectors.repairEmptyGitHubAuth(t.deps))).toBe(4);
+    expect(await t.inOrganization(() => connectors.repairEmptyGitHubAuth(t.deps))).toBe(0);
+    const saved = await t.db.select().from(schema.connectors);
+    expect(new Set(saved.map((row) => row.id))).toEqual(
+      new Set([working.id, pat.id, named.id, other.id]),
+    );
+    expect(saved.some((row) => [first.id, duplicate.id, third.id].includes(row.id))).toBe(false);
+    expect(
+      connectors.openSecrets(
+        t.deps,
+        saved.find((row) => row.id === working.id)!,
+      ).oauth?.tokens?.access_token,
+    ).toBe('ghu_keep');
+    expect(
+      connectors.openSecrets(
+        t.deps,
+        saved.find((row) => row.id === pat.id)!,
+      ).values.GITHUB_PERSONAL_ACCESS_TOKEN,
+    ).toBe('github_pat_keep');
+    expect(
+      await t.db.select().from(schema.botConnectors).where(eq(schema.botConnectors.botId, bot!.id)),
+    ).toMatchObject([
+      {
+        connectorId: working.id,
+        toolAllowlist: ['read'],
+        toolDenylist: ['danger'],
+        approvalOverride: 'ask',
+      },
+    ]);
+    expect(
+      await t.db
+        .select()
+        .from(schema.botConnectors)
+        .where(eq(schema.botConnectors.botId, onlyDuplicateBot!.id)),
+    ).toMatchObject([
+      { connectorId: working.id, toolAllowlist: ['read'], approvalOverride: 'deny' },
+    ]);
+    expect((await create({ catalogId: 'github' })).id).toBe(working.id);
+  });
+
+  it('repairs empty legacy bearer rows without overwriting working PATs', async () => {
     const empty = await create({ catalogId: 'github', auth: 'bearer' });
     const pat = await create({
       catalogId: 'github',
@@ -161,14 +411,14 @@ describe('default GitHub auth, retries and boot recovery', () => {
     await create({ catalogId: 'github' });
     await create({ catalogId: 'github', auth: 'bearer' });
     await create({ catalogId: 'web_search' });
-    const test = vi.spyOn(connectors, 'testConnector');
+    const test = vi.spyOn(connectors.mcpManager(t.ownerDeps), 'test');
     expect(await t.inOrganization(() => recheckConnectorsOnBoot(t.deps))).toBe(0);
     expect(test).not.toHaveBeenCalled();
   });
 
   it('does not start a stopped computer just to check stdio', async () => {
     await create({ name: 'Computer echo', command: process.execPath, args: [TEST_STDIO_SERVER] });
-    const test = vi.spyOn(connectors, 'testConnector');
+    const test = vi.spyOn(connectors.mcpManager(t.ownerDeps), 'test');
     expect(
       await t.inOrganization(() =>
         recheckConnectorsOnBoot({
@@ -196,7 +446,7 @@ describe('default GitHub auth, retries and boot recovery', () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       active--;
       if (first) throw new Error('Unavailable');
-      return {} as Awaited<ReturnType<typeof connectors.testConnector>>;
+      return { checked: true } as Awaited<ReturnType<typeof connectors.testConnector>>;
     });
     expect(await t.inOrganization(() => recheckConnectorsOnBoot(t.deps))).toBe(6);
     expect(test).toHaveBeenCalledTimes(7);
@@ -209,7 +459,7 @@ describe('default GitHub auth, retries and boot recovery', () => {
       command: process.execPath,
       args: [TEST_STDIO_SERVER],
     });
-    const test = vi.spyOn(connectors, 'testConnector');
+    const test = vi.spyOn(connectors.mcpManager(t.ownerDeps), 'test');
     await t.db
       .update(schema.workspaceMembers)
       .set({ suspendedAt: new Date() })

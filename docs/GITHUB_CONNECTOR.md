@@ -11,7 +11,11 @@ adding an OpenBots account system or changing how the owner accesses OpenBots.
 
 The separate `github_builtin` connector still uses a personal access token.
 
-## Create a public GitHub App
+## Optional: create your own public GitHub App
+
+End users do **not** need these steps. The shared OpenBots App works with the bundled public
+identifiers and needs only installation/repository consent and device authorization. This section
+is for operators who deliberately want to replace our App.
 
 1. Open [GitHub Apps settings](https://github.com/settings/apps) and choose **New GitHub App**.
    For an organization-owned app, use the organization's Settings > Developer settings >

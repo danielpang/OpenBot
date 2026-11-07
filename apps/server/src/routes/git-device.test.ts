@@ -187,6 +187,79 @@ describe('coding repositories through GitHub App device authorization (GH1, GH2,
     expect(tokenCalls()).toHaveLength(0);
   });
 
+  it('shares one valid code and connection across concurrent starts and reuses the connected row', async () => {
+    const original = request.getMockImplementation()!;
+    let issued = 0;
+    request.mockImplementation((url, init) =>
+      new URL(String(url)).pathname === '/login/device/code'
+        ? Promise.resolve(
+            Response.json({
+              device_code: `${DEVICE}-${++issued}`,
+              user_code: `CODE-${issued}`,
+              verification_uri: 'https://github.com/login/device',
+              expires_in: 900,
+              interval: 5,
+            }),
+          )
+        : original(url, init),
+    );
+    const flows = await Promise.all([start(), start(), start()]);
+    expect(new Set(flows.map((flow) => flow.connectionId)).size).toBe(1);
+    expect(flows.map((flow) => flow.device.userCode)).toEqual(['CODE-1', 'CODE-1', 'CODE-1']);
+    expect(issued).toBe(1);
+    const id = flows[0]!.connectionId;
+    await ready(id);
+    expect(await (await call('POST', `/git-connections/${id}/device`)).json()).toHaveProperty(
+      'status',
+      'connected',
+    );
+    expect(new URLSearchParams(String(tokenCalls()[0]![1]?.body)).get('device_code')).toBe(
+      `${DEVICE}-1`,
+    );
+    expect((await start()).connectionId).toBe(id);
+    expect(issued).toBe(2);
+    expect(await t.db.select().from(schema.gitConnections)).toHaveLength(1);
+  });
+
+  it('removes old empty duplicates without dropping working credentials or another App', async () => {
+    const id = await connected();
+    const existing = await row(id);
+    const duplicate = crypto.randomUUID();
+    const custom = crypto.randomUUID();
+    await t.db.insert(schema.gitConnections).values([
+      {
+        ...existing,
+        id: duplicate,
+        status: 'error',
+        secrets: sealConnectionSecrets(t.deps, {
+          githubDevice: { clientId: 'Iv23liyL74CRKUWIUXhq', appSlug: 'openbots-github' },
+        }),
+      },
+      {
+        ...existing,
+        id: custom,
+        secrets: sealConnectionSecrets(t.deps, {
+          githubDevice: {
+            clientId: 'Iv.custom',
+            appSlug: 'custom-app',
+            userId: '123',
+            tokens: { access_token: 'ghu_custom_keep', token_type: 'bearer' },
+          },
+        }),
+      },
+    ]);
+    expect((await start()).connectionId).toBe(id);
+    expect(new Set((await t.db.select().from(schema.gitConnections)).map((row) => row.id))).toEqual(
+      new Set([id, custom]),
+    );
+    expect(openConnectionSecrets(t.deps, await row(id)).githubDevice?.tokens?.access_token).toBe(
+      ACCESS,
+    );
+    expect(
+      openConnectionSecrets(t.deps, await row(custom)).githubDevice?.tokens?.access_token,
+    ).toBe('ghu_custom_keep');
+  });
+
   it('creates a real coding-repository connection, keeps tokens sealed, and is idempotent', async () => {
     const id = await connected();
     const response = await call('POST', `/git-connections/${id}/device`);
@@ -310,11 +383,15 @@ describe('coding repositories through GitHub App device authorization (GH1, GH2,
       openConnectionSecrets(t.deps, await row(flow.connectionId)).githubDevice?.pending,
     ).toBeUndefined();
     const expired = await start();
+    expect(expired.connectionId).toBe(flow.connectionId);
     await ready(expired.connectionId, true);
     expect(
       await (await call('POST', `/git-connections/${expired.connectionId}/device`)).json(),
     ).toMatchObject({ status: 'error', message: expect.stringContaining('expired') });
     expect(tokenCalls()).toHaveLength(1);
+    tokenError = null;
+    expect(await connected()).toBe(flow.connectionId);
+    expect(await t.db.select().from(schema.gitConnections)).toHaveLength(1);
   });
 
   it('rejects a non-App OAuth token instead of silently accepting the wrong integration', async () => {
@@ -554,6 +631,54 @@ describe('coding repositories through GitHub App device authorization (GH1, GH2,
     expect(body).not.toContain(ACCESS);
     expect(body).not.toContain(REFRESH);
   });
+
+  it.each([200, 401])(
+    'does not overwrite a reconnect with a stale sync response (%s)',
+    async (status) => {
+      const id = await connected();
+      const oldRepos = repos;
+      let arrived!: () => void;
+      let release!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        arrived = resolve;
+      });
+      const resume = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const original = request.getMockImplementation()!;
+      let intercept = true;
+      request.mockImplementation(async (url, init) => {
+        if (intercept && new URL(String(url)).pathname === '/user/installations/900/repositories') {
+          intercept = false;
+          arrived();
+          await resume;
+          return Response.json({ repositories: oldRepos }, { status });
+        }
+        return original(url, init);
+      });
+      const stale = call('POST', `/git-connections/${id}/sync`);
+      await waiting;
+      try {
+        await start({ connectionId: id });
+        await ready(id);
+        repos = [{ id: 3, full_name: 'acme/new', private: true, permissions: { push: false } }];
+        expect(await (await call('POST', `/git-connections/${id}/device`)).json()).toHaveProperty(
+          'status',
+          'connected',
+        );
+      } finally {
+        release();
+      }
+      const response = await stale;
+      expect(response.status, await response.clone().text()).toBe(409);
+      expect(await response.json()).toHaveProperty('code', 'GITHUB_CONNECTION_CHANGED');
+      expect(await row(id)).toMatchObject({
+        status: 'connected',
+        error: null,
+        repositories: [{ fullName: 'acme/new', push: false, admin: false }],
+      });
+    },
+  );
 
   it('marks a revoked authorization without making up an installation token', async () => {
     const id = await connected();

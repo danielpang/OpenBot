@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { netFetch } from '../builtins/net.js';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
@@ -72,38 +72,85 @@ export async function startGitDevice(
       'GITHUB_DEVICE_CLIENT_MISSING',
       'Set a GitHub App client ID and slug with Device Flow enabled. No client secret is used.',
     );
-  let started;
-  try {
-    started = await beginGitHubDevice(client.clientId, client.appSlug, netFetch(deps.net));
-  } catch {
-    throw new DomainError(
-      502,
-      'GITHUB_DEVICE_FAILED',
-      'Could not start GitHub authorization. Check that Device Flow is enabled on the GitHub App.',
-    );
-  }
-  const connectionId = await deps.db.transaction(async (tx) => {
+  return deps.db.transaction(async (tx) => {
     await ownerLock(tx, owner);
-    // Reuse an unfinished attempt instead of accumulating rows on double-click/retry.
+    // One owned connection per App: retry failed attempts and reconnect working
+    // ones in place. Custom Apps and other owners remain independent.
+    const rows = input.connectionId
+      ? [await getOwned(tx, owner, input.connectionId, true)]
+      : await tx
+          .select()
+          .from(schema.gitConnections)
+          .where(and(owned(owner), eq(schema.gitConnections.kind, 'device')))
+          .orderBy(asc(schema.gitConnections.createdAt), asc(schema.gitConnections.id))
+          .for('update');
     const row = input.connectionId
-      ? await getOwned(tx, owner, input.connectionId, true)
-      : (
-          await tx
-            .select()
-            .from(schema.gitConnections)
-            .where(
-              and(
-                owned(owner),
-                eq(schema.gitConnections.kind, 'device'),
-                eq(schema.gitConnections.status, 'pending'),
-              ),
-            )
-            .for('update')
-        )[0];
+      ? rows[0]
+      : (rows.find((candidate) => {
+          const auth = openConnectionSecrets(deps, candidate).githubDevice;
+          return (
+            auth?.clientId === client.clientId && auth.appSlug === client.appSlug && auth.tokens
+          );
+        }) ??
+        rows.find((candidate) => {
+          const auth = openConnectionSecrets(deps, candidate).githubDevice;
+          return auth?.clientId === client.clientId && auth.appSlug === client.appSlug;
+        }));
+    if (row) {
+      // Retire credential-free attempts left by older retry behavior. A
+      // completed account or exchanged pending token is never discarded.
+      for (const duplicate of rows) {
+        if (duplicate.id === row.id) continue;
+        const stored = openConnectionSecrets(deps, duplicate);
+        const other = stored.githubDevice;
+        if (
+          stored.token ||
+          other?.tokens ||
+          other?.pending?.tokens ||
+          other?.clientId !== client.clientId ||
+          other.appSlug !== client.appSlug
+        )
+          continue;
+        await tx
+          .update(schema.repos)
+          .set({ connectionId: row.id })
+          .where(
+            and(
+              eq(schema.repos.connectionId, duplicate.id),
+              eq(schema.repos.ownerId, owner.id),
+              eq(schema.repos.workspaceId, owner.workspaceId),
+            ),
+          );
+        await tx.delete(schema.gitConnections).where(eq(schema.gitConnections.id, duplicate.id));
+      }
+    }
     const secrets = row ? openConnectionSecrets(deps, row) : {};
     const auth = secrets.githubDevice ?? { ...client };
+    const pending = auth.pending;
+    if (
+      pending?.instructions &&
+      pending.device.clientId === client.clientId &&
+      pending.device.appSlug === client.appSlug &&
+      pending.device.expiresAt > Date.now()
+    )
+      return {
+        connectionId: row!.id,
+        device: { ...pending.instructions, interval: pending.device.interval },
+      };
+    let started;
+    try {
+      // Acquire the owner lock BEFORE issuing a code. Other callers return
+      // these same instructions rather than replacing the code on screen.
+      started = await beginGitHubDevice(client.clientId, client.appSlug, netFetch(deps.net));
+    } catch {
+      throw new DomainError(
+        502,
+        'GITHUB_DEVICE_FAILED',
+        'Could not start GitHub authorization. Check that Device Flow is enabled on the GitHub App.',
+      );
+    }
     if (!auth.tokens) Object.assign(auth, client);
-    auth.pending = { device: started.device };
+    auth.pending = { device: started.device, instructions: started.public };
     secrets.githubDevice = auth;
     const fields = {
       secrets: sealConnectionSecrets(deps, secrets),
@@ -115,7 +162,7 @@ export async function startGitDevice(
         .update(schema.gitConnections)
         .set(fields)
         .where(eq(schema.gitConnections.id, row.id));
-      return row.id;
+      return { connectionId: row.id, device: started.public };
     }
     const [made] = await tx
       .insert(schema.gitConnections)
@@ -129,9 +176,8 @@ export async function startGitDevice(
         ...fields,
       })
       .returning({ id: schema.gitConnections.id });
-    return made!.id;
+    return { connectionId: made!.id, device: started.public };
   });
-  return { connectionId, device: started.public };
 }
 
 async function getOwned(db: Db, owner: Owner, id: string, lock = false) {
@@ -233,7 +279,7 @@ export async function pollGitDevice(deps: Deps, owner: Owner, id: string) {
     }
     if (auth!.userId && auth!.userId !== access.user.id)
       return fail(
-        'This is a different GitHub account. Add a new connection instead of replacing this one.',
+        'This is a different GitHub account. Disconnect this connection before connecting a different account.',
       );
     const targetSecrets = secrets;
     targetSecrets.githubDevice = {

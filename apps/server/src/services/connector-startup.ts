@@ -35,51 +35,15 @@ export async function recheckConnectorsOnBoot(
     if (signal?.aborted) break;
     try {
       const rows = await listConnectors(deps, owner);
-      const [computer] =
-        deps.config.stdioRunner === 'computer'
-          ? await deps.db
-              .select({ status: schema.computers.status })
-              .from(schema.computers)
-              .where(
-                and(
-                  eq(schema.computers.ownerId, owner.id),
-                  eq(schema.computers.workspaceId, owner.workspaceId),
-                ),
-              )
-              .limit(1)
-          : [];
-      const queue = rows.filter((record) => {
-        if (
-          record.row.kind === 'builtin' ||
-          record.disabledByAdmin ||
-          (record.oauth && !record.oauth.connected) ||
-          record.secrets.some((secret) => secret.required && !secret.set)
-        )
-          return false;
-        if (
-          record.row.kind === 'mcp_stdio' &&
-          deps.config.stdioRunner === 'computer' &&
-          computer?.status !== 'running'
-        )
-          return false;
-        const config = record.config;
-        if (
-          config.transport === 'http' &&
-          config.auth === 'bearer' &&
-          config.bearerSecret &&
-          !record.secrets.some((secret) => secret.name === config.bearerSecret && secret.set)
-        )
-          return false;
-        return true;
-      });
+      const queue = rows;
       await Promise.all(
         Array.from({ length: Math.min(3, queue.length) }, async () => {
           while (!signal?.aborted) {
             const record = queue.shift();
             if (!record) return;
             try {
-              await testConnector(deps, owner, record.row.id);
-              checked++;
+              const result = await testConnector(deps, owner, record.row.id, { automatic: true });
+              if (result.checked) checked++;
             } catch {
               deps.logger.warn(
                 { connectorId: record.row.id },

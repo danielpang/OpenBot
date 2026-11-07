@@ -1,6 +1,7 @@
 import type { OAuthTokenSet, SealedSecrets } from '@openbots/mcp';
 import type { AppDeps } from '../context.js';
 import { decryptSecretString, encryptSecret, keyringFromConfig } from '../secrets.js';
+import type { beginGitHubDevice } from './github-device.js';
 
 export type GitHubDeviceState = NonNullable<NonNullable<SealedSecrets['oauth']>['device']>;
 
@@ -15,7 +16,12 @@ export interface ConnectionSecrets {
     userId?: string;
     tokens?: OAuthTokenSet;
     /** Reauthorizing must not discard a working connection before success. */
-    pending?: { device: GitHubDeviceState; tokens?: OAuthTokenSet };
+    pending?: {
+      device: GitHubDeviceState;
+      /** Public instructions are sealed too, so concurrent starts can return the same code. */
+      instructions?: Awaited<ReturnType<typeof beginGitHubDevice>>['public'];
+      tokens?: OAuthTokenSet;
+    };
   };
 }
 

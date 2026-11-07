@@ -139,6 +139,11 @@ describe('stdio connectors in the computer (managed)', () => {
   it("starts the owner's computer and runs the catalog server there, rooted in their files", async () => {
     aliceFs = await create(alice, { catalogId: 'filesystem', params: { root: 'notes' } });
     expect(await computerOf('alice@example.com', orgA)).toBeUndefined();
+    const automatic = await call(alice, 'POST', `/connectors/${aliceFs.id}/test?automatic=true`);
+    expect(automatic.status).toBe(200);
+    expect(await automatic.json()).toMatchObject({ connector: { status: 'untested' }, tools: [] });
+    expect(await computerOf('alice@example.com', orgA)).toBeUndefined();
+    expect(computers.agents.size).toBe(0);
     const { connector, tools } = await test(alice, aliceFs.id);
     expect(connector).toMatchObject({ status: 'ok', lastError: null });
     expect(tools.map((tool) => tool.name)).toEqual(['echo', 'grow', 'whoami']);
@@ -248,12 +253,53 @@ describe('stdio connectors in the computer (managed)', () => {
     expect(manager.restarting(aliceFs.id)).toBe(false);
     expect(manager.running(bobPg.id)).toBe(true);
     expect(manager.running(aliceFsB.id)).toBe(true);
+    const before = await t.db
+      .select()
+      .from(schema.connectors)
+      .where(eq(schema.connectors.id, aliceFs.id));
+    expect(
+      (await call(alice, 'POST', `/connectors/${aliceFs.id}/test?automatic=true`)).status,
+    ).toBe(200);
+    expect(
+      await t.db.select().from(schema.connectors).where(eq(schema.connectors.id, aliceFs.id)),
+    ).toEqual(before);
+    expect((await computerOf('alice@example.com', orgA))!.status).toBe('stopped');
     // The next use starts the computer, and the server, again.
     const echo = await t.inOrganization(() =>
       mcpManager(t.ownerDeps).callTool(aliceFs.id, 'echo', { text: 'back' }),
     );
     expect(textOf(echo)).toBe('back');
     expect((await computerOf('alice@example.com', orgA))!.status).toBe('running');
+  });
+
+  it('does not wake a computer stopped between automatic preflight and launch', async () => {
+    const manager = mcpManager(t.ownerDeps);
+    const original = manager.test.bind(manager);
+    const before = await t.db
+      .select()
+      .from(schema.connectors)
+      .where(eq(schema.connectors.id, aliceFs.id));
+    const testSpy = vi.spyOn(manager, 'test').mockImplementationOnce(async (id, options) => {
+      expect(options).toEqual({ automatic: true });
+      expect((await call(alice, 'POST', '/computer/stop')).status).toBe(200);
+      return original(id, options);
+    });
+    try {
+      const response = await call(alice, 'POST', `/connectors/${aliceFs.id}/test?automatic=true`);
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(testSpy).toHaveBeenCalledOnce();
+      expect((await computerOf('alice@example.com', orgA))!.status).toBe('stopped');
+      const [saved] = await t.db
+        .select()
+        .from(schema.connectors)
+        .where(eq(schema.connectors.id, aliceFs.id));
+      // A skipped check must not persist a manufactured failure.
+      expect(saved!.lastCheckedAt).toEqual(before[0]!.lastCheckedAt);
+      expect(saved!.lastError).toBeNull();
+    } finally {
+      testSpy.mockRestore();
+    }
+    expect((await test(alice, aliceFs.id)).connector.status).toBe('ok');
   });
 
   it('reports a clear error when the computer does not start', async () => {

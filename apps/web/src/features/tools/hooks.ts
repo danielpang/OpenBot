@@ -8,7 +8,7 @@ import { catalogQuery, connectorsQuery, isMcp, testConnector, type Connector } f
 export function useTestConnector() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: testConnector,
+    mutationFn: (id: string) => testConnector(id),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['connectors'] }),
   });
 }
@@ -60,7 +60,7 @@ export function useBootConnectorChecks(items: readonly Connector[] | undefined) 
       Array.from({ length: Math.min(3, queue.length) }, async () => {
         for (let connector = queue.shift(); connector; connector = queue.shift()) {
           try {
-            await testConnector(connector.id);
+            await testConnector(connector.id, true);
           } catch {
             /* The server retains the real failure; do not relabel as connected. */
           }

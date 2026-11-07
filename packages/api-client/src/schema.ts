@@ -3907,11 +3907,13 @@ export interface paths {
     put?: never;
     /**
      * Connect, list tools, store status and last error
-     * @description A server that fails to start or answer is reported in `status` and `lastError`, not as an error response.
+     * @description A server that fails to start or answer is reported in `status` and `lastError`, not as an error response. Automatic checks skip missing consent, credentials and stopped computers without changing status.
      */
     post: {
       parameters: {
-        query?: never;
+        query?: {
+          automatic?: 'true' | 'false';
+        };
         header?: never;
         path: {
           id: string;
