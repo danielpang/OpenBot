@@ -49,11 +49,14 @@ describe('.env.example', () => {
     expect(install).toContain('openbots:change-me@postgres:5432');
   });
 
-  it("is set up by the README's by-hand steps the way install.sh sets it up (D1)", () => {
+  it('is set up by the self-hosting reference the way install.sh sets it up (D1)', () => {
     const install = readFileSync(new URL('../../../install.sh', import.meta.url), 'utf8');
-    const readme = readFileSync(new URL('../../../README.md', import.meta.url), 'utf8');
+    const reference = readFileSync(
+      new URL('../../../docs/SELF_HOSTING.md', import.meta.url),
+      'utf8',
+    );
     const steps = /By hand, the same steps:\n\n```sh\n([\s\S]*?)```\n\n([\s\S]*?)```sh\n/.exec(
-      readme,
+      reference,
     );
     expect(steps).not.toBeNull();
     const [, commands, prose] = steps!;

@@ -39,7 +39,7 @@ On a server with no owner yet, the phone that pairs becomes the owner, so the in
 From `/opt/openbots/openbots-<release>`, as root:
 
 - **Status:** `docker compose ps`, `docker compose logs openbots`, `docker compose run --rm openbots relay`.
-- **Upgrade:** the [README's Upgrade section](../../README.md#upgrade). Set `OPENBOTS_VERSION` in `.env` to the new release, then `docker compose pull && docker compose up -d`.
-- **Backups:** the [README's Backup and restore section](../../README.md#backup-and-restore) (`scripts/backup.sh` and `scripts/restore.sh`). Copy the backups and `.env` (it holds the master key) off the instance. An EBS snapshot is the coarse alternative.
-- **A public address:** for webhooks and connector sign-in, put a tunnel in front (the README's "Exposing your OpenBots server to the internet") rather than opening port 3000.
-- **Your own relay:** on an instance with a public address, the compose stack's `relay` profile runs a relay beside it (the README's "Run OpenBots 24/7 on a VM").
+- **Upgrade:** the [Upgrade reference](../../docs/SELF_HOSTING.md#upgrade). Set `OPENBOTS_VERSION` in `.env` to the new release, then `docker compose pull && docker compose up -d`.
+- **Backups:** the [Backup and restore reference](../../docs/SELF_HOSTING.md#backup-and-restore) (`scripts/backup.sh` and `scripts/restore.sh`). Copy the backups and `.env` (it holds the master key) off the instance. An EBS snapshot is the coarse alternative.
+- **A public address:** for webhooks and connector sign-in, put a tunnel in front (see [public access setup](../../docs/SELF_HOSTING.md#exposing-your-openbots-server-to-the-internet)) rather than opening port 3000.
+- **Your own relay:** follow the optional [private relay setup](../../docs/PRIVATE_RELAY_SETUP.md).

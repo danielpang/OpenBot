@@ -2,6 +2,10 @@
 
 The OpenBots Mac app: an Electron shell around the web app (plan section 14.4, Phase 7).
 
+See [Images and runtime architecture](../../docs/ARCHITECTURE.md) for the five release images,
+which three This Mac uses, how the local stack and relay fit together, and why standalone is an
+alternative deployment rather than another Mac service.
+
 ```sh
 pnpm --filter @openbots/desktop dev     # electron-vite dev, as .dev/OpenBots.app on macOS (scripts/dev.mjs)
 pnpm exec turbo run build --filter=@openbots/desktop   # tsc for src/release, then electron-vite into dist/
