@@ -98,7 +98,15 @@ its files.
   - `navigation.ts`: the main window stays on the server and the authorization and sign-in pages
     of GitHub and Google sign-in, for navigations and redirects alike; other links, other GitHub
     and Google pages included, open in the browser.
+  - `about.ts`: the native About panel uses the packaged version stamped from the release tag.
+    Unstamped local builds show the nearest Git release tag embedded at build time, labelled
+    development. No Git tags or a source archive shows "Development build" instead of 0.0.0.
+    The installed app never runs Git to determine its version.
   - `updater.ts`: electron-updater against the GitHub Releases in `electron-builder.publish.cjs`.
+    Manual Check for Updates uses an in-app dialog for up-to-date, available, failed or skipped
+    checks, even when macOS notifications are disabled. A check times out after 30 seconds and
+    repeated clicks share the running request. Background checks stay quiet unless an update
+    is ready; a manually requested download offers Restart and update in-app.
   - `ipc.ts`: the app pages' IPC handlers.
 - `src/preload`: the preload (sandboxed, `contextIsolation` on, no Node integration), built as one
   CommonJS file. `bridge.ts` is what it exposes as `window.openbots`: every page gets `platform`,

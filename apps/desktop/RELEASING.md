@@ -69,6 +69,18 @@ first. `from-tag v1.2.0` prints metadata without modifying files. `pnpm release:
 remains an optional development helper, and `pnpm release:check v1.2.0` can verify stamped files;
 neither is a prerequisite for pushing a release tag.
 
+The native About panel displays the packaged version stamped from the release tag, without a
+second duplicate build number. Unstamped local builds embed the nearest reachable release tag
+at build time and label it development; without Git or a release tag they show "Development
+build". Installed apps do not need Git. This About-only fallback does not change the local
+package version, updater identity or the server image version; use the stamp command above
+when making a versioned package.
+
+Check for Updates reports manual results in an in-app dialog rather than relying on macOS
+notification permissions. It explains development/skipped checks and network failures, reports
+when the app is up to date, and offers a restart after an update is downloaded. Background
+checks remain quiet when nothing is available.
+
 A failed job can be rerun from the Actions tab. Rerunning `GitHub Release` finishes the release
 that exists instead of failing: a draft gets its files and is published, and a published release
 gets its files again with `latest-mac.yml` last.

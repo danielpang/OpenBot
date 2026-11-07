@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -16,6 +17,7 @@ interface Parsed {
 
 interface VersionModule {
   VERSION_FILES: string[];
+  desktopBuildVersion(repoDir?: string): string;
   parseVersion(value: string): Parsed | null;
   checkRelease(tag: string, versions: Record<string, string>): Parsed;
   setVersion(text: string, version: string): string;
@@ -24,9 +26,8 @@ interface VersionModule {
 
 const repoDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const script = pathToFileURL(join(repoDir, 'scripts/release-version.mjs')).href;
-const { VERSION_FILES, checkRelease, main, parseVersion, setVersion } = (await import(
-  script
-)) as VersionModule;
+const { VERSION_FILES, desktopBuildVersion, checkRelease, main, parseVersion, setVersion } =
+  (await import(script)) as VersionModule;
 
 const both = (version: string) => Object.fromEntries(VERSION_FILES.map((file) => [file, version]));
 
@@ -92,6 +93,55 @@ describe('release version', () => {
         writeFileSync(join(dir, file), `{\n  "name": "${file}",\n  "version": "${version}"\n}\n`);
       }
     }
+
+    function git(...args: string[]) {
+      return execFileSync(
+        'git',
+        [
+          '-c',
+          'core.hooksPath=/dev/null',
+          '-c',
+          'commit.gpgsign=false',
+          '-c',
+          'user.name=Test',
+          '-c',
+          'user.email=test@example.com',
+          '-C',
+          dir,
+          ...args,
+        ],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+    }
+
+    it('embeds the nearest release tag for an unstamped desktop build', () => {
+      fakeRepo('0.0.0');
+      git('init', '--quiet');
+      git('add', '.');
+      git('commit', '--quiet', '-m', 'fixture');
+      git('tag', 'v0.0.1');
+      expect(desktopBuildVersion(dir)).toBe('0.0.1');
+      writeFileSync(join(dir, 'next.txt'), 'next commit');
+      git('add', '.');
+      git('commit', '--quiet', '-m', 'work after release');
+      expect(desktopBuildVersion(dir)).toBe('0.0.1');
+      git('tag', 'v0.1.0-rc.1');
+      expect(desktopBuildVersion(dir)).toBe('0.1.0-rc.1');
+      // CI/manual release stamps remain authoritative, even with older tags.
+      main(['stamp', 'v1.2.0'], dir);
+      expect(desktopBuildVersion(dir)).toBe('1.2.0');
+    });
+
+    it('builds from source archives or checkouts with no release tags', () => {
+      fakeRepo('0.0.0');
+      expect(desktopBuildVersion(dir)).toBe('0.0.0');
+      git('init', '--quiet');
+      git('add', '.');
+      git('commit', '--quiet', '-m', 'fixture');
+      expect(desktopBuildVersion(dir)).toBe('0.0.0');
+      main(['stamp', 'v2.0.0'], dir);
+      expect(desktopBuildVersion(dir)).toBe('2.0.0');
+    });
 
     it('derives metadata from the tag without reading or writing any manifests', () => {
       dir = mkdtempSync(join(tmpdir(), 'release-version-'));

@@ -7,6 +7,7 @@ import type { WebSocketLike } from '@openbots/api-client';
 import {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   ipcMain,
   Menu,
@@ -38,6 +39,7 @@ import {
 } from '../images/release-archive.js';
 import { createStackManager, devImageOverrides } from '../stack/manager.js';
 import { cloudUrl } from './app-config.js';
+import { aboutPanelOptions } from './about.js';
 import {
   pairedByThis,
   parseRelayUrl,
@@ -80,6 +82,9 @@ import { createUpdater } from './updater.js';
 // pairing window come from the bundle. Everything with logic in it lives in
 // the plain modules next to this file, which are tested without Electron;
 // this file only wires them to Electron.
+
+/** Embedded by electron-vite; no Git or filesystem version lookup at runtime. */
+declare const __OPENBOTS_BUILD_VERSION__: string;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PRELOAD = join(here, '../preload/index.cjs');
@@ -240,6 +245,24 @@ const updater = createUpdater({
   autoUpdater: electronUpdater.autoUpdater,
   enabled: app.isPackaged,
   notify: ({ title, body, onClick }) => showNotification(title, body, onClick),
+  report: ({ title, body, onClick }) => {
+    app.focus({ steal: true });
+    void dialog
+      .showMessageBox({
+        type: 'info',
+        title,
+        message: title,
+        detail: body,
+        buttons: onClick ? ['Restart and update', 'Later'] : ['OK'],
+        defaultId: 0,
+        cancelId: onClick ? 1 : 0,
+        noLink: true,
+      })
+      .then(({ response }) => {
+        if (onClick && response === 0) onClick();
+      })
+      .catch((error: unknown) => console.error('[updater] could not show update result', error));
+  },
   log: (message, error) => console.error(`[updater] ${message}`, error),
 });
 
@@ -965,6 +988,13 @@ if (!app.requestSingleInstanceLock()) {
       isActiveServerPage,
     );
 
+    app.setAboutPanelOptions(
+      aboutPanelOptions({
+        packaged: app.isPackaged,
+        appVersion: app.getVersion(),
+        buildVersion: __OPENBOTS_BUILD_VERSION__,
+      }),
+    );
     Menu.setApplicationMenu(applicationMenu());
     if (DEV_ICON) app.dock?.setIcon(DEV_ICON);
     const trayIcon = nativeImage.createFromPath(
