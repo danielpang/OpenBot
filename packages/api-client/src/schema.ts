@@ -9540,6 +9540,8 @@ export interface components {
         /** @description Shared GitHub device authorization is configured; no client secret needed */
         deviceFlow?: boolean;
         clientSetupUrl: string | null;
+        /** Format: uri */
+        installationUrl?: string;
       } | null;
       disabledByAdmin: boolean;
     };
@@ -9574,6 +9576,8 @@ export interface components {
         connected: boolean;
         /** Format: date-time */
         expiresAt: string | null;
+        /** Format: uri */
+        installationUrl?: string;
       } | null;
       /** @enum {string} */
       status: 'untested' | 'ok' | 'error' | 'needs_auth';
@@ -9633,6 +9637,7 @@ export interface components {
     OAuthClientInput: {
       clientId: string;
       clientSecret?: string;
+      githubAppSlug?: string;
     };
     ImportConnectors: {
       mcpServers: {
@@ -9709,6 +9714,8 @@ export interface components {
         userCode: string;
         /** Format: uri */
         verificationUrl: string;
+        /** Format: uri */
+        installationUrl: string;
         /** Format: date-time */
         expiresAt: string;
         interval: number;

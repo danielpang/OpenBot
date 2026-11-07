@@ -51,7 +51,7 @@ export function Catalog() {
   );
 }
 
-type OAuthClient = { clientId: string; clientSecret?: string };
+type OAuthClient = { clientId: string; clientSecret?: string; githubAppSlug?: string };
 
 export function CatalogCard({ entry, added }: { entry: CatalogEntry; added: boolean }) {
   const connectors = useQuery(connectorsQuery);
@@ -182,6 +182,16 @@ export function CatalogCard({ entry, added }: { entry: CatalogEntry; added: bool
           onSubmit={onSubmit}
         />
       )}
+      {(existing?.oauth?.installationUrl ?? entry.oauth?.installationUrl) && (
+        <a
+          href={existing?.oauth?.installationUrl ?? entry.oauth?.installationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs underline"
+        >
+          Manage repositories
+        </a>
+      )}
       <ConnectStatus state={state} onCancel={reset} />
       <ErrorText error={create.error ?? (askClient ? null : idleError(state))} />
     </li>
@@ -195,7 +205,19 @@ export function ConnectStatus({ state, onCancel }: { state: ConnectState; onCanc
   if (state.phase === 'device') {
     return (
       <div role="status" className="space-y-2 text-xs text-muted-foreground">
-        <p>Enter this code on GitHub to connect your repositories:</p>
+        <p>
+          1.{' '}
+          <a
+            href={state.installationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            Install the GitHub App
+          </a>{' '}
+          on your account or organization and select the repositories to share.
+        </p>
+        <p>2. Open GitHub authorization and enter this code:</p>
         <code className="block select-all text-lg font-semibold tracking-widest text-foreground">
           {state.userCode}
         </code>
@@ -264,7 +286,11 @@ function AddForm({
 }) {
   const [params, setParams] = useState<Record<string, string>>({});
   const [secrets, setSecrets] = useState<Record<string, string>>({});
-  const [client, setClient] = useState({ clientId: '', clientSecret: '' });
+  const [client, setClient] = useState<{
+    clientId: string;
+    clientSecret: string;
+    githubAppSlug?: string;
+  }>({ clientId: '', clientSecret: '', githubAppSlug: '' });
   const [error, setError] = useState<string | null>(null);
   const catalog = useQuery(catalogQuery);
 
@@ -313,12 +339,13 @@ function AddForm({
         ))}
       {kind === 'client' && entry.secrets.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          Paste a token, or add your own OAuth app under Advanced.
+          Paste a token, or add your own {entry.id === 'github' ? 'GitHub App' : 'OAuth app'} under
+          Advanced.
         </p>
       )}
       {kind === 'client' && !entry.secrets.length && (
         <p className="text-xs text-muted-foreground">
-          {`${entry.name} needs your own OAuth app. Add it under Advanced.`}
+          {`${entry.name} needs your own ${entry.id === 'github' ? 'GitHub App' : 'OAuth app'}. Add it under Advanced.`}
         </p>
       )}
       <SecretInputs secrets={shownSecrets} values={secrets} onChange={setSecrets} />
@@ -369,8 +396,8 @@ export function OAuthAdvanced({
   githubDevice?: boolean;
   setupUrl?: string | null;
   callbackUrl: string;
-  value: { clientId: string; clientSecret: string };
-  onChange(value: { clientId: string; clientSecret: string }): void;
+  value: { clientId: string; clientSecret: string; githubAppSlug?: string };
+  onChange(value: { clientId: string; clientSecret: string; githubAppSlug?: string }): void;
   /** Opened, when the client is what is missing. */
   open?: boolean;
   /** The one line on why; says the server cannot register OpenBots by default. */
@@ -383,7 +410,7 @@ export function OAuthAdvanced({
       <div className="flex flex-col gap-2 pt-2">
         <p className="text-xs text-muted-foreground">
           {githubDevice
-            ? 'To use your own GitHub OAuth App, enable Device Flow and enter only its public client ID. No secret or callback is needed for device authorization.'
+            ? 'To use your own GitHub App, enable Device Flow and enter its public client ID and app slug. Install the app on selected repositories. No private key, client secret or callback is needed.'
             : (why ??
               `${name} cannot register OpenBots by itself, so it needs your own OAuth app.`)}
           {setupUrl && (
@@ -395,7 +422,7 @@ export function OAuthAdvanced({
             </>
           )}
         </p>
-        {(!githubDevice || value.clientSecret) && <CallbackUrl url={callbackUrl} />}
+        {!githubDevice && <CallbackUrl url={callbackUrl} />}
         <Labelled label="OAuth client ID" note={configured ? 'set' : undefined}>
           <Input
             name="oauth:clientId"
@@ -404,18 +431,32 @@ export function OAuthAdvanced({
             placeholder={configured ? 'Enter a new client to replace it' : ''}
           />
         </Labelled>
-        <Labelled
-          label="OAuth client secret"
-          note={githubDevice ? 'leave empty for device flow' : 'optional'}
-        >
-          <Input
-            type="password"
-            autoComplete="new-password"
-            name="oauth:clientSecret"
-            value={value.clientSecret}
-            onChange={(e) => onChange({ ...value, clientSecret: e.target.value })}
-          />
-        </Labelled>
+        {githubDevice && (
+          <Labelled
+            label="GitHub App slug"
+            help="The name in github.com/apps/your-app-slug, not the numeric app ID."
+          >
+            <Input
+              name="oauth:githubAppSlug"
+              value={value.githubAppSlug ?? ''}
+              onChange={(e) => onChange({ ...value, githubAppSlug: e.target.value })}
+            />
+          </Labelled>
+        )}
+        {!githubDevice && (
+          <Labelled
+            label="OAuth client secret"
+            note={githubDevice ? 'leave empty for device flow' : 'optional'}
+          >
+            <Input
+              type="password"
+              autoComplete="new-password"
+              name="oauth:clientSecret"
+              value={value.clientSecret}
+              onChange={(e) => onChange({ ...value, clientSecret: e.target.value })}
+            />
+          </Labelled>
+        )}
       </div>
     </details>
   );

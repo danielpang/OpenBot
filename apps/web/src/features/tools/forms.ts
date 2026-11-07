@@ -242,8 +242,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function oauthClientBody(client: {
   clientId: string;
   clientSecret: string;
-}): { clientId: string; clientSecret?: string } | undefined {
+  githubAppSlug?: string;
+}): { clientId: string; clientSecret?: string; githubAppSlug?: string } | undefined {
   const clientId = client.clientId.trim();
   const clientSecret = client.clientSecret.trim();
-  return clientId ? { clientId, ...(clientSecret ? { clientSecret } : {}) } : undefined;
+  const githubAppSlug = client.githubAppSlug?.trim();
+  return clientId
+    ? {
+        clientId,
+        ...(clientSecret ? { clientSecret } : {}),
+        ...(githubAppSlug ? { githubAppSlug } : {}),
+      }
+    : undefined;
 }

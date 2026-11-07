@@ -105,6 +105,7 @@ export type ConnectState =
       connectorId: string;
       userCode: string;
       verificationUrl: string;
+      installationUrl: string;
       expiresAt: string;
       interval: number;
     }
@@ -267,7 +268,7 @@ export function useOAuthConnect() {
           if (device) {
             setState({ phase: 'device', connectorId: connector.id, ...device });
             // The code and a manual link remain visible even if opening fails.
-            await signIn.go(device.verificationUrl).catch(() => false);
+            await signIn.go(device.installationUrl).catch(() => false);
             return;
           }
           const opened = await signIn.go(authorizationUrl);

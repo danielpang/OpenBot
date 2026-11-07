@@ -34,6 +34,7 @@ const server = vi.hoisted(() => {
     device: null as {
       userCode: string;
       verificationUrl: string;
+      installationUrl: string;
       expiresAt: string;
       interval: number;
     } | null,
@@ -226,7 +227,7 @@ describe('one-click Connect', () => {
       id: 'github',
       name: 'GitHub',
       oauth: {
-        scopes: ['repo'],
+        scopes: [],
         dynamicRegistration: false,
         deviceFlow: true,
         clientSetupUrl: null,
@@ -235,6 +236,7 @@ describe('one-click Connect', () => {
     server.device = {
       userCode: 'ABCD-EFGH',
       verificationUrl: 'https://github.com/login/device',
+      installationUrl: 'https://github.com/apps/openbots-test/installations/new',
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       interval: 1,
     };
@@ -242,7 +244,10 @@ describe('one-click Connect', () => {
     act(() => button('Connect')!.click());
     await until(() => !!host.textContent?.includes('ABCD-EFGH'), 'the device code');
     expect(host.querySelector('form')).toBeNull();
-    expect(popup.location.replace).toHaveBeenCalledWith('https://github.com/login/device');
+    expect(popup.location.replace).toHaveBeenCalledWith(
+      'https://github.com/apps/openbots-test/installations/new',
+    );
+    expect(host.textContent).toContain('Install the GitHub App');
     expect(button('Connect')!.disabled).toBe(true);
     await until(
       () => server.requests.some((r) => r.path.endsWith('/oauth/device')),
@@ -258,6 +263,7 @@ describe('one-click Connect', () => {
     server.device = {
       userCode: 'ABCD-EFGH',
       verificationUrl: 'https://github.com/login/device',
+      installationUrl: 'https://github.com/apps/openbots-test/installations/new',
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       interval: 60,
     };

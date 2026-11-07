@@ -212,9 +212,17 @@ describe('loadConfig', () => {
     });
   });
 
-  it('configures the GitHub connector with only a public client ID, independently of sign-in', () => {
-    const config = loadConfig({ ...base, OPENBOTS_GITHUB_CLIENT_ID: 'shared-public-id' });
+  it('configures the GitHub App with public identifiers, independently of sign-in', () => {
+    const config = loadConfig({
+      ...base,
+      OPENBOTS_GITHUB_CLIENT_ID: 'shared-public-id',
+      OPENBOTS_GITHUB_APP_SLUG: 'openbots-test',
+    });
     expect(config.githubConnectorClientId).toBe('shared-public-id');
+    expect(config.githubConnectorAppSlug).toBe('openbots-test');
+    expect(() => loadConfig({ ...base, OPENBOTS_GITHUB_APP_SLUG: '../bad-app' })).toThrow(
+      /OPENBOTS_GITHUB_APP_SLUG/,
+    );
     expect(config.oauth.github).toBeUndefined();
   });
 

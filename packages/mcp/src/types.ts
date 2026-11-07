@@ -96,6 +96,8 @@ export interface OAuthTokenSet {
   scope?: string;
   /** Epoch ms; absent when the server gave no `expires_in`. */
   expires_at?: number;
+  /** GitHub App refresh-token expiry, epoch ms. */
+  refresh_expires_at?: number;
 }
 
 export const OAuthModeSchema = z.enum(['popup', 'external', 'redirect']);
@@ -112,9 +114,12 @@ export interface SealedSecrets {
     /** The authorization server the tokens came from, for refresh. */
     authorizationServerUrl?: string;
     resource?: string;
+    /** Identifies GitHub App device tokens, which refresh without a client secret. */
+    githubApp?: { clientId: string; appSlug: string };
     /** GitHub device flow. Never returned to clients or included in logs. */
     device?: {
       clientId: string;
+      appSlug: string;
       deviceCode: string;
       expiresAt: number;
       interval: number;

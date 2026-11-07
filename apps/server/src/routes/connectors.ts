@@ -31,6 +31,7 @@ import {
   listConnectorTools,
   listConnectors,
   oauthRedirectUrl,
+  githubInstallationUrl,
   pollConnectorDevice,
   putBotConnectors,
   putConnectorPolicy,
@@ -96,6 +97,7 @@ const ConnectorSchema = z
         clientConfigured: z.boolean(),
         connected: z.boolean(),
         expiresAt: z.iso.datetime().nullable(),
+        installationUrl: z.url().optional(),
       })
       .nullable()
       .openapi({ description: 'Present when the connector signs in with OAuth' }),
@@ -167,14 +169,11 @@ const CatalogEntrySchema = z
       .object({
         scopes: z.array(z.string()),
         dynamicRegistration: z.boolean(),
-        deviceFlow: z
-          .boolean()
-          .optional()
-          .openapi({
-            description:
-              'Shared GitHub device authorization is configured; no client secret needed',
-          }),
+        deviceFlow: z.boolean().optional().openapi({
+          description: 'Shared GitHub device authorization is configured; no client secret needed',
+        }),
         clientSetupUrl: z.string().nullable(),
+        installationUrl: z.url().optional(),
       })
       .nullable(),
     disabledByAdmin: z.boolean(),
@@ -189,6 +188,11 @@ const OAuthClientInput = z
   .strictObject({
     clientId: z.string().min(1).max(512),
     clientSecret: z.string().min(1).max(4096).optional(),
+    githubAppSlug: z
+      .string()
+      .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/)
+      .max(100)
+      .optional(),
   })
   .openapi('OAuthClientInput', {
     description: 'For servers without dynamic client registration (GitHub, Slack)',
@@ -421,8 +425,15 @@ export const connectorRoutes = createRouter()
               ? {
                   scopes: e.oauth.scopes,
                   dynamicRegistration: e.oauth.dynamic_registration,
-                  ...(e.id === 'github' && c.var.deps.config.githubConnectorClientId
-                    ? { deviceFlow: true }
+                  ...(e.id === 'github' &&
+                  c.var.deps.config.githubConnectorClientId &&
+                  c.var.deps.config.githubConnectorAppSlug
+                    ? {
+                        deviceFlow: true,
+                        installationUrl: githubInstallationUrl(
+                          c.var.deps.config.githubConnectorAppSlug,
+                        ),
+                      }
                     : {}),
                   clientSetupUrl: e.oauth.client_setup_url ?? null,
                 }
@@ -765,6 +776,7 @@ export const connectorRoutes = createRouter()
                 .object({
                   userCode: z.string(),
                   verificationUrl: z.url(),
+                  installationUrl: z.url(),
                   expiresAt: z.iso.datetime(),
                   interval: z.number().int().positive(),
                 })

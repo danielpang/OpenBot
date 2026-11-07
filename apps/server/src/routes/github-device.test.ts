@@ -7,7 +7,7 @@ import { oauthAccessToken, openSecrets } from '../services/connectors.js';
 import { createTestApp, type TestApp } from '../test-app.js';
 
 const DEVICE_CODE = 'private-device-code';
-const TOKEN = 'gho_private-access-token';
+const TOKEN = 'ghu_private-access-token';
 
 describe('GitHub connector device authorization', () => {
   let t: TestApp;
@@ -42,7 +42,13 @@ describe('GitHub connector device authorization', () => {
     expect(res.headers.get('cache-control')).toBe('no-store');
     const text = await res.text();
     expect(text).not.toContain(DEVICE_CODE);
-    expect(JSON.parse(text)).toMatchObject({ device: { userCode: 'ABCD-EFGH', interval: 5 } });
+    expect(JSON.parse(text)).toMatchObject({
+      device: {
+        userCode: 'ABCD-EFGH',
+        interval: 5,
+        installationUrl: expect.stringMatching(/^https:\/\/github.com\/apps\//),
+      },
+    });
   };
   const ready = async (id: string, expired = false) => {
     const secrets = openSecrets(t.deps, await row(id));
@@ -57,6 +63,7 @@ describe('GitHub connector device authorization', () => {
     t = await createTestApp({
       OPENBOTS_DEPLOYMENT: 'managed',
       OPENBOTS_GITHUB_CLIENT_ID: 'public-client-id',
+      OPENBOTS_GITHUB_APP_SLUG: 'openbots-test',
     });
     cookie = (await t.signUp('owner@example.com')).cookie!;
     other = (await t.signUp('other@example.com')).cookie!;
@@ -66,7 +73,12 @@ describe('GitHub connector device authorization', () => {
     vi.restoreAllMocks();
     request.mockReset();
   });
-  const mockNetwork = () => vi.spyOn(net, 'netFetch').mockReturnValue(request);
+  const mockNetwork = () => {
+    request.mockImplementation(async () =>
+      Response.json({ installations: [{ app_slug: 'openbots-test', suspended_at: null }] }),
+    );
+    return vi.spyOn(net, 'netFetch').mockReturnValue(request);
+  };
 
   it('advertises shared device flow and stores the device code and token encrypted', async () => {
     mockNetwork();
@@ -80,6 +92,7 @@ describe('GitHub connector device authorization', () => {
     expect(request.mock.calls[0]![0]).toBe('https://github.com/login/device/code');
     expect(request.mock.calls[0]![1]!.body).toContain('client_id=public-client-id');
     expect(request.mock.calls[0]![1]!.body).not.toContain('client_secret');
+    expect(request.mock.calls[0]![1]!.body).not.toContain('scope=');
     expect(Buffer.from((await row(c.id)).secrets!).toString()).not.toContain(DEVICE_CODE);
     // Polling early does not call GitHub.
     expect(await (await call('POST', `/connectors/${c.id}/oauth/device`)).json()).toEqual({
@@ -89,7 +102,7 @@ describe('GitHub connector device authorization', () => {
     expect(request).toHaveBeenCalledTimes(1);
     await ready(c.id);
     request.mockResolvedValueOnce(
-      Response.json({ access_token: TOKEN, token_type: 'bearer', scope: 'repo' }),
+      Response.json({ access_token: TOKEN, token_type: 'bearer', scope: '' }),
     );
     const res = await call('POST', `/connectors/${c.id}/oauth/device`);
     expect(await res.json()).toEqual({ status: 'connected' });
@@ -102,7 +115,9 @@ describe('GitHub connector device authorization', () => {
 
   it('supports a self-hoster public client ID without a secret', async () => {
     mockNetwork();
-    const c = await newConnector({ oauthClient: { clientId: 'own-public-id' } });
+    const c = await newConnector({
+      oauthClient: { clientId: 'own-public-id', githubAppSlug: 'own-app' },
+    });
     await start(c.id);
     expect(request.mock.calls[0]![1]!.body).toContain('client_id=own-public-id');
   });
@@ -182,6 +197,127 @@ describe('GitHub connector device authorization', () => {
     expect(await res.json()).toEqual({ status: 'pending', interval: 5 });
     await call('POST', `/connectors/${c.id}/oauth/device`);
     expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires GitHub App identifiers and rejects a shared client secret', async () => {
+    mockNetwork();
+    for (const oauthClient of [
+      { clientId: 'own-id' },
+      { clientId: 'own-id', githubAppSlug: 'own-app', clientSecret: 'do-not-share' },
+    ]) {
+      const c = await newConnector({ oauthClient });
+      const res = await call('GET', `/connectors/${c.id}/oauth/start`);
+      expect(res.status).toBe(400);
+      expect(request).not.toHaveBeenCalled();
+    }
+  });
+
+  it('requires an installation of this app and rejects OAuth App tokens', async () => {
+    mockNetwork();
+    for (const installation of [
+      [],
+      [{ app_slug: 'different-app', suspended_at: null }],
+      [{ app_slug: 'openbots-test', suspended_at: '2026-01-01T00:00:00Z' }],
+    ]) {
+      const c = await newConnector();
+      await start(c.id);
+      await ready(c.id);
+      request.mockResolvedValueOnce(Response.json({ access_token: TOKEN }));
+      request.mockResolvedValueOnce(Response.json({ installations: installation }));
+      const res = await call('POST', `/connectors/${c.id}/oauth/device`);
+      expect(await res.json()).toMatchObject({
+        status: 'error',
+        message: expect.stringContaining('Install the GitHub App'),
+      });
+      expect(openSecrets(t.deps, await row(c.id)).oauth?.tokens).toBeUndefined();
+    }
+    const c = await newConnector();
+    await start(c.id);
+    await ready(c.id);
+    request.mockResolvedValueOnce(Response.json({ access_token: 'gho_oauth-app-token' }));
+    expect(await (await call('POST', `/connectors/${c.id}/oauth/device`)).json()).toMatchObject({
+      status: 'error',
+      message: expect.stringContaining('not an OAuth App'),
+    });
+  });
+
+  it('stores expiry and rotates expiring user and refresh tokens without a secret', async () => {
+    mockNetwork();
+    const c = await newConnector();
+    await start(c.id);
+    await ready(c.id);
+    request.mockResolvedValueOnce(
+      Response.json({
+        access_token: TOKEN,
+        expires_in: 1,
+        refresh_token: 'ghr_private-original',
+        refresh_token_expires_in: 1000,
+      }),
+    );
+    expect(await (await call('POST', `/connectors/${c.id}/oauth/device`)).json()).toEqual({
+      status: 'connected',
+    });
+    const initial = openSecrets(t.deps, await row(c.id)).oauth!;
+    expect(initial.tokens?.expires_at).toBeGreaterThan(Date.now());
+    expect(initial.tokens?.refresh_expires_at).toBeGreaterThan(Date.now());
+    expect(initial.githubApp).toEqual({ clientId: 'public-client-id', appSlug: 'openbots-test' });
+    const count = request.mock.calls.length;
+    request.mockResolvedValueOnce(
+      Response.json({
+        access_token: 'ghu_rotated-token',
+        expires_in: 28800,
+        refresh_token: 'ghr_rotated-token',
+        refresh_token_expires_in: 15897600,
+      }),
+    );
+    expect(
+      await Promise.all([oauthAccessToken(t.ownerDeps, c.id), oauthAccessToken(t.ownerDeps, c.id)]),
+    ).toEqual(['ghu_rotated-token', 'ghu_rotated-token']);
+    expect(request).toHaveBeenCalledTimes(count + 1);
+    const [url, options] = request.mock.calls.at(-1)!;
+    expect(url).toBe('https://github.com/login/oauth/access_token');
+    const body = new URLSearchParams(String(options!.body));
+    expect([...body.keys()].sort()).toEqual(['client_id', 'grant_type', 'refresh_token']);
+    expect(body.get('grant_type')).toBe('refresh_token');
+    expect(body.get('refresh_token')).toBe('ghr_private-original');
+    const saved = await row(c.id);
+    expect(Buffer.from(saved.secrets!).toString()).not.toContain('ghr_rotated-token');
+    expect(openSecrets(t.deps, saved).oauth?.tokens?.refresh_token).toBe('ghr_rotated-token');
+  });
+
+  it('asks to reconnect after refresh expiry or revocation without leaking tokens', async () => {
+    mockNetwork();
+    for (const expired of [false, true]) {
+      const c = await newConnector();
+      await start(c.id);
+      await ready(c.id);
+      request.mockResolvedValueOnce(
+        Response.json({
+          access_token: TOKEN,
+          expires_in: 1,
+          refresh_token: 'ghr_private-original',
+          refresh_token_expires_in: 1000,
+        }),
+      );
+      await call('POST', `/connectors/${c.id}/oauth/device`);
+      if (expired) {
+        const secrets = openSecrets(t.deps, await row(c.id));
+        secrets.oauth!.tokens!.refresh_expires_at = 1;
+        await t.db
+          .update(schema.connectors)
+          .set({
+            secrets: encryptSecret(JSON.stringify(secrets), keyringFromConfig(t.deps.config)),
+          })
+          .where(eq(schema.connectors.id, c.id));
+      } else {
+        request.mockResolvedValueOnce(
+          Response.json({ error: 'bad_refresh_token', error_description: 'ghr_private-original' }),
+        );
+      }
+      await expect(oauthAccessToken(t.ownerDeps, c.id)).rejects.toThrow(
+        'The GitHub App authorization expired or was revoked. Connect again.',
+      );
+    }
   });
 
   it('requires the connector owner and rejects changed URLs and policy blocks', async () => {

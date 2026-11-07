@@ -3854,6 +3854,10 @@
               },
               "clientSetupUrl": {
                 "type": ["string", "null"]
+              },
+              "installationUrl": {
+                "type": "string",
+                "format": "uri"
               }
             },
             "required": ["scopes", "dynamicRegistration", "clientSetupUrl"]
@@ -3964,6 +3968,10 @@
               "expiresAt": {
                 "type": ["string", "null"],
                 "format": "date-time"
+              },
+              "installationUrl": {
+                "type": "string",
+                "format": "uri"
               }
             },
             "required": ["clientConfigured", "connected", "expiresAt"],
@@ -4142,6 +4150,11 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 4096
+          },
+          "githubAppSlug": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
           }
         },
         "required": ["clientId"],
@@ -4333,6 +4346,10 @@
                 "type": "string",
                 "format": "uri"
               },
+              "installationUrl": {
+                "type": "string",
+                "format": "uri"
+              },
               "expiresAt": {
                 "type": "string",
                 "format": "date-time"
@@ -4342,7 +4359,7 @@
                 "exclusiveMinimum": 0
               }
             },
-            "required": ["userCode", "verificationUrl", "expiresAt", "interval"]
+            "required": ["userCode", "verificationUrl", "installationUrl", "expiresAt", "interval"]
           }
         },
         "required": ["authorizationUrl"]

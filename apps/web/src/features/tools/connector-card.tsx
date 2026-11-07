@@ -139,6 +139,16 @@ export function ConnectorCard({
       {admin && !blocked && connector.kind === 'mcp_http' && (
         <LocalNetworkSetting connector={connector} />
       )}
+      {connector.oauth?.installationUrl && (
+        <a
+          href={connector.oauth.installationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs underline"
+        >
+          Manage repositories
+        </a>
+      )}
       <ConnectStatus state={signIn} onCancel={reset} />
       <ErrorText
         error={
@@ -239,7 +249,11 @@ export function ConnectorSettings({
   const [params, setParams] = useState<Record<string, string>>(connector.params);
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [removed, setRemoved] = useState<string[]>([]);
-  const [client, setClient] = useState({ clientId: '', clientSecret: '' });
+  const [client, setClient] = useState<{
+    clientId: string;
+    clientSecret: string;
+    githubAppSlug?: string;
+  }>({ clientId: '', clientSecret: '', githubAppSlug: '' });
   const save = useMutation({
     mutationFn: (body: Parameters<typeof updateConnector>[1]) =>
       updateConnector(connector.id, body),
