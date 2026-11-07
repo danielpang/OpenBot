@@ -197,6 +197,21 @@ describe('claude adapter', () => {
     ]);
   });
 
+  it('asks for edits when acceptance is off and never relaxes plan mode', () => {
+    expect(
+      valuesOf(claudeAdapter.launch(spec({ acceptEdits: false })).args, '--permission-mode'),
+    ).toEqual(['default']);
+    expect(
+      valuesOf(claudeAdapter.launch(spec({ acceptEdits: true })).args, '--permission-mode'),
+    ).toEqual(['acceptEdits']);
+    expect(
+      valuesOf(
+        claudeAdapter.launch(spec({ acceptEdits: true, mode: 'plan' })).args,
+        '--permission-mode',
+      ),
+    ).toEqual(['plan']);
+  });
+
   it('accepts only a UUID as the session id, and says so when it drops one', () => {
     const parser = claudeAdapter.parser();
     expect(

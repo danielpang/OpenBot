@@ -73,7 +73,7 @@ describe('native tab navigation', () => {
   });
   it('retains all destinations and the Inbox count without painting over system glass', () => {
     render(<TabsLayout />);
-    expect(mockTriggers).toEqual(['bots', 'inbox', 'settings']);
+    expect(mockTriggers).toEqual(['bots', 'inbox', 'coding', 'settings']);
     expect(screen.getByTestId('inbox-badge').props.children).toBe('3');
     expect(mockTabsProps.backgroundColor).toBeUndefined();
     expect(mockTabsProps.minimizeBehavior).toBe('never');

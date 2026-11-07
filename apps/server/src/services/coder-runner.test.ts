@@ -10,6 +10,8 @@ import {
   DEFAULT_MAX_CONCURRENT_SESSIONS,
   EVENTS_CHANNEL,
   NEEDS_LOGIN,
+  ToolPolicySchema,
+  withAcceptEdits,
   type WsEvent,
 } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
@@ -1123,6 +1125,23 @@ describe('coder runner, across agents and accounts', () => {
     await w.close();
   });
 
+  const withEdits = async (test: () => Promise<void>) => {
+    const [bot] = await w.t.db.select().from(schema.bots).where(eq(schema.bots.id, w.bot.id));
+    await w.t.db
+      .update(schema.bots)
+      .set({
+        toolPolicy: withAcceptEdits(ToolPolicySchema.parse(bot!.toolPolicy), true),
+      })
+      .where(eq(schema.bots.id, w.bot.id));
+    try {
+      await test();
+    } finally {
+      await w.t.db
+        .update(schema.bots)
+        .set({ toolPolicy: bot!.toolPolicy })
+        .where(eq(schema.bots.id, w.bot.id));
+    }
+  };
   const run = (sessionId: string) => w.runToEnd(sessionId);
   const setAccount: CoderWorld['setAccount'] = (agent, set) => w.setAccount(agent, set);
   const account = async (agent: string) =>
@@ -1170,55 +1189,69 @@ describe('coder runner, across agents and accounts', () => {
     });
   const CODEX_THREAD = '01a1ad70-3c2e-7a41-9b0d-5e8f2c4a6b10';
 
-  it('runs Codex on app-server: the handshake in order, .git writable, and its posture', async () => {
+  it('launches an unset edit policy read-only, matching Ask before edits', async () => {
     await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
     codexSuccess();
     const { sessionId } = await w.newSession({ agent: 'codex' });
-    const row = await run(sessionId);
-    expect(row).toMatchObject({ status: 'settled', vendorSessionId: CODEX_THREAD });
-    const { command, args } = launchOf(sessionId);
-    expect(command).toBe('codex');
-    expect(args!.slice(0, 3)).toEqual(['app-server', '--listen', 'stdio://']);
-    expect(args).toContain(`sandbox_workspace_write.writable_roots=["${REPO_PATH}/.git"]`);
-    expect(args).toContain('approval_policy="on-request"');
-    expect(args).toContain('model_provider="openai"');
-    // initialize, initialized, thread/start, turn/start, then EOF after the result.
-    const frames = framesOf(sessionId);
-    expect(frames.map((f) => f.method)).toEqual([
-      'initialize',
-      'initialized',
-      'thread/start',
-      'turn/start',
-    ]);
-    expect(frames.map((f) => f.id)).toEqual([1, undefined, 2, 3]);
-    expect(frames[0]!.params).toMatchObject({
-      clientInfo: { name: 'openbots', title: 'OpenBots' },
-    });
-    expect(frames[2]!.params).toEqual({
-      cwd: WORKTREE,
-      approvalPolicy: 'on-request',
-      approvalsReviewer: 'user',
-      sandbox: 'workspace-write',
-    });
-    const turn = frames[3]!.params as { threadId: string; input: { text: string }[] };
-    expect(turn.threadId).toBe(CODEX_THREAD);
-    expect(turn.input[0]!.text.endsWith('\n\nFix the reconnect loop')).toBe(true);
-    expect(callOf(sessionId).stdinEnded).toBe(true);
-    const state = await w.widget(sessionId);
-    const feed = state.feed.map((l) => l.text);
-    expect(feed.slice(0, 2)).toEqual([`Started Codex in ${WORKTREE}`, CODEX_POSTURE]);
-    expect(feed.some((t) => t.includes('npm test'))).toBe(true);
-    expect(row.usage).toMatchObject({ input_tokens: 48213, output_tokens: 1874 });
-
-    // Claude Code's sessions get no such line.
-    w.coder.agent = (io) => {
-      io.stdout(fixture('claude-success.jsonl'));
-      io.exit(0);
-    };
-    const claude = await w.newSession();
-    expect((await run(claude.sessionId)).status).toBe('settled');
-    expect((await w.widget(claude.sessionId)).feed.map((l) => l.text)).not.toContain(CODEX_POSTURE);
+    expect((await run(sessionId)).status).toBe('settled');
+    expect(launchOf(sessionId).args).toContain('sandbox_mode="read-only"');
+    expect(
+      framesOf(sessionId).find((frame) => frame.method === 'thread/start')?.params?.sandbox,
+    ).toBe('read-only');
   });
+
+  it('runs Codex on app-server: the handshake in order, .git writable, and its posture', () =>
+    withEdits(async () => {
+      await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
+      codexSuccess();
+      const { sessionId } = await w.newSession({ agent: 'codex' });
+      const row = await run(sessionId);
+      expect(row).toMatchObject({ status: 'settled', vendorSessionId: CODEX_THREAD });
+      const { command, args } = launchOf(sessionId);
+      expect(command).toBe('codex');
+      expect(args!.slice(0, 3)).toEqual(['app-server', '--listen', 'stdio://']);
+      expect(args).toContain(`sandbox_workspace_write.writable_roots=["${REPO_PATH}/.git"]`);
+      expect(args).toContain('approval_policy="on-request"');
+      expect(args).toContain('model_provider="openai"');
+      // initialize, initialized, thread/start, turn/start, then EOF after the result.
+      const frames = framesOf(sessionId);
+      expect(frames.map((f) => f.method)).toEqual([
+        'initialize',
+        'initialized',
+        'thread/start',
+        'turn/start',
+      ]);
+      expect(frames.map((f) => f.id)).toEqual([1, undefined, 2, 3]);
+      expect(frames[0]!.params).toMatchObject({
+        clientInfo: { name: 'openbots', title: 'OpenBots' },
+      });
+      expect(frames[2]!.params).toEqual({
+        cwd: WORKTREE,
+        approvalPolicy: 'on-request',
+        approvalsReviewer: 'user',
+        sandbox: 'workspace-write',
+      });
+      const turn = frames[3]!.params as { threadId: string; input: { text: string }[] };
+      expect(turn.threadId).toBe(CODEX_THREAD);
+      expect(turn.input[0]!.text.endsWith('\n\nFix the reconnect loop')).toBe(true);
+      expect(callOf(sessionId).stdinEnded).toBe(true);
+      const state = await w.widget(sessionId);
+      const feed = state.feed.map((l) => l.text);
+      expect(feed.slice(0, 2)).toEqual([`Started Codex in ${WORKTREE}`, CODEX_POSTURE]);
+      expect(feed.some((t) => t.includes('npm test'))).toBe(true);
+      expect(row.usage).toMatchObject({ input_tokens: 48213, output_tokens: 1874 });
+
+      // Claude Code's sessions get no such line.
+      w.coder.agent = (io) => {
+        io.stdout(fixture('claude-success.jsonl'));
+        io.exit(0);
+      };
+      const claude = await w.newSession();
+      expect((await run(claude.sessionId)).status).toBe('settled');
+      expect((await w.widget(claude.sessionId)).feed.map((l) => l.text)).not.toContain(
+        CODEX_POSTURE,
+      );
+    }));
 
   /** The session's one `approvals` row, once it is there. */
   const approvalOf = (sessionId: string) =>
@@ -1294,40 +1327,41 @@ describe('coder runner, across agents and accounts', () => {
     expect((await w.widget(sessionId)).feed.map((l) => l.text)).toContain('The owner said no');
   });
 
-  it('answers an auto class at once, without an approval row', async () => {
-    await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
-    const transcript = fixture('codex-approval.jsonl')
-      .split('\n')
-      .map((line) =>
-        line.includes('requestApproval')
-          ? JSON.stringify({
-              id: 0,
-              method: 'item/commandExecution/requestApproval',
-              params: {
-                threadId: CODEX_THREAD,
-                turnId: 't',
-                itemId: 'call_1',
-                command: 'pnpm run build',
-              },
-            })
-          : line,
-      )
-      .join('\n');
-    w.coder.agent = (io) => codexAppServer(io, transcript);
-    const { sessionId } = await w.newSession({ agent: 'codex' });
-    expect((await run(sessionId)).status).toBe('settled');
-    expect(framesOf(sessionId).filter((f) => f.id === 0)).toEqual([
-      { id: 0, result: { decision: 'accept' } },
-    ]);
-    const rows = await w.t.db
-      .select()
-      .from(schema.approvals)
-      .where(eq(schema.approvals.sessionId, sessionId));
-    expect(rows).toEqual([]);
-    expect((await w.widget(sessionId)).feed.map((l) => l.text)).toContain(
-      'Allowed: Run: pnpm run build',
-    );
-  });
+  it('answers an auto class at once, without an approval row', () =>
+    withEdits(async () => {
+      await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
+      const transcript = fixture('codex-approval.jsonl')
+        .split('\n')
+        .map((line) =>
+          line.includes('requestApproval')
+            ? JSON.stringify({
+                id: 0,
+                method: 'item/commandExecution/requestApproval',
+                params: {
+                  threadId: CODEX_THREAD,
+                  turnId: 't',
+                  itemId: 'call_1',
+                  command: 'pnpm run build',
+                },
+              })
+            : line,
+        )
+        .join('\n');
+      w.coder.agent = (io) => codexAppServer(io, transcript);
+      const { sessionId } = await w.newSession({ agent: 'codex' });
+      expect((await run(sessionId)).status).toBe('settled');
+      expect(framesOf(sessionId).filter((f) => f.id === 0)).toEqual([
+        { id: 0, result: { decision: 'accept' } },
+      ]);
+      const rows = await w.t.db
+        .select()
+        .from(schema.approvals)
+        .where(eq(schema.approvals.sessionId, sessionId));
+      expect(rows).toEqual([]);
+      expect((await w.widget(sessionId)).feed.map((l) => l.text)).toContain(
+        'Allowed: Run: pnpm run build',
+      );
+    }));
 
   it('commits what an edit session left uncommitted, as the Bot, and reports the commit', async () => {
     let committed = false;

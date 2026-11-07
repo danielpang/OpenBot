@@ -68,6 +68,10 @@ export default function TabsLayout() {
           <NativeTabs.Trigger.Badge>{String(inbox.count)}</NativeTabs.Trigger.Badge>
         ) : null}
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="coding" contentStyle={{ backgroundColor: c.background }}>
+        <NativeTabs.Trigger.Label>Code</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="chevron.left.forwardslash.chevron.right" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings" contentStyle={{ backgroundColor: c.background }}>
         <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="gearshape" />

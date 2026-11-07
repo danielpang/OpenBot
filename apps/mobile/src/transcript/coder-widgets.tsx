@@ -19,12 +19,8 @@ import {
 import { Button, Field, Icon, Label, row } from '../components/ui';
 import { useTheme, type Theme } from '../theme';
 
-// The coding agent widgets on the phone (CA3, CA5, CA6). The phone shows a
-// session read only (PRD M10): no terminal and no full log, only the last few
-// feed lines. What the phone is for is answering: approvals, Stop, and the
-// sign-in link and code. To continue an ended session the owner replies in
-// its thread, and the Bot passes the reply on to the agent. The words come
-// from `@openbots/widgets`, so the phone says what the web widget says.
+// Compact session previews link to the full interactive coding conversation.
+// Approvals, Stop and sign-in remain available directly in the Bot's chat.
 
 /** Sends a widget action; resolves false when it failed. */
 type Act = (action: Record<string, unknown>) => Promise<boolean | void>;
@@ -100,6 +96,12 @@ export function CodingSessionBody({
         />
         <Label size={14}>{sessionStatusWords[status]}</Label>
       </View>
+      <Button
+        title="Open Code"
+        variant="secondary"
+        icon="code-slash-outline"
+        onPress={() => router.push(`/coding-session/${props.session_id}`)}
+      />
       {feed.length ? (
         <View
           testID="coding-session-feed"
@@ -205,7 +207,7 @@ export function CodingSessionBody({
         />
       ) : (
         <Label muted size={14}>
-          Reply in this thread to continue the session.
+          Open Code to message the agent directly, or reply in this thread.
         </Label>
       )}
     </>

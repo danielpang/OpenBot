@@ -15,7 +15,7 @@ import { SessionView, STATUS_DOT, titleOf, whereOf } from './session-view.js';
 // with the ones still live first, and a session in place as a conversation
 // with its agent.
 
-export function CodingSessionsDrawer({ onClose }: { onClose(): void }) {
+export function CodingSessionsDrawer({ onClose, botId }: { onClose(): void; botId?: string }) {
   const sessions = useQuery(codingSessionsQuery);
   const bots = useQuery(botsQuery);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -23,7 +23,10 @@ export function CodingSessionsDrawer({ onClose }: { onClose(): void }) {
   const session = openId ? sessions.data?.find((s) => s.id === openId) : undefined;
 
   return (
-    <PanelFrame title="Coding sessions" onClose={onClose}>
+    <PanelFrame
+      title={botId ? `${botName(botId)} · Coding sessions` : 'Coding sessions'}
+      onClose={onClose}
+    >
       {session ? (
         <SessionView
           key={session.id}
@@ -33,7 +36,7 @@ export function CodingSessionsDrawer({ onClose }: { onClose(): void }) {
         />
       ) : (
         <SessionList
-          sessions={sessions.data}
+          sessions={botId ? sessions.data?.filter((s) => s.botId === botId) : sessions.data}
           error={sessions.error}
           botName={botName}
           onOpen={setOpenId}

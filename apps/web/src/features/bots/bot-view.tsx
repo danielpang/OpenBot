@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { capabilitiesQuery } from '../../app/api.js';
 import { windowDragClass } from '../../app/platform.js';
 import { useRightPanel } from '../../app/right-panel.js';
+import { CodingSessionsButton } from '../coders/drawer/drawer.js';
 import { ComputerActiveDot, computerActive } from '../computer/status-icon.js';
 import { panelId, useShowBotPanel } from '../transcript/panel.js';
 import { botChatQuery, botsQuery, type Bot } from './queries.js';
@@ -86,7 +87,10 @@ export function BotTitleBar({ bot }: { bot: Bot }) {
         <h1 className="truncate font-semibold">{bot.name}</h1>
         {bot.label && <span className="truncate text-sm text-muted-foreground">{bot.label}</span>}
       </div>
-      <ComputerControls bot={bot} />
+      <div className="ml-auto flex items-center gap-1">
+        <ComputerControls bot={bot} />
+        <CodingSessionsButton botId={bot.id} iconOnly />
+      </div>
     </header>
   );
 }
@@ -105,11 +109,25 @@ function ComputerControls({ bot }: { bot: Bot }) {
         variant="ghost"
         size="sm"
         aria-pressed={previewing}
-        title={active ? (bot.state.currentAction ?? 'Using its computer') : undefined}
+        aria-label="Computer"
+        title={active ? (bot.state.currentAction ?? 'Using its computer') : 'Computer'}
         className={cn('relative', previewing && 'bg-accent')}
         onClick={() => show(previewing ? null : { kind: 'screen' })}
       >
-        Computer
+        <svg
+          aria-hidden="true"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="3" y="4" width="18" height="13" rx="2" />
+          <path d="M8 21h8M12 17v4" />
+        </svg>
         <ComputerActiveDot bot={bot} />
       </Button>
     </div>

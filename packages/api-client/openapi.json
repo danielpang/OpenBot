@@ -5987,6 +5987,14 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 4000
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 10
           }
         },
         "required": ["prompt"],

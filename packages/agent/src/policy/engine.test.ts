@@ -1,4 +1,4 @@
-import type { PolicyDecision, ToolPolicy } from '@openbots/shared';
+import { withAcceptEdits, type PolicyDecision, type ToolPolicy } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import { gated, NeedsApproval } from '../gated.js';
 import { createPolicy, evaluatePolicy, type PolicyInput } from './engine.js';
@@ -28,6 +28,19 @@ function decide(
 }
 
 describe('policy engine', () => {
+  it('accepts bot file edits only, and keeps trigger floors when enabled', () => {
+    const toolPolicy = withAcceptEdits({}, true);
+    expect(decide('edit_file', computer, {}, { toolPolicy }).decision).toBe('auto');
+    expect(decide('write_file', computer, {}, { toolPolicy }).decision).toBe('auto');
+    expect(decide('bash', computer, { command: 'git push' }, { toolPolicy }).decision).toBe('ask');
+    expect(decide('edit_file', computer, {}, { toolPolicy, source: 'webhook' }).decision).toBe(
+      'ask',
+    );
+    expect(
+      decide('edit_file', computer, {}, { toolPolicy: withAcceptEdits(toolPolicy, false) })
+        .decision,
+    ).toBe('ask');
+  });
   it.each([
     ['ask_user', { group: 'conversation' }, {}, 'auto'],
     ['remember', { group: 'conversation' }, {}, 'auto'],

@@ -153,9 +153,12 @@ export const codingSessionEvents = (id: string, after = 0, limit = 200) =>
   );
 
 /** The owner's next prompt to the agent, once the session has ended. */
-export const sendCodingTurn = (id: string, prompt: string) =>
+export const sendCodingTurn = (id: string, prompt: string, attachments: string[] = []) =>
   unwrap(
-    api.POST('/api/v1/coding-sessions/{id}/turns', { params: { path: { id } }, body: { prompt } }),
+    api.POST('/api/v1/coding-sessions/{id}/turns', {
+      params: { path: { id } },
+      body: { prompt, ...(attachments.length ? { attachments } : {}) },
+    }),
   ).then((r) => r.session);
 
 /** The session's full log, as text. */

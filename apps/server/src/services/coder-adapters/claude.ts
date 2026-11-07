@@ -104,7 +104,7 @@ function launch(spec: CoderSessionSpec): CoderLaunchPlan {
     '--max-turns',
     String(spec.maxTurns),
     '--permission-mode',
-    spec.mode === 'plan' ? 'plan' : 'acceptEdits',
+    spec.mode === 'plan' ? 'plan' : spec.acceptEdits === false ? 'default' : 'acceptEdits',
     '--disallowedTools',
     ...disallowed,
     '--permission-prompt-tool',

@@ -1,5 +1,8 @@
 import { unwrap } from '@openbots/api-client';
 import {
+  acceptsEdits,
+  withAcceptEdits,
+  ACCEPT_EDITS_HELP,
   CODER_AGENT_LABELS,
   CODER_AGENTS,
   DEFAULT_CODER_ACTIONS,
@@ -145,6 +148,25 @@ export function BotToolsForm({
 
   return (
     <form className="flex flex-col gap-3" onSubmit={submit} aria-label="Tools and permissions">
+      <SettingsPanel>
+        <SettingsRow
+          title="Accept edits"
+          description={ACCEPT_EDITS_HELP}
+          control={
+            <select
+              aria-label="Accept edits"
+              className="rounded-md border bg-background p-2 text-sm"
+              value={acceptsEdits(policy) ? 'on' : 'off'}
+              onChange={(event) =>
+                setPolicy((current) => withAcceptEdits(current, event.target.value === 'on'))
+              }
+            >
+              <option value="off">Ask before edits</option>
+              <option value="on">Accept edits</option>
+            </select>
+          }
+        />
+      </SettingsPanel>
       <SettingsSubheading>Tool groups</SettingsSubheading>
       <SettingsPanel>
         {EDITED_GROUPS.filter((g) => g !== 'computer' && g !== 'connector').map((group) => (
@@ -464,7 +486,7 @@ function CoderSettings({
 
 /** Under the action classes: which agents ask, and that a push always does. */
 export const CODER_ACTIONS_NOTE =
-  'Codex works inside its own sandbox and does not ask for approvals; these settings apply to Claude Code and pi. Pushes always need your approval.';
+  'Codex asks before leaving its sandbox. Accept edits applies to file edits; protected actions keep their own approval rules. Pushes always need your approval.';
 
 /** A collapsed list under a row, one tool per line. */
 function ToolDetails({ summary, children }: { summary: ReactNode; children: ReactNode }) {

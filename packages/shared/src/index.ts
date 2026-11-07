@@ -14,6 +14,7 @@ export * from './bots.js';
 export * from './parts.js';
 export * from './providers.js';
 export * from './policy.js';
+export * from './accept-edits.js';
 export * from './artifacts.js';
 export * from './computer.js';
 export * from './coders.js';
