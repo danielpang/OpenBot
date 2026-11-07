@@ -225,7 +225,7 @@ Attachments in the messages (the owner's, and other Bots' from `attach_file`) ar
 | --- | --- | --- |
 | Conversation | `show_widget`, `ask_user` (question widget), `react`, `message_bot` (async Bot to Bot), `use_skill`, `save_skill`, `propose_routine`, `remember`, `search_memory` | Always |
 | Artifacts | `create_artifact`, `update_artifact`, `read_artifact`, `publish_artifact` (from a computer path), `artifact_to_computer`, `read_attachment`, `attachment_to_computer` (chat attachments, section 5.3) | Always |
-| Built-in | `web_fetch`, `web_search`, `http_request` (domain allowlist), `send_email` (SMTP connector), `attach_file` | Configured |
+| Built-in | `web_fetch`, `web_search`, `news_search`, `http_request` (domain allowlist), `send_email` (SMTP connector), `attach_file` | Configured |
 | Connector | `${connectorSlug}__${toolName}` for each permitted MCP tool | Connector attached |
 | Computer | `bash`, `read_file`, `write_file`, `edit_file`, `list_dir`, `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press`, `browser_screenshot`, `computer` (screenshot, click, double_click, type, key, scroll, move, drag), `request_login` (site and reason; section 9.7) | Always (every account has a computer); computer-use actions take the per-Bot screen lock (K2) |
 | Coder | `code_task` (agent, repository, prompt, branch, base, mode `plan`, `edit` or `pr`, session id to continue; section 22) | A computer and the server's coder services; off for a Bot whose `coder` group is Never or whose `coder.enabled` is false. Each action inside a session is judged by its action class, not by this group's decision |
@@ -327,6 +327,7 @@ Every step gets a one-line label, produced deterministically by the tool (no mod
 | `bash` | `Ran npm test` then `212 passed` or `exit 1` |
 | `browser_navigate` | `Opened github.com` |
 | `web_search` | `Searched web 'toFixed'` |
+| `news_search` | `Searched news 'rate decision'` |
 | MCP tool | `GitHub: Create issue` (connector name plus tool title) |
 | LLM step without tool | `Thought briefly` or `Thought for 12s` |
 | `create_artifact` | `Created "Q3 summary"` |

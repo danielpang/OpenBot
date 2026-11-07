@@ -360,62 +360,111 @@ describe('send_email over SMTP', () => {
   });
 });
 
-describe('web_search', () => {
+describe('web_search and news_search', () => {
   let api: Awaited<ReturnType<typeof serve>>;
   beforeAll(async () => {
     api = await serve((req, res) => {
-      if (req.path.startsWith('/brave')) {
+      const url = new URL(req.path, 'http://x');
+      if (url.pathname === '/brave' || url.pathname === '/brave-news') {
         if (req.headers['x-subscription-token'] !== 'brave-key') return json(res, 401, {});
-        const q = new URL(req.path, 'http://x').searchParams.get('q');
-        json(res, 200, {
-          web: {
-            results: [
-              {
-                title: `About ${q}`,
-                url: 'https://otters.example',
-                description: 'Sea <strong>otters</strong>',
-              },
-            ],
-          },
-        });
-      } else if (req.path === '/tavily') {
-        if (req.headers.authorization !== 'Bearer tavily-key') return json(res, 401, {});
-        const { query, max_results } = JSON.parse(req.body) as {
-          query: string;
-          max_results: number;
-        };
-        json(res, 200, {
+        const q = url.searchParams.get('q');
+        const freshness = url.searchParams.get('freshness');
+        if (url.pathname === '/brave')
+          return json(res, 200, {
+            web: {
+              results: [
+                {
+                  title: `About ${q}`,
+                  url: 'https://otters.example',
+                  description: 'Sea <strong>otters</strong>',
+                },
+                { title: 'Off site', url: 'https://elsewhere.example/x', description: '' },
+              ],
+            },
+          });
+        return json(res, 200, {
           results: [
             {
-              title: `${query} (${max_results})`,
-              url: 'https://t.example',
-              content: 'From Tavily',
+              title: `News: ${q} (${freshness})`,
+              url: 'https://www.news.example/a',
+              description: 'Otters <strong>return</strong>',
+              page_age: '2026-11-06T09:00:00',
+              age: '1 day ago',
+              meta_url: { hostname: 'www.news.example' },
             },
           ],
         });
-      } else json(res, 404, {});
+      }
+      if (url.pathname === '/tavily') {
+        if (req.headers.authorization !== 'Bearer tavily-key') return json(res, 401, {});
+        const body = JSON.parse(req.body) as Record<string, unknown>;
+        return json(res, 200, {
+          results: [
+            {
+              title: `${body.query as string} (${body.max_results as number})`,
+              url: 'https://t.example/story',
+              content: 'From Tavily',
+              ...(body.topic === 'news' ? { published_date: 'Thu, 05 Nov 2026 10:00:00 GMT' } : {}),
+            },
+          ],
+        });
+      }
+      if (url.pathname === '/exa') {
+        if (req.headers['x-api-key'] !== 'exa-key') return json(res, 401, {});
+        const body = JSON.parse(req.body) as Record<string, unknown>;
+        return json(res, 200, {
+          results: [
+            {
+              title: `${body.query as string} (${body.numResults as number})`,
+              url: 'https://e.example/p',
+              publishedDate: '2026-11-01T00:00:00.000Z',
+              highlights: ['First point.', 'Second point.'],
+            },
+            { title: 'Text only', url: 'https://e.example/q', text: 'x'.repeat(500) },
+          ],
+        });
+      }
+      json(res, 404, {});
     });
   });
   afterAll(() => api.close());
 
-  async function services(keys: Record<string, string>) {
-    const { searchBackend } = await import('./search.js');
-    return searchBackend(keys, { braveUrl: `${api.url}/brave`, tavilyUrl: `${api.url}/tavily` });
+  const NOW = new Date('2026-11-07T12:00:00.000Z');
+  async function backends(keys: Record<string, string>) {
+    const { searchBackends } = await import('./search.js');
+    return searchBackends(keys, {
+      braveUrl: `${api.url}/brave`,
+      braveNewsUrl: `${api.url}/brave-news`,
+      tavilyUrl: `${api.url}/tavily`,
+      exaUrl: `${api.url}/exa`,
+      now: () => NOW,
+    });
   }
+  const sent = (path: string) => api.seen.filter((r) => r.path.startsWith(path)).at(-1)!;
 
-  it('uses Brave when its key is set, else Tavily, else reports not configured', async () => {
-    expect(
-      await (await services({ BRAVE_API_KEY: 'brave-key', TAVILY_API_KEY: 'tavily-key' }))!(
-        'otters',
-        3,
-      ),
-    ).toEqual([{ title: 'About otters', url: 'https://otters.example', snippet: 'Sea otters' }]);
-    expect(await (await services({ TAVILY_API_KEY: 'tavily-key' }))!('otters', 3)).toEqual([
-      { title: 'otters (3)', url: 'https://t.example', snippet: 'From Tavily' },
+  it('uses Brave when its key is set, then Tavily, then Exa, else reports not configured', async () => {
+    const all = await backends({
+      BRAVE_API_KEY: 'brave-key',
+      TAVILY_API_KEY: 'tavily-key',
+      EXA_API_KEY: 'exa-key',
+    });
+    expect(all!.provider).toBe('brave');
+    expect(await all!.web('otters', 1)).toEqual([
+      { title: 'About otters', url: 'https://otters.example', snippet: 'Sea otters' },
     ]);
-    expect(await services({})).toBeNull();
-    await expect((await services({ BRAVE_API_KEY: 'wrong' }))!('x', 1)).rejects.toThrow(
+    expect(
+      (await backends({ TAVILY_API_KEY: 'tavily-key', EXA_API_KEY: 'exa-key' }))!.provider,
+    ).toBe('tavily');
+    expect(await (await backends({ TAVILY_API_KEY: 'tavily-key' }))!.web('otters', 3)).toEqual([
+      { title: 'otters (3)', url: 'https://t.example/story', snippet: 'From Tavily' },
+    ]);
+    expect((await backends({ EXA_API_KEY: 'exa-key' }))!.provider).toBe('exa');
+    expect(await backends({})).toBeNull();
+    await expect((await backends({ BRAVE_API_KEY: 'wrong' }))!.web('x', 1)).rejects.toThrow(
       'Brave Search answered HTTP 401',
+    );
+    await expect((await backends({ EXA_API_KEY: 'wrong' }))!.news('x', 1)).rejects.toThrow(
+      'Exa answered HTTP 401',
     );
     const tool = toolsFor({
       run: {},
@@ -428,6 +477,90 @@ describe('web_search', () => {
         { builtins: fakeServices() } as unknown as ToolContext,
       ),
     ).rejects.toThrow(WEB_SEARCH_NOT_CONFIGURED);
+  });
+
+  it('sends Brave freshness and site: operators, and keeps only the asked-for domains', async () => {
+    const brave = (await backends({ BRAVE_API_KEY: 'brave-key' }))!;
+    expect(
+      await brave.web('otters', 5, { freshness: 'week', domains: ['otters.example', 'b.example'] }),
+    ).toEqual([
+      {
+        title: 'About otters site:otters.example OR site:b.example',
+        url: 'https://otters.example',
+        snippet: 'Sea otters',
+      },
+    ]);
+    const query = new URL(sent('/brave?').path, 'http://x').searchParams;
+    expect(query.get('freshness')).toBe('pw');
+    expect(query.get('count')).toBe('5');
+
+    expect(await brave.news('otters', 5, { freshness: 'day' })).toEqual([
+      {
+        title: 'News: otters (pd)',
+        url: 'https://www.news.example/a',
+        snippet: 'Otters return',
+        published: '2026-11-06T09:00:00',
+        source: 'www.news.example',
+      },
+    ]);
+  });
+
+  it('sends Tavily its topic, time range and domains', async () => {
+    const tavily = (await backends({ TAVILY_API_KEY: 'tavily-key' }))!;
+    expect(await tavily.news('otters', 4, { freshness: 'month', domains: ['t.example'] })).toEqual([
+      {
+        title: 'otters (4)',
+        url: 'https://t.example/story',
+        snippet: 'From Tavily',
+        published: 'Thu, 05 Nov 2026 10:00:00 GMT',
+        source: 't.example',
+      },
+    ]);
+    expect(JSON.parse(sent('/tavily').body)).toEqual({
+      query: 'otters',
+      max_results: 4,
+      topic: 'news',
+      time_range: 'month',
+      include_domains: ['t.example'],
+    });
+    await tavily.web('otters', 2);
+    expect(JSON.parse(sent('/tavily').body)).toEqual({ query: 'otters', max_results: 2 });
+  });
+
+  it('sends Exa a start date for freshness and reads highlights as snippets', async () => {
+    const exa = (await backends({ EXA_API_KEY: 'exa-key' }))!;
+    const web = await exa.web('otters', 2);
+    expect(web[0]).toEqual({
+      title: 'otters (2)',
+      url: 'https://e.example/p',
+      snippet: 'First point. … Second point.',
+      published: '2026-11-01T00:00:00.000Z',
+    });
+    expect(web[1]!.snippet).toHaveLength(400);
+    expect(JSON.parse(sent('/exa').body)).toEqual({
+      query: 'otters',
+      numResults: 2,
+      contents: { highlights: true },
+    });
+
+    const news = await exa.news('otters', 1, { freshness: 'week', domains: ['e.example'] });
+    expect(news).toEqual([
+      {
+        title: 'otters (1)',
+        url: 'https://e.example/p',
+        snippet: 'First point. … Second point.',
+        published: '2026-11-01T00:00:00.000Z',
+        source: 'e.example',
+      },
+    ]);
+    expect(JSON.parse(sent('/exa').body)).toEqual({
+      query: 'otters',
+      numResults: 1,
+      contents: { highlights: true },
+      category: 'news',
+      startPublishedDate: '2026-10-31T12:00:00.000Z',
+      includeDomains: ['e.example'],
+    });
   });
 });
 
@@ -604,6 +737,7 @@ describe('loadBuiltins', () => {
     expect(builtins.httpAllowlist).toEqual(['api.example.com', '127.0.0.1']);
     expect(builtins.email).toBeNull();
     expect(builtins.webSearch).toBeNull();
+    expect(builtins.newsSearch).toBeNull();
     expect(Object.keys(tools(builtins))).not.toContain('send_email');
 
     let res = await call('POST', '/connectors', {
@@ -628,6 +762,7 @@ describe('loadBuiltins', () => {
     builtins = await loadBuiltins(t.ownerDeps, await bot());
     expect(builtins.email).not.toBeNull();
     expect(builtins.webSearch).not.toBeNull();
+    expect(builtins.newsSearch).not.toBeNull();
     expect(builtins.connectors.github).toMatchObject({ id: github, name: 'GitHub (built-in)' });
     expect(Object.keys(tools(builtins))).toEqual(
       expect.arrayContaining([

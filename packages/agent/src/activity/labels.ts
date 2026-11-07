@@ -83,6 +83,8 @@ export function labelFor(
       return `${done ? 'Opened' : 'Opening'} ${host(a.url)}`;
     case 'web_search':
       return `${done ? 'Searched' : 'Searching'} web '${clip(str(a.query) ?? '')}'`;
+    case 'news_search':
+      return `${done ? 'Searched' : 'Searching'} news '${clip(str(a.query) ?? '')}'`;
     case 'web_fetch':
       return `${done ? 'Read' : 'Reading'} ${host(a.url)}`;
     case 'http_request': {

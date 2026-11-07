@@ -25,13 +25,13 @@ import {
 import { emailSettings, imapInbox, sendEmail, type EmailOptions } from './email.js';
 import { githubApi, type GithubOptions } from './github.js';
 import type { NetOptions } from './net.js';
-import { searchBackend, type SearchOptions } from './search.js';
+import { searchBackends, type SearchOptions } from './search.js';
 import { fetchPage, httpRequest } from './web.js';
 
 // The backends behind the agent's built-in tools (plan 5.4, 18.3) and the
 // Bot's connector tools, assembled once per run. Built-in connectors (kind
 // `builtin`, added from the catalog on the Connectors page) carry the secrets: the
-// Brave or Tavily key, the mailbox, the GitHub token. They are opened here,
+// Brave, Tavily or Exa key, the mailbox, the GitHub token. They are opened here,
 // lazily, and never reach the model. The Bot's `bot_connectors` rows narrow
 // them like MCP connectors (allow and deny lists, approval override).
 
@@ -126,7 +126,7 @@ export async function loadBuiltins(
     privateHosts: (allowlist ?? []).filter((h) => !h.startsWith('*.')),
   };
 
-  const searchKeys = secretsOf.get('web_search')?.() ?? {};
+  const search = searchBackends(secretsOf.get('web_search')?.() ?? {}, options.search);
   const email = connectors.email
     ? emailSettings(paramsOf.get('email') ?? {}, secretsOf.get('email')!())
     : null;
@@ -135,7 +135,8 @@ export async function loadBuiltins(
   if (connectors.github && !githubToken) delete connectors.github;
 
   return {
-    webSearch: searchBackend(searchKeys, options.search),
+    webSearch: search?.web ?? null,
+    newsSearch: search?.news ?? null,
     // web_fetch waits OPENBOTS_WEB_FETCH_TIMEOUT_SECONDS and reads OPENBOTS_WEB_FETCH_MAX_CHARS.
     fetchPage: (url) =>
       fetchPage(url, { timeoutMs: processLimits.webFetchTimeoutSeconds * 1000, ...httpNet }),
