@@ -154,9 +154,6 @@ export function GitDeviceConnect({ state }: { state: ReturnType<typeof useGitDev
         <Button size="sm" disabled={busy} onClick={() => state.begin()}>
           {state.working ? 'Connecting…' : 'Connect GitHub'}
         </Button>
-        <span className="text-xs text-muted-foreground">
-          Install the App, then authorize with a device code. No public URL needed.
-        </span>
       </div>
       <ErrorText error={state.error} />
       {state.flow && (
