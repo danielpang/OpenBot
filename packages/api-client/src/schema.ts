@@ -4104,7 +4104,7 @@ export interface paths {
     };
     /**
      * Begin an OAuth 2.1 sign-in (PKCE, dynamic registration when offered)
-     * @description Answers with the authorization URL to open. After consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOTS_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).
+     * @description Answers with the authorization URL to open. GitHub device flow also returns a user code to display and polling instructions; poll the authenticated device endpoint until complete. Device flow does not use a callback. Otherwise, after consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOTS_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).
      */
     get: {
       parameters: {
@@ -4177,6 +4177,80 @@ export interface paths {
     };
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/connectors/{id}/oauth/device': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Poll GitHub device authorization without exposing its device code or token */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Authorization status */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['OAuthDevicePoll'];
+          };
+        };
+        /** @description No device authorization is pending, or the connector changed */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Connector blocked by policy */
+        403: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such connector */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
     delete?: never;
     options?: never;
     head?: never;
@@ -9463,6 +9537,8 @@ export interface components {
       oauth: {
         scopes: string[];
         dynamicRegistration: boolean;
+        /** @description Shared GitHub device authorization is configured; no client secret needed */
+        deviceFlow?: boolean;
         clientSetupUrl: string | null;
       } | null;
       disabledByAdmin: boolean;
@@ -9629,7 +9705,30 @@ export interface components {
     OAuthStart: {
       /** Format: uri */
       authorizationUrl: string;
+      device?: {
+        userCode: string;
+        /** Format: uri */
+        verificationUrl: string;
+        /** Format: date-time */
+        expiresAt: string;
+        interval: number;
+      };
     };
+    OAuthDevicePoll:
+      | {
+          /** @enum {string} */
+          status: 'pending';
+          interval: number;
+        }
+      | {
+          /** @enum {string} */
+          status: 'connected';
+        }
+      | {
+          /** @enum {string} */
+          status: 'error';
+          message: string;
+        };
     ConnectorPolicy: {
       /** @description Blocked catalog entries */
       catalogIds: string[];

@@ -59,6 +59,7 @@ import { DomainError, notFound } from '../errors.js';
 import { assertBotOwner } from '../ownership.js';
 import { decryptSecretString, encryptSecret, keyringFromConfig } from '../secrets.js';
 import { isOrgAdmin, storedSettings, type Role } from '../workspace.js';
+import { beginGitHubDevice, pollGitHubDevice, type DevicePoll } from './github-device.js';
 import { computerStdioSpec } from './computer-stdio.js';
 import { MCP_CONTROL_CHANNEL, type McpControl } from './mcp-control.js';
 import { connectorWorkspace, currentWorkspace, inWorkspace, outsideScope } from '../db/scope.js';
@@ -212,6 +213,7 @@ export function scrub(text: string, secrets: SealedSecrets): string {
     secrets.oauth?.tokens?.access_token,
     secrets.oauth?.tokens?.refresh_token,
     secrets.oauth?.client?.client_secret,
+    secrets.oauth?.device?.deviceCode,
   ].filter((v): v is string => typeof v === 'string' && v.length >= 4);
   let out = text;
   for (const v of values.sort((a, b) => b.length - a.length)) out = out.split(v).join('***');
@@ -703,7 +705,10 @@ function toRecord(
     oauth:
       http?.auth === 'oauth'
         ? {
-            clientConfigured: Boolean(secrets.oauth?.client),
+            clientConfigured: Boolean(
+              secrets.oauth?.client ||
+              (isGitHubConnector(row) && deps.config.githubConnectorClientId),
+            ),
             connected: Boolean(tokens),
             expiresAt: tokens?.expires_at ? new Date(tokens.expires_at) : null,
           }
@@ -1673,12 +1678,26 @@ function authorizationParams(catalogId: string | null) {
   return params ? { authorizationParams: params } : {};
 }
 
+/** Never send GitHub tokens to a connector whose URL was changed. */
+function isGitHubConnector(row: ConnectorRow): boolean {
+  const transport = readConfig(row).transport;
+  return (
+    row.catalogId === 'github' &&
+    transport.transport === 'http' &&
+    transport.auth === 'oauth' &&
+    transport.url === 'https://api.githubcopilot.com/mcp/'
+  );
+}
+
 export async function startConnectorOAuth(
   deps: ConnectorsDeps,
   viewer: Viewer,
   id: string,
   mode: OAuthMode = 'redirect',
-): Promise<{ authorizationUrl: string }> {
+): Promise<{
+  authorizationUrl: string;
+  device?: { userCode: string; verificationUrl: string; expiresAt: string; interval: number };
+}> {
   const row = await connectorRow(deps.db, viewer, id);
   const config = readConfig(row).transport;
   if (config.transport !== 'http' || config.auth !== 'oauth') {
@@ -1687,6 +1706,33 @@ export async function startConnectorOAuth(
   const rules = await blockRules(deps.db, viewer.workspaceId);
   if (isBlocked(row, rules)) throw connectorBlocked();
   const secrets = openSecrets(deps, row);
+  const client = secrets.oauth?.client;
+  const deviceClientId =
+    isGitHubConnector(row) && !client?.client_secret
+      ? client?.client_id || deps.config.githubConnectorClientId
+      : undefined;
+  if (deviceClientId) {
+    let startedDevice;
+    try {
+      startedDevice = await beginGitHubDevice(
+        deviceClientId,
+        connectorFetch(deps, { local: false }),
+      );
+    } catch {
+      throw new DomainError(
+        502,
+        'OAUTH_FAILED',
+        'Could not start GitHub device authorization. Check that Device Flow is enabled on the OAuth App.',
+      );
+    }
+    secrets.oauth = { ...secrets.oauth, device: startedDevice.device };
+    delete secrets.oauth.pending;
+    await deps.db
+      .update(schema.connectors)
+      .set({ secrets: sealSecrets(deps, secrets) })
+      .where(eq(schema.connectors.id, id));
+    return { authorizationUrl: startedDevice.public.verificationUrl, device: startedDevice.public };
+  }
   let started;
   try {
     started = await startOAuth({
@@ -1706,6 +1752,7 @@ export async function startConnectorOAuth(
   secrets.oauth = {
     ...secrets.oauth,
     client: started.client,
+    device: undefined,
     pending: { ...started.pending, ownerId: viewer.id, mode },
   };
   await deps.db
@@ -1713,6 +1760,86 @@ export async function startConnectorOAuth(
     .set({ secrets: sealSecrets(deps, secrets) })
     .where(eq(schema.connectors.id, id));
   return { authorizationUrl: started.authorizationUrl };
+}
+
+/**
+ * Authenticated polling keeps the device code on the server. A compare-and-swap
+ * reserves each poll across API processes and prevents stale requests from
+ * overwriting a restarted flow, edited settings or a deleted connector.
+ */
+export async function pollConnectorDevice(
+  deps: ConnectorsDeps,
+  viewer: Viewer,
+  id: string,
+): Promise<DevicePoll> {
+  const row = await connectorRow(deps.db, viewer, id);
+  if (!isGitHubConnector(row))
+    throw invalid('NOT_DEVICE_OAUTH', 'This connector does not use GitHub device authorization.');
+  if (isBlocked(row, await blockRules(deps.db, viewer.workspaceId))) throw connectorBlocked();
+  const secrets = openSecrets(deps, row);
+  const device = secrets.oauth?.device;
+  if (!device) throw invalid('OAUTH_DEVICE_MISSING', 'Start GitHub authorization again.');
+  const pending = (): DevicePoll => ({ status: 'pending', interval: device.interval });
+  const save = async (previous: Buffer, values: Record<string, unknown> = {}) => {
+    const next = sealSecrets(deps, secrets)!;
+    const updated = await deps.db
+      .update(schema.connectors)
+      .set({ ...values, secrets: next })
+      .where(and(eq(schema.connectors.id, id), eq(schema.connectors.secrets, previous)))
+      .returning({ id: schema.connectors.id });
+    return updated.length ? next : null;
+  };
+  if (Date.now() >= device.expiresAt) {
+    delete secrets.oauth!.device;
+    await save(Buffer.from(row.secrets!));
+    return { status: 'error', message: 'The GitHub code expired. Connect again for a new code.' };
+  }
+  if (Date.now() < device.nextPollAt) return pending();
+  // Reserve enough time for this request as well as GitHub's polling interval.
+  device.nextPollAt = Date.now() + Math.max(device.interval * 1000, 20_000);
+  const reserved = await save(Buffer.from(row.secrets!));
+  if (!reserved) return pending();
+  let result;
+  try {
+    result = await pollGitHubDevice(device, connectorFetch(deps, { local: false }));
+  } catch {
+    // Leave the reservation in place after a network error. Do not echo provider
+    // responses or exceptions, which could contain the device code or token.
+    return pending();
+  }
+  if ('error' in result) {
+    if (result.error === 'authorization_pending' || result.error === 'slow_down') {
+      if (result.error === 'slow_down')
+        device.interval = Math.max(device.interval + 5, result.interval ?? 0);
+      device.nextPollAt = Date.now() + device.interval * 1000;
+      await save(reserved);
+      return pending();
+    }
+    delete secrets.oauth!.device;
+    await save(reserved);
+    return {
+      status: 'error',
+      message:
+        result.error === 'access_denied'
+          ? 'GitHub authorization was cancelled. Connect again to retry.'
+          : 'GitHub authorization ended. Connect again for a new code.',
+    };
+  }
+  secrets.oauth = {
+    ...secrets.oauth,
+    tokens: result.tokens,
+    authorizationServerUrl: 'https://github.com',
+  };
+  delete secrets.oauth.device;
+  const saved = await save(reserved, { status: 'untested', lastError: null });
+  if (!saved)
+    throw invalid(
+      'OAUTH_DEVICE_CHANGED',
+      'The connector changed during authorization. Connect again.',
+    );
+  await stopSessions(deps, [id]);
+  await publishConnectorUpdated(deps, row, { oauth: 'connected' });
+  return { status: 'connected' };
 }
 
 /** How a sign-in ended, for the callback page; never carries a token. */

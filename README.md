@@ -558,6 +558,11 @@ export OPENBOTS_MASTER_KEY=$(pnpm -s --filter @openbots/server keygen)
 pnpm dev
 ```
 
+The GitHub connector supports device authorization with a shared public OAuth App client ID.
+Set `OPENBOTS_GITHUB_CLIENT_ID` on the server, or bundle the public default when releasing.
+No client secret or public callback is needed. See [GitHub connector setup](docs/GITHUB_CONNECTOR.md)
+for creating the app, sharing it with self-hosters and permission tradeoffs.
+
 The catalog's Filesystem and Postgres connectors run servers the image installs from
 `docker/mcp-catalog/package-lock.json`. From source, install them once with
 `(cd docker/mcp-catalog && npm ci --omit=dev --ignore-scripts)` and

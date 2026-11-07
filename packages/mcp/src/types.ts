@@ -112,6 +112,14 @@ export interface SealedSecrets {
     /** The authorization server the tokens came from, for refresh. */
     authorizationServerUrl?: string;
     resource?: string;
+    /** GitHub device flow. Never returned to clients or included in logs. */
+    device?: {
+      clientId: string;
+      deviceCode: string;
+      expiresAt: number;
+      interval: number;
+      nextPollAt: number;
+    };
     /** An authorization in flight: state nonce and PKCE verifier. */
     pending?: {
       nonce: string;

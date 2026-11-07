@@ -59,7 +59,7 @@ export function CatalogCard({ entry, added }: { entry: CatalogEntry; added: bool
   const [clientMissing, setClientMissing] = useState(false);
   const managed = useManaged();
   const onAdded = useConnectorsAdded();
-  const { state, connect } = useOAuthConnect();
+  const { state, connect, reset } = useOAuthConnect();
   const create = useMutation({
     mutationFn: createConnector,
     onSuccess: async (connector) => {
@@ -72,7 +72,7 @@ export function CatalogCard({ entry, added }: { entry: CatalogEntry; added: bool
   // The owner's sign-in connector from this entry, if they have one: Connect reuses it.
   const existing = connectors.data?.items.find((c) => c.catalogId === entry.id && c.oauth);
   const connected = existing && signInAction(existing) === null;
-  const busy = create.isPending || state.phase === 'working';
+  const busy = create.isPending || state.phase === 'working' || state.phase === 'device';
   const askClient = clientMissing || (state.phase === 'idle' && needsClient(state.error));
 
   function signIn(body: CreateConnector, client?: OAuthClient) {
@@ -182,7 +182,7 @@ export function CatalogCard({ entry, added }: { entry: CatalogEntry; added: bool
           onSubmit={onSubmit}
         />
       )}
-      <ConnectStatus state={state} />
+      <ConnectStatus state={state} onCancel={reset} />
       <ErrorText error={create.error ?? (askClient ? null : idleError(state))} />
     </li>
   );
@@ -191,7 +191,34 @@ export function CatalogCard({ entry, added }: { entry: CatalogEntry; added: bool
 const idleError = (state: ConnectState) => (state.phase === 'idle' ? state.error : null);
 
 /** The line under a Connect button while the sign-in is open, or the link when nothing could open. */
-export function ConnectStatus({ state }: { state: ConnectState }) {
+export function ConnectStatus({ state, onCancel }: { state: ConnectState; onCancel?: () => void }) {
+  if (state.phase === 'device') {
+    return (
+      <div role="status" className="space-y-2 text-xs text-muted-foreground">
+        <p>Enter this code on GitHub to connect your repositories:</p>
+        <code className="block select-all text-lg font-semibold tracking-widest text-foreground">
+          {state.userCode}
+        </code>
+        <p>
+          <a
+            href={state.verificationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            Open GitHub authorization
+          </a>{' '}
+          and approve access. This code expires at {new Date(state.expiresAt).toLocaleTimeString()}.
+        </p>
+        <p>Waiting for GitHub approval…</p>
+        {onCancel && (
+          <button type="button" className="underline" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+    );
+  }
   const text = waitingText(state);
   if (state.phase === 'blocked') {
     return (
@@ -298,6 +325,7 @@ function AddForm({
       {kind === 'client' && (
         <OAuthAdvanced
           name={entry.name}
+          githubDevice={entry.id === 'github'}
           setupUrl={entry.oauth?.clientSetupUrl ?? null}
           callbackUrl={catalog.data?.oauthCallbackUrl ?? defaultCallbackUrl()}
           value={client}
@@ -328,6 +356,7 @@ function AddForm({
  */
 export function OAuthAdvanced({
   name,
+  githubDevice = false,
   setupUrl,
   callbackUrl,
   value,
@@ -337,6 +366,7 @@ export function OAuthAdvanced({
   configured,
 }: {
   name: string;
+  githubDevice?: boolean;
   setupUrl?: string | null;
   callbackUrl: string;
   value: { clientId: string; clientSecret: string };
@@ -352,7 +382,10 @@ export function OAuthAdvanced({
       <summary className="cursor-pointer select-none text-xs font-medium">Advanced</summary>
       <div className="flex flex-col gap-2 pt-2">
         <p className="text-xs text-muted-foreground">
-          {why ?? `${name} cannot register OpenBots by itself, so it needs your own OAuth app.`}
+          {githubDevice
+            ? 'To use your own GitHub OAuth App, enable Device Flow and enter only its public client ID. No secret or callback is needed for device authorization.'
+            : (why ??
+              `${name} cannot register OpenBots by itself, so it needs your own OAuth app.`)}
           {setupUrl && (
             <>
               {' '}
@@ -362,7 +395,7 @@ export function OAuthAdvanced({
             </>
           )}
         </p>
-        <CallbackUrl url={callbackUrl} />
+        {(!githubDevice || value.clientSecret) && <CallbackUrl url={callbackUrl} />}
         <Labelled label="OAuth client ID" note={configured ? 'set' : undefined}>
           <Input
             name="oauth:clientId"
@@ -371,7 +404,10 @@ export function OAuthAdvanced({
             placeholder={configured ? 'Enter a new client to replace it' : ''}
           />
         </Labelled>
-        <Labelled label="OAuth client secret" note="optional">
+        <Labelled
+          label="OAuth client secret"
+          note={githubDevice ? 'leave empty for device flow' : 'optional'}
+        >
           <Input
             type="password"
             autoComplete="new-password"

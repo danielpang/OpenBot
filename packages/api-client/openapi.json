@@ -3848,6 +3848,10 @@
               "dynamicRegistration": {
                 "type": "boolean"
               },
+              "deviceFlow": {
+                "type": "boolean",
+                "description": "Shared GitHub device authorization is configured; no client secret needed"
+              },
               "clientSetupUrl": {
                 "type": ["string", "null"]
               }
@@ -4318,9 +4322,71 @@
           "authorizationUrl": {
             "type": "string",
             "format": "uri"
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "userCode": {
+                "type": "string"
+              },
+              "verificationUrl": {
+                "type": "string",
+                "format": "uri"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "interval": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": ["userCode", "verificationUrl", "expiresAt", "interval"]
           }
         },
         "required": ["authorizationUrl"]
+      },
+      "OAuthDevicePoll": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["pending"]
+              },
+              "interval": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": ["status", "interval"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["connected"]
+              }
+            },
+            "required": ["status"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["error"]
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["status", "message"]
+          }
+        ]
       },
       "ConnectorPolicy": {
         "type": "object",
@@ -11218,7 +11284,7 @@
       "get": {
         "tags": ["connectors"],
         "summary": "Begin an OAuth 2.1 sign-in (PKCE, dynamic registration when offered)",
-        "description": "Answers with the authorization URL to open. After consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOTS_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).",
+        "description": "Answers with the authorization URL to open. GitHub device flow also returns a user code to display and polling instructions; poll the authenticated device endpoint until complete. Device flow does not use a callback. Otherwise, after consent the provider redirects to `GET /api/v1/connectors/oauth/callback` on `OPENBOTS_PUBLIC_URL`. `mode` says where the URL is opened: `popup` (a window of the web app; the callback page tells its opener and closes), `external` (the default browser, from the Mac app; the callback page links back to the app) or `redirect` (this tab; the callback redirects to the Connectors page, the default).",
         "security": [
           {
             "session": []
@@ -11300,6 +11366,83 @@
           },
           "502": {
             "description": "The authorization server failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/connectors/{id}/oauth/device": {
+      "post": {
+        "tags": ["connectors"],
+        "summary": "Poll GitHub device authorization without exposing its device code or token",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorization status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthDevicePoll"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No device authorization is pending, or the connector changed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Connector blocked by policy",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such connector",
             "content": {
               "application/problem+json": {
                 "schema": {

@@ -141,6 +141,7 @@ const envSchema = z.object({
   XAI_API_KEY: optional(z.string()),
   GOOGLE_GENERATIVE_AI_API_KEY: optional(z.string()),
   OLLAMA_BASE_URL: optional(z.url()),
+  OPENBOTS_GITHUB_CLIENT_ID: optional(z.string()),
   GITHUB_CLIENT_ID: optional(z.string()),
   GITHUB_CLIENT_SECRET: optional(z.string()),
   GOOGLE_CLIENT_ID: optional(z.string()),
@@ -284,6 +285,8 @@ export interface Config {
     google?: string;
     ollamaBaseUrl?: string;
   };
+  /** Public OAuth App client ID for the GitHub connector's device flow. */
+  githubConnectorClientId?: string;
   /** Sign-in providers (U1), each enabled only when both its id and secret are set. */
   oauth: {
     github?: OAuthClient;
@@ -296,6 +299,9 @@ export interface Config {
    */
   processLimits: ProcessLimits;
 }
+
+/** Set this public ID after creating the shared OAuth App. Never put a secret here. */
+export const DEFAULT_GITHUB_CONNECTOR_CLIENT_ID = '';
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const secrets = resolveSecretFiles(env);
@@ -394,6 +400,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       google: e.GOOGLE_GENERATIVE_AI_API_KEY,
       ollamaBaseUrl: e.OLLAMA_BASE_URL,
     },
+    githubConnectorClientId:
+      e.OPENBOTS_GITHUB_CLIENT_ID || DEFAULT_GITHUB_CONNECTOR_CLIENT_ID || undefined,
     oauth: {
       github: oauthClient(e.GITHUB_CLIENT_ID, e.GITHUB_CLIENT_SECRET),
       google: oauthClient(e.GOOGLE_CLIENT_ID, e.GOOGLE_CLIENT_SECRET),

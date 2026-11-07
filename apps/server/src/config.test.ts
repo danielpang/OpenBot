@@ -212,6 +212,12 @@ describe('loadConfig', () => {
     });
   });
 
+  it('configures the GitHub connector with only a public client ID, independently of sign-in', () => {
+    const config = loadConfig({ ...base, OPENBOTS_GITHUB_CLIENT_ID: 'shared-public-id' });
+    expect(config.githubConnectorClientId).toBe('shared-public-id');
+    expect(config.oauth.github).toBeUndefined();
+  });
+
   it('enables an OAuth provider only when both its id and secret are set', () => {
     const config = loadConfig({
       ...base,

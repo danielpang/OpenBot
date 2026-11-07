@@ -107,7 +107,7 @@ export function ConnectorCard({
           {action && (
             <Button
               size="sm"
-              disabled={signIn.phase === 'working'}
+              disabled={signIn.phase === 'working' || signIn.phase === 'device'}
               onClick={() => {
                 setPanel(null);
                 connect(async () => connector);
@@ -139,7 +139,7 @@ export function ConnectorCard({
       {admin && !blocked && connector.kind === 'mcp_http' && (
         <LocalNetworkSetting connector={connector} />
       )}
-      <ConnectStatus state={signIn} />
+      <ConnectStatus state={signIn} onCancel={reset} />
       <ErrorText
         error={
           test.error ??
@@ -295,6 +295,7 @@ export function ConnectorSettings({
       {connector.oauth && entry?.oauth?.dynamicRegistration !== true && (
         <OAuthAdvanced
           name={connector.name}
+          githubDevice={connector.catalogId === 'github'}
           setupUrl={entry?.oauth?.clientSetupUrl}
           callbackUrl={catalog.data?.oauthCallbackUrl ?? defaultCallbackUrl()}
           value={client}
