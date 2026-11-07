@@ -7,7 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RealtimeContext, type Realtime } from '../transcript/realtime.js';
 import type { CatalogEntry, Connector } from './api.js';
-import { CatalogCard } from './catalog.js';
+import { Catalog, CatalogCard } from './catalog.js';
 import { ConnectorCard } from './connector-card.js';
 import { CustomServerForm } from './custom-server.js';
 import { OAUTH_MESSAGE_TYPE } from './oauth.js';
@@ -460,6 +460,61 @@ describe('the Advanced OAuth client', () => {
     await until(() => Boolean(host.querySelector('details[open]')), 'Advanced');
     expect(host.textContent).toContain('This server cannot register OpenBots by itself.');
     expect(popup.close).toHaveBeenCalled();
+  });
+});
+
+describe('one GitHub connection entry in settings', () => {
+  it('omits both legacy GitHub choices from the catalog without removing other connectors', async () => {
+    server.catalog = [
+      entry(),
+      entry({ id: 'github', name: 'GitHub' }),
+      entry({ id: 'github_builtin', name: 'GitHub (built-in)', kind: 'builtin', oauth: null }),
+    ];
+    render(<Catalog />);
+    await until(() => !!host.querySelector('[data-catalog="vercel"]'), 'catalog');
+    expect(host.querySelector('[data-catalog="github"]')).toBeNull();
+    expect(host.querySelector('[data-catalog="github_builtin"]')).toBeNull();
+    expect(server.requests.every((request) => request.method === 'GET')).toBe(true);
+  });
+
+  it('shows the coding-agent entry and preserves existing tool connections in a collapsed legacy section', async () => {
+    server.connectors = [
+      connector(),
+      connector({ id: 'github-mcp', catalogId: 'github', name: 'GitHub MCP' }),
+      connector({
+        id: 'github-old',
+        catalogId: 'github_builtin',
+        name: 'GitHub (built-in)',
+        kind: 'builtin',
+        oauth: null,
+      }),
+    ];
+    render(<ToolsPage search={{}} />);
+    await until(
+      () => !!host.querySelector('[data-legacy-github] [data-connector="github-old"]'),
+      'legacy connections',
+    );
+    expect(host.querySelector('#github-repos-title')?.textContent?.trim()).toBe(
+      'GitHub for coding agents',
+    );
+    const legacy = host.querySelector<HTMLDetailsElement>('[data-legacy-github]')!;
+    expect(legacy.open).toBe(false);
+    expect(legacy.querySelectorAll('[data-connector]')).toHaveLength(2);
+    expect(
+      host
+        .querySelector('#connectors-title')!
+        .closest('section')!
+        .querySelectorAll('[data-connector]'),
+    ).toHaveLength(1);
+    expect(server.requests.some((request) => request.method === 'DELETE')).toBe(false);
+  });
+
+  it('opens the legacy section for a direct link so old Bot sign-in notices still work', async () => {
+    server.connectors = [connector({ catalogId: 'github', name: 'GitHub MCP' })];
+    render(<ToolsPage search={{ connector: ID }} />);
+    await until(() => !!host.querySelector('[data-legacy-github]'), 'legacy connection');
+    expect(host.querySelector<HTMLDetailsElement>('[data-legacy-github]')!.open).toBe(true);
+    expect(host.querySelector(`[data-connector="${ID}"]`)?.className).toContain('ring-2');
   });
 });
 

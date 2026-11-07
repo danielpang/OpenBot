@@ -40,6 +40,10 @@ export function signInAction(connector: Connector): 'Connect' | 'Reconnect' | nu
   return connector.status === 'needs_auth' ? 'Reconnect' : null;
 }
 
+/** Kept on the server for existing Bot integrations, not offered as new GitHub connections. */
+export const isLegacyGitHubTool = (catalogId: string | null | undefined) =>
+  catalogId === 'github' || catalogId === 'github_builtin';
+
 /** Whether a catalog entry needs the owner's own OAuth client (GitHub, Slack, Google). */
 export const needsOAuthClient = (entry: Pick<CatalogEntry, 'oauth'>) =>
   !!entry.oauth && !entry.oauth.dynamicRegistration && !entry.oauth.deviceFlow;

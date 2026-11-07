@@ -1,8 +1,11 @@
 # GitHub repositories for coding agents
 
-Use **Connectors → GitHub → Repositories for coding agents → Connect GitHub**.
-The GitHub MCP connector is separate: connecting it does not connect coding-agent git access.
-Neither flow changes OpenBots account sign-in.
+Use **Connectors → GitHub for coding agents → Connect GitHub**, the only normal GitHub
+connection entry in settings. The MCP and built-in alternatives are omitted from the add-connector
+catalog. Existing tool connections are preserved under **Existing GitHub tool connections**
+(collapsed unless directly linked), including their settings and disconnect controls, so existing
+Bots keep working. They do not populate coding-agent git access. No credentials are silently
+deleted or converted, and OpenBots account sign-in is unchanged.
 
 ## Mac and self-hosted setup
 

@@ -136,7 +136,7 @@ export function GithubCard({
         <ConnectorIcon icon="github" name="GitHub" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h2 id="github-repos-title" className="font-medium">
-            Repositories for coding agents
+            GitHub for coding agents
           </h2>
           <p className="text-xs text-muted-foreground">
             Connect GitHub so coding agents can clone your repositories, push branches and open pull

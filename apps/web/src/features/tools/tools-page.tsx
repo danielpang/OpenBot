@@ -10,7 +10,7 @@ import { ConnectorCard } from './connector-card.js';
 import { CustomServerForm, ImportForm } from './custom-server.js';
 import { ErrorText } from './fields.js';
 import { GithubCard } from './github-card.js';
-import { stdioAvailability } from './forms.js';
+import { isLegacyGitHubTool, stdioAvailability } from './forms.js';
 import { useTestConnector } from './hooks.js';
 import { useRealtime } from '../transcript/realtime.js';
 
@@ -86,6 +86,8 @@ export function ToolsPage({
   }, [target, items]);
 
   const entries = new Map(catalog.data?.items.map((e) => [e.id, e]));
+  const toolConnectors = items?.filter((connector) => !isLegacyGitHubTool(connector.catalogId));
+  const legacyGitHub = items?.filter((connector) => isLegacyGitHubTool(connector.catalogId));
   return (
     <>
       {notice && (
@@ -108,11 +110,11 @@ export function ToolsPage({
           Your Bots can use these; narrow them in each Bot&apos;s Settings.
         </p>
         <ErrorText error={connectors.error} />
-        {items && !items.length && (
+        {toolConnectors && !toolConnectors.length && (
           <p className="text-sm text-muted-foreground">No connectors yet.</p>
         )}
         <ul className="flex flex-col gap-3">
-          {items?.map((connector) => (
+          {toolConnectors?.map((connector) => (
             <ConnectorCard
               key={connector.id}
               connector={connector}
@@ -131,6 +133,33 @@ export function ToolsPage({
         }}
         onArrivalHandled={onSearchHandled}
       />
+      {!!legacyGitHub?.length && (
+        <details
+          className="rounded-lg border p-3"
+          data-legacy-github
+          open={legacyGitHub.some((connector) => connector.id === target) || undefined}
+        >
+          <summary className="cursor-pointer select-none text-sm font-medium">
+            Existing GitHub tool connections
+          </summary>
+          <p className="py-3 text-xs text-muted-foreground">
+            These older MCP and built-in connections are kept for Bots already using them. For
+            repository access, use GitHub for coding agents above. Removing one here does not
+            disconnect coding-agent repositories.
+          </p>
+          <ul className="flex flex-col gap-3">
+            {legacyGitHub.map((connector) => (
+              <ConnectorCard
+                key={connector.id}
+                connector={connector}
+                entry={connector.catalogId ? entries.get(connector.catalogId) : undefined}
+                highlighted={connector.id === target}
+                admin={isAdmin}
+              />
+            ))}
+          </ul>
+        </details>
+      )}
       <Catalog />
       <Fold title="Add custom MCP server">
         <CustomServerForm key={stdio} stdio={stdio} />

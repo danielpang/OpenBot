@@ -15,6 +15,7 @@ import { ErrorText, Labelled, SecretInputs } from './fields.js';
 import {
   ALWAYS_ON,
   connectKind,
+  isLegacyGitHubTool,
   needsForm,
   oauthClientBody,
   paramValues,
@@ -43,9 +44,11 @@ export function Catalog() {
       </h2>
       <ErrorText error={catalog.error} />
       <ul className="grid gap-3 sm:grid-cols-2">
-        {catalog.data?.items.map((entry) => (
-          <CatalogCard key={entry.id} entry={entry} added={added.has(entry.id)} />
-        ))}
+        {catalog.data?.items
+          .filter((entry) => !isLegacyGitHubTool(entry.id))
+          .map((entry) => (
+            <CatalogCard key={entry.id} entry={entry} added={added.has(entry.id)} />
+          ))}
       </ul>
     </section>
   );
