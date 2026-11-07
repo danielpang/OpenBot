@@ -46,6 +46,25 @@ export function Transcript({
   const messages = useMessages(chatId, threadRootId);
   const list = useRef<FlashListRef<Message>>(null);
   const jumped = useRef<string | undefined>(undefined);
+  // FlashList paints from the top and only then scrolls to its initial index once
+  // the bottom rows are measured. Keep a reopened conversation hidden until it has
+  // settled on the latest (or linked) message, so it appears in place instead of
+  // visibly scrolling down. Keyed per conversation so switching chats re-hides it.
+  const conversation = `${chatId}:${threadRootId ?? ''}`;
+  const [revealedConversation, setRevealedConversation] = useState<string>();
+  const revealed = revealedConversation === conversation;
+  const reveal = useCallback(() => {
+    // Wait two frames for FlashList's own deferred offset corrections to land.
+    requestAnimationFrame(() => requestAnimationFrame(() => setRevealedConversation(conversation)));
+  }, [conversation]);
+  const hasTarget = Boolean(targetMessageId || targetSeq);
+  const hidden = !revealed && messages.messages.length > 0;
+  useEffect(() => {
+    if (!hidden) return;
+    // Never leave the transcript blank if the list fails to report its first layout.
+    const fallback = setTimeout(() => setRevealedConversation(conversation), 1000);
+    return () => clearTimeout(fallback);
+  }, [hidden, conversation]);
   const api = useApi();
   const refresh = useCallback(() => {
     void messages.refetch();
@@ -84,9 +103,11 @@ export function Transcript({
       requestAnimationFrame(() => {
         list.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false });
         jumped.current = target;
+        reveal();
       });
-    }
+    } else if (index < 0) reveal();
   }, [
+    reveal,
     targetMessageId,
     targetSeq,
     messages.messages,
@@ -101,7 +122,10 @@ export function Transcript({
     >
       <View style={{ flex: 1 }}>
         <FlashList
+          key={conversation}
           ref={list}
+          testID="chat-transcript-list"
+          style={{ opacity: hidden ? 0 : 1 }}
           data={messages.messages}
           keyExtractor={(message) => message.id}
           getItemType={(message) => message.authorType}
@@ -139,8 +163,15 @@ export function Transcript({
             startRenderingFromBottom: true,
             autoscrollToBottomThreshold: 0.2,
           }}
+          onLoad={() => {
+            if (hasTarget) return;
+            // Land on the true end, below a tall last message and the composer padding.
+            list.current?.scrollToEnd({ animated: false });
+            reveal();
+          }}
           onStartReached={() => {
-            if (messages.hasMore) void messages.loadMore();
+            // The hidden list briefly sits at the top; don't page in history for that.
+            if (messages.hasMore && !hidden) void messages.loadMore();
           }}
           onStartReachedThreshold={0.5}
           ListHeaderComponent={
@@ -168,7 +199,7 @@ export function Transcript({
             ) : null
           }
         />
-        {awayFromBottom ? (
+        {awayFromBottom && !hidden ? (
           <View
             testID="chat-jump-control"
             style={{ position: 'absolute', right: 20, bottom: composerHeight + 8 }}
