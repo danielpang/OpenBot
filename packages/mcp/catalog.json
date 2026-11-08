@@ -314,7 +314,7 @@
     {
       "id": "web_search",
       "name": "Web search",
-      "description": "Search the web with Brave Search or Tavily.",
+      "description": "Search the web and the news with Brave Search, Tavily or Exa.",
       "kind": "builtin",
       "icon": "search",
       "version": null,
@@ -330,6 +330,12 @@
           "name": "TAVILY_API_KEY",
           "label": "Tavily API key",
           "description": "From app.tavily.com. Used when no Brave key is set.",
+          "required": false
+        },
+        {
+          "name": "EXA_API_KEY",
+          "label": "Exa API key",
+          "description": "From dashboard.exa.ai. Used when no Brave or Tavily key is set.",
           "required": false
         }
       ]

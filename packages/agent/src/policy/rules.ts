@@ -86,6 +86,7 @@ const NAMED_RULES: Record<string, (args: Record<string, unknown>) => DefaultRule
   browser_press: () => onScreen('browser_press'),
   computer: () => onScreen('computer'),
   web_search: () => read('web_search only reads'),
+  news_search: () => read('news_search only reads'),
   web_fetch: (args) => ({ ...read('web_fetch only reads'), fetchHost: hostOf(args.url) }),
   // Starting a session runs; what the agent does inside it is judged action
   // by action (`coderActionDecision`), and pushes and pull requests ask (I7, I9).
