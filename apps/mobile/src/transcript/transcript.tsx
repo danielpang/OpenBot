@@ -16,21 +16,29 @@ import { MessagePartView } from './parts';
 import type { Message } from './model';
 import type { Bot } from '../screens/data';
 
-export function Transcript({
-  chatId,
-  bots,
-  title,
-  threadRootId,
-  targetMessageId,
-  targetSeq,
-}: {
+type TranscriptProps = {
   chatId: string;
   bots: Bot[];
   title: string;
   threadRootId?: string;
   targetMessageId?: string;
   targetSeq?: number;
-}) {
+};
+
+// Remount per conversation so its scroll position, reveal and jump state, unsent
+// draft and loaded messages never carry over when a screen switches chats in place.
+export function Transcript(props: TranscriptProps) {
+  return <ConversationTranscript key={`${props.chatId}:${props.threadRootId ?? ''}`} {...props} />;
+}
+
+function ConversationTranscript({
+  chatId,
+  bots,
+  title,
+  threadRootId,
+  targetMessageId,
+  targetSeq,
+}: TranscriptProps) {
   const c = useTheme();
   const safe = useSafeAreaInsets();
   const keyboard = useAnimatedKeyboard();
@@ -49,22 +57,46 @@ export function Transcript({
   // FlashList paints from the top and only then scrolls to its initial index once
   // the bottom rows are measured. Keep a reopened conversation hidden until it has
   // settled on the latest (or linked) message, so it appears in place instead of
-  // visibly scrolling down. Keyed per conversation so switching chats re-hides it.
-  const conversation = `${chatId}:${threadRootId ?? ''}`;
-  const [revealedConversation, setRevealedConversation] = useState<string>();
-  const revealed = revealedConversation === conversation;
+  // visibly scrolling down.
+  const [revealed, setRevealed] = useState(false);
+  const revealFrame = useRef<number | undefined>(undefined);
   const reveal = useCallback(() => {
+    if (revealFrame.current !== undefined) return;
     // Wait two frames for FlashList's own deferred offset corrections to land.
-    requestAnimationFrame(() => requestAnimationFrame(() => setRevealedConversation(conversation)));
-  }, [conversation]);
+    revealFrame.current = requestAnimationFrame(() => {
+      revealFrame.current = requestAnimationFrame(() => setRevealed(true));
+    });
+  }, []);
+  useEffect(
+    () => () => {
+      if (revealFrame.current !== undefined) cancelAnimationFrame(revealFrame.current);
+    },
+    [],
+  );
   const hasTarget = Boolean(targetMessageId || targetSeq);
   const hidden = !revealed && messages.messages.length > 0;
+  // A conversation first shown empty is already settled; its first message must not blink.
+  if (!revealed && !messages.loading && messages.messages.length === 0) setRevealed(true);
   useEffect(() => {
     if (!hidden) return;
     // Never leave the transcript blank if the list fails to report its first layout.
-    const fallback = setTimeout(() => setRevealedConversation(conversation), 1000);
+    const fallback = setTimeout(() => setRevealed(true), 1000);
     return () => clearTimeout(fallback);
-  }, [hidden, conversation]);
+  }, [hidden]);
+  // FlashList won't repeat onStartReached while the list stays in the start zone, so
+  // page in history skipped while hidden once it is shown, if it settled near the top
+  // (a short conversation, or a link to an early message).
+  const nearStart = () => {
+    const current = list.current;
+    if (!current) return false;
+    return current.getAbsoluteLastScrollOffset() < current.getWindowSize().height * 0.5;
+  };
+  const pagedOnReveal = useRef(false);
+  useEffect(() => {
+    if (!revealed || pagedOnReveal.current) return;
+    pagedOnReveal.current = true;
+    if (messages.hasMore && nearStart()) void messages.loadMore();
+  });
   const api = useApi();
   const refresh = useCallback(() => {
     void messages.refetch();
@@ -93,7 +125,7 @@ export function Transcript({
     }
   }
   useEffect(() => {
-    if ((!targetMessageId && !targetSeq) || messages.loading) return;
+    if (!hasTarget || messages.loading) return;
     const target = targetMessageId ?? String(targetSeq);
     const index = messages.messages.findIndex((message) =>
       targetMessageId ? message.id === targetMessageId : message.seq === targetSeq,
@@ -105,8 +137,10 @@ export function Transcript({
         jumped.current = target;
         reveal();
       });
-    } else if (index < 0) reveal();
+    } else if (index < 0 && !revealed) reveal();
   }, [
+    hasTarget,
+    revealed,
     reveal,
     targetMessageId,
     targetSeq,
@@ -121,84 +155,90 @@ export function Transcript({
       style={[{ flex: 1, backgroundColor: c.background }, keyboardInsets]}
     >
       <View style={{ flex: 1 }}>
-        <FlashList
-          key={conversation}
-          ref={list}
-          testID="chat-transcript-list"
-          style={{ opacity: hidden ? 0 : 1 }}
-          data={messages.messages}
-          keyExtractor={(message) => message.id}
-          getItemType={(message) => message.authorType}
-          renderItem={({ item }) => (
-            <MessageRow
-              message={item}
-              bots={bots}
-              highlighted={targetMessageId === item.id || targetSeq === item.seq}
-              onUpdated={refresh}
-              onReaction={(emoji) => void react(item, emoji)}
-              onThread={
-                !threadRootId
-                  ? () =>
-                      router.push({
-                        pathname: '/chat/[id]',
-                        params: { id: chatId, thread: item.id, title: `Thread · ${title}` },
-                      })
-                  : undefined
-              }
-            />
-          )}
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={{ paddingTop: 12, paddingBottom: composerHeight + 8 }}
-          scrollIndicatorInsets={{ bottom: composerHeight }}
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-          keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={false}
-          scrollEventThrottle={32}
-          onScroll={({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
-            setAwayFromBottom(
-              contentSize.height - layoutMeasurement.height - contentOffset.y > 180,
-            );
-          }}
-          maintainVisibleContentPosition={{
-            startRenderingFromBottom: true,
-            autoscrollToBottomThreshold: 0.2,
-          }}
-          onLoad={() => {
-            if (hasTarget) return;
-            // Land on the true end, below a tall last message and the composer padding.
-            list.current?.scrollToEnd({ animated: false });
-            reveal();
-          }}
-          onStartReached={() => {
-            // The hidden list briefly sits at the top; don't page in history for that.
-            if (messages.hasMore && !hidden) void messages.loadMore();
-          }}
-          onStartReachedThreshold={0.5}
-          ListHeaderComponent={
-            <View>
-              {messages.loading ? <ActivityIndicator style={{ marginTop: 40 }} /> : null}
-              {messages.hasMore ? (
-                <Button
-                  title="Earlier messages"
-                  variant="ghost"
-                  onPress={() => void messages.loadMore()}
-                />
-              ) : null}
-            </View>
-          }
-          ListEmptyComponent={
-            !messages.loading ? (
-              <Empty
-                title={threadRootId ? 'Start a thread' : 'Say hello'}
-                detail={
-                  threadRootId
-                    ? 'Keep this conversation together with a reply.'
-                    : `Send ${title} a message to get started.`
+        <View
+          testID="chat-transcript"
+          style={{ flex: 1, opacity: hidden ? 0 : 1 }}
+          // While hidden, rows must not take taps or VoiceOver focus.
+          pointerEvents={hidden ? 'none' : 'auto'}
+          accessibilityElementsHidden={hidden}
+          importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
+        >
+          <FlashList
+            ref={list}
+            data={messages.messages}
+            keyExtractor={(message) => message.id}
+            getItemType={(message) => message.authorType}
+            renderItem={({ item }) => (
+              <MessageRow
+                message={item}
+                bots={bots}
+                highlighted={targetMessageId === item.id || targetSeq === item.seq}
+                onUpdated={refresh}
+                onReaction={(emoji) => void react(item, emoji)}
+                onThread={
+                  !threadRootId
+                    ? () =>
+                        router.push({
+                          pathname: '/chat/[id]',
+                          params: { id: chatId, thread: item.id, title: `Thread · ${title}` },
+                        })
+                    : undefined
                 }
               />
-            ) : null
-          }
-        />
+            )}
+            contentInsetAdjustmentBehavior="automatic"
+            contentContainerStyle={{ paddingTop: 12, paddingBottom: composerHeight + 8 }}
+            scrollIndicatorInsets={{ bottom: composerHeight }}
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets={false}
+            scrollEventThrottle={32}
+            onScroll={({ nativeEvent: { contentOffset, contentSize, layoutMeasurement } }) => {
+              setAwayFromBottom(
+                contentSize.height - layoutMeasurement.height - contentOffset.y > 180,
+              );
+            }}
+            maintainVisibleContentPosition={{
+              startRenderingFromBottom: true,
+              autoscrollToBottomThreshold: 0.2,
+            }}
+            onLoad={() => {
+              if (hasTarget) return;
+              // Land on the true end, below a tall last message and the composer padding.
+              list.current?.scrollToEnd({ animated: false });
+              reveal();
+            }}
+            onStartReached={() => {
+              // The hidden list briefly sits at the top; don't page in history for that.
+              if (messages.hasMore && !hidden) void messages.loadMore();
+            }}
+            onStartReachedThreshold={0.5}
+            ListHeaderComponent={
+              <View>
+                {messages.loading ? <ActivityIndicator style={{ marginTop: 40 }} /> : null}
+                {messages.hasMore ? (
+                  <Button
+                    title="Earlier messages"
+                    variant="ghost"
+                    onPress={() => void messages.loadMore()}
+                  />
+                ) : null}
+              </View>
+            }
+            ListEmptyComponent={
+              !messages.loading ? (
+                <Empty
+                  title={threadRootId ? 'Start a thread' : 'Say hello'}
+                  detail={
+                    threadRootId
+                      ? 'Keep this conversation together with a reply.'
+                      : `Send ${title} a message to get started.`
+                  }
+                />
+              ) : null
+            }
+          />
+        </View>
         {awayFromBottom && !hidden ? (
           <View
             testID="chat-jump-control"
