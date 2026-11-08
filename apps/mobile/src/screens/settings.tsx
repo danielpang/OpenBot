@@ -211,8 +211,9 @@ export function SettingsScreen() {
           </Label>
         </Card>
         <Label size={13} muted>
-          Models, Skills, Connectors, computer control and organization administration are available
-          on your computer.
+          Model provider setup, Skills, Connectors, computer control and organization
+          administration are available on your computer. Change a Bot’s model in Bot details →
+          About.
         </Label>
       </Section>
     </Page>

@@ -2,13 +2,22 @@
 import type { WsClient } from '@openbots/api-client';
 import type { CodingSessionEntry, CoderTranscriptEvent, WsEvent } from '@openbots/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, type ReactNode } from 'react';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from '@tanstack/react-router';
+import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RightPanelProvider, useRightPanel } from '../../../app/right-panel.js';
 import { RealtimeContext, type Realtime } from '../../transcript/realtime.js';
 import type { CodingSession, PendingApproval } from '../api.js';
-import { CodingSessionsButton } from './drawer.js';
+import { Route as CodingRoute } from '../../../routes/_app/coding.js';
+import { CodingSessionsButton, CodingSessionsLink } from './drawer.js';
 import { upsertSession } from './live.js';
 import { matchApprovals, transcriptItems } from './transcript.js';
 import { mergeEntries, unbrokenSeq } from './use-session-transcript.js';
@@ -51,27 +60,6 @@ const server = vi.hoisted(() => {
   };
   return state;
 });
-
-vi.mock('@tanstack/react-router', () => ({
-  Link: ({
-    to,
-    params,
-    children,
-    className,
-  }: {
-    to: string;
-    params?: Record<string, string>;
-    children: ReactNode;
-    className?: string;
-  }) => (
-    <a
-      className={className}
-      href={Object.entries(params ?? {}).reduce((href, [k, v]) => href.replace(`$${k}`, v), to)}
-    >
-      {children}
-    </a>
-  ),
-}));
 
 // xterm: a fake terminal, as the computer tests use.
 vi.mock('@xterm/xterm', () => ({
@@ -329,6 +317,66 @@ function type(el: HTMLTextAreaElement, value: string) {
 }
 
 describe('the coding sessions drawer (CA15)', () => {
+  it('navigates away from bot conversations to a dedicated coding sessions page', async () => {
+    sessions = [session({ id: LIVE, status: 'running', title: 'Fix the login form' })];
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    fake = fakeRealtime();
+    const rootRoute = createRootRoute({
+      component: () => (
+        <RightPanelProvider>
+          <CodingSessionsLink />
+          <main>
+            <Outlet />
+          </main>
+          <Slot />
+        </RightPanelProvider>
+      ),
+    });
+    const botRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/bot',
+      component: () => (
+        <>
+          <p>Bot conversation</p>
+          <CodingSessionsButton botId={BOT} />
+        </>
+      ),
+    });
+    const codingRoute = createRoute({
+      getParentRoute: () => rootRoute,
+      path: '/coding',
+      component: CodingRoute.options.component,
+    });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([botRoute, codingRoute]),
+      history: createMemoryHistory({ initialEntries: ['/bot'] }),
+    });
+    host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root!.render(
+        <QueryClientProvider client={client}>
+          <RealtimeContext value={fake.realtime}>
+            <RouterProvider router={router} />
+          </RealtimeContext>
+        </QueryClientProvider>,
+      );
+    });
+    await until(() => host.textContent!.includes('Bot conversation'), 'bot conversation');
+    act(() => toggle().click());
+    await until(() => !!drawer(), 'bot coding panel');
+    act(() => host.querySelector<HTMLAnchorElement>('a[href="/coding"]')!.click());
+    await until(() => !!host.querySelector('main [data-session-row]'), 'coding page');
+    expect(host.textContent).not.toContain('Bot conversation');
+    expect(drawer()).toBeNull();
+    expect(host.querySelector('main h2')?.textContent).toBe('Coding sessions');
+    expect(host.querySelector('button[aria-label="Close Coding sessions"]')).toBeNull();
+    expect(host.querySelector('[data-live-count]')?.textContent).toBe('1');
+    act(() => host.querySelector<HTMLButtonElement>(`[data-session-row="${LIVE}"]`)!.click());
+    await until(() => !!host.querySelector(`main [data-session="${LIVE}"]`), 'session on page');
+    expect(host.textContent).not.toContain('Bot conversation');
+  });
   it('filters the bot entry to sessions triggered by that bot', async () => {
     sessions = [session({ id: LIVE, botId: BOT }), session({ id: DONE, botId: 'other-bot' })];
     render(BOT);

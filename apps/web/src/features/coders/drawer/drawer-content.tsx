@@ -15,7 +15,7 @@ import { SessionView, STATUS_DOT, titleOf, whereOf } from './session-view.js';
 // with the ones still live first, and a session in place as a conversation
 // with its agent.
 
-export function CodingSessionsDrawer({ onClose, botId }: { onClose(): void; botId?: string }) {
+export function CodingSessionsDrawer({ onClose, botId }: { onClose?(): void; botId?: string }) {
   const sessions = useQuery(codingSessionsQuery);
   const bots = useQuery(botsQuery);
   const [openId, setOpenId] = useState<string | null>(null);

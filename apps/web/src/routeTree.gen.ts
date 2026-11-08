@@ -15,6 +15,7 @@ import { Route as SetupRouteImport } from './routes/setup';
 import { Route as SignInRouteImport } from './routes/sign-in';
 import { Route as SignUpRouteImport } from './routes/sign-up';
 import { Route as AppIndexRouteImport } from './routes/_app/index';
+import { Route as AppCodingRouteImport } from './routes/_app/coding';
 import { Route as AppComputerRouteImport } from './routes/_app/computer';
 import { Route as AppConnectorsRouteImport } from './routes/_app/connectors';
 import { Route as AppSettingsRouteImport } from './routes/_app/settings';
@@ -64,6 +65,11 @@ const SignUpRoute = SignUpRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any);
+const AppCodingRoute = AppCodingRouteImport.update({
+  id: '/coding',
+  path: '/coding',
   getParentRoute: () => AppRoute,
 } as any);
 const AppComputerRoute = AppComputerRouteImport.update({
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/setup': typeof SetupRoute;
   '/sign-in': typeof SignInRoute;
   '/sign-up': typeof SignUpRoute;
+  '/coding': typeof AppCodingRoute;
   '/computer': typeof AppComputerRoute;
   '/connectors': typeof AppConnectorsRoute;
   '/settings': typeof AppSettingsRouteWithChildren;
@@ -205,6 +212,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute;
   '/sign-in': typeof SignInRoute;
   '/sign-up': typeof SignUpRoute;
+  '/coding': typeof AppCodingRoute;
   '/computer': typeof AppComputerRoute;
   '/connectors': typeof AppConnectorsRoute;
   '/skills': typeof AppSkillsRoute;
@@ -233,6 +241,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute;
   '/sign-in': typeof SignInRoute;
   '/sign-up': typeof SignUpRoute;
+  '/_app/coding': typeof AppCodingRoute;
   '/_app/computer': typeof AppComputerRoute;
   '/_app/connectors': typeof AppConnectorsRoute;
   '/_app/settings': typeof AppSettingsRouteWithChildren;
@@ -264,6 +273,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/sign-up'
+    | '/coding'
     | '/computer'
     | '/connectors'
     | '/settings'
@@ -291,6 +301,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/sign-up'
+    | '/coding'
     | '/computer'
     | '/connectors'
     | '/skills'
@@ -318,6 +329,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/sign-in'
     | '/sign-up'
+    | '/_app/coding'
     | '/_app/computer'
     | '/_app/connectors'
     | '/_app/settings'
@@ -392,6 +404,13 @@ declare module '@tanstack/react-router' {
       path: '/';
       fullPath: '/';
       preLoaderRoute: typeof AppIndexRouteImport;
+      parentRoute: typeof AppRoute;
+    };
+    '/_app/coding': {
+      id: '/_app/coding';
+      path: '/coding';
+      fullPath: '/coding';
+      preLoaderRoute: typeof AppCodingRouteImport;
       parentRoute: typeof AppRoute;
     };
     '/_app/computer': {
@@ -593,6 +612,7 @@ const AppBotsBotIdRouteWithChildren = AppBotsBotIdRoute._addFileChildren(
 );
 
 interface AppRouteChildren {
+  AppCodingRoute: typeof AppCodingRoute;
   AppComputerRoute: typeof AppComputerRoute;
   AppConnectorsRoute: typeof AppConnectorsRoute;
   AppSettingsRoute: typeof AppSettingsRouteWithChildren;
@@ -604,6 +624,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppCodingRoute: AppCodingRoute,
   AppComputerRoute: AppComputerRoute,
   AppConnectorsRoute: AppConnectorsRoute,
   AppSettingsRoute: AppSettingsRouteWithChildren,

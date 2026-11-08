@@ -344,7 +344,9 @@ function CreateSheet({
               ))}
           </>
         ) : (
-          <Label muted>You can choose a model, Skills and tools on your computer.</Label>
+          <Label muted>
+            Choose a model in Bot details → About. Configure Skills and tools on your computer.
+          </Label>
         )}
         <ErrorNote error={error} />
         <Button
