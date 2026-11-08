@@ -241,7 +241,9 @@ describe('coding session widget', () => {
     session({ status: 'failed', feed: [], approvals: [], error: 'The agent ran out of turns.' });
     expect(screen.getByText('Failed')).toBeTruthy();
     expect(screen.getByText('The agent ran out of turns.')).toBeTruthy();
-    expect(screen.getByText('Reply in this thread to continue the session.')).toBeTruthy();
+    expect(
+      screen.getByText('Open Code to message the agent directly, or reply in this thread.'),
+    ).toBeTruthy();
   });
 });
 

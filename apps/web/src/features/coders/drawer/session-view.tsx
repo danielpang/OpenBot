@@ -1,23 +1,18 @@
-import {
-  CODING_SESSION_ENDED,
-  CODING_SESSION_LIVE,
-  sessionTitle,
-  type CodingSessionStatus,
-} from '@openbots/shared';
-import { Button, cn, Textarea } from '@openbots/ui';
+import { CODING_SESSION_LIVE, sessionTitle, type CodingSessionStatus } from '@openbots/shared';
+import { Button, cn } from '@openbots/ui';
 import { sessionStatusWords } from '@openbots/widgets';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ComputerTerminal } from '../../computer/terminal.js';
 import { ErrorText } from '../../models/error-text.js';
+import { SessionComposer } from './session-composer.js';
 import { AgentMark } from '../agent-mark.js';
+import { AgentOrb, sessionActivity } from '../agent-orb.js';
 import {
   codingSessionsQuery,
   codingSessionTerminal,
   decideApproval,
   pendingApprovalsQuery,
-  sendCodingTurn,
   stopCodingSession,
   type CodingSession,
 } from '../api.js';
@@ -25,8 +20,8 @@ import { upsertSession } from './live.js';
 import { matchApprovals, transcriptItems, TranscriptView } from './transcript.js';
 import { useSessionTranscript } from './use-session-transcript.js';
 
-// One coding session in the drawer (CA15): a header with Stop, Terminal and
-// Open in chat, the transcript as a conversation that follows the bottom
+// One coding session in the drawer (CA15): a header with Stop and Terminal,
+// the transcript as a conversation that follows the bottom
 // while the agent works, a terminal on the worktree when toggled on, and a
 // composer for the owner's next prompt once the turn has ended.
 
@@ -65,6 +60,7 @@ export function SessionView({
     [items, approvals.data, session.id],
   );
   const [terminal, setTerminal] = useState(false);
+  const activity = sessionActivity(session.status, transcript.entries);
 
   const keep = (next: CodingSession) =>
     queryClient.setQueryData(codingSessionsQuery.queryKey, (current) =>
@@ -122,11 +118,6 @@ export function SessionView({
             >
               Terminal
             </Button>
-            <Button size="sm" variant="ghost" asChild>
-              <Link to="/bots/$botId" params={{ botId: session.botId }}>
-                Open in chat
-              </Link>
-            </Button>
           </div>
         </div>
         <ErrorText error={stop.error} />
@@ -156,6 +147,7 @@ export function SessionView({
             onDecide={decide}
           />
         )}
+        {activity && <AgentOrb {...activity} />}
         <ErrorText error={transcript.error} />
       </div>
 
@@ -182,60 +174,5 @@ function SessionTerminal({ sessionId }: { sessionId: string }) {
         <p className="text-xs text-muted-foreground">Opening the terminal…</p>
       )}
     </div>
-  );
-}
-
-function SessionComposer({
-  session,
-  onSent,
-}: {
-  session: CodingSession;
-  onSent(session: CodingSession): void;
-}) {
-  const [prompt, setPrompt] = useState('');
-  const ended = CODING_SESSION_ENDED.includes(session.status);
-  const send = useMutation({
-    mutationFn: (text: string) => sendCodingTurn(session.id, text),
-    onSuccess: (next) => {
-      setPrompt('');
-      onSent(next);
-    },
-  });
-  const submit = (event?: FormEvent) => {
-    event?.preventDefault();
-    const text = prompt.trim();
-    if (!ended || !text || send.isPending) return;
-    send.mutate(text);
-  };
-  return (
-    <form className="flex flex-col gap-2 border-t p-3" onSubmit={submit}>
-      <div className="flex items-end gap-2">
-        <Textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          aria-label="Next prompt"
-          placeholder={ended ? 'What should it do next?' : undefined}
-          maxLength={4000}
-          rows={2}
-          disabled={!ended || send.isPending}
-          className="min-h-0 resize-none"
-        />
-        <Button type="submit" disabled={!ended || send.isPending || !prompt.trim()}>
-          Send
-        </Button>
-      </div>
-      {!ended && (
-        <p className="text-xs text-muted-foreground">
-          Working. Send your next message when this turn ends.
-        </p>
-      )}
-      <ErrorText error={send.error} />
-    </form>
   );
 }

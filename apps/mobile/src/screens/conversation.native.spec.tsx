@@ -58,7 +58,11 @@ beforeEach(() => {
 describe('conversation navigation', () => {
   it('uses an accessible native info symbol instead of Details text', () => {
     render(<BotScreen />);
-    const button = mockOptions.unstable_headerRightItems()[0]!;
+    const coding = mockOptions.unstable_headerRightItems()[0]!;
+    expect(coding.accessibilityLabel).toBe('Code');
+    coding.onPress();
+    expect(mockPush).toHaveBeenCalledWith('/bot/bot-1/coding');
+    const button = mockOptions.unstable_headerRightItems()[1]!;
     expect(button.icon).toEqual({ type: 'sfSymbol', name: 'info.circle' });
     expect(button.accessibilityLabel).toBe('Bot details');
     button.onPress();

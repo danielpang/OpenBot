@@ -20,3 +20,8 @@ backups/
 .worktrees/
 .pnpm-store/
 **/.DS_Store
+# Native/mobile build output and packaged desktop releases are not server inputs.
+apps/mobile/ios
+apps/mobile/android
+apps/mobile/.expo
+apps/desktop/release

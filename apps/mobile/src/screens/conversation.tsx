@@ -50,6 +50,13 @@ export function BotScreen() {
           unstable_headerRightItems: () => [
             {
               type: 'button',
+              label: 'Code',
+              accessibilityLabel: 'Code',
+              icon: { type: 'sfSymbol', name: 'chevron.left.forwardslash.chevron.right' },
+              onPress: () => router.push(`/bot/${id}/coding`),
+            },
+            {
+              type: 'button',
               label: 'Bot details',
               accessibilityLabel: 'Bot details',
               icon: { type: 'sfSymbol', name: 'info.circle' },

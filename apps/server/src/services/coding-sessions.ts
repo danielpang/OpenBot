@@ -52,6 +52,7 @@ import {
 import { allowedRepos, listRepos, toRepoRef } from './repos.js';
 import { actOnWidget } from './runs.js';
 import { remoteHead } from './session-git.js';
+import { stageCodingAttachments } from './coding-attachments.js';
 import type { ComputerAgentClient } from '@openbots/computer';
 
 // Coding sessions for the API and the runtime (docs/TECHNICAL_PLAN.md 22.2,
@@ -540,6 +541,7 @@ export async function ownerTurn(
   owner: Owner,
   sessionId: string,
   prompt: string,
+  attachments: string[] = [],
 ): Promise<CodingSessionRow> {
   const row = await ownSession(deps.db, owner, sessionId);
   if (!ended(row.status)) throw sessionRunning();
@@ -578,44 +580,51 @@ export async function ownerTurn(
     );
   }
 
-  const reopened = await deps.db.transaction(async (tx) => {
-    // The lock and check of `startCodingSession`: one session per Bot.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`coder-bot:${row.botId}`}))`);
-    const [busy] = await tx
-      .select()
-      .from(schema.codingSessions)
-      .where(
-        and(
-          eq(schema.codingSessions.botId, row.botId),
-          inArray(schema.codingSessions.status, CODING_SESSION_ACTIVE),
-          ne(schema.codingSessions.id, row.id),
-        ),
-      )
-      .limit(1);
-    if (busy) throw botBusy(busy);
-    const [updated] = await tx
-      .update(schema.codingSessions)
-      .set({
-        status: 'queued',
-        prompt,
-        runId: null,
-        pushAllowed: false,
-        error: null,
-        finishedAt: null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.codingSessions.id, row.id),
-          inArray(schema.codingSessions.status, [...CODING_SESSION_ENDED]),
-        ),
-      )
-      .returning();
-    if (!updated) throw sessionRunning();
-    return updated;
-  });
+  const staged = await stageCodingAttachments(deps, owner, attachments);
+  const agentPrompt = prompt + staged.context;
+  const reopened = await deps.db
+    .transaction(async (tx) => {
+      // The lock and check of `startCodingSession`: one session per Bot.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`coder-bot:${row.botId}`}))`);
+      const [busy] = await tx
+        .select()
+        .from(schema.codingSessions)
+        .where(
+          and(
+            eq(schema.codingSessions.botId, row.botId),
+            inArray(schema.codingSessions.status, CODING_SESSION_ACTIVE),
+            ne(schema.codingSessions.id, row.id),
+          ),
+        )
+        .limit(1);
+      if (busy) throw botBusy(busy);
+      const [updated] = await tx
+        .update(schema.codingSessions)
+        .set({
+          status: 'queued',
+          prompt: agentPrompt,
+          runId: null,
+          pushAllowed: false,
+          error: null,
+          finishedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.codingSessions.id, row.id),
+            inArray(schema.codingSessions.status, [...CODING_SESSION_ENDED]),
+          ),
+        )
+        .returning();
+      if (!updated) throw sessionRunning();
+      return updated;
+    })
+    .catch(async (error: unknown) => {
+      await staged.cleanup();
+      throw error;
+    });
 
-  await recordEntry(deps, row.id, { type: 'prompt', text: prompt, by: 'owner' });
+  await recordEntry(deps, row.id, { type: 'prompt', text: agentPrompt, by: 'owner' });
   await reopenSessionWidget(deps, row.id, feedLine('text', `Continue: ${excerpt(prompt, 200)}`));
   await flushTranscript(deps, row.id);
   await publishSessionUpdated(deps, reopened);

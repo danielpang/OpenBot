@@ -64,7 +64,7 @@ import {
 type Sandbox = 'read-only' | 'workspace-write';
 
 const sandboxFor = (spec: CoderSessionSpec): Sandbox =>
-  spec.mode === 'plan' ? 'read-only' : 'workspace-write';
+  spec.mode === 'plan' || spec.acceptEdits === false ? 'read-only' : 'workspace-write';
 
 /** Codex asks before it leaves its sandbox. */
 const APPROVAL_POLICY = 'on-request';
@@ -222,6 +222,7 @@ function codexProtocol(
   const sent = new Map<number, string>();
   /** The server's approval requests in flight, by our request id: its JSON-RPC id. */
   const prompts = new Map<string, string | number>();
+  const mcpPrompts = new Set<string>();
   const items = new Map<string, Started>();
   let threadId: string | undefined;
   /** The thread id when it is a UUID, the only kind reported. */
@@ -531,6 +532,42 @@ function codexProtocol(
       });
       return;
     }
+    // Codex Apps uses MCP elicitation for tool approval, not command approval.
+    // Only handle the known, empty confirmation form: never fabricate form answers.
+    const meta = isObject(params._meta) ? params._meta : {};
+    const schema = isObject(params.requestedSchema) ? params.requestedSchema : {};
+    if (
+      method === 'mcpServer/elicitation/request' &&
+      params.mode === 'form' &&
+      meta.codex_approval_kind === 'mcp_tool_call' &&
+      meta.tool_title === 'create_pull_request' &&
+      schema.type === 'object' &&
+      isObject(schema.properties) &&
+      Object.keys(schema.properties).length === 0 &&
+      (!Array.isArray(schema.required) || schema.required.length === 0)
+    ) {
+      const args = isObject(meta.tool_params) ? meta.tool_params : {};
+      prompts.set(requestId, id);
+      mcpPrompts.add(requestId);
+      io.approval({
+        request_id: requestId,
+        tool_name: `${str(params.serverName) ?? 'mcp'}.create_pull_request`,
+        input: args,
+        action: 'pr',
+        title: 'Create pull request',
+        detail: oneLine(
+          [
+            str(args.repository_full_name),
+            str(args.title),
+            str(args.head) && str(args.base) ? `${str(args.head)} → ${str(args.base)}` : '',
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          1000,
+        ),
+      });
+      return;
+    }
     // Anything else (a question for the user, an MCP elicitation, a tool the
     // client would run, a token refresh): not served, so Codex carries on
     // without it rather than waiting.
@@ -621,6 +658,16 @@ function codexProtocol(
       const id = prompts.get(requestId);
       if (id === undefined) return;
       prompts.delete(requestId);
+      if (mcpPrompts.delete(requestId)) {
+        send({
+          id,
+          result: {
+            action: decision === 'allow' ? 'accept' : 'decline',
+            content: decision === 'allow' ? {} : null,
+          },
+        });
+        return;
+      }
       // Codex takes a decision only; the owner's words stay in OpenBots.
       send({ id, result: { decision: decision === 'allow' ? 'accept' : 'decline' } });
     },

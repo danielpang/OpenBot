@@ -14,6 +14,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useApi } from '../api/provider';
 import { Button, Card, ErrorNote, Field, Icon, Label, row } from '../components/ui';
+import { AcceptEdits } from '../components/accept-edits';
 import { CoderLoginBody, CodingSessionBody } from './coder-widgets';
 import type { Message } from './model';
 
@@ -22,11 +23,13 @@ export function NativeWidget({
   messageId,
   index,
   onUpdated,
+  botId,
 }: {
   part: Extract<Message['parts'][number], { type: 'widget' }>;
   messageId: string;
   index: number;
   onUpdated?: () => void;
+  botId?: string;
 }) {
   const api = useApi();
   const cache = useQueryClient();
@@ -145,6 +148,7 @@ export function NativeWidget({
           <Label weight="600">Approval needed</Label>
         </View>
         <Label weight="600">{props.tool_name}</Label>
+        {pending && botId && <AcceptEdits botId={botId} compact />}
         <Label>{props.summary || JSON.stringify(props.args, null, 2)}</Label>
         {props.reason ? (
           <Label muted size={14}>

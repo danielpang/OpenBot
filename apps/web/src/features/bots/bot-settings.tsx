@@ -98,8 +98,12 @@ function BotSettingsForm({ bot }: { bot: Bot }) {
         </Field>
         {update.error && <p className="text-sm text-destructive">{update.error.message}</p>}
         <div>
-          <Button type="submit" disabled={!changed || !draft.name.trim() || update.isPending}>
-            Save
+          <Button
+            type="submit"
+            aria-busy={update.isPending}
+            disabled={!changed || !draft.name.trim() || update.isPending}
+          >
+            {update.isPending ? 'Saving…' : 'Save'}
           </Button>
         </div>
       </form>

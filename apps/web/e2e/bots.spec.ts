@@ -33,7 +33,18 @@ test('create a Bot from a name and an icon, and it asks what to work on', async 
   await page.getByRole('tab', { name: 'Settings' }).click();
   await page.getByRole('group', { name: 'Shape' }).getByRole('button', { name: 'Box' }).click();
   const save = page.getByRole('button', { name: 'Save', exact: true }).first();
+  // Disabled also means a save is still in flight. Wait for persistence before
+  // reloading, otherwise navigation can cancel the PATCH on a slower runner.
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PATCH' &&
+      new URL(response.url()).pathname === `/api/v1/bots/${page.url().split('/')[4]}`,
+  );
   await save.click();
+  const response = await saved;
+  expect(response.ok()).toBe(true);
+  expect((await response.json()).avatar.shape).toBe('rounded');
+  await expect(save).toHaveAttribute('aria-busy', 'false');
   await expect(save).toBeDisabled();
   await page.reload();
   await expect(

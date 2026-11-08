@@ -11,6 +11,7 @@ import { CODER_ACTION_WORDS } from '@openbots/widgets/react';
 import { useState, type ReactNode } from 'react';
 import { ErrorText } from '../../models/error-text.js';
 import { Markdown } from '../../transcript/markdown.js';
+import { AcceptEdits } from '../../bots/accept-edits.js';
 import { AgentMark } from '../agent-mark.js';
 import type { CodingSession, PendingApproval } from '../api.js';
 
@@ -128,6 +129,7 @@ export function TranscriptView({
               <ApprovalCard
                 key={item.entry.seq}
                 entry={item.entry}
+                botId={session.botId}
                 approval={approvals.get(item.entry.seq)}
                 onDecide={onDecide}
               />
@@ -202,41 +204,55 @@ function actionLine(event: Extract<CoderEvent, { type: ActionEntry['event']['typ
 
 function ActionRows({ entries }: { entries: ActionEntry[] }) {
   const [open, setOpen] = useState(false);
-  const folded = entries.length > ACTIONS_SHOWN && !open;
+  const grouped = entries.length > ACTIONS_SHOWN;
   return (
-    <div data-entry="actions" className="ml-7 flex flex-col gap-0.5 font-mono text-xs">
-      {folded ? (
+    <div data-entry="actions" className="ml-7 flex flex-col gap-1 font-mono text-xs">
+      {grouped && (
         <button
           type="button"
           className="self-start text-muted-foreground hover:underline"
-          aria-expanded={false}
-          onClick={() => setOpen(true)}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
         >
-          {entries.length} actions
+          {open ? 'Hide actions' : `${entries.length} actions`}
         </button>
-      ) : (
+      )}
+      {(!grouped || open) &&
         entries.map((entry) => {
           const line = actionLine(entry.event);
           return (
-            <div key={entry.seq} data-action={entry.event.type} className="flex min-w-0 gap-2">
-              <span className="shrink-0 text-muted-foreground">{line.label}</span>
-              <span className="min-w-0 truncate" title={line.text}>
+            <details
+              key={entry.seq}
+              data-action={entry.event.type}
+              className="rounded-md border px-2 py-1.5"
+            >
+              <summary className="cursor-pointer text-muted-foreground">
+                {line.label}
+                <span className="ml-2 inline-block max-w-[75%] truncate align-bottom">
+                  {line.text}
+                </span>
+              </summary>
+              <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words border-t pt-2 font-mono text-xs">
                 {line.text}
-              </span>
-            </div>
+                {entry.event.type === 'command' && entry.event.summary
+                  ? `\n${entry.event.summary}`
+                  : ''}
+              </pre>
+            </details>
           );
-        })
-      )}
+        })}
     </div>
   );
 }
 
 function ApprovalCard({
   entry,
+  botId,
   approval,
   onDecide,
 }: {
   entry: Of<'approval_request'>;
+  botId: string;
   approval: PendingApproval | undefined;
   onDecide(approvalId: string, decision: 'approve' | 'deny'): Promise<void>;
 }) {
@@ -291,6 +307,7 @@ function ApprovalCard({
           </Button>
         </div>
       )}
+      {approval && <AcceptEdits botId={botId} />}
       <ErrorText error={error} />
     </div>
   );

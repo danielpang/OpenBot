@@ -13397,6 +13397,7 @@ export interface components {
     };
     CodingSessionTurn: {
       prompt: string;
+      attachments?: string[];
     };
     Repo: {
       /** Format: uuid */

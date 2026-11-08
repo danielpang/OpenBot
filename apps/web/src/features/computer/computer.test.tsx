@@ -383,7 +383,9 @@ describe('the computer dot on Preview (I5)', () => {
     act(() => root!.render(<></>));
     render(<BotTitleBar bot={bot()} />);
     expect(host.querySelector('[data-active]')).toBeNull();
-    expect(button('Computer')!.hasAttribute('title')).toBe(false);
+    expect(button('Computer')!.getAttribute('title')).toBe('Computer');
+    expect(button('Computer')!.textContent).toBe('');
+    expect(button('Coding sessions')!.textContent).toBe('');
     expect(host.querySelector('[aria-label="Computer idle"]')).toBeNull();
   });
 

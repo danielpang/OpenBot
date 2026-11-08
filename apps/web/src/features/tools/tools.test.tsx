@@ -831,7 +831,7 @@ describe('Bot tools tab (T5)', () => {
     expect(defaultOf('Push a branch approval')).toBe('Default: Ask first');
     expect(defaultOf('Anything else in its worktree approval')).toBe('Default: Run without asking');
     expect(settings.querySelector('[data-coder-actions-note]')?.textContent).toBe(
-      'Codex works inside its own sandbox and does not ask for approvals; these settings apply to Claude Code and pi. Pushes always need your approval.',
+      'Codex asks before leaving its sandbox. Accept edits applies to file edits; protected actions keep their own approval rules. Pushes always need your approval.',
     );
     expect(host.querySelector('[data-group="coder"]')?.textContent).toContain(
       'Claude Code, Codex and pi, working in a repository on the computer.',

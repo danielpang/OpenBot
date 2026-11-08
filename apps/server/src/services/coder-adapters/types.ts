@@ -59,6 +59,8 @@ export interface CoderSessionSpec {
    * names it in the CLI's own config.
    */
   apiKeyBaseUrl?: string;
+  /** Explicit edit acceptance; absent preserves the vendor defaults. */
+  acceptEdits?: boolean;
   maxTurns: number;
   /**
    * The policy's answer per action class. No adapter pre-allows anything

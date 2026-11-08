@@ -1,5 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import {
+  CODING_ATTACHMENT_COUNT,
   CoderAgentSchema,
   CoderChangedFileSchema,
   CoderCommitSchema,
@@ -277,7 +278,22 @@ export const codingSessionRoutes = createRouter()
         "Reopens an ended session with your prompt, straight to its agent: no Bot run is involved, so the session has no run (`runId` null) and refuses what needs one (an approval, the pull request's push). Its chat card follows, and the prompt is the next turn of its transcript.",
       middleware: [requireUser] as const,
       security: authenticated,
-      request: { params: idParam, body: promptBody('CodingSessionTurn') },
+      request: {
+        params: idParam,
+        body: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: z
+                .strictObject({
+                  prompt: z.string().trim().min(1).max(4_000),
+                  attachments: z.array(z.uuid()).max(CODING_ATTACHMENT_COUNT).optional(),
+                })
+                .openapi('CodingSessionTurn'),
+            },
+          },
+        },
+      },
       responses: {
         200: sessionBody,
         ...authProblems,
@@ -296,6 +312,7 @@ export const codingSessionRoutes = createRouter()
         c.var.user,
         c.req.valid('param').id,
         c.req.valid('json').prompt,
+        c.req.valid('json').attachments,
       );
       return c.json({ session: toSessionView(row) }, 200);
     },

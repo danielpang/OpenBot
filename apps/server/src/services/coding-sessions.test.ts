@@ -25,6 +25,7 @@ import type { CoderJob } from './coder-jobs.js';
 import { startLogin } from './coder-login.js';
 import { runCoderLogin, UNEXPECTED_LOGIN_HOST } from './coder-login-driver.js';
 import { sessionLogPath } from './coder-state.js';
+import { storeFile } from './files.js';
 import { recordEntry } from './coder-transcript.js';
 import { coderContextFor, coderServices } from './coder-tool.js';
 import { resumeIfCoderWidgetDone } from './coder-widget-actions.js';
@@ -908,6 +909,50 @@ describe('coding agents', () => {
       expect(await again.json()).toMatchObject({ code: 'SESSION_RUNNING' });
       expect((await turn(s.sessionId, 'x', eve)).status).toBe(404);
       expect((await turn(s.sessionId, '   ')).status).toBe(400);
+    });
+
+    it('stages owner attachments outside the worktree and rejects foreign or non-attachment files', async () => {
+      const s = await endedSession();
+      const owner = { id: danaId, workspaceId };
+      const upload = (id: string, purpose: 'attachment' | 'artifact' = 'attachment') =>
+        t.inOrganization(() =>
+          storeFile(
+            t.ownerDeps,
+            { ...owner, id },
+            {
+              name: 'notes.txt',
+              bytes: Buffer.from('reference text'),
+              declaredMime: 'text/plain',
+              purpose,
+            },
+          ),
+        );
+      const foreign = await upload(await t.userId('eve@example.com'));
+      const own = await upload(danaId);
+      const artifact = await upload(danaId, 'artifact');
+      const post = (ids: string[]) =>
+        call(dana, 'POST', `/coding-sessions/${s.sessionId}/turns`, {
+          prompt: 'Use the reference',
+          attachments: ids,
+        });
+      expect((await post([foreign.id])).status).toBe(404);
+      expect((await post([artifact.id])).status).toBe(404);
+      expect((await session(s.sessionId)).status).toBe('settled');
+      expect((await post(Array(11).fill(own.id))).status).toBe(400);
+      expect((await post([own.id, own.id])).status).toBe(200);
+      const queued = await session(s.sessionId);
+      expect(queued.prompt).toContain('Attached reference files');
+      expect(queued.prompt).toContain(own.id);
+      const staged = [...computer.agent.files.entries()].filter(([path]) => path.includes(own.id));
+      expect(staged).toHaveLength(1);
+      expect(staged[0]![0]).toMatch(/repos\/\.openbots-attachments-[^/]+\//);
+      expect(Buffer.from(staged[0]![1]).toString()).toBe('reference text');
+      const all = await entries(s.sessionId);
+      expect(all.entries.at(-1)?.event).toMatchObject({
+        type: 'prompt',
+        text: queued.prompt,
+        by: 'owner',
+      });
     });
 
     it('refuses a turn while the Bot runs another session, or codes no more, or the agent is signed out', async () => {

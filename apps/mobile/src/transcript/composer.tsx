@@ -22,6 +22,10 @@ export function Composer({
   sending,
   bots = [],
   threadRootId,
+  textOnly = false,
+  sendDisabled = false,
+  maxLength,
+  onFocusChange,
 }: {
   onSend: (body: {
     text?: string;
@@ -31,6 +35,11 @@ export function Composer({
   sending: boolean;
   bots?: Bot[];
   threadRootId?: string;
+  /** Text-only agents do not accept chat attachments or Bot mentions. */
+  textOnly?: boolean;
+  sendDisabled?: boolean;
+  maxLength?: number;
+  onFocusChange?: (focused: boolean) => void;
 }) {
   const c = useTheme();
   const mobile = useMobile();
@@ -41,9 +50,9 @@ export function Composer({
   const [actionsOpen, setActionsOpen] = useState(false);
   const sendInFlight = useRef(false);
   const busy = sending || uploading;
-  const canSend = Boolean(text.trim() || attachments.length) && !busy;
+  const canSend = Boolean(text.trim() || attachments.length) && !busy && !sendDisabled;
   const input = useRef<TextInput>(null);
-  const mention = activeMention(text, cursor);
+  const mention = textOnly ? null : activeMention(text, cursor);
   const suggestions = mention
     ? [{ id: 'everyone', name: 'Everyone', handle: 'everyone' }, ...bots]
         .filter((bot) => bot.handle.toLowerCase().startsWith(mention.query))
@@ -211,30 +220,40 @@ export function Composer({
         </ScrollView>
       ) : null}
       <GlassSurface style={styles.capsule}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={actionsOpen ? 'Close attachment options' : 'Add to message'}
-          accessibilityHint="Choose a photo, file, or Bot mention"
-          accessibilityState={{ disabled: busy, expanded: actionsOpen }}
-          disabled={busy}
-          onPress={showActions}
-          style={({ pressed }) => [styles.iconButton, { opacity: busy ? 0.4 : pressed ? 0.6 : 1 }]}
-        >
-          <Icon name={actionsOpen ? 'close' : 'add'} size={25} color={c.foreground} />
-        </Pressable>
+        {!textOnly && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={actionsOpen ? 'Close attachment options' : 'Add to message'}
+            accessibilityHint="Choose a photo, file, or Bot mention"
+            accessibilityState={{ disabled: busy, expanded: actionsOpen }}
+            disabled={busy}
+            onPress={showActions}
+            style={({ pressed }) => [
+              styles.iconButton,
+              { opacity: busy ? 0.4 : pressed ? 0.6 : 1 },
+            ]}
+          >
+            <Icon name={actionsOpen ? 'close' : 'add'} size={25} color={c.foreground} />
+          </Pressable>
+        )}
         <TextInput
           ref={input}
           accessibilityLabel="Message"
           placeholder={threadRootId ? 'Reply in thread…' : 'Message…'}
           placeholderTextColor={c.mutedForeground}
           multiline
+          maxLength={maxLength}
           editable={!sending && !uploading}
           value={text}
           onChangeText={setText}
-          onFocus={() => setActionsOpen(false)}
+          onFocus={() => {
+            setActionsOpen(false);
+            onFocusChange?.(true);
+          }}
+          onBlur={() => onFocusChange?.(false)}
           onPressIn={() => setActionsOpen(false)}
           onSelectionChange={(event) => setCursor(event.nativeEvent.selection.end)}
-          style={[styles.input, { color: c.foreground }]}
+          style={[styles.input, textOnly && styles.textOnlyInput, { color: c.foreground }]}
         />
         <Pressable
           accessibilityRole="button"
@@ -291,6 +310,7 @@ const styles = StyleSheet.create({
   },
   iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   send: { borderRadius: 22 },
+  textOnlyInput: { paddingLeft: 14 },
   input: {
     flex: 1,
     fontSize: 16,

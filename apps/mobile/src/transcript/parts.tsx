@@ -88,7 +88,13 @@ export const MessagePartView = memo(function MessagePartView({
       );
     case 'widget':
       return (
-        <NativeWidget part={part} messageId={message.id} index={index} onUpdated={onUpdated} />
+        <NativeWidget
+          part={part}
+          messageId={message.id}
+          index={index}
+          onUpdated={onUpdated}
+          botId={message.authorType === 'bot' ? (message.authorId ?? undefined) : undefined}
+        />
       );
     case 'reasoning':
       return (

@@ -8,6 +8,7 @@ import { Button, Card, Empty, ErrorNote, Icon, Label, Page, Section, row } from 
 import { BotAvatar } from '../components/bot-avatar';
 import { useTheme } from '../theme';
 import { useBots, type Bot } from './data';
+import { AcceptEdits } from '../components/accept-edits';
 import { BotAppearance } from './bot-appearance';
 
 type Tab = 'Activity' | 'Artifacts' | 'Routines' | 'About';
@@ -88,6 +89,12 @@ export function BotDetailsScreen() {
             variant="secondary"
             icon="desktop-outline"
             onPress={() => router.push(`/bot/${bot.id}/preview`)}
+          />
+          <Button
+            title="Code"
+            variant="secondary"
+            icon="code-slash-outline"
+            onPress={() => router.push(`/bot/${bot.id}/coding`)}
           />
         </>
       ) : (
@@ -297,6 +304,9 @@ function About({ bot }: { bot: Bot }) {
       </Section>
       <Section title="Model">
         <Label>{bot.modelConfig?.model_id ?? 'No model selected'}</Label>
+      </Section>
+      <Section title="Approvals">
+        <AcceptEdits botId={bot.id} />
       </Section>
       <Section title="Tools">
         <Label muted size={14}>

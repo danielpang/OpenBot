@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CODING_EDITS_RULE, isFileEditTool } from './accept-edits.js';
 import {
   CoderActionClassSchema,
   CoderAgentSchema,
@@ -240,6 +241,10 @@ export const SESSION_EVENT_TEXT_MAX = 20_000;
 /** The longest a session's title is, as the drawer lists it. */
 export const SESSION_TITLE_MAX = 60;
 
+export const CODING_ATTACHMENT_COUNT = 10;
+export const CODING_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+export const CODING_ATTACHMENTS_BYTES = 50 * 1024 * 1024;
+
 /**
  * A session's name in the drawer: the first line of its first prompt, cut
  * to SESSION_TITLE_MAX; the repository's name when the prompt is empty.
@@ -293,8 +298,16 @@ export function coderActionDecision(
   policy: ResolvedToolPolicy,
   source: RunSource,
   action: CoderActionClass,
+  toolName?: string,
 ): PolicyDecision {
-  const own = policy.coder.actions?.[action] ?? DEFAULT_CODER_ACTIONS[action];
+  let own = policy.coder.actions?.[action] ?? DEFAULT_CODER_ACTIONS[action];
+  const edits = policy.tools[CODING_EDITS_RULE] ?? 'ask';
+  // Never weaken an explicit refusal or a protected action class.
+  if (own !== 'deny' && action === 'other' && edits && toolName && isFileEditTool(toolName))
+    own = edits;
+  // In ask-first Codex turns the read-only sandbox also asks for shell writes.
+  if (own === 'auto' && action === 'other' && edits === 'ask' && toolName === 'commandExecution')
+    own = 'ask';
   if (source === 'owner') return own;
   const rules = policy.triggers[SOURCE_TRIGGER[source]];
   const floor = rules?.tools?.code_task ?? rules?.groups?.coder ?? rules?.default;

@@ -18,6 +18,12 @@ import { mergeEntries, unbrokenSeq } from './use-session-transcript.js';
 // with its approvals, composer and terminal, and the transcript kept in seq
 // order from realtime batches with gaps read from the server.
 
+const upload = vi.hoisted(() => vi.fn());
+vi.mock('../../transcript/api.js', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  uploadFile: upload,
+}));
+
 const BOT = '00000000-0000-4000-8000-0000000000b1';
 const MESSAGE = '00000000-0000-4000-8000-0000000000m1';
 const LIVE = '00000000-0000-4000-8000-0000000000s1';
@@ -205,6 +211,8 @@ let terminal: Response | (() => Response);
 
 beforeEach(() => {
   seqAt = 0;
+  upload.mockReset();
+  upload.mockResolvedValue({ id: 'attached-file', name: 'screen.png', mime: 'image/png', size: 5 });
   server.requests = [];
   FakeSocket.sockets = [];
   globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
@@ -271,7 +279,7 @@ function Slot() {
   return content ? <aside data-width={width}>{content}</aside> : null;
 }
 
-function render() {
+function render(botId?: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   fake = fakeRealtime();
   host = document.createElement('div');
@@ -282,7 +290,7 @@ function render() {
       <QueryClientProvider client={client}>
         <RealtimeContext value={fake.realtime}>
           <RightPanelProvider>
-            <CodingSessionsButton />
+            <CodingSessionsButton botId={botId} />
             <Slot />
           </RightPanelProvider>
         </RealtimeContext>
@@ -321,6 +329,14 @@ function type(el: HTMLTextAreaElement, value: string) {
 }
 
 describe('the coding sessions drawer (CA15)', () => {
+  it('filters the bot entry to sessions triggered by that bot', async () => {
+    sessions = [session({ id: LIVE, botId: BOT }), session({ id: DONE, botId: 'other-bot' })];
+    render(BOT);
+    act(() => toggle().click());
+    await until(() => !!host.querySelector(`[data-session-row="${LIVE}"]`), 'bot sessions');
+    expect(host.querySelector(`[data-session-row="${DONE}"]`)).toBeNull();
+    await until(() => !!drawer()?.textContent?.includes('Scout · Coding sessions'), 'bot name');
+  });
   it('toggles from the sidebar, wide, and counts the live sessions', async () => {
     sessions = [
       session({ id: LIVE, status: 'running', title: 'Fix the login form' }),
@@ -432,12 +448,23 @@ describe('the coding sessions drawer (CA15)', () => {
     const actions = host.querySelector('[data-entry="actions"]')!;
     expect(actions.textContent).toBe('4 actions');
     act(() => button('4 actions', actions)!.click());
-    expect([...actions.querySelectorAll('[data-action]')].map((a) => a.textContent)).toEqual([
+    expect(
+      [...actions.querySelectorAll('[data-action] summary')].map((a) => a.textContent),
+    ).toEqual([
       'Readsrc/login.tsx',
       'Run (exit 0)pnpm test',
       'Editsrc/login.tsx +4 −1',
       'GreponSubmit',
     ]);
+    const action = actions.querySelector<HTMLDetailsElement>('details')!;
+    expect(action.open).toBe(false);
+    act(() => action.querySelector('summary')!.click());
+    expect(action.open).toBe(true);
+    expect(action.querySelector('pre')?.textContent).toBe('src/login.tsx');
+    act(() => action.querySelector('summary')!.click());
+    expect(action.open).toBe(false);
+    act(() => button('Hide actions', actions)!.click());
+    expect(actions.querySelector('[data-action]')).toBeNull();
 
     await until(() => !!host.querySelector(`[data-approval="${APPROVAL}"]`), 'the approval');
     const card = host.querySelector('[data-entry="approval"]')!;
@@ -463,10 +490,8 @@ describe('the coding sessions drawer (CA15)', () => {
     );
     expect(host.querySelector('[data-entry="error"]')?.className).toContain('text-destructive');
     expect(
-      [...host.querySelectorAll('a')]
-        .find((a) => a.textContent === 'Open in chat')
-        ?.getAttribute('href'),
-    ).toBe(`/bots/${BOT}`);
+      [...host.querySelectorAll('a')].find((a) => a.textContent === 'Open in chat'),
+    ).toBeUndefined();
 
     act(() => button('Back')!.click());
     expect(host.querySelector(`[data-session-row="${DONE}"]`)).not.toBeNull();
@@ -477,6 +502,9 @@ describe('the coding sessions drawer (CA15)', () => {
     render();
     await openSession(LIVE);
     const textarea = () => host.querySelector<HTMLTextAreaElement>('textarea')!;
+    expect(host.querySelector('[data-edit-mode]')).toBeNull();
+    expect(host.querySelector('button[aria-label="Add to coding message"]')).not.toBeNull();
+    expect(host.textContent).not.toContain('Ask before edits');
     expect(textarea().disabled).toBe(true);
     expect(host.textContent).toContain('Working. Send your next message when this turn ends.');
     expect(button('Stop')).toBeDefined();
@@ -498,6 +526,73 @@ describe('the coding sessions drawer (CA15)', () => {
     ).toEqual({ prompt: 'Now add a test' });
     await until(() => textarea().disabled, 'the composer shut again');
     expect(host.textContent).toContain('Queued');
+  });
+
+  it('shows attachments and edit approvals only inside the plus menu', async () => {
+    sessions = [session({ id: DONE, status: 'settled' })];
+    render();
+    await openSession(DONE);
+    expect(document.body.textContent).not.toContain('Ask before edits');
+    act(() =>
+      host
+        .querySelector('button[aria-label="Add to coding message"]')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })),
+    );
+    await until(() => !!document.querySelector('[role="menu"]'), 'plus menu');
+    expect(document.querySelector('[role="menu"]')?.textContent).toContain(
+      'Attach screenshot or image',
+    );
+    expect(document.querySelector('[role="menu"]')?.textContent).toContain('Attach files');
+    await until(
+      () =>
+        document.querySelector('[role="menu"]')?.textContent?.includes('Ask before edits') === true,
+      'edit choices',
+    );
+  });
+
+  it('uploads attachments before sending their IDs with the next turn', async () => {
+    sessions = [session({ id: DONE, status: 'settled' })];
+    render();
+    await openSession(DONE);
+    let finish!: (value: unknown) => void;
+    upload.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Attach files"]')!;
+    const file = new File(['image'], 'screen.png', { type: 'image/png' });
+    Object.defineProperty(input, 'files', { value: [file] });
+    act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+    expect(upload).toHaveBeenCalledWith(file);
+    expect(button('Send')?.disabled).toBe(true);
+    expect(host.textContent).toContain('Uploading');
+    await act(async () =>
+      finish({ id: 'attached-file', name: 'screen.png', mime: 'image/png', size: 5 }),
+    );
+    act(() => button('Send')!.click());
+    await until(() => server.requests.some((r) => r.path.endsWith('/turns')), 'attached turn');
+    expect(server.requests.find((r) => r.path.endsWith('/turns'))?.body).toEqual({
+      prompt: 'Please review the attached files.',
+      attachments: ['attached-file'],
+    });
+  });
+
+  it('retains failed uploads and lets the owner remove them', async () => {
+    sessions = [session({ id: DONE, status: 'settled' })];
+    render();
+    await openSession(DONE);
+    upload.mockRejectedValue(new Error('Upload unavailable'));
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, 'files', { value: [new File(['file'], 'notes.txt')] });
+    act(() => input.dispatchEvent(new Event('change', { bubbles: true })));
+    await until(() => host.textContent!.includes('Upload unavailable'), 'upload failure');
+    expect(button('Send')?.disabled).toBe(true);
+    act(() =>
+      host.querySelector<HTMLButtonElement>('button[aria-label="Remove notes.txt"]')!.click(),
+    );
+    expect(host.textContent).not.toContain('notes.txt');
   });
 
   it("shows the server's reason when a turn is refused", async () => {

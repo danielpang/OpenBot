@@ -16,6 +16,20 @@ beforeEach(() => {
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 });
 describe('native composer', () => {
+  it('supports a text-only coding draft while sending is disabled', () => {
+    const send = jest.fn<() => Promise<unknown>>();
+    const view = render(
+      <Composer onSend={send} sending={false} textOnly sendDisabled maxLength={4000} />,
+    );
+    fireEvent.changeText(screen.getByLabelText('Message'), 'Add tests');
+    expect(screen.getByLabelText('Message').props.editable).toBe(true);
+    expect(screen.getByLabelText('Message').props.maxLength).toBe(4000);
+    expect(screen.queryByRole('button', { name: 'Add to message' })).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Send' }));
+    expect(send).not.toHaveBeenCalled();
+    view.rerender(<Composer onSend={send} sending={false} textOnly />);
+    expect(screen.getByLabelText('Message').props.value).toBe('Add tests');
+  });
   it('keeps an accessible Send action without a visible text label', () => {
     render(<Composer onSend={async () => {}} sending={false} />);
     expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();

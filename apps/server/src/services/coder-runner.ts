@@ -530,6 +530,7 @@ class SessionRunner {
       ...(model ? { model } : {}),
       ...(this.keyProvider ? { apiKeyProvider: this.keyProvider.kind } : {}),
       ...(this.keyProvider?.baseUrl ? { apiKeyBaseUrl: this.keyProvider.baseUrl } : {}),
+      acceptEdits: this.policy.tools.coding_edits === 'auto',
       maxTurns: DEFAULT_MAX_TURNS,
       actions: decisions(this.policy, this.source),
       ...this.identity,
@@ -810,7 +811,18 @@ class SessionRunner {
    */
   private async onApproval(request: CoderSessionApproval) {
     const { deps } = this;
-    const decision = coderActionDecision(this.policy, this.source, request.action);
+    // Read fresh settings so an approval-card toggle affects subsequent prompts.
+    const [bot] = await deps.db
+      .select({ toolPolicy: schema.bots.toolPolicy })
+      .from(schema.bots)
+      .where(eq(schema.bots.id, this.session.botId));
+    if (bot) this.policy = resolveToolPolicy(bot.toolPolicy);
+    const decision = coderActionDecision(
+      this.policy,
+      this.source,
+      request.action,
+      request.tool_name,
+    );
     if (decision === 'auto') {
       this.answer(request.request_id, 'allow');
       appendFeed(deps, this.id, feedLine('approval_request', `Allowed: ${request.title}`));
