@@ -10,6 +10,7 @@ import { useTheme } from '../theme';
 import { useBots, type Bot } from './data';
 import { AcceptEdits } from '../components/accept-edits';
 import { BotAppearance } from './bot-appearance';
+import { BotModel } from './bot-model';
 
 type Tab = 'Activity' | 'Artifacts' | 'Routines' | 'About';
 export function BotDetailsScreen() {
@@ -303,7 +304,7 @@ function About({ bot }: { bot: Bot }) {
         </Card>
       </Section>
       <Section title="Model">
-        <Label>{bot.modelConfig?.model_id ?? 'No model selected'}</Label>
+        <BotModel key={bot.id} bot={bot} />
       </Section>
       <Section title="Approvals">
         <AcceptEdits botId={bot.id} />
@@ -330,7 +331,7 @@ function About({ bot }: { bot: Bot }) {
         onPress={() => void pin()}
       />
       <Label muted size={13}>
-        Edit models, tools and Skills on your computer.
+        Configure model providers, tools and Skills on your computer.
       </Label>
     </>
   );
