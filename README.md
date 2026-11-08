@@ -54,6 +54,36 @@ The Mac app can also connect to an existing self-hosted server instead of runnin
 Prefer to operate the relay yourself? Follow the optional [private relay setup](docs/PRIVATE_RELAY_SETUP.md).
 A private relay replaces the shared connection service that allows the OpenBots mobile app to pair with Openbots running on your machine; it does not run your Bots.
 
+## Connect models and subscriptions
+
+Open **Settings → Models** to connect a Claude, ChatGPT/Codex or xAI subscription, or save a
+provider API key. One subscription sign-in is shared by bot conversations and the compatible
+coding agent. Existing coding-agent sign-ins appear here too. xAI sign-in uses pi's terminal
+flow: open the terminal, run `pi`, choose `/login`, then return to Models and choose **Check**.
+A computer must be configured for subscription connections.
+
+A connected subscription takes priority over an API key for that provider. If the sign-in expires
+or the plan reaches a limit, requests fail rather than silently switching to API billing.
+Disconnect the subscription to use a saved key. Under a saved key, **Use key** also
+connects it to a compatible coding agent. **Settings → Coding agents** shows agent status and
+links back to Models for connection setup.
+
+Credentials stay on your computer. Bot requests use the same credential files as the coding
+agent, including token refreshes; tokens are not copied into the server database. Subscription
+requests use vendor-native endpoints only, never custom endpoints. Available models and billing
+remain subject to the vendor's plan and terms. In particular, Claude access outside Claude Code
+may require extra usage or be restricted by Anthropic. API list prices are not shown as a cost
+estimate for subscription bot runs. A **Connected** label means a saved connection, not verified
+plan access. Use **Test** on a model to verify access.
+
+Deploy the updated server and computer image together. The supported Claude/Codex launchers
+coordinate credential writes with the bot bridge. A refresh may wait for an active native CLI
+session to finish; ordinary bot requests with a valid token do not take that lock. Cancellation
+allows an in-flight token rotation to commit, and disconnect uses the same locks so a refresh
+cannot restore a removed connection. Invoking vendor binaries directly bypasses this coordination.
+Credentials remain accessible to code running as the shared `coder` user, an existing isolation
+limitation described in [the security review](docs/SECURITY.md).
+
 ## Go further
 
 - [Architecture and the five Docker images](docs/ARCHITECTURE.md)

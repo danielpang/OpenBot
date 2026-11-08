@@ -1,4 +1,5 @@
 import { Button } from '@openbots/ui';
+import { SUBSCRIPTION_PROVIDERS } from '@openbots/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { capabilitiesQuery } from '../../app/api.js';
@@ -15,6 +16,7 @@ import { AddEndpoint } from './add-endpoint.js';
 import { ErrorText } from './error-text.js';
 import { BUILT_IN_KINDS } from './format.js';
 import { KeyField, ProviderCard } from './provider-card.js';
+import { AdditionalCodingSubscriptions, ProviderSubscription } from './provider-subscription.js';
 
 // Settings > Models (L1 to L6): a card per built-in provider, then custom
 // endpoints. A self-hosted install has one list, its owner's. On the managed
@@ -38,6 +40,14 @@ function UnconfiguredBuiltIn({
   return (
     <article className="flex flex-col gap-3 rounded-md border p-4" aria-label={preset.name}>
       <h3 className="font-medium">{preset.name}</h3>
+      {scope !== 'organization' && (
+        <ProviderSubscription
+          kind={preset.kind}
+          canEdit={canEdit}
+          configured={false}
+          scope={scope}
+        />
+      )}
       <KeyField
         hasKey={false}
         canEdit={canEdit}
@@ -82,9 +92,36 @@ function ProviderList({
               <UnconfiguredBuiltIn key={kind} preset={preset} canEdit={canEdit} scope={scope} />
             ) : null;
           }
-          return configured.map((provider) => (
-            <ProviderCard key={provider.id} provider={provider} canEdit={canEdit} />
-          ));
+          const native = configured.find(
+            (p) => p.protocol === 'native' && !p.baseUrl && !p.headers.length,
+          );
+          return (
+            <section
+              key={kind}
+              className="flex flex-col gap-3"
+              aria-label={`${preset?.name ?? kind} connections`}
+            >
+              {!native && kind in SUBSCRIPTION_PROVIDERS && scope !== 'organization' && (
+                <article className="flex flex-col gap-3 rounded-md border p-4">
+                  <h3 className="font-medium">{preset?.name ?? kind}</h3>
+                  <ProviderSubscription
+                    kind={kind}
+                    canEdit={canEdit}
+                    configured={false}
+                    scope={scope}
+                  />
+                </article>
+              )}
+              {configured.map((provider) => (
+                <ProviderCard
+                  key={provider.id}
+                  provider={provider}
+                  canEdit={canEdit}
+                  showSubscription={scope !== 'organization' && provider.id === native?.id}
+                />
+              ))}
+            </section>
+          );
         })}
       </section>
       <section className="flex flex-col gap-3">
@@ -92,7 +129,7 @@ function ProviderList({
           <h3 className="text-sm font-medium">Custom model providers</h3>
           {canEdit && !adding && (
             <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-              Add custom model provider
+              Add provider
             </Button>
           )}
         </div>
@@ -140,23 +177,44 @@ export function ModelsSettings({ canEdit }: { canEdit: boolean }) {
   const allowLocal = capabilities.data?.localEndpoints ?? true;
   const error = providers.error ?? presets.error;
   if (error) return <ErrorText error={error} />;
-  if (!providers.data || !presets.data) return null;
+  if (!providers.data || !presets.data)
+    return (
+      <div role="status" className="animate-pulse space-y-3" aria-label="Loading model connections">
+        <div className="h-24 rounded-md bg-muted" />
+        <div className="h-24 rounded-md bg-muted" />
+      </div>
+    );
 
   if (!managed) {
     return (
       <div className="flex flex-col gap-8">
+        <header className="space-y-2">
+          <h2 className="text-xl font-semibold tracking-tight">Model connections</h2>
+          <p className="max-w-prose text-sm text-muted-foreground">
+            Connect a subscription or add an API key. Your bots and coding agents share these
+            connections.
+          </p>
+        </header>
         <ProviderList
           providers={providers.data.items}
           presets={presets.data.items}
           canEdit={canEdit}
           allowLocal={allowLocal}
         />
+        <AdditionalCodingSubscriptions />
       </div>
     );
   }
   const of = (scope: Scope) => providers.data.items.filter((p) => p.scope === scope);
   return (
     <div className="flex flex-col gap-10">
+      <header className="space-y-2">
+        <h2 className="text-xl font-semibold tracking-tight">Model connections</h2>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Subscriptions belong to your account. Your bots use your subscription before an API key,
+          including for organization providers.
+        </p>
+      </header>
       <section className="flex flex-col gap-6" aria-label="Organization">
         <div className="flex flex-col gap-1">
           <h2 className="font-medium">Organization</h2>
@@ -185,6 +243,7 @@ export function ModelsSettings({ canEdit }: { canEdit: boolean }) {
           allowLocal={allowLocal}
         />
       </section>
+      <AdditionalCodingSubscriptions />
     </div>
   );
 }

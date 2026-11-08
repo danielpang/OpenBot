@@ -180,7 +180,7 @@ describe('Settings > Models on the managed service (L6)', () => {
     expect(text.indexOf('Anthropic')).toBeLessThan(text.indexOf('Yours'));
     expect(text.indexOf('My Anthropic')).toBeGreaterThan(text.indexOf('Yours'));
     // A member adds their own custom providers, not the organization's.
-    expect(html.match(/Add custom model provider/g)).toHaveLength(1);
+    expect(html.match(/Add provider/g)).toHaveLength(1);
     // No private network on the hosted service.
     expect(html).not.toContain('Runs on my network');
   });
@@ -209,6 +209,13 @@ describe('Settings > Models', () => {
       presetId: 'ollama',
     }),
   ];
+
+  it('keeps vendor subscription setup visible beside customized API endpoints', async () => {
+    const html = await settings([provider({ baseUrl: 'https://proxy.example/v1' })], true);
+    expect(html).toContain('anthropic subscription unavailable');
+    expect(html).toContain('Configure a computer to connect a subscription');
+    expect(html).toContain('API key:');
+  });
 
   it('shows key status without ever rendering a key', async () => {
     const html = await settings(stored, true);
@@ -249,7 +256,7 @@ describe('Settings > Models', () => {
 
   it('gives admins the edit controls and members a read-only view', async () => {
     const admin = await settings(stored, true);
-    expect(admin).toContain('Add custom model provider');
+    expect(admin).toContain('Add provider');
     expect(admin).toContain('>Test<');
     expect(admin).toContain('type="password"');
 
@@ -258,7 +265,7 @@ describe('Settings > Models', () => {
     // Members get no hint from the server, only that a key is set.
     const forMember = stored.map((p) => ({ ...p, keyHint: null }));
     expect(await settings(forMember, false)).toContain('API key: set');
-    expect(member).not.toContain('Add custom model provider');
+    expect(member).not.toContain('Add provider');
     expect(member).not.toContain('>Test<');
     expect(member).not.toContain('>Delete<');
     expect(member).not.toContain('type="password"');

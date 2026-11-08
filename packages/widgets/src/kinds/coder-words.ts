@@ -77,9 +77,7 @@ function lowerFirst(words: string): string {
 
 /** What the session's error line says; a bare `needs_login` marker becomes a sentence. */
 export function sessionErrorWords(error: string): string {
-  return error.trim() === NEEDS_LOGIN
-    ? 'Not signed in. Sign in under Settings > Coding agents.'
-    : error;
+  return error.trim() === NEEDS_LOGIN ? 'Not signed in. Sign in under Settings > Models.' : error;
 }
 
 /** Tokens and cost, or the plan when the vendor billed the owner's subscription. */

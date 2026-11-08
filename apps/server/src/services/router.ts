@@ -25,6 +25,7 @@ import {
 } from './chats.js';
 import { postMessage, setMentions, type ChatRow } from './messages.js';
 import { providerRegistry, smallModelFor } from './providers.js';
+import { subscriptionFor } from './model-connections.js';
 import { botsAtWork, dropQueuedHandoffs, startRoutedRun, type RoutedRunOutcome } from './runs.js';
 
 // The router (plan 7; C4 to C6). `routeMessage` decides who answers a message
@@ -330,6 +331,24 @@ async function replyModelFor(
   const config = ModelConfigSchema.safeParse(bot.modelConfig);
   if (!config.success) return null;
   try {
+    const [provider] = await deps.db
+      .select()
+      .from(schema.providers)
+      .where(eq(schema.providers.id, config.data.provider_id));
+    if (provider?.protocol === 'native' && !provider.baseUrl) {
+      const accounts = await deps.db
+        .select()
+        .from(schema.coderAccounts)
+        .where(
+          and(
+            eq(schema.coderAccounts.ownerId, bot.ownerId),
+            eq(schema.coderAccounts.workspaceId, bot.workspaceId),
+          ),
+        );
+      // Use the router's deterministic fallback rather than bill an API classifier
+      // while the owner has selected a subscription for this provider.
+      if (subscriptionFor(provider.kind, accounts)) return null;
+    }
     const small = await smallModelFor(deps, config.data.provider_id);
     const resolved = await providerRegistry(deps).resolve(
       small ? { provider_id: config.data.provider_id, model_id: small.modelId } : config.data,

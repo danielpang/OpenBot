@@ -576,7 +576,7 @@ export async function ownerTurn(
     throw new DomainError(
       409,
       'NEEDS_LOGIN',
-      `${label} is not signed in on this computer. Sign in under Settings > Coding agents, then send your message again.`,
+      `${label} is not signed in on this computer. Sign in under Settings > Models, then send your message again.`,
     );
   }
 

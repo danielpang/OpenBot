@@ -64,7 +64,9 @@ const goTo = (href: string) => window.location.assign(href);
 export function CodingAgentsSettings({
   pollMs = LOGIN_POLL_MS,
   onNavigate = goTo,
+  connectionsOnModels = false,
 }: {
+  connectionsOnModels?: boolean;
   pollMs?: number;
   /** Goes to an in-app path without a page load; a full load where absent. */
   onNavigate?: (href: string) => void;
@@ -76,8 +78,15 @@ export function CodingAgentsSettings({
   return (
     <section className="flex flex-col gap-4" aria-label="Coding agents">
       <p className="text-sm text-muted-foreground">
-        Bots run these on their computer to work in your repositories. Sign in with your own plan,
-        or use an API key from Settings &gt; Models.
+        Bots run these on their computer to work in your repositories. Manage subscriptions and API
+        keys in{' '}
+        <a
+          href="/settings/models"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Models
+        </a>
+        .
       </p>
       {capabilities && !capabilities.computer && (
         <p className="text-sm text-muted-foreground">
@@ -89,34 +98,71 @@ export function CodingAgentsSettings({
       ) : !coders.data ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
-        coders.data.agents.map((account) => (
-          <CoderCard
-            key={account.agent}
-            account={account}
-            providers={providers.data?.items ?? []}
-            pollMs={pollMs}
-            onNavigate={onNavigate}
-          />
-        ))
+        coders.data.agents.map((account) =>
+          connectionsOnModels ? (
+            <article
+              key={account.agent}
+              aria-label={account.label}
+              data-agent={account.agent}
+              className="flex flex-col gap-3 rounded-md border p-4 text-sm"
+            >
+              <header className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-medium">{account.label}</h3>
+                <span className="text-xs text-muted-foreground">
+                  {account.version ? `Version ${account.version}` : 'Version not checked'}
+                </span>
+              </header>
+              <p>{accountWords(account, providers.data?.items ?? [])}</p>
+              {agentNote(account) && (
+                <p className="text-xs text-muted-foreground">{agentNote(account)}</p>
+              )}
+              <AccountError account={account} label={account.label} />
+              <a
+                href="/settings/models"
+                className="self-start font-medium underline underline-offset-4"
+              >
+                Manage
+              </a>
+            </article>
+          ) : (
+            <CoderCard
+              key={account.agent}
+              account={account}
+              providers={providers.data?.items ?? []}
+              pollMs={pollMs}
+              onNavigate={onNavigate}
+            />
+          ),
+        )
       )}
     </section>
   );
 }
 
-function CoderCard({
+export function CoderCard({
   account,
   providers,
   pollMs,
   onNavigate,
+  connectionOnly = false,
+  onConnected,
+  onDisconnected,
+  connectionLabel,
+  connectionBilling,
 }: {
   account: CoderAccount;
   providers: Provider[];
   pollMs: number;
   onNavigate: (href: string) => void;
+  connectionOnly?: boolean;
+  onConnected?: () => void;
+  onDisconnected?: () => void;
+  connectionLabel?: string;
+  connectionBilling?: string;
 }) {
   const queryClient = useQueryClient();
   const agent = account.agent;
-  const label = account.label || CODER_AGENT_LABELS[agent];
+  const label = connectionLabel ?? (account.label || CODER_AGENT_LABELS[agent]);
   const [picking, setPicking] = useState(false);
   const [providerId, setProviderId] = useState('');
   const [login, setLogin] = useState<CoderLogin | null>(null);
@@ -159,9 +205,11 @@ function CoderCard({
 
   // A finished sign-in changes the account; the card reads it again.
   useEffect(() => {
-    if (status === 'signed_in')
+    if (status === 'signed_in') {
       void queryClient.invalidateQueries({ queryKey: codersQuery.queryKey });
-  }, [status, queryClient]);
+      onConnected?.();
+    }
+  }, [status, queryClient, onConnected]);
 
   const signIn = useMutation({
     mutationFn: () => beginCoderLogin(agent),
@@ -183,6 +231,7 @@ function CoderCard({
     onSuccess: (next) => {
       writeAccount(next);
       if (next.authKind !== 'none') setInTerminal(null);
+      if (next.authKind === 'subscription') onConnected?.();
       void refresh();
     },
   });
@@ -210,6 +259,7 @@ function CoderCard({
     onSuccess: (next) => {
       writeAccount(next);
       void refresh();
+      onDisconnected?.();
     },
   });
 
@@ -220,7 +270,13 @@ function CoderCard({
     submitted.status === current.status &&
     submitted.error === current.error;
   const again = account.lastErrorKind === 'sign_in';
-  const signInWords = again ? 'Sign in again' : 'Sign in';
+  const signInWords = connectionOnly
+    ? again
+      ? 'Reconnect'
+      : 'Connect'
+    : again
+      ? 'Sign in again'
+      : 'Sign in';
   const choices = keyProviders(agent, providers);
   const plan = CODER_PLAN_WORDS[agent];
   const signedIn = account.authKind !== 'none';
@@ -229,13 +285,17 @@ function CoderCard({
 
   return (
     <article
-      className="flex flex-col gap-3 rounded-md border bg-card p-4 text-sm"
-      aria-label={label}
+      className={
+        connectionOnly
+          ? 'flex min-w-0 flex-col gap-3 text-sm'
+          : 'flex flex-col gap-3 rounded-md border bg-card p-4 text-sm'
+      }
+      aria-label={connectionOnly ? `${label} subscription` : label}
       data-agent={agent}
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h3 className="font-medium">{label}</h3>
-        {account.version && (
+        <h3 className="font-medium">{connectionOnly ? 'Subscription' : label}</h3>
+        {!connectionOnly && account.version && (
           <span className="text-xs text-muted-foreground">Version {account.version}</span>
         )}
         <span className="ml-auto text-sm" data-account-status>
@@ -244,10 +304,10 @@ function CoderCard({
       </div>
       {account.authKind === 'subscription' && (
         <p className="text-xs text-muted-foreground" data-plan>
-          Usage is {billed}.
+          {connectionBilling ?? `Usage is ${billed}.`}
         </p>
       )}
-      {note && <p className="text-xs text-muted-foreground">{note}</p>}
+      {!connectionOnly && note && <p className="text-xs text-muted-foreground">{note}</p>}
       <AccountError account={account} label={label} />
 
       {signingIn && current && (
@@ -304,7 +364,7 @@ function CoderCard({
                 inTerminal ? onNavigate(computerTerminalHref(inTerminal.terminal)) : signIn.mutate()
               }
             >
-              {inTerminal ? 'Open the terminal' : signInWords}
+              {inTerminal ? 'Terminal' : signInWords}
             </Button>
             <Button
               size="sm"
@@ -385,16 +445,18 @@ function CoderCard({
               {signInWords}
             </Button>
           )}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setProviderId(account.authKind === 'api_key' ? (account.providerId ?? '') : '');
-              setPicking(true);
-            }}
-          >
-            Use API key
-          </Button>
+          {!connectionOnly && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setProviderId(account.authKind === 'api_key' ? (account.providerId ?? '') : '');
+                setPicking(true);
+              }}
+            >
+              Use API key
+            </Button>
+          )}
           {!terminalPanel && account.checkAvailable && (
             <Button
               size="sm"
@@ -412,7 +474,7 @@ function CoderCard({
               disabled={signOut.isPending}
               onClick={() => signOut.mutate()}
             >
-              Sign out
+              {connectionOnly ? 'Disconnect' : 'Sign out'}
             </Button>
           )}
         </div>

@@ -13,6 +13,7 @@ import {
 import { ErrorText } from './error-text.js';
 import { providerInUseText, testSummary } from './format.js';
 import { ModelEditor } from './model-editor.js';
+import { ProviderCodingKey, ProviderSubscription } from './provider-subscription.js';
 
 // One provider: key status, Test (of the default model or one the admin
 // picks, L3), models, small model and delete. Keys are
@@ -83,7 +84,7 @@ export function KeyField({
   }
   return (
     <div className="flex flex-col gap-1.5">
-      <form className="flex items-center gap-2" onSubmit={submit}>
+      <form className="flex flex-wrap items-center gap-2" onSubmit={submit}>
         {status}
         <Input
           name="apiKey"
@@ -159,11 +160,13 @@ export function ProviderCard({
   canEdit,
   keyRequired,
   defaultOpen = false,
+  showSubscription = true,
 }: {
   provider: Provider;
   canEdit: boolean;
   keyRequired?: boolean;
   defaultOpen?: boolean;
+  showSubscription?: boolean;
 }) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: providersQuery.queryKey });
@@ -194,7 +197,7 @@ export function ProviderCard({
 
   return (
     <article className="flex flex-col gap-3 rounded-md border p-4" aria-label={provider.name}>
-      <header className="flex items-start justify-between gap-4">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h3 className="font-medium">{provider.name}</h3>
           {provider.kind === 'custom' && (
@@ -208,7 +211,7 @@ export function ProviderCard({
           )}
         </div>
         {canEdit && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <select
               aria-label="Model to test"
               value={testModelId}
@@ -253,6 +256,16 @@ export function ProviderCard({
         </p>
       )}
       <ErrorText error={remove.error} />
+      {showSubscription &&
+        provider.protocol === 'native' &&
+        !provider.baseUrl &&
+        provider.headers.length === 0 && (
+          <ProviderSubscription
+            kind={provider.kind}
+            canEdit={canEdit}
+            fallbackProviderId={provider.hasKey ? provider.id : undefined}
+          />
+        )}
       <KeyField
         hasKey={provider.hasKey}
         keyHint={provider.keyHint}
@@ -260,6 +273,7 @@ export function ProviderCard({
         required={keyRequired}
         onSave={(apiKey) => updateProvider(provider.id, { apiKey }).then(refresh)}
       />
+      {canEdit && <ProviderCodingKey provider={provider} />}
       {canEdit && provider.kind === 'custom' && (
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" {...localBox} />

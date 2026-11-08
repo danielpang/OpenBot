@@ -233,7 +233,7 @@ describe('coding session widget', () => {
 
   it('says a needs_login marker as a sentence', () => {
     session({ status: 'failed', feed: [], approvals: [], error: 'needs_login' });
-    expect(screen.getByText('Not signed in. Sign in under Settings > Coding agents.')).toBeTruthy();
+    expect(screen.getByText('Not signed in. Sign in under Settings > Models.')).toBeTruthy();
     expect(screen.queryByText('needs_login')).toBeNull();
   });
 
