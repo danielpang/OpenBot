@@ -12,6 +12,7 @@ allowBuilds:
   cpu-features: false
   electron-winstaller: false
   protobufjs: false
+  '@google/genai': false # pi test runtime; the image also skips this no-op script.
   ssh2: false
 
 catalog:

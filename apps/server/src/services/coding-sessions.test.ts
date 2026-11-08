@@ -1155,10 +1155,12 @@ describe('coding agents', () => {
       const res = await call(dana, 'POST', '/coders/claude/sign-out');
       expect(res.status).toBe(200);
       expect(await res.json()).toMatchObject({ account: { authKind: 'none', providerId: null } });
-      const sh = coder.calls.slice(before).find((c) => c.launch.command === 'sh')!;
-      expect(sh.launch).toMatchObject({ user: 'coder' });
-      expect(sh.launch.args?.at(-1)).toBe('/var/lib/openbots/coders/claude');
-      expect(sh.launch.args?.[1]).toContain('-mindepth 1 -delete');
+      const clear = coder.calls.slice(before).find((c) => c.launch.command === 'node')!;
+      expect(clear.launch).toMatchObject({ user: 'coder' });
+      expect(clear.launch.args).toEqual([
+        expect.stringMatching(/subscription-sign-out\.js$/),
+        'claude',
+      ]);
     });
 
     it('drives a sign-in: link, pasted code, signed in, and every waiting run resumed', async () => {

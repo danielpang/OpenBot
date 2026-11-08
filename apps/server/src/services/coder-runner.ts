@@ -127,7 +127,7 @@ import {
 
 /** What the widget says instead of NEEDS_LOGIN. */
 export const needsLoginText = (label: string) =>
-  `${label} is not signed in on this computer. Sign in under Settings > Coding agents, then ask again.`;
+  `${label} is not signed in on this computer. Sign in under Settings > Models, then ask again.`;
 /** The pull request approval's tool name. */
 export const PR_TOOL = 'open_pull_request';
 
@@ -693,7 +693,7 @@ class SessionRunner {
       throw new DomainError(
         400,
         'CODER_PROVIDER_MISSING',
-        `${label} is set to use an API key, but its provider is gone. Pick one under Settings > Coding agents.`,
+        `${label} is set to use an API key, but its provider is gone. Pick one under Settings > Models.`,
       );
     }
     const { apiKey, baseUrl } = providerConfig(this.deps, row);

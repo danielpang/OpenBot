@@ -5,6 +5,7 @@ import { createServer, type Server, type Socket } from 'node:net';
 import { constants as osConstants } from 'node:os';
 import path from 'node:path';
 import type { RawData, WebSocket } from 'ws';
+import { SUBSCRIPTION_BRIDGE, SUBSCRIPTION_CANCEL_GRACE_MS } from '@openbots/shared';
 import {
   coderConfigEnv,
   CODER_AGENT_DIRS,
@@ -210,7 +211,7 @@ export function coderSession(ws: WebSocket, deps: CoderDeps): void {
   // In the image the session's directory and socket are the coders group's,
   // which the agent keeps (privileges.ts `dropToBot`); elsewhere the agent's own.
   const group = users.privileged ? CODERS_GID : undefined;
-  const grace = deps.graceMs ?? 2000;
+  let grace = deps.graceMs ?? 2000;
 
   const send = (msg: CoderServerMessage) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -448,6 +449,8 @@ export function coderSession(ws: WebSocket, deps: CoderDeps): void {
   };
 
   const start = async (msg: CoderStart) => {
+    if (msg.command === 'node' && msg.args[0] === SUBSCRIPTION_BRIDGE)
+      grace = Math.max(grace, SUBSCRIPTION_CANCEL_GRACE_MS);
     clearTimeout(startTimer);
     if (!CODER_SESSION_ID.test(msg.session_id)) {
       throw new StartError('Not a valid session id', 1008);

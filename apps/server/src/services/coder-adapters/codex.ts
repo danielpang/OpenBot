@@ -796,7 +796,7 @@ export const CODEX_POSTURE =
 
 /** What the owner sees when Codex's sign-in is refused by OpenAI (a 401); the raw text is logged. */
 export const CODEX_SIGN_IN_REFUSED =
-  'Codex could not sign in to OpenAI. Sign in again under Settings > Coding agents.';
+  'Codex could not sign in to OpenAI. Sign in again under Settings > Models.';
 
 /** OpenAI's 429, in Codex's words or the API's (`rate_limit_exceeded`). */
 const RATE_LIMITED = /\b429\b|rate[ _-]?limit|too many requests/i;

@@ -539,7 +539,7 @@ describe('coder runner', () => {
     const state = await w.widget(sessionId);
     expect(state.error).toBe(needsLoginText('Claude Code'));
     expect(state.error).toBe(
-      'Claude Code is not signed in on this computer. Sign in under Settings > Coding agents, then ask again.',
+      'Claude Code is not signed in on this computer. Sign in under Settings > Models, then ask again.',
     );
     const [account] = await w.t.db
       .select()

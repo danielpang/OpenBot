@@ -361,7 +361,7 @@ function classify(
 
 /** What the owner is told, on the sign-in widget and with the 409. */
 export const PI_SIGN_IN_INSTRUCTIONS =
-  'pi signs in from its own terminal. Open the Computer page, run pi, type /login and choose a provider. Then press Check under Settings > Coding agents.';
+  'pi signs in from its own terminal. Open the Computer page, run pi, type /login and choose a provider. Then press Check under Settings > Models.';
 
 /**
  * The providers `pi auth check --provider <id> --json` is asked about: pi's
@@ -375,7 +375,7 @@ export const PI_CHECK_PROVIDERS: { id: string; label: string; plan?: string }[] 
   { id: 'openai-codex', label: 'OpenAI', plan: 'OpenAI (ChatGPT Plus/Pro)' },
   { id: 'google', label: 'Google Gemini' },
   { id: 'google-vertex', label: 'Google Vertex AI' },
-  { id: 'xai', label: 'xAI' },
+  { id: 'xai', label: 'xAI', plan: 'xAI' },
   { id: 'openrouter', label: 'OpenRouter' },
   { id: 'github-copilot', label: 'GitHub Copilot' },
   { id: 'amazon-bedrock', label: 'Amazon Bedrock' },

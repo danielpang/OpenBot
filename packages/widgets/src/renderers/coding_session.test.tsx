@@ -214,7 +214,7 @@ describe('<CodingSessionWidget>', () => {
       />,
     );
     expect(host.querySelector('[data-error]')?.textContent).toBe(
-      'Not signed in. Sign in under Settings > Coding agents.',
+      'Not signed in. Sign in under Settings > Models.',
     );
     act(() =>
       root!.render(

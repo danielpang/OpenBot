@@ -106,7 +106,8 @@ import {
 } from '../services/messages.js';
 import { loadRunPolicy, runSource } from '../services/policy.js';
 import { routineInstructions } from '../services/routines.js';
-import { smallModelFor, providerRegistry } from '../services/providers.js';
+import { smallModelFor } from '../services/providers.js';
+import { resolveConnectedModel } from '../services/model-connections.js';
 import { botMessenger, routeBotReply, type RouterOptions } from '../services/router.js';
 import { referencedSkills, skillIndex, skillServices } from '../services/skills.js';
 import {
@@ -295,7 +296,9 @@ async function processRun(
         run,
         bot,
         smallModel: () =>
-          options.smallModel ? options.smallModel(config, bot) : defaultSmallModel(deps, config),
+          options.smallModel
+            ? options.smallModel(config, bot)
+            : defaultSmallModel(deps, config, bot),
       }),
       artifacts: artifactServices(deps, { id: run.id, chatId: chat.id }, bot),
       attachments: attachmentServices(deps, chat, vision),
@@ -842,7 +845,10 @@ async function resolveRunModel(
   try {
     resolved = options.resolveModel
       ? await options.resolveModel(config, bot)
-      : await providerRegistry(deps).resolve(config);
+      : await resolveConnectedModel(deps, config, {
+          id: bot.ownerId,
+          workspaceId: bot.workspaceId,
+        });
   } catch (error) {
     if (error instanceof ProviderNotFoundError) {
       return {
@@ -1419,7 +1425,7 @@ async function afterRun(
   try {
     model = options.smallModel
       ? await options.smallModel(config, bot)
-      : await defaultSmallModel(deps, config);
+      : await defaultSmallModel(deps, config, bot);
   } catch (error) {
     deps.logger.warn({ err: error, runId: run.id }, 'no small model after the run');
     return;
@@ -1493,13 +1499,17 @@ async function extractAfterRun(
   }
 }
 
-async function defaultSmallModel(deps: AppDeps, config: ModelConfig) {
+async function defaultSmallModel(deps: AppDeps, config: ModelConfig, bot: BotRow) {
   const small = await smallModelFor(deps, config.provider_id);
   if (!small) return null;
-  const resolved = await providerRegistry(deps).resolve({
-    provider_id: config.provider_id,
-    model_id: small.modelId,
-  });
+  const resolved = await resolveConnectedModel(
+    deps,
+    {
+      provider_id: config.provider_id,
+      model_id: small.modelId,
+    },
+    { id: bot.ownerId, workspaceId: bot.workspaceId },
+  );
   return resolved.model;
 }
 

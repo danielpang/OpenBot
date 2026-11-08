@@ -7,6 +7,7 @@ import { capabilitiesQuery } from '../../app/api.js';
 import type { CoderAccount, CoderLogin } from './api.js';
 import { codingSessionHost, computerTerminalHref } from './session-host.js';
 import { accountWords, CodingAgentsSettings, keyProviders } from './settings.js';
+import { ProviderSubscription } from '../models/provider-subscription.js';
 
 // Settings > Coding agents against a fake server (CA2, CA3): a card per
 // agent, Sign in polling the login until it ends, Use API key and Sign out;
@@ -188,6 +189,74 @@ function setValue(el: HTMLInputElement | HTMLSelectElement, value: string) {
 }
 
 describe('Settings > Coding agents (CA2)', () => {
+  it('reuses the saved provider key for coding only after an explicit subscription disconnect', async () => {
+    agents[1] = account({ agent: 'codex', authKind: 'subscription', needsSignIn: false });
+    const original = server.handle;
+    server.handle = async (request, path, body) => {
+      if (path === '/api/v1/coders/codex/api-key') {
+        agents[1] = {
+          ...agents[1]!,
+          authKind: 'api_key',
+          providerId: (body as { providerId: string }).providerId,
+        };
+        return Response.json({ account: agents[1] });
+      }
+      return original(request, path, body);
+    };
+    render(<ProviderSubscription kind="openai" canEdit fallbackProviderId={OPENAI} />);
+    await until(() => !!buttonIn(card('codex'), 'Disconnect'), 'subscription controls');
+    expect(server.requests.some((r) => r.path.endsWith('/api-key'))).toBe(false);
+    act(() => buttonIn(card('codex'), 'Disconnect')!.click());
+    await until(() => agents[1]!.authKind === 'api_key', 'saved coding key');
+    const writes = server.requests.filter((r) => r.method !== 'GET').map((r) => r.path);
+    expect(writes).toEqual(['/api/v1/coders/codex/sign-out', '/api/v1/coders/codex/api-key']);
+    expect(agents[1]!.providerId).toBe(OPENAI);
+  });
+
+  it('adds a distinct native subscription provider when a customized endpoint already exists', async () => {
+    agents[1] = account({ agent: 'codex', authKind: 'subscription', needsSignIn: false });
+    const original = server.handle;
+    const custom = {
+      ...provider(OPENAI, 'OpenAI proxy', 'openai'),
+      baseUrl: 'https://proxy.example/v1',
+    };
+    let created = false;
+    server.handle = async (request, path, body) => {
+      if (path === '/api/v1/providers' && request.method === 'GET')
+        return Response.json({
+          items: created
+            ? [custom, { ...provider('native', 'OpenAI', 'openai'), slug: 'openai-subscription' }]
+            : [custom],
+        });
+      if (path === '/api/v1/providers' && request.method === 'POST') {
+        created = true;
+        return Response.json(
+          { ...provider('native', 'OpenAI', 'openai'), ...(body as object) },
+          { status: 201 },
+        );
+      }
+      return original(request, path, body);
+    };
+    render(<ProviderSubscription kind="openai" canEdit configured={false} />);
+    await until(() => !!buttonIn(host, 'Enable'), 'enable action');
+    act(() => buttonIn(host, 'Enable')!.click());
+    await until(() => created, 'native provider creation');
+    const writes = server.requests.filter(
+      (r) => r.path === '/api/v1/providers' && r.method === 'POST',
+    );
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.body).toMatchObject({ presetId: 'openai', slug: 'openai-subscription' });
+  });
+
+  it('keeps connection setup on Models in the routed settings view', async () => {
+    render(<CodingAgentsSettings connectionsOnModels />);
+    await until(() => !!card('claude'), 'the agent status');
+    expect(card('claude').textContent).toContain('Manage');
+    expect(card('claude').querySelector('a')?.getAttribute('href')).toBe('/settings/models');
+    expect(buttonIn(card('claude'), 'Sign in')).toBeUndefined();
+    expect(buttonIn(card('codex'), 'Use API key')).toBeUndefined();
+  });
+
   it('shows a card per agent with its version, status and error', async () => {
     render(<CodingAgentsSettings />);
     await until(() => !!card('pi'), 'the cards');
@@ -471,7 +540,7 @@ describe('Settings > Coding agents: Codex, pi and Check (CA3)', () => {
         ),
       'the terminal message',
     );
-    expect(buttonIn(card('pi'), 'Open the terminal')).toBeDefined();
+    expect(buttonIn(card('pi'), 'Terminal')).toBeDefined();
     await act(async () => buttonIn(card('pi'), 'Check')!.click());
     await until(
       () =>

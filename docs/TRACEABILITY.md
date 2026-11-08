@@ -218,6 +218,23 @@ Added with Phase 1 of the coding agents design (plan 22) and extended with Phase
 
 ### 4.15 Models and providers
 
+Shared subscription connections (L1, L3, L4, CA2, CA3):
+`apps/server/src/services/model-connections.ts` selects the owner's subscription before an API
+key; `subscription-model.ts` and `apps/computer-agent/src/subscription-model.ts` stream through
+the computer using the coding agent's own credential files. Models owns connection controls;
+Coding agents links there. Covered by `model-connections.test.ts`, `subscription-model.test.ts`
+in both apps, `apps/web/src/features/models/provider-subscription.test.tsx`, and
+`apps/computer-agent/src/subscription-runtime.test.ts`. The latter uses the image's pinned
+pi-ai/auth backend with fixture HTTP, including native refresh serialization, cancellation after
+rotation, actual entrypoint SIGTERM/error output, tool replay without discarded reasoning IDs,
+and credential-marker leak checks. The native launchers and bridge coordinate on
+`openbots-auth.lock`; disconnect preserves its inode and takes pi's credential-file lock too.
+Connected is not presented as verified plan access. Authentication failures retain subscription
+priority while marking the saved connection as needing reconnect. Live vendor
+sign-in, refresh and plan billing still require validation with real accounts and the computer
+image. The router uses its deterministic reply-decision fallback for subscription providers
+rather than making an API-billed classifier request.
+
 | ID  | Requirement                                              | Code                                                                                                                                                                 | Tests                                                                                                                                                                                                                                                                                                                                                                                                                                             | Status  | Notes                                                                                         |
 | --- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------- |
 | L1  | Built-ins by key in Settings or `.env`; wizard asks      | `apps/server/src/services/providers.ts` (`seedProvidersFromEnv`), `apps/web/src/features/models/models-settings.tsx`, `apps/web/src/features/setup/setup-wizard.tsx` | `apps/server/src/services/providers.test.ts` "creates an instance-level provider per key with sealed secrets and catalog models"; `apps/server/src/routes/providers.test.ts` "adds a built-in from its preset with the catalog models, never returning the key"; `apps/web/src/features/setup/setup.test.ts` "continues past the key step only with a key whose Test passed with tools (L1)"                                                      | Closed  | Real keys need a provider.                                                                    |

@@ -36,6 +36,7 @@ import { DomainError, notFound } from '../errors.js';
 import { decryptSecretString, encryptSecret, keyringFromConfig } from '../secrets.js';
 import { ensureWorkspace, getOrganization, storedSettings, updateSettings } from '../workspace.js';
 import { inWorkspace } from '../db/scope.js';
+import { subscriptionModelFor, subscriptionFor } from './model-connections.js';
 
 // Model providers (plan 4.10, 5.9; L1 to L5). Built-ins are seeded from `.env`
 // at start; custom endpoints come from Settings > Models. Instance-level rows
@@ -741,7 +742,23 @@ export async function createProvider(
   assertLocalAllowed(deps, local);
   await assertEndpoint(deps, baseUrl, local);
   if (preset?.key_required && !input.apiKey) {
-    throw invalid('API_KEY_REQUIRED', `${preset.name} needs an API key`);
+    const accounts =
+      protocol === 'native' && !baseUrl && !Object.keys(input.headers ?? {}).length
+        ? await deps.db
+            .select()
+            .from(schema.coderAccounts)
+            .where(
+              and(
+                eq(schema.coderAccounts.ownerId, viewer.id),
+                eq(schema.coderAccounts.workspaceId, viewer.workspaceId),
+              ),
+            )
+        : [];
+    if (!subscriptionFor(kind, accounts))
+      throw invalid(
+        'API_KEY_REQUIRED',
+        `${preset.name} needs an API key or a connected subscription`,
+      );
   }
   const slug = input.slug ?? slugFromName(input.presetId && !input.name ? input.presetId : name);
 
@@ -999,7 +1016,7 @@ export function statusFor(result: ProviderTestResult): ProviderStatus {
  * not an error.
  */
 export async function testProvider(
-  deps: ProvidersDeps,
+  deps: AppDeps,
   viewer: Viewer,
   providerId: string,
   input: { modelId?: string } = {},
@@ -1018,7 +1035,15 @@ export async function testProvider(
   }
   let result: ProviderTestResult;
   try {
-    const model = createModelFactory(providerConfig(deps, row))(target.modelId);
+    const config = providerConfig(deps, row);
+    const model =
+      (await subscriptionModelFor(
+        deps,
+        config,
+        { provider_id: providerId, model_id: target.modelId },
+        viewer,
+        capabilitiesOf(target),
+      )) ?? createModelFactory(config)(target.modelId);
     result = await testModel(model, { modelId: target.modelId, timeoutMs: options.timeoutMs });
   } catch (err) {
     result = {
