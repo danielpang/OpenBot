@@ -1,5 +1,6 @@
 import type { MessagePart } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { WaitFor } from '../gated.js';
 import { createPolicy, defaultPolicy } from '../policy/index.js';
 import { executeRun, type StepRecord } from '../run/execute.js';
@@ -242,8 +243,29 @@ describe('built-in tools', () => {
     ]);
 
     // Domains are bare hosts: no scheme, path, operator or empty list.
-    for (const domains of [['https://nature.com'], ['nature.com/news'], ['x OR y'], ['nature'], []])
-      expect(tools.web_search!.inputSchema.safeParse({ query: 'x', domains }).success).toBe(false);
+    for (const domains of [
+      ['https://nature.com'],
+      ['nature.com/news'],
+      ['x OR y'],
+      ['nature'],
+      ['foo-.com'],
+      ['foo.-bar.com'],
+      ['-foo.com'],
+      ['a..b'],
+      [],
+    ])
+      expect(
+        tools.web_search!.inputSchema.safeParse({ query: 'x', domains }).success,
+        String(domains),
+      ).toBe(false);
+    expect(
+      tools.web_search!.inputSchema.safeParse({ query: 'x', domains: ['bbc.co.uk', 'x1-y.io'] })
+        .success,
+    ).toBe(true);
+    // The schema the provider sees carries no lookarounds, which RE2-based validators refuse.
+    const schema = JSON.stringify(z.toJSONSchema(tools.web_search!.inputSchema));
+    expect(schema).toContain('"pattern"');
+    expect(schema).not.toMatch(/\(\?<?[=!]/);
     expect(
       tools.news_search!.inputSchema.safeParse({ query: 'x', freshness: 'hour' }).success,
     ).toBe(false);

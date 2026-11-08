@@ -420,7 +420,14 @@ describe('web_search and news_search', () => {
               publishedDate: '2026-11-01T00:00:00.000Z',
               highlights: ['First point.', 'Second point.'],
             },
-            { title: 'Text only', url: 'https://e.example/q', text: 'x'.repeat(500) },
+            // Exa sends a page's text only when the request asks for it.
+            {
+              title: 'Text only',
+              url: 'https://e.example/q',
+              ...((body.contents as { text?: unknown } | undefined)?.text
+                ? { text: 'x'.repeat(500) }
+                : {}),
+            },
           ],
         });
       }
@@ -448,17 +455,24 @@ describe('web_search and news_search', () => {
       TAVILY_API_KEY: 'tavily-key',
       EXA_API_KEY: 'exa-key',
     });
-    expect(all!.provider).toBe('brave');
     expect(await all!.web('otters', 1)).toEqual([
       { title: 'About otters', url: 'https://otters.example', snippet: 'Sea otters' },
     ]);
-    expect(
-      (await backends({ TAVILY_API_KEY: 'tavily-key', EXA_API_KEY: 'exa-key' }))!.provider,
-    ).toBe('tavily');
-    expect(await (await backends({ TAVILY_API_KEY: 'tavily-key' }))!.web('otters', 3)).toEqual([
+    const tavilyFirst = [
       { title: 'otters (3)', url: 'https://t.example/story', snippet: 'From Tavily' },
-    ]);
-    expect((await backends({ EXA_API_KEY: 'exa-key' }))!.provider).toBe('exa');
+    ];
+    expect(
+      await (await backends({ TAVILY_API_KEY: 'tavily-key', EXA_API_KEY: 'exa-key' }))!.web(
+        'otters',
+        3,
+      ),
+    ).toEqual(tavilyFirst);
+    expect(await (await backends({ TAVILY_API_KEY: 'tavily-key' }))!.web('otters', 3)).toEqual(
+      tavilyFirst,
+    );
+    expect((await (await backends({ EXA_API_KEY: 'exa-key' }))!.web('otters', 1))[0]!.url).toBe(
+      'https://e.example/p',
+    );
     expect(await backends({})).toBeNull();
     await expect((await backends({ BRAVE_API_KEY: 'wrong' }))!.web('x', 1)).rejects.toThrow(
       'Brave Search answered HTTP 401',
@@ -479,20 +493,35 @@ describe('web_search and news_search', () => {
     ).rejects.toThrow(WEB_SEARCH_NOT_CONFIGURED);
   });
 
-  it('sends Brave freshness and site: operators, and keeps only the asked-for domains', async () => {
+  it('sends Brave freshness and grouped site: operators, and keeps only the asked-for domains', async () => {
     const brave = (await backends({ BRAVE_API_KEY: 'brave-key' }))!;
     expect(
       await brave.web('otters', 5, { freshness: 'week', domains: ['otters.example', 'b.example'] }),
     ).toEqual([
       {
-        title: 'About otters site:otters.example OR site:b.example',
+        title: 'About otters (site:otters.example OR site:b.example)',
         url: 'https://otters.example',
         snippet: 'Sea otters',
       },
     ]);
-    const query = new URL(sent('/brave?').path, 'http://x').searchParams;
+    let query = new URL(sent('/brave?').path, 'http://x').searchParams;
     expect(query.get('freshness')).toBe('pw');
-    expect(query.get('count')).toBe('5');
+    // Off-site results are dropped afterwards, so a domain search asks for more than the limit.
+    expect(query.get('count')).toBe('20');
+    await brave.web('otters', 5, { domains: ['otters.example'] });
+    query = new URL(sent('/brave?').path, 'http://x').searchParams;
+    expect(query.get('q')).toBe('otters site:otters.example');
+    await brave.web('otters', 5);
+    expect(new URL(sent('/brave?').path, 'http://x').searchParams.get('count')).toBe('5');
+
+    // Brave refuses a q over 400 characters or 50 words; the site: filters count.
+    const before = api.seen.length;
+    const domains = Array.from({ length: 10 }, (_, i) => `site-number-${i}.example`);
+    await expect(brave.web('o'.repeat(300), 5, { domains })).rejects.toThrow(
+      /at most 400 characters and 50 words.*Shorten the query or name fewer domains/,
+    );
+    await expect(brave.news(Array(51).fill('w').join(' '), 5)).rejects.toThrow('51 words');
+    expect(api.seen.length).toBe(before);
 
     expect(await brave.news('otters', 5, { freshness: 'day' })).toEqual([
       {
@@ -500,7 +529,7 @@ describe('web_search and news_search', () => {
         url: 'https://www.news.example/a',
         snippet: 'Otters return',
         published: '2026-11-06T09:00:00',
-        source: 'www.news.example',
+        source: 'news.example',
       },
     ]);
   });
@@ -509,7 +538,7 @@ describe('web_search and news_search', () => {
     const tavily = (await backends({ TAVILY_API_KEY: 'tavily-key' }))!;
     expect(await tavily.news('otters', 4, { freshness: 'month', domains: ['t.example'] })).toEqual([
       {
-        title: 'otters (4)',
+        title: 'otters (20)',
         url: 'https://t.example/story',
         snippet: 'From Tavily',
         published: 'Thu, 05 Nov 2026 10:00:00 GMT',
@@ -518,7 +547,7 @@ describe('web_search and news_search', () => {
     ]);
     expect(JSON.parse(sent('/tavily').body)).toEqual({
       query: 'otters',
-      max_results: 4,
+      max_results: 20,
       topic: 'news',
       time_range: 'month',
       include_domains: ['t.example'],
@@ -527,7 +556,7 @@ describe('web_search and news_search', () => {
     expect(JSON.parse(sent('/tavily').body)).toEqual({ query: 'otters', max_results: 2 });
   });
 
-  it('sends Exa a start date for freshness and reads highlights as snippets', async () => {
+  it('sends Exa a start date for freshness and reads highlights, else text, as snippets', async () => {
     const exa = (await backends({ EXA_API_KEY: 'exa-key' }))!;
     const web = await exa.web('otters', 2);
     expect(web[0]).toEqual({
@@ -540,13 +569,13 @@ describe('web_search and news_search', () => {
     expect(JSON.parse(sent('/exa').body)).toEqual({
       query: 'otters',
       numResults: 2,
-      contents: { highlights: true },
+      contents: { highlights: true, text: { maxCharacters: 400 } },
     });
 
     const news = await exa.news('otters', 1, { freshness: 'week', domains: ['e.example'] });
     expect(news).toEqual([
       {
-        title: 'otters (1)',
+        title: 'otters (20)',
         url: 'https://e.example/p',
         snippet: 'First point. … Second point.',
         published: '2026-11-01T00:00:00.000Z',
@@ -555,12 +584,26 @@ describe('web_search and news_search', () => {
     ]);
     expect(JSON.parse(sent('/exa').body)).toEqual({
       query: 'otters',
-      numResults: 1,
-      contents: { highlights: true },
+      numResults: 20,
+      contents: { highlights: true, text: { maxCharacters: 400 } },
       category: 'news',
       startPublishedDate: '2026-10-31T12:00:00.000Z',
       includeDomains: ['e.example'],
     });
+  });
+
+  it('matches domains and their subdomains the way the allowlist does', async () => {
+    const { onDomains } = await import('./search.js');
+    const on = (url: string, ...domains: string[]) => onDomains(url, domains);
+    expect(on('https://nature.com/a', 'nature.com')).toBe(true);
+    expect(on('https://www.nature.com/a', 'nature.com')).toBe(true);
+    expect(on('https://news.nature.com/a', 'www.nature.com')).toBe(true);
+    // A fully qualified name (trailing dot) is the same host.
+    expect(on('https://nature.com./a', 'nature.com')).toBe(true);
+    expect(on('https://NATURE.com/a', 'Nature.com')).toBe(true);
+    expect(on('https://notnature.com/a', 'nature.com')).toBe(false);
+    expect(on('https://nature.com.evil.example/a', 'nature.com')).toBe(false);
+    expect(on('not a url', 'nature.com')).toBe(false);
   });
 });
 

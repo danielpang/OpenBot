@@ -203,11 +203,17 @@ const ListQuery = {
 const read = { readOnlyHint: true } as const;
 const write = { readOnlyHint: false, destructiveHint: false } as const;
 
+/** A host name: two or more labels, each 1-63 letters, digits or inner hyphens. */
+const LABEL = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?';
+export const DOMAIN_PATTERN = new RegExp(`^${LABEL}(?:\\.${LABEL})+$`);
+
 const Domain = z
   .string()
   .trim()
   .toLowerCase()
-  .regex(/^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/, 'a host such as nature.com')
+  // No lookarounds: the pattern goes to the model provider in the JSON schema,
+  // and some validate patterns with engines (RE2) that have none.
+  .regex(DOMAIN_PATTERN, 'a host such as nature.com')
   .describe('A host such as nature.com, without https:// or a path; subdomains match too');
 
 const searchInput = {

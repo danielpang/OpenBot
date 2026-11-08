@@ -1,4 +1,9 @@
-import type { SearchFilters, SearchFreshness, SearchResult } from '@openbots/agent';
+import {
+  hostAllowed,
+  type SearchFilters,
+  type SearchFreshness,
+  type SearchResult,
+} from '@openbots/agent';
 
 // web_search and news_search backends (plan 5.4, T2). The Web search
 // connector holds up to three keys and the first one set is used: Brave
@@ -29,12 +34,21 @@ export type SearchBackend = (
 
 /** The web and news searches of one provider. */
 export interface SearchBackends {
-  provider: 'brave' | 'tavily' | 'exa';
   web: SearchBackend;
   news: SearchBackend;
 }
 
 const TIMEOUT_MS = 20_000;
+
+/**
+ * Results asked for when `domains` is set: the most every provider returns in
+ * one call (Brave's web search and Tavily stop at 20). Off-site results are
+ * dropped afterwards, so asking for only `limit` could leave few or none.
+ */
+const DOMAIN_FETCH = 20;
+
+const fetchCount = (limit: number, filters: SearchFilters) =>
+  filters.domains?.length ? Math.max(limit, DOMAIN_FETCH) : limit;
 
 async function json(res: Response, service: string) {
   if (!res.ok) {
@@ -54,18 +68,16 @@ function hostOf(url: string): string | undefined {
   }
 }
 
-/** Whether `url` is on one of `domains` or a subdomain of one. */
+/** Whether `url` is on one of `domains` or a subdomain of one (the allowlist's matching). */
 export function onDomains(url: string, domains: string[]): boolean {
   let host: string;
   try {
-    host = new URL(url).hostname.toLowerCase();
+    host = new URL(url).hostname;
   } catch {
     return false;
   }
-  return domains.some((d) => {
-    const domain = d.toLowerCase().replace(/^www\./, '');
-    return host === domain || host.endsWith(`.${domain}`);
-  });
+  const bare = domains.map((d) => d.toLowerCase().replace(/^www\./, ''));
+  return hostAllowed(host, [...bare, ...bare.map((d) => `*.${d}`)]);
 }
 
 /**
@@ -89,7 +101,10 @@ function finish(results: SearchResult[], limit: number, filters: SearchFilters =
 const stripTags = (text: string) => text.replace(/<\/?strong>/g, '');
 
 // Brave Search: GET with the key in `x-subscription-token`. `freshness` takes
-// pd, pw, pm or py; domains go into the query as `site:` operators.
+// pd, pw, pm or py; domains go into the query as `site:` operators, grouped
+// so `OR` joins only them. Brave refuses a `q` over 400 characters or 50
+// words, and the operators count, so such a query is refused here with a
+// reason the model can act on.
 const BRAVE_FRESHNESS: Record<SearchFreshness, string> = {
   day: 'pd',
   week: 'pw',
@@ -97,16 +112,33 @@ const BRAVE_FRESHNESS: Record<SearchFreshness, string> = {
   year: 'py',
 };
 
+const BRAVE_MAX_QUERY_CHARS = 400;
+const BRAVE_MAX_QUERY_WORDS = 50;
+
 function braveQuery(query: string, domains?: string[]) {
   if (!domains?.length) return query;
-  return `${query} ${domains.map((d) => `site:${d}`).join(' OR ')}`;
+  const sites = domains.map((d) => `site:${d}`);
+  return `${query} ${sites.length === 1 ? sites[0] : `(${sites.join(' OR ')})`}`;
+}
+
+function checkBraveQuery(q: string) {
+  const words = q.split(/\s+/).filter(Boolean).length;
+  if (q.length > BRAVE_MAX_QUERY_CHARS || words > BRAVE_MAX_QUERY_WORDS)
+    throw new Error(
+      `Brave Search takes at most ${BRAVE_MAX_QUERY_CHARS} characters and ` +
+        `${BRAVE_MAX_QUERY_WORDS} words, counting a site: filter for each domain; this ` +
+        `search has ${q.length} characters and ${words} words. Shorten the query or name ` +
+        'fewer domains.',
+    );
 }
 
 function brave(key: string, url: string, kind: 'web' | 'news'): SearchBackend {
   return async (query, limit, filters = {}) => {
+    const q = braveQuery(query, filters.domains);
+    checkBraveQuery(q);
     const target = new URL(url);
-    target.searchParams.set('q', braveQuery(query, filters.domains));
-    target.searchParams.set('count', String(limit));
+    target.searchParams.set('q', q);
+    target.searchParams.set('count', String(fetchCount(limit, filters)));
     if (filters.freshness) target.searchParams.set('freshness', BRAVE_FRESHNESS[filters.freshness]);
     const body = await json(
       await fetch(target, {
@@ -127,7 +159,10 @@ function brave(key: string, url: string, kind: 'web' | 'news'): SearchBackend {
         url: link,
         snippet: stripTags(str(r.description) ?? ''),
         published: str(r.page_age) ?? str(r.age),
-        source: kind === 'news' ? (str(meta?.hostname) ?? hostOf(link)) : undefined,
+        source:
+          kind === 'news'
+            ? (str(meta?.hostname)?.replace(/^www\./, '') ?? hostOf(link))
+            : undefined,
       };
     });
     return finish(results, limit, filters);
@@ -153,7 +188,7 @@ function tavily(key: string, url: string, kind: 'web' | 'news'): SearchBackend {
         headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
         body: JSON.stringify({
           query,
-          max_results: limit,
+          max_results: fetchCount(limit, filters),
           ...(kind === 'news' ? { topic: 'news' } : {}),
           ...(filters.freshness ? { time_range: filters.freshness } : {}),
           ...(filters.domains?.length ? { include_domains: filters.domains } : {}),
@@ -185,8 +220,10 @@ export function tavilyNews(key: string, url = TAVILY_URL): SearchBackend {
 }
 
 // Exa: POST with the key in `x-api-key`. Freshness becomes a
-// `startPublishedDate`; `category: "news"` steers a news search; highlights
-// are the snippets.
+// `startPublishedDate`; `category: "news"` steers a news search. Highlights
+// are the snippets, and the start of the page's text (asked for alongside)
+// stands in when a result has none.
+const EXA_TEXT_CHARS = 400;
 const FRESHNESS_DAYS: Record<SearchFreshness, number> = { day: 1, week: 7, month: 31, year: 366 };
 
 function exa(key: string, url: string, kind: 'web' | 'news', now: () => Date): SearchBackend {
@@ -200,8 +237,8 @@ function exa(key: string, url: string, kind: 'web' | 'news', now: () => Date): S
         headers: { 'content-type': 'application/json', 'x-api-key': key },
         body: JSON.stringify({
           query,
-          numResults: limit,
-          contents: { highlights: true },
+          numResults: fetchCount(limit, filters),
+          contents: { highlights: true, text: { maxCharacters: EXA_TEXT_CHARS } },
           ...(kind === 'news' ? { category: 'news' } : {}),
           ...(since ? { startPublishedDate: since } : {}),
           ...(filters.domains?.length ? { includeDomains: filters.domains } : {}),
@@ -218,7 +255,9 @@ function exa(key: string, url: string, kind: 'web' | 'news', now: () => Date): S
       return {
         title: str(r.title) ?? '',
         url: link,
-        snippet: highlights.length ? highlights.join(' … ') : (str(r.text) ?? '').slice(0, 400),
+        snippet: highlights.length
+          ? highlights.join(' … ')
+          : (str(r.text) ?? '').slice(0, EXA_TEXT_CHARS),
         published: str(r.publishedDate),
         source: kind === 'news' ? hostOf(link) : undefined,
       };
@@ -242,32 +281,21 @@ export function searchBackends(
 ): SearchBackends | null {
   if (keys.BRAVE_API_KEY) {
     return {
-      provider: 'brave',
       web: braveSearch(keys.BRAVE_API_KEY, options.braveUrl),
       news: braveNews(keys.BRAVE_API_KEY, options.braveNewsUrl),
     };
   }
   if (keys.TAVILY_API_KEY) {
     return {
-      provider: 'tavily',
       web: tavilySearch(keys.TAVILY_API_KEY, options.tavilyUrl),
       news: tavilyNews(keys.TAVILY_API_KEY, options.tavilyUrl),
     };
   }
   if (keys.EXA_API_KEY) {
     return {
-      provider: 'exa',
       web: exaSearch(keys.EXA_API_KEY, options.exaUrl, options.now),
       news: exaNews(keys.EXA_API_KEY, options.exaUrl, options.now),
     };
   }
   return null;
-}
-
-/** The web search for the connector's keys, or null when none is set. */
-export function searchBackend(
-  keys: Record<string, string>,
-  options: SearchOptions = {},
-): SearchBackend | null {
-  return searchBackends(keys, options)?.web ?? null;
 }
