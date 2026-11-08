@@ -100,6 +100,7 @@ describe('pinned subscription runtime', () => {
   let events: Json[];
   let respond: (request: { url: string; body: Json }) => Response | Promise<Response>;
   let request: SubscriptionRequest;
+  const entrypoints = new Set<() => Promise<void>>();
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'subscription-runtime-'));
     requests = [];
@@ -133,6 +134,8 @@ describe('pinned subscription runtime', () => {
     });
   });
   afterEach(async () => {
+    await Promise.all([...entrypoints].map((stop) => stop()));
+    entrypoints.clear();
     vi.unstubAllGlobals();
     await rm(dir, { recursive: true, force: true });
   });
@@ -400,8 +403,44 @@ describe('pinned subscription runtime', () => {
         child.on('close', (code, signal) => resolve({ code, signal }));
       },
     );
+    entrypoints.add(async () => {
+      if (child.pid && child.exitCode === null && child.signalCode === null) {
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          /* Already exited. */
+        }
+      }
+      await done.catch(() => {});
+    });
+    const waitForStderr = (text: string) =>
+      new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          clearTimeout(timer);
+          child.stderr.off('data', observe);
+          child.off('close', exited);
+        };
+        const observe = () => {
+          if (stderr.includes(text)) {
+            cleanup();
+            resolve();
+          }
+        };
+        const exited = () => {
+          cleanup();
+          reject(new Error(`Bridge exited before ${text}: ${stdout} ${stderr}`));
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error(`Timed out waiting for ${text}: ${stdout} ${stderr}`));
+        }, 10_000);
+        child.stderr.on('data', observe);
+        child.once('close', exited);
+        if (stderr.includes(text)) observe();
+        else if (child.exitCode !== null || child.signalCode !== null) exited();
+      });
     child.stdin.end(JSON.stringify(request) + '\n');
-    return { child, done, output: () => ({ stdout, stderr }) };
+    return { child, done, waitForStderr, output: () => ({ stdout, stderr }) };
   }
   it('keeps credentials out of the actual entrypoint stdout and stderr on vendor refusal', async () => {
     const access = await credentials();
@@ -418,9 +457,11 @@ describe('pinned subscription runtime', () => {
   it('survives a process-group SIGTERM until a rotated credential is persisted', async () => {
     await credentials(true);
     const running = await entrypoint(
-      `globalThis.fetch = async () => { process.stderr.write('refresh-started\\n'); await new Promise(r => setTimeout(r, 200)); return Response.json({access_token:${JSON.stringify(jwt(4102444800))},refresh_token:'committed-after-sigterm',expires_in:3600}); };`,
+      // Keep the vendor refresh pending until SIGTERM, not for an arbitrary sleep.
+      // The parent waits for readiness before signalling, even on a busy CI runner.
+      `globalThis.fetch = async () => { const cancelled = new Promise(r => process.once('SIGTERM', r)); process.stderr.write('refresh-started\\n'); await cancelled; return Response.json({access_token:${JSON.stringify(jwt(4102444800))},refresh_token:'committed-after-sigterm',expires_in:3600}); };`,
     );
-    await vi.waitFor(() => expect(running.output().stderr).toContain('refresh-started'));
+    await running.waitForStderr('refresh-started');
     process.kill(-running.child.pid!, 'SIGTERM');
     expect(await running.done).toEqual({ code: 1, signal: null });
     expect(JSON.parse(await readFile(join(dir, 'auth.json'), 'utf8')).tokens.refresh_token).toBe(
@@ -428,7 +469,7 @@ describe('pinned subscription runtime', () => {
     );
     expect(running.output().stdout).not.toContain('committed-after-sigterm');
     expect(running.output().stderr).toBe('refresh-started\n');
-  });
+  }, 15_000);
 
   it('waits for a pending rotation before disconnecting, so refresh cannot restore the sign-in', async () => {
     await credentials(true);
