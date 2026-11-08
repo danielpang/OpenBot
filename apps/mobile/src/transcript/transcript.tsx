@@ -59,6 +59,8 @@ function ConversationTranscript({
   // settled on the latest (or linked) message, so it appears in place instead of
   // visibly scrolling down.
   const [revealed, setRevealed] = useState(false);
+  // FlashList can't scroll to a row before its first layout.
+  const [listReady, setListReady] = useState(false);
   const revealFrame = useRef<number | undefined>(undefined);
   const reveal = useCallback(() => {
     if (revealFrame.current !== undefined) return;
@@ -124,22 +126,29 @@ function ConversationTranscript({
       Alert.alert('Could not react', error instanceof Error ? error.message : String(error));
     }
   }
+  // Open a notification's message as soon as it is on the phone, from the saved copy
+  // or the server, instead of waiting for the whole refresh to finish.
   useEffect(() => {
-    if (!hasTarget || messages.loading) return;
+    if (!hasTarget) return;
     const target = targetMessageId ?? String(targetSeq);
     const index = messages.messages.findIndex((message) =>
       targetMessageId ? message.id === targetMessageId : message.seq === targetSeq,
     );
-    if (index < 0 && messages.hasMore) void messages.loadMore();
-    else if (index >= 0 && jumped.current !== target) {
-      requestAnimationFrame(() => {
-        list.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false });
-        jumped.current = target;
-        reveal();
-      });
-    } else if (index < 0 && !revealed) reveal();
+    if (index < 0) {
+      // Not here yet: it may still arrive from the server, or be in older history.
+      if (messages.loading) return;
+      if (messages.hasMore) void messages.loadMore();
+      else if (!revealed) reveal();
+      return;
+    }
+    if (!listReady || jumped.current === target) return;
+    jumped.current = target;
+    void Promise.resolve(
+      list.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false }),
+    ).then(reveal);
   }, [
     hasTarget,
+    listReady,
     revealed,
     reveal,
     targetMessageId,
@@ -203,6 +212,7 @@ function ConversationTranscript({
               autoscrollToBottomThreshold: 0.2,
             }}
             onLoad={() => {
+              setListReady(true);
               if (hasTarget) return;
               // Land on the true end, below a tall last message and the composer padding.
               list.current?.scrollToEnd({ animated: false });

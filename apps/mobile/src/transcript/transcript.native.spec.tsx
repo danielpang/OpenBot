@@ -24,7 +24,7 @@ type ListProps = {
 };
 let mockListProps: ListProps;
 const mockScrollToEnd = jest.fn();
-const mockScrollToIndex = jest.fn();
+const mockScrollToIndex = jest.fn(() => Promise.resolve());
 let mockScrollOffset = 0;
 let mockLoading = false;
 let mockHasMore = true;
@@ -169,6 +169,13 @@ describe('reopening a conversation', () => {
   const transcript = () => screen.getByTestId('chat-transcript', { includeHiddenElements: true });
   const opacity = () => StyleSheet.flatten(transcript().props.style).opacity;
   const settle = () => act(() => jest.advanceTimersByTime(100));
+  // A jump to a linked message finishes asynchronously before the reveal frames.
+  const load = async () => {
+    await act(async () => {
+      mockListProps.onLoad?.();
+    });
+    settle();
+  };
   const scrollUp = () =>
     act(() =>
       mockListProps.onScroll({
@@ -248,18 +255,38 @@ describe('reopening a conversation', () => {
     expect(opacity()).toBe(0);
   });
 
-  it('reveals a linked message after jumping to it, not at the bottom', () => {
+  it('reveals a linked message after jumping to it, not at the bottom', async () => {
     render(<Transcript chatId="chat" bots={[]} title="Bot" targetSeq={1} />);
-    act(() => mockListProps.onLoad?.());
-    expect(mockScrollToEnd).not.toHaveBeenCalled();
     expect(opacity()).toBe(0);
-    settle();
+    await load();
+    expect(mockScrollToEnd).not.toHaveBeenCalled();
     expect(mockScrollToIndex).toHaveBeenCalledWith({
       index: 0,
       viewPosition: 0.5,
       animated: false,
     });
     expect(opacity()).toBe(1);
+  });
+
+  it('opens a saved linked message without waiting for the server', async () => {
+    mockLoading = true;
+    render(<Transcript chatId="chat" bots={[]} title="Bot" targetSeq={2} />);
+    await load();
+    expect(mockScrollToIndex).toHaveBeenCalledWith({
+      index: 1,
+      viewPosition: 0.5,
+      animated: false,
+    });
+    expect(opacity()).toBe(1);
+  });
+
+  it('waits for the server while a linked message is not saved on the phone', async () => {
+    mockLoading = true;
+    render(<Transcript chatId="chat" bots={[]} title="Bot" targetSeq={9} />);
+    await load();
+    expect(mockScrollToIndex).not.toHaveBeenCalled();
+    expect(mockLoadMore).not.toHaveBeenCalled();
+    expect(opacity()).toBe(0);
   });
 
   it('reveals the conversation when a linked message cannot be found', () => {
@@ -271,9 +298,9 @@ describe('reopening a conversation', () => {
     expect(opacity()).toBe(1);
   });
 
-  it('starts each conversation fresh when the screen switches chats in place', () => {
+  it('starts each conversation fresh when the screen switches chats in place', async () => {
     const view = render(<Transcript chatId="a" bots={[]} title="Bot" targetSeq={2} />);
-    settle();
+    await load();
     expect(mockScrollToIndex).toHaveBeenCalledTimes(1);
     scrollUp();
     expect(screen.getByRole('button', { name: 'Jump to latest message' })).toBeTruthy();
@@ -281,7 +308,7 @@ describe('reopening a conversation', () => {
     view.rerender(<Transcript chatId="b" bots={[]} title="Bot" targetSeq={2} />);
     expect(opacity()).toBe(0);
     expect(screen.queryByRole('button', { name: 'Jump to latest message' })).toBeNull();
-    settle();
+    await load();
     expect(mockScrollToIndex).toHaveBeenCalledTimes(2);
     expect(opacity()).toBe(1);
     expect(screen.queryByRole('button', { name: 'Jump to latest message' })).toBeNull();
