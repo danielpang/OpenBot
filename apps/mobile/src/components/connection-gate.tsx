@@ -2,7 +2,7 @@ import { ActivityIndicator } from 'react-native';
 import type { PropsWithChildren } from 'react';
 import { Redirect, router } from 'expo-router';
 import { useMobile } from '../api/provider';
-import { Button, ErrorNote, Label, Page } from './ui';
+import { Button, Page } from './ui';
 export function ConnectionGate({ children }: PropsWithChildren) {
   const mobile = useMobile();
   if (!mobile.ready)
@@ -15,15 +15,7 @@ export function ConnectionGate({ children }: PropsWithChildren) {
   if (!mobile.client)
     return (
       <Page>
-        <Label size={26} weight="600">
-          Reconnecting…
-        </Label>
-        <ErrorNote error={mobile.error} />
-        {mobile.connecting ? (
-          <ActivityIndicator />
-        ) : (
-          <Button title="Reconnect" onPress={mobile.refresh} />
-        )}
+        <ActivityIndicator />
         <Button
           title="Manage servers"
           variant="secondary"

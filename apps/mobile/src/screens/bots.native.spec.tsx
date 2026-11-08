@@ -12,6 +12,7 @@ const mockMobile = {
   host: { name: 'My Mac' },
   connected: false,
   connecting: true,
+  connectionFailed: false,
   transport: null as object | null,
   refresh: mockRefresh,
 };
@@ -53,7 +54,12 @@ jest.mock('./data', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockRefetch.mockResolvedValue(undefined);
-  Object.assign(mockMobile, { connected: false, connecting: true, transport: null });
+  Object.assign(mockMobile, {
+    connected: false,
+    connecting: true,
+    connectionFailed: false,
+    transport: null,
+  });
   Object.assign(mockBots, { data: cachedBots, isRefetching: true, isLoading: false });
 });
 
@@ -69,10 +75,10 @@ describe('background reconnection on the Bots home screen', () => {
   it('keeps cached Bots tappable without showing a refresh spinner or transient error', () => {
     render(<BotsScreen />);
     expect(screen.getByText('OpenBots')).toBeTruthy();
-    expect(screen.getByLabelText('Disconnected from server').props.style.backgroundColor).toBe(
-      '#dc2626',
-    );
-    expect(screen.getByText(/Reconnecting/)).toBeTruthy();
+    expect(screen.getByLabelText('Server')).toBeTruthy();
+    expect(screen.getByText('My Mac')).toBeTruthy();
+    expect(screen.queryByText(/Reconnecting/)).toBeNull();
+    expect(screen.queryByLabelText('Disconnected from server')).toBeNull();
     expect(screen.queryByText('Disconnected')).toBeNull();
     expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(false);
     fireEvent.press(screen.getByRole('button', { name: 'Open Chief of Staff' }));
@@ -96,8 +102,8 @@ describe('background reconnection on the Bots home screen', () => {
     expect(screen.getByText('My Mac · Connected')).toBeTruthy();
   });
 
-  it('shows a red dot and disconnected text when not reconnecting', () => {
-    mockMobile.connecting = false;
+  it('shows a red dot and disconnected text only after repeated failures', () => {
+    mockMobile.connectionFailed = true;
     render(<BotsScreen />);
     expect(screen.getByLabelText('Disconnected from server').props.style.backgroundColor).toBe(
       '#dc2626',

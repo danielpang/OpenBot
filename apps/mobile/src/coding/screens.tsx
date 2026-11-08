@@ -11,26 +11,34 @@ import {
 import { Stack, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { unwrap } from '@openbots/api-client';
 import {
   CODER_AGENT_LABELS,
   CODING_SESSION_ENDED,
   type CodingSessionEntry,
 } from '@openbots/shared';
-import { sessionStatusWords } from '@openbots/widgets';
 import Markdown from 'react-native-markdown-display';
 import { useApi, useMobile } from '../api/provider';
-import { Button, Card, Empty, ErrorNote, Icon, Label, Page, row } from '../components/ui';
+import { Card, Empty, ErrorNote, Icon, Label, Page, row } from '../components/ui';
 import { useTheme } from '../theme';
 import { Composer } from '../transcript/composer';
 import { SessionApprovals } from './approvals';
 import { AcceptEdits } from '../components/accept-edits';
 import { AgentOrb } from './agent-orb';
-import { useCodingSessions, useCodingTranscript, useCodingUpdates } from './data';
+import { useCodingSession, useCodingSessions, useCodingTranscript } from './data';
 
 export function CodingSessionsScreen({ botId }: { botId?: string }) {
   const sessions = useCodingSessions(botId);
+  const [refreshing, setRefreshing] = useState(false);
+  async function refreshManually() {
+    setRefreshing(true);
+    try {
+      await sessions.refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  }
   const c = useTheme();
   return (
     <>
@@ -41,8 +49,8 @@ export function CodingSessionsScreen({ botId }: { botId?: string }) {
         contentContainerStyle={{ padding: 22, gap: 12 }}
         data={sessions.data ?? []}
         keyExtractor={(session) => session.id}
-        refreshing={sessions.isFetching}
-        onRefresh={() => void sessions.refetch()}
+        refreshing={refreshing}
+        onRefresh={() => void refreshManually()}
         ListHeaderComponent={
           <View style={{ gap: 12 }}>
             <Label size={28} weight="700">
@@ -105,13 +113,7 @@ export function CodingSessionScreen({ id }: { id: string }) {
   }));
   const cache = useQueryClient();
   const c = useTheme();
-  useCodingUpdates();
-  const session = useQuery({
-    queryKey: ['coding-sessions', id],
-    queryFn: async () =>
-      (await unwrap(api.GET('/api/v1/coding-sessions/{id}', { params: { path: { id } } }))).session,
-    refetchInterval: 3000,
-  });
+  const session = useCodingSession(id);
   const transcript = useCodingTranscript(id);
   const entries = transcript.data ?? [];
   const log = useRef<FlatList<CodingSessionEntry>>(null);
@@ -133,11 +135,6 @@ export function CodingSessionScreen({ id }: { id: string }) {
       refresh();
     },
   });
-  const stop = useMutation({
-    mutationFn: () =>
-      unwrap(api.POST('/api/v1/coding-sessions/{id}/stop', { params: { path: { id } } })),
-    onSuccess: refresh,
-  });
   const current = session.data;
   const ended = !!current && CODING_SESSION_ENDED.includes(current.status);
   const last = entries.at(-1)?.event;
@@ -150,7 +147,20 @@ export function CodingSessionScreen({ id }: { id: string }) {
       testID="code-keyboard-frame"
       style={[{ flex: 1, backgroundColor: c.background }, keyboardInsets]}
     >
-      <Stack.Screen options={{ title: current?.title || 'Code' }} />
+      <Stack.Screen
+        options={{
+          title: current?.title || 'Code',
+          unstable_headerRightItems: () => [
+            {
+              type: 'button',
+              label: 'Session details',
+              accessibilityLabel: 'Session details',
+              icon: { type: 'sfSymbol', name: 'info.circle' },
+              onPress: () => router.push(`/coding-session/${id}/details`),
+            },
+          ],
+        }}
+      />
       <View style={{ flex: 1 }}>
         {!current ? (
           <Page>
@@ -162,31 +172,7 @@ export function CodingSessionScreen({ id }: { id: string }) {
           </Page>
         ) : (
           <>
-            <View style={{ padding: 16, gap: 8, borderBottomWidth: 1, borderColor: c.border }}>
-              <View style={row.between}>
-                <View style={{ flex: 1 }}>
-                  <Label weight="600">{CODER_AGENT_LABELS[current.agent]}</Label>
-                  <Label muted size={12}>
-                    {[current.repoFullName, current.branch].filter(Boolean).join(' · ')}
-                  </Label>
-                </View>
-                {!ended && (
-                  <Button
-                    title="Stop"
-                    variant="secondary"
-                    disabled={!connected}
-                    loading={stop.isPending}
-                    onPress={() => stop.mutate()}
-                  />
-                )}
-              </View>
-              {current.status !== 'settled' && (
-                <Label muted size={13}>
-                  {sessionStatusWords[current.status]}
-                </Label>
-              )}
-              <ErrorNote error={stop.error || session.error} />
-            </View>
+            <ErrorNote error={session.error} onRetry={() => void session.refetch()} />
             <FlatList
               ref={log}
               data={entries}
@@ -234,11 +220,6 @@ export function CodingSessionScreen({ id }: { id: string }) {
             />
             <View style={{ gap: 8 }}>
               <SessionApprovals sessionId={id} />
-              {!connected && (
-                <Label muted style={{ paddingHorizontal: 22 }}>
-                  You’re offline. Reconnect to send a message.
-                </Label>
-              )}
               {inputFocused && (
                 <View style={{ paddingHorizontal: 22 }}>
                   <AcceptEdits botId={current.botId} composer />
