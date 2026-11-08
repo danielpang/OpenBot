@@ -1,22 +1,49 @@
 import { CODING_SESSION_LIVE } from '@openbots/shared';
 import { cn } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { lazy, Suspense } from 'react';
 import { CODING_SESSIONS_PANEL, useRightPanel } from '../../../app/right-panel.js';
 import { PanelFrame } from '../../transcript/panel-frame.js';
 import { codingSessionsQuery } from '../api.js';
 import { useCodingSessionsLive } from './live.js';
 
-// The coding sessions drawer (CA15): the sidebar's button opens it in the
-// right panel, wide. The button is in every page's shell, so it stays light:
-// the body (the list, a session's conversation, its terminal) loads when the
-// drawer first opens.
+// The sidebar links to a dedicated coding sessions page. A Bot's title-bar
+// toggle still opens its filtered sessions in the wide right panel, loading
+// the list, session conversation and terminal only when needed.
 
 const CodingSessionsDrawer = lazy(() =>
   import('./drawer-content.js').then((m) => ({ default: m.CodingSessionsDrawer })),
 );
 
-/** The sidebar's Coding sessions toggle, with how many sessions are live. */
+/** Sidebar navigation replaces the chat instead of opening a panel beside it. */
+export function CodingSessionsLink() {
+  useCodingSessionsLive();
+  const sessions = useQuery(codingSessionsQuery);
+  const { close } = useRightPanel();
+  const live = sessions.data?.filter((s) => CODING_SESSION_LIVE.includes(s.status)).length ?? 0;
+  return (
+    <Link
+      to="/coding"
+      onClick={close}
+      className="flex items-center rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+      activeProps={{ className: 'bg-accent font-medium' }}
+    >
+      Coding sessions
+      {live > 0 && (
+        <span
+          data-live-count
+          aria-label={live === 1 ? '1 live session' : `${live} live sessions`}
+          className="ml-auto rounded-full bg-emerald-500/15 px-1.5 text-xs font-medium text-emerald-700 tabular-nums dark:text-emerald-400"
+        >
+          {live}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+/** A Bot's Coding sessions toggle, with how many sessions are live. */
 export function CodingSessionsButton({
   botId,
   iconOnly = false,
