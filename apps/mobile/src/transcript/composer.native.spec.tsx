@@ -108,6 +108,30 @@ describe('native composer', () => {
     );
     await waitFor(() => expect(screen.getByLabelText('Message').props.value).toBe(''));
   });
+  it('remounts the input after a send so the empty composer shrinks back to one line', async () => {
+    const send = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(undefined);
+    render(<Composer onSend={send} sending={false} />);
+    const before = screen.getByLabelText('Message');
+    fireEvent.changeText(before, 'A long message\nthat grew the composer\nto several lines');
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Send' }));
+    });
+    const after = screen.getByLabelText('Message');
+    expect(after).not.toBe(before);
+    expect(after.props.value).toBe('');
+  });
+  it('keeps the same input when sending fails', async () => {
+    const send = jest
+      .fn<(...args: unknown[]) => Promise<unknown>>()
+      .mockRejectedValue(new Error('Offline'));
+    render(<Composer onSend={send} sending={false} />);
+    const before = screen.getByLabelText('Message');
+    fireEvent.changeText(before, 'Keep this draft');
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Send' }));
+    });
+    expect(screen.getByLabelText('Message')).toBe(before);
+  });
   it('disables the send button for an empty draft', () => {
     render(
       <Composer onSend={jest.fn<(...args: unknown[]) => Promise<unknown>>()} sending={false} />,
