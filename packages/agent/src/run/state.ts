@@ -1,4 +1,4 @@
-import type { ModelMessage } from 'ai';
+import type { AssistantContent, ModelMessage } from 'ai';
 import { frameToolOutput } from '../context/framing.js';
 import type { ToolResultOutput } from '../tools/types.js';
 import type { WaitingReason, WaitRequest } from '../gated.js';
@@ -78,6 +78,8 @@ export interface RunCheckpoint {
   messages: ModelMessage[];
   /** Calls started after `messages`, in the order they started. */
   calls: CheckpointCall[];
+  /** The step's reasoning, text and calls as streamed, so a takeover keeps them. */
+  reply?: Exclude<AssistantContent, string>;
   seenSeq: number;
   /** The model calls' usage so far, across restarts. */
   usage: UsageTotals;
@@ -132,7 +134,7 @@ export const INTERRUPTED_RESULT = {
  * so the model decides what to do rather than the call running twice.
  */
 export function resumeFromCheckpoint(
-  checkpoint: Pick<RunCheckpoint, 'messages' | 'calls'>,
+  checkpoint: Pick<RunCheckpoint, 'messages' | 'calls' | 'reply'>,
 ): ModelMessage[] {
   const resultOf = (call: CheckpointCall): ToolResultOutput =>
     call.output ?? frameToolOutput(call.toolName, INTERRUPTED_RESULT, true);
@@ -151,16 +153,27 @@ export function resumeFromCheckpoint(
   });
   const after = checkpoint.calls.filter((c) => !c.inMessages);
   if (!after.length) return messages;
+  const started = new Set(after.map((c) => c.toolCallId));
+  // The step as streamed (reasoning first, as Anthropic wants it back), minus calls that never ran.
+  const said = (checkpoint.reply ?? []).filter((p) =>
+    p.type === 'tool-call' ? started.has(p.toolCallId) : p.type !== 'text' || p.text.trim(),
+  );
+  const unsaid = after.filter(
+    (c) => !said.some((p) => p.type === 'tool-call' && p.toolCallId === c.toolCallId),
+  );
   return [
     ...messages,
     {
       role: 'assistant',
-      content: after.map((c) => ({
-        type: 'tool-call' as const,
-        toolCallId: c.toolCallId,
-        toolName: c.toolName,
-        input: c.input,
-      })),
+      content: [
+        ...said,
+        ...unsaid.map((c) => ({
+          type: 'tool-call' as const,
+          toolCallId: c.toolCallId,
+          toolName: c.toolName,
+          input: c.input,
+        })),
+      ],
     },
     {
       role: 'tool',

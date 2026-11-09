@@ -1,6 +1,7 @@
 import type { ToolNameMap } from '@openbots/models';
 import type { MessagePart } from '@openbots/shared';
 import {
+  type AssistantContent,
   stepCountIs,
   streamText,
   tool,
@@ -81,7 +82,14 @@ export interface RunCheckpointer {
   started(call: CheckpointCall): Promise<void>;
   /** A started call's result, as the model reads it. */
   finished(toolCallId: string, output: ToolResultOutput): Promise<void>;
+  /** The step's reasoning, text and calls so far, recorded before its calls run. */
+  reply?(content: StepReply): Promise<void>;
 }
+
+export type StepReply = Exclude<AssistantContent, string>;
+
+/** How long a call waits for the loop to record its step before running anyway. */
+const REPLY_WAIT_MS = 2_000;
 
 export interface ExecuteRunInput {
   run: PolicyRun;
@@ -138,6 +146,31 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
   let priorResponses = 0;
   let outputStarted = false;
   const argsById = new Map<string, unknown>();
+  // The step as streamed, for the checkpoint (K4): a takeover replays its reasoning and text.
+  let reply: StepReply = [];
+  const open = new Map<string, { text: string; providerOptions?: unknown }>();
+  const recorded = new Map<string, { done: Promise<void>; resolve: () => void }>();
+  const recordedCall = (id: string) => {
+    let entry = recorded.get(id);
+    if (!entry) {
+      let resolve!: () => void;
+      const done = new Promise<void>((r) => (resolve = r));
+      entry = { done, resolve };
+      recorded.set(id, entry);
+    }
+    return entry;
+  };
+  /** Tools run after the step's stream ends, so its call is already on the way to the loop. */
+  const awaitRecorded = async (id: string) => {
+    if (!input.checkpoint?.reply) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      recordedCall(id).done,
+      new Promise<void>((r) => (timer = setTimeout(r, REPLY_WAIT_MS))),
+    ]);
+    clearTimeout(timer);
+  };
+  const metadata = (md: unknown) => (md ? { providerOptions: md } : {});
   const toolMs = new Map<string, number>();
   const labelsOf = (name: string) => input.tools[name]?.label;
 
@@ -178,6 +211,7 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
           args,
           onStart: async (label) => {
             running = true;
+            await awaitRecorded(toolCallId);
             // Recorded before the tool runs, so a restart never runs it twice (K4).
             await input.checkpoint?.started({
               toolCallId,
@@ -322,21 +356,56 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
   let aborted = false;
   for await (const part of result.fullStream) {
     switch (part.type) {
+      case 'start-step':
+        reply = [];
+        open.clear();
+        break;
+      case 'text-start':
+      case 'reasoning-start': {
+        const block = { type: part.type === 'text-start' ? 'text' : 'reasoning', text: '' };
+        Object.assign(block, metadata(part.providerMetadata));
+        open.set(part.id, block);
+        reply.push(block as StepReply[number]);
+        break;
+      }
+      case 'text-end':
+      case 'reasoning-end': {
+        const block = open.get(part.id);
+        if (block && part.providerMetadata) block.providerOptions = part.providerMetadata;
+        break;
+      }
       case 'text-delta':
+      case 'reasoning-delta': {
+        const block = open.get(part.id);
+        if (block) {
+          block.text += part.text;
+          if (part.providerMetadata) block.providerOptions = part.providerMetadata;
+        }
         if (!part.text) break;
         outputStarted = true;
+        if (part.type === 'reasoning-delta') {
+          await sink.reasoning(part.text);
+          break;
+        }
         text += part.text;
         await sink.text(part.text);
         break;
-      case 'reasoning-delta':
-        if (!part.text) break;
-        outputStarted = true;
-        await sink.reasoning(part.text);
-        break;
+      }
       case 'tool-call': {
         outputStarted = true;
         const name = names.fromProvider(part.toolName);
         argsById.set(part.toolCallId, part.input);
+        if (input.checkpoint?.reply && !part.providerExecuted) {
+          reply.push({
+            type: 'tool-call',
+            toolCallId: part.toolCallId,
+            toolName: part.toolName,
+            input: part.input,
+            ...metadata(part.providerMetadata),
+          } as StepReply[number]);
+          await input.checkpoint.reply(structuredClone(reply));
+        }
+        recordedCall(part.toolCallId).resolve();
         await sink.part({
           type: 'tool_call',
           tool_call_id: part.toolCallId,
@@ -418,7 +487,8 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
   if (aborted || abortSignal.aborted) return { status: 'cancelled', usage };
   const pending = wait as PendingWait | null;
   if (pending) {
-    const responses = (await result.response).messages;
+    // Every step's messages; `response.messages` holds only the last step's.
+    const responses = await result.responseMessages;
     return {
       status: 'waiting',
       usage,

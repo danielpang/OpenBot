@@ -14,7 +14,9 @@ type LanguageModelV4StreamPart =
 // stream, and every call's prompt is kept for assertions.
 
 export type ScriptedChunk =
-  { text: string } | { reasoning: string } | { tool: string; args: unknown; id?: string };
+  | { text: string }
+  | { reasoning: string; signature?: string }
+  | { tool: string; args: unknown; id?: string };
 
 export type ScriptedTurn =
   ScriptedChunk[] | { error: unknown } | ((options: LanguageModelV4CallOptions) => ScriptedChunk[]);
@@ -67,7 +69,14 @@ export function scriptedModel(
         } else if ('reasoning' in chunk) {
           parts.push({ type: 'reasoning-start', id: `r${i}` });
           parts.push({ type: 'reasoning-delta', id: `r${i}`, delta: chunk.reasoning });
-          parts.push({ type: 'reasoning-end', id: `r${i}` });
+          parts.push({
+            type: 'reasoning-end',
+            id: `r${i}`,
+            // Anthropic signs a thinking block at its end.
+            ...(chunk.signature
+              ? { providerMetadata: { anthropic: { signature: chunk.signature } } }
+              : {}),
+          });
         } else {
           hasTool = true;
           parts.push({

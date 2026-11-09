@@ -378,13 +378,36 @@ describe('run worker', () => {
     expect(await runsOf(bot.id)).toHaveLength(1);
     expect(promptText(model.calls[1]!)).toContain('"label":"openbots"');
     const replies = await botMessages(bot.chatId);
-    expect(replies.at(-1)!.parts).toEqual([{ type: 'text', text: 'On it, in openbots.' }]);
+    // The question and its answer open the resumed message, as a call and its result.
+    expect(replies.at(-1)!.parts).toMatchObject([
+      { type: 'tool_call', tool_call_id: 'ask-Asker', tool_name: 'ask_user' },
+      { type: 'tool_result', tool_call_id: 'ask-Asker', result: { option_id: 'a' } },
+      { type: 'text', text: 'On it, in openbots.' },
+    ]);
     expect(statesOf(bot.id).slice(-2)).toEqual(['thinking', 'done']);
     // A second answer is refused.
     const again = await call('POST', `/messages/${asked.id}/widgets/2/action`, {
       action: { type: 'answer', option_id: 'b' },
     });
     expect(again.status).toBe(409);
+  });
+
+  it('keeps an answered question in the transcript for later runs', async () => {
+    const { bot, model, asked } = await askAndPause('Recall', [
+      [{ text: 'On it, in openbots.' }],
+      [{ text: 'Still openbots.' }],
+    ]);
+    const res = await call('POST', `/messages/${asked.id}/widgets/2/action`, {
+      action: { type: 'answer', option_id: 'a' },
+    });
+    expect(res.status).toBe(200);
+    await settled(bot.id, 'completed');
+    await say(bot, 'which repo again?');
+    await until(() => expect(model.calls).toHaveLength(3));
+    // The question and the owner's answer replay as a call and its result.
+    const later = promptText(model.calls[2]!);
+    expect(later).toContain('<call ask_user>');
+    expect(later).toContain('"option_id":"a"');
   });
 
   it('resumes after the worker is recreated between pause and resume', async () => {
@@ -410,7 +433,9 @@ describe('run worker', () => {
       await settled(bot.id, 'completed', seen);
       const model = models.get(bot.id)!.model as ScriptedModel;
       expect(promptText(model.calls[1]!)).toContain('"text":"the website one"');
-      expect((await botMessages(bot.chatId)).at(-1)!.parts).toEqual([
+      expect((await botMessages(bot.chatId)).at(-1)!.parts).toMatchObject([
+        { type: 'tool_call', tool_call_id: 'ask-Restart' },
+        { type: 'tool_result', tool_call_id: 'ask-Restart', result: { text: 'the website one' } },
         { type: 'text', text: 'Resumed after restart.' },
       ]);
       expect(seen.some((e) => e.type === 'run.status' && e.payload.runId === run.id)).toBe(true);

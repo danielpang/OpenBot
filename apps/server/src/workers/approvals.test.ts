@@ -314,6 +314,7 @@ describe('approvals', () => {
     const replies = await botMessages(bot.chatId);
     expect(replies).toHaveLength(2);
     expect(replies[1]!.parts).toMatchObject([
+      { type: 'tool_call', tool_call_id: 'bash-Restart', args: { command } },
       { type: 'tool_result', tool_call_id: 'bash-Restart', result: { exitCode: 0 } },
       { type: 'text', text: 'Build directory removed.' },
     ]);
@@ -426,6 +427,31 @@ describe('approvals', () => {
       status: 'denied',
       note: 'we still need those files',
     });
+  });
+
+  it('posts a decided call beside its result, so later runs and the transcript see both', async () => {
+    const approved = await askAndPause('Paired', [[{ text: 'Removed.' }], [{ text: 'Yes.' }]]);
+    const denied = await askAndPause('Refused', [[{ text: 'Leaving it.' }], [{ text: 'No.' }]]);
+    for (const [pause, name, action] of [
+      [approved, 'Paired', { type: 'approve' }],
+      [denied, 'Refused', { type: 'deny', note: 'keep them' }],
+    ] as const) {
+      const res = await call('POST', `/messages/${pause.asked.id}/widgets/2/action`, { action });
+      expect(res.status).toBe(200);
+      await settled(pause.bot.id, 'completed');
+      // The resumed message opens with the call and its result, as the loop posts them.
+      const resumed = (await botMessages(pause.bot.chatId))[1]!.parts as MessagePart[];
+      expect(resumed.slice(0, 2)).toMatchObject([
+        { type: 'tool_call', tool_call_id: `bash-${name}`, tool_name: 'bash' },
+        { type: 'tool_result', tool_call_id: `bash-${name}` },
+      ]);
+      // A later run reads the decided call and its outcome.
+      await say(pause.bot, 'did it go through?');
+      await until(() => expect(pause.model.calls).toHaveLength(3));
+      const later = promptText(pause.model.calls[2]!);
+      expect(later).toContain('<call bash>');
+      expect(later).toContain(pause === approved ? 'removed' : 'Denied by owner');
+    }
   });
 
   it('expires a request after OPENBOTS_APPROVAL_TTL_MINUTES when the operator sets it', async () => {
