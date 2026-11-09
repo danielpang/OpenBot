@@ -107,7 +107,6 @@ export function SaveRow({ save }: { save: ReturnType<typeof useSaveSettings> }) 
         <Button type="submit" disabled={save.isPending}>
           Save
         </Button>
-        {save.isSuccess && <span className="text-sm text-muted-foreground">Saved</span>}
       </div>
     </>
   );

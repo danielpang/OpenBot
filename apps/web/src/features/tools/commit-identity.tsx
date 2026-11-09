@@ -18,19 +18,12 @@ const CHOICES: { value: CommitAs; label: string }[] = [
 /** The placeholder address local mode gives the owner; GitHub links it to no one. */
 const isPlaceholder = (email: string) => /@openbots\.local$/i.test(email);
 
-const COMPUTER_WORDS: Record<'applied' | 'off' | 'failed', string> = {
-  applied: 'Saved, and set on the computer.',
-  off: 'Saved. The computer picks it up when it starts.',
-  failed: 'Saved, but the computer could not be updated. It is used for coding sessions anyway.',
-};
-
 export function CommitIdentity() {
   const queryClient = useQueryClient();
   const identity = useQuery(gitIdentityQuery);
   const [commitAs, setCommitAs] = useState<CommitAs>('bot');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [saved, setSaved] = useState<string | null>(null);
   useEffect(() => {
     if (!identity.data) return;
     setCommitAs(identity.data.commitAs);
@@ -40,10 +33,7 @@ export function CommitIdentity() {
   const save = useMutation({
     mutationFn: () =>
       putGitIdentity({ commitAs, name: name.trim() || null, email: email.trim() || null }),
-    onSuccess: (data) => {
-      queryClient.setQueryData(gitIdentityQuery.queryKey, data);
-      setSaved(COMPUTER_WORDS[data.computer] ?? 'Saved.');
-    },
+    onSuccess: (data) => queryClient.setQueryData(gitIdentityQuery.queryKey, data),
   });
 
   if (identity.error) return <ErrorText error={identity.error} />;
@@ -59,7 +49,6 @@ export function CommitIdentity() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    setSaved(null);
     save.mutate();
   }
 
@@ -133,15 +122,10 @@ export function CommitIdentity() {
           'Add the email on your GitHub account so commits link to you.'
         )}
       </p>
-      <div className="flex flex-wrap items-center gap-3">
+      <div>
         <Button type="submit" size="sm" disabled={!changed || save.isPending}>
           {save.isPending ? 'Saving…' : 'Save'}
         </Button>
-        {saved && !changed && (
-          <span role="status" className="text-xs text-muted-foreground">
-            {saved}
-          </span>
-        )}
       </div>
       <ErrorText error={save.error} />
     </form>

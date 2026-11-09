@@ -318,7 +318,6 @@ export function BotToolsForm({
         <Button type="submit" disabled={save.isPending}>
           Save
         </Button>
-        {save.isSuccess && <span className="text-xs">Saved</span>}
       </div>
     </form>
   );

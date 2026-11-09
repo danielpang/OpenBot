@@ -504,7 +504,11 @@ describe('the GitHub card (GH1, GH8)', () => {
     expect(sent('PUT', '/api/v1/git-identity')).toEqual([
       { commitAs: 'owner', name: null, email: 'dan@example.com' },
     ]);
-    await until(() => form()!.textContent!.includes('set on the computer'), 'the saved note');
+    await until(
+      () => form()!.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled,
+      'the save to settle',
+    );
+    expect(form()!.textContent).not.toContain('Saved');
     noDashes();
   });
 
