@@ -10,6 +10,8 @@ import { useTheme } from '../theme';
 import { NativeWidget } from './widget';
 import { formatBytes, type Message } from './model';
 
+const listContent = { flex: 0, flexGrow: 1, flexShrink: 1 } as const;
+
 export const MessagePartView = memo(function MessagePartView({
   part,
   message,
@@ -33,6 +35,12 @@ export const MessagePartView = memo(function MessagePartView({
             body: { color: c.foreground, fontSize: 16, lineHeight: 24 },
             paragraph: { marginTop: 0, marginBottom: 10 },
             link: { color: c.foreground, textDecorationLine: 'underline' },
+            // The library's `flex: 1` (a zero flex-basis) makes list text measure
+            // wrongly inside content-sized containers such as the user's message
+            // bubble, so long list items spill outside it. Styles are merged over
+            // the defaults, so `flex: 0` is needed to restore the auto basis.
+            bullet_list_content: listContent,
+            ordered_list_content: listContent,
             code_inline: { backgroundColor: c.muted, color: c.foreground, fontFamily: 'Menlo' },
             fence: {
               backgroundColor: c.muted,

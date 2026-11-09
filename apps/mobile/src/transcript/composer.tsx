@@ -48,6 +48,11 @@ export function Composer({
   const [uploading, setUploading] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [actionsOpen, setActionsOpen] = useState(false);
+  // A multiline iOS TextInput keeps its grown height when its value is cleared
+  // programmatically, so after sending a long message the empty composer stayed
+  // full height. Remounting the input after a send resets it to one line.
+  const [inputKey, setInputKey] = useState(0);
+  const [refocus, setRefocus] = useState(false);
   const sendInFlight = useRef(false);
   const busy = sending || uploading;
   const canSend = Boolean(text.trim() || attachments.length) && !busy && !sendDisabled;
@@ -122,9 +127,11 @@ export function Composer({
         ...(uploaded.length ? { attachments: uploaded.map((file) => file.id) } : {}),
         ...(threadRootId ? { threadRootId } : {}),
       });
+      setRefocus(input.current?.isFocused() ?? false);
       setText('');
       setAttachments([]);
       setCursor(0);
+      setInputKey((key) => key + 1);
     } catch (error) {
       Alert.alert('Message not sent', error instanceof Error ? error.message : String(error));
     } finally {
@@ -237,7 +244,9 @@ export function Composer({
           </Pressable>
         )}
         <TextInput
+          key={inputKey}
           ref={input}
+          autoFocus={refocus}
           accessibilityLabel="Message"
           placeholder={threadRootId ? 'Reply in thread…' : 'Message…'}
           placeholderTextColor={c.mutedForeground}
