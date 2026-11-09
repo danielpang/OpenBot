@@ -319,6 +319,22 @@
       ]
     },
     {
+      "id": "ollama",
+      "name": "Ollama",
+      "kind": "ollama",
+      "protocol": "native",
+      "base_url": "http://localhost:11434/v1",
+      "auth": {
+        "header": "Authorization",
+        "scheme": "Bearer"
+      },
+      "key_required": false,
+      "discovery": "list_models",
+      "env": "OLLAMA_BASE_URL",
+      "notes": "Runs models on your own machine. From Docker, including the Mac app, use http://host.docker.internal:11434/v1 to reach Ollama on the host.",
+      "models": []
+    },
+    {
       "id": "openrouter",
       "name": "OpenRouter",
       "kind": "custom",
@@ -532,22 +548,6 @@
       "key_required": true,
       "discovery": "manual",
       "notes": "Replace {resource} and {deployment}; the deployment fixes the model, so add one model named after the deployment. Keep the api-version query parameter.",
-      "models": []
-    },
-    {
-      "id": "ollama",
-      "name": "Ollama",
-      "kind": "custom",
-      "protocol": "openai_compatible",
-      "base_url": "http://localhost:11434/v1",
-      "auth": {
-        "header": "Authorization",
-        "scheme": "Bearer"
-      },
-      "key_required": false,
-      "discovery": "list_models",
-      "env": "OLLAMA_BASE_URL",
-      "notes": "From Docker, use http://host.docker.internal:11434/v1 to reach Ollama on the host.",
       "models": []
     },
     {

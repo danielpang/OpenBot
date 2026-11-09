@@ -5,6 +5,7 @@ import {
   IconButton,
   Input,
   PencilIcon,
+  PlusIcon,
   RefreshIcon,
   Select,
   Switch,
@@ -24,6 +25,7 @@ import {
 import { ErrorText } from './error-text.js';
 import { providerInUseText, testSummary } from './format.js';
 import { ModelEditor } from './model-editor.js';
+import { BaseUrlField } from './ollama.js';
 import { ProviderCodingKey, ProviderSubscription } from './provider-subscription.js';
 
 // One provider: key status, Test (of the default model or one the admin
@@ -88,13 +90,14 @@ export function KeyField({
       </span>
     </div>
   );
-  if (!canEdit || (hasKey && !replacing)) {
+  // An optional key that is not set stays a line with an Add button, not an open form.
+  if (!canEdit || ((hasKey || required === false) && !replacing)) {
     return (
       <div className="flex items-center gap-3">
         {status}
         {canEdit && (
-          <IconButton label="Replace key" onClick={() => setReplacing(true)}>
-            <PencilIcon />
+          <IconButton label={hasKey ? 'Replace key' : 'Add key'} onClick={() => setReplacing(true)}>
+            {hasKey ? <PencilIcon /> : <PlusIcon />}
           </IconButton>
         )}
       </div>
@@ -267,17 +270,22 @@ export function ProviderCard({
             />
           </div>
         )}
+        {provider.kind === 'ollama' && (
+          <div className="py-3 pr-2 pl-4">
+            <BaseUrlField provider={provider} canEdit={canEdit} />
+          </div>
+        )}
         <div className="flex flex-col gap-2 py-3 pr-2 pl-4">
           <KeyField
             hasKey={provider.hasKey}
             keyHint={provider.keyHint}
             canEdit={canEdit}
-            required={keyRequired}
+            required={provider.kind === 'ollama' ? false : keyRequired}
             onSave={(apiKey) => updateProvider(provider.id, { apiKey }).then(refresh)}
           />
           {canEdit && <ProviderCodingKey provider={provider} />}
         </div>
-        {canEdit && provider.kind === 'custom' && (
+        {canEdit && (provider.kind === 'custom' || provider.kind === 'ollama') && (
           <label className="flex items-center justify-between gap-4 px-4 py-3">
             <span className="flex flex-col gap-0.5">
               <span className="font-medium">Runs on my network</span>

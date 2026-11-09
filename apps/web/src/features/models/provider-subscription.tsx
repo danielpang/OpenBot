@@ -21,7 +21,7 @@ export function ProviderCodingKey({ provider }: { provider: Provider }) {
     mutationFn: () => setCoderApiKey(agent, provider.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: codersQuery.queryKey }),
   });
-  if (!enabled || provider.kind === 'custom') return null;
+  if (!enabled || provider.kind === 'custom' || provider.kind === 'ollama') return null;
   const label = CODER_AGENT_LABELS[agent];
   return (
     <div className="flex flex-col gap-1.5">

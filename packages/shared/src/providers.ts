@@ -7,7 +7,14 @@ import { resolveToolPolicy } from './policy.js';
 // their keys stay snake_case as the plan writes them. The server, the models
 // package and the web picker read the same shapes.
 
-export const ProviderKindSchema = z.enum(['anthropic', 'openai', 'google', 'xai', 'custom']);
+export const ProviderKindSchema = z.enum([
+  'anthropic',
+  'openai',
+  'google',
+  'xai',
+  'ollama',
+  'custom',
+]);
 export type ProviderKind = z.infer<typeof ProviderKindSchema>;
 
 export const ProviderProtocolSchema = z.enum([
@@ -16,6 +23,15 @@ export const ProviderProtocolSchema = z.enum([
   'anthropic_compatible',
 ]);
 export type ProviderProtocol = z.infer<typeof ProviderProtocolSchema>;
+
+/**
+ * Whether a provider is called over the OpenAI chat completions API: every
+ * OpenAI compatible endpoint, and Ollama, a built-in that serves that API under
+ * its base URL's `/v1`.
+ */
+export function speaksOpenAI(provider: { kind: ProviderKind; protocol: ProviderProtocol }) {
+  return provider.protocol === 'openai_compatible' || provider.kind === 'ollama';
+}
 
 export const ProviderDiscoverySchema = z.enum(['manual', 'list_models']);
 export type ProviderDiscovery = z.infer<typeof ProviderDiscoverySchema>;

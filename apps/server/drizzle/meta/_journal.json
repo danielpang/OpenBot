@@ -267,6 +267,13 @@
       "when": 1794182373205,
       "tag": "0037_connector_policy_patterns_only",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794192584094,
+      "tag": "0038_ollama_provider_kind",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ export const providerKind = pgEnum('provider_kind', [
   'openai',
   'google',
   'xai',
+  'ollama',
   'custom',
 ]);
 

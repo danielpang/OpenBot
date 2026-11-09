@@ -3,7 +3,7 @@ import type { ModelCapabilities, ProviderTestResult } from '@openbots/shared';
 // Display helpers and form parsing shared by Settings > Models and the picker.
 
 /** The built-in providers, in card order (L1). Their preset ids equal their kinds. */
-export const BUILT_IN_KINDS = ['anthropic', 'openai', 'google', 'xai'] as const;
+export const BUILT_IN_KINDS = ['anthropic', 'openai', 'google', 'xai', 'ollama'] as const;
 
 /** Presets offered by "Add custom model provider"; the generic ones stand behind "None". */
 export const GENERIC_PRESETS = ['openai-compatible', 'anthropic-compatible'];

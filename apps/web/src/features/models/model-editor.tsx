@@ -1,4 +1,9 @@
-import { DEFAULT_CAPABILITIES, type ModelCapabilities, type ModelPricing } from '@openbots/shared';
+import {
+  DEFAULT_CAPABILITIES,
+  speaksOpenAI,
+  type ModelCapabilities,
+  type ModelPricing,
+} from '@openbots/shared';
 import {
   Button,
   ChevronDownIcon,
@@ -44,8 +49,8 @@ const toDraft = ({ modelId, displayName, capabilities, pricing, enabled, source 
 
 const FLAGS = ['tools', 'vision', 'reasoning'] as const;
 
-export const canDiscover = (provider: Pick<Provider, 'discovery' | 'protocol'>) =>
-  provider.discovery === 'list_models' && provider.protocol === 'openai_compatible';
+export const canDiscover = (provider: Pick<Provider, 'discovery' | 'protocol' | 'kind'>) =>
+  provider.discovery === 'list_models' && speaksOpenAI(provider);
 
 /** The capability fields `next` changes from `previous`; all of them for a new model. */
 function changedCapabilities(

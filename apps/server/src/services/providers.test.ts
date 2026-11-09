@@ -12,6 +12,7 @@ import {
   providerRegistry,
   seedProvidersFromEnv,
   smallModelFor,
+  upgradeOllamaProviders,
 } from './providers.js';
 
 describe('seedProvidersFromEnv', () => {
@@ -57,12 +58,27 @@ describe('seedProvidersFromEnv', () => {
 
     const ollama = await bySlug('ollama');
     expect(ollama).toMatchObject({
-      kind: 'custom',
-      protocol: 'openai_compatible',
+      kind: 'ollama',
+      protocol: 'native',
       baseUrl: 'http://ollama:11434/v1',
       secrets: null,
       discovery: 'list_models',
     });
+  });
+
+  it('moves an Ollama endpoint from the old custom preset onto the built-in kind', async () => {
+    const ollama = await bySlug('ollama');
+    await t.db
+      .update(schema.providers)
+      .set({ kind: 'custom', protocol: 'openai_compatible' })
+      .where(eq(schema.providers.id, ollama.id));
+    expect(await upgradeOllamaProviders(t.ownerDeps)).toBe(1);
+    expect(await bySlug('ollama')).toMatchObject({
+      kind: 'ollama',
+      protocol: 'native',
+      baseUrl: 'http://ollama:11434/v1',
+    });
+    expect(await upgradeOllamaProviders(t.ownerDeps)).toBe(0);
   });
 
   it('is idempotent and keeps user edits', async () => {

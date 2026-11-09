@@ -26,6 +26,7 @@ import { createRelayLink } from './relay/link.js';
 import { registerLoginHooks } from './services/logins.js';
 import {
   backfillProviderKeyHints,
+  upgradeOllamaProviders,
   sealPlaintextProviderHeaders,
   seedProvidersFromEnv,
 } from './services/providers.js';
@@ -81,6 +82,7 @@ export async function runServer(extensions: ServerExtensions = {}): Promise<void
     await repairEmptyGitHubAuth({ db, config });
     await sealPlaintextProviderHeaders({ db, config });
     await backfillProviderKeyHints({ db, config });
+    await upgradeOllamaProviders({ db });
     return 0;
   });
   await encryptStoredOAuthTokens({ db, config });

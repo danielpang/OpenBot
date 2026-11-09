@@ -3199,7 +3199,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["anthropic", "openai", "google", "xai", "custom"]
+            "enum": ["anthropic", "openai", "google", "xai", "ollama", "custom"]
           },
           "protocol": {
             "type": "string",
@@ -3325,7 +3325,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["anthropic", "openai", "google", "xai", "custom"]
+            "enum": ["anthropic", "openai", "google", "xai", "ollama", "custom"]
           },
           "protocol": {
             "type": "string",
@@ -3442,7 +3442,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["anthropic", "openai", "google", "xai", "custom"]
+            "enum": ["anthropic", "openai", "google", "xai", "ollama", "custom"]
           },
           "protocol": {
             "type": "string",
@@ -3672,7 +3672,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["anthropic", "openai", "google", "xai", "custom"]
+            "enum": ["anthropic", "openai", "google", "xai", "ollama", "custom"]
           },
           "protocol": {
             "type": "string",

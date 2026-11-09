@@ -12348,7 +12348,7 @@ export interface components {
       name: string;
       slug: string;
       /** @enum {string} */
-      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'custom';
+      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'ollama' | 'custom';
       /** @enum {string} */
       protocol: 'native' | 'openai_compatible' | 'anthropic_compatible';
       /** @description Null for built-ins on their SDK's default endpoint */
@@ -12397,7 +12397,7 @@ export interface components {
       id: string;
       name: string;
       /** @enum {string} */
-      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'custom';
+      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'ollama' | 'custom';
       /** @enum {string} */
       protocol: 'native' | 'openai_compatible' | 'anthropic_compatible';
       baseUrl: string | null;
@@ -12432,7 +12432,7 @@ export interface components {
       name?: string;
       slug?: string;
       /** @enum {string} */
-      kind?: 'anthropic' | 'openai' | 'google' | 'xai' | 'custom';
+      kind?: 'anthropic' | 'openai' | 'google' | 'xai' | 'ollama' | 'custom';
       /** @enum {string} */
       protocol?: 'native' | 'openai_compatible' | 'anthropic_compatible';
       /** Format: uri */
@@ -12514,7 +12514,7 @@ export interface components {
       name: string;
       slug: string;
       /** @enum {string} */
-      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'custom';
+      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'ollama' | 'custom';
       /** @enum {string} */
       protocol?: 'native' | 'openai_compatible' | 'anthropic_compatible';
       /** @enum {string} */

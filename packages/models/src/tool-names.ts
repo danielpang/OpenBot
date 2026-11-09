@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ProviderKind, ProviderProtocol } from '@openbots/shared';
+import { speaksOpenAI, type ProviderKind, type ProviderProtocol } from '@openbots/shared';
 
 // Tool-name normalization (plan section 19, "provider differences in tool
 // naming"). Tools keep their OpenBots names (`github__create_issue`,
@@ -37,7 +37,7 @@ export function toolNameRules(provider: {
   protocol: ProviderProtocol;
 }): ToolNameRules {
   if (provider.protocol === 'anthropic_compatible') return ANTHROPIC_RULES;
-  if (provider.protocol === 'openai_compatible') return OPENAI_RULES;
+  if (speaksOpenAI(provider)) return OPENAI_RULES;
   switch (provider.kind) {
     case 'anthropic':
       return ANTHROPIC_RULES;

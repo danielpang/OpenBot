@@ -1,4 +1,9 @@
-import { DEFAULT_CAPABILITIES, type ModelCapabilities, type ModelPricing } from '@openbots/shared';
+import {
+  DEFAULT_CAPABILITIES,
+  speaksOpenAI,
+  type ModelCapabilities,
+  type ModelPricing,
+} from '@openbots/shared';
 import { endpointHeaders, splitBaseUrl, type ProviderConfig } from './adapters.js';
 import { catalogModel } from './catalog.js';
 
@@ -92,7 +97,7 @@ export async function discoverModels(
   config: ProviderConfig,
   options: { fetch?: typeof fetch; timeoutMs?: number } = {},
 ): Promise<DiscoveredModel[]> {
-  if (config.protocol !== 'openai_compatible' || !config.baseUrl) {
+  if (!speaksOpenAI(config) || !config.baseUrl) {
     throw new DiscoveryError('model discovery needs an OpenAI-compatible provider with a base URL');
   }
   const { baseURL, queryParams } = splitBaseUrl(config.baseUrl);

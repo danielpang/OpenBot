@@ -23,6 +23,7 @@ import {
   type ModelNeed,
   type ModelPricing,
   type ProviderDiscovery,
+  speaksOpenAI,
   type ProviderKind,
   type ProviderProtocol,
   type ProviderStatus,
@@ -219,6 +220,22 @@ export async function sealPlaintextProviderHeaders(
     }
     return changed;
   });
+}
+
+/**
+ * Moves Ollama endpoints added from the old custom preset onto the built-in
+ * Ollama kind, which shows them beside the other built-ins. It only changes
+ * labels: the base URL, key and models stay, and Ollama is still called over
+ * the OpenAI chat API. SQL cannot do it in the migration that adds the kind,
+ * because Postgres refuses a new enum value in the transaction that adds it.
+ */
+export async function upgradeOllamaProviders(deps: Pick<AppDeps, 'db'>): Promise<number> {
+  const rows = await deps.db
+    .update(schema.providers)
+    .set({ kind: 'ollama', protocol: 'native' })
+    .where(and(eq(schema.providers.kind, 'custom'), eq(schema.providers.presetId, 'ollama')))
+    .returning({ id: schema.providers.id });
+  return rows.length;
 }
 
 /**
@@ -685,9 +702,9 @@ export async function defaultModelConfig(
 
 // --- Writes (admins) ---------------------------------------------------------------
 
-function assertBaseUrl(baseUrl: string | null, protocol: ProviderProtocol) {
-  if (protocol !== 'native' && !baseUrl) {
-    throw invalid('BASE_URL_REQUIRED', 'A custom model provider needs a base URL');
+function assertBaseUrl(baseUrl: string | null, protocol: ProviderProtocol, kind: ProviderKind) {
+  if ((protocol !== 'native' || kind === 'ollama') && !baseUrl) {
+    throw invalid('BASE_URL_REQUIRED', 'This model provider needs a base URL');
   }
   if (baseUrl && /[{}]/.test(decodeURI(baseUrl))) {
     throw invalid('BASE_URL_PLACEHOLDER', 'Fill in the {placeholders} in the base URL');
@@ -730,14 +747,15 @@ export async function createProvider(
   }
   const name = input.name ?? preset?.name;
   if (!name) throw invalid('NAME_REQUIRED', 'Give the provider a name');
-  // Built-ins talk to their SDK's default URL unless one is given.
+  // Built-ins talk to their SDK's default URL unless one is given; Ollama has
+  // no SDK, so it starts at the preset's address like a custom endpoint.
   const baseUrl =
     input.baseUrl !== undefined
       ? input.baseUrl
-      : protocol === 'native'
+      : protocol === 'native' && kind !== 'ollama'
         ? null
         : (preset?.base_url ?? null);
-  assertBaseUrl(baseUrl, protocol);
+  assertBaseUrl(baseUrl, protocol, kind);
   const local = input.local ?? false;
   assertLocalAllowed(deps, local);
   await assertEndpoint(deps, baseUrl, local);
@@ -806,7 +824,7 @@ export async function updateProvider(
   const set: Partial<typeof schema.providers.$inferInsert> = {};
   if (patch.name !== undefined) set.name = patch.name;
   if (patch.baseUrl !== undefined) {
-    assertBaseUrl(patch.baseUrl, row.protocol);
+    assertBaseUrl(patch.baseUrl, row.protocol, row.kind);
     set.baseUrl = patch.baseUrl;
   }
   if (patch.local !== undefined) {
@@ -953,7 +971,7 @@ export async function discoverProviderModels(
   options: { fetch?: typeof fetch } = {},
 ): Promise<{ added: number; models: ProviderModelRow[] }> {
   const row = await providerRow(deps.db, viewer, providerId);
-  if (row.protocol !== 'openai_compatible') {
+  if (!speaksOpenAI(row)) {
     throw invalid(
       'DISCOVERY_UNSUPPORTED',
       'Discover models works on OpenAI-compatible endpoints; add models by hand here',

@@ -72,11 +72,12 @@ describe('catalog.json', () => {
     expect(azure.auth).toEqual({ header: 'api-key', scheme: null });
   });
 
-  it('points Ollama at its /v1 endpoint with discovery', () => {
+  it('makes Ollama a built-in at its /v1 endpoint with discovery', () => {
     const ollama = presetById('ollama')!;
     expect(ollama.base_url).toMatch(/\/v1$/);
     expect(ollama).toMatchObject({
-      protocol: 'openai_compatible',
+      kind: 'ollama',
+      protocol: 'native',
       discovery: 'list_models',
       key_required: false,
     });

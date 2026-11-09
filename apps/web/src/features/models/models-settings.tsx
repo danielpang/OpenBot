@@ -16,6 +16,7 @@ import {
 import { AddEndpoint } from './add-endpoint.js';
 import { ErrorText } from './error-text.js';
 import { BUILT_IN_KINDS } from './format.js';
+import { OllamaSetup } from './ollama.js';
 import { KeyField, ProviderCard } from './provider-card.js';
 import { AdditionalCodingSubscriptions, ProviderSubscription } from './provider-subscription.js';
 
@@ -89,9 +90,18 @@ function ProviderList({
           const configured = providers.filter((p) => p.kind === kind);
           const preset = presetById.get(kind);
           if (!configured.length) {
-            return preset ? (
+            if (!preset) return null;
+            return kind === 'ollama' ? (
+              <OllamaSetup
+                key={kind}
+                preset={preset}
+                canEdit={canEdit}
+                allowLocal={allowLocal}
+                scope={scope}
+              />
+            ) : (
               <UnconfiguredBuiltIn key={kind} preset={preset} canEdit={canEdit} scope={scope} />
-            ) : null;
+            );
           }
           const native = configured.find(
             (p) => p.protocol === 'native' && !p.baseUrl && !p.headers.length,
