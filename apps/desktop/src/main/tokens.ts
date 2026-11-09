@@ -20,11 +20,13 @@ export interface SessionToken {
   value: string;
 }
 
-export interface TokenStore {
-  get(profileId: string): Promise<SessionToken | undefined>;
-  set(profileId: string, token: SessionToken): Promise<void>;
+export interface TokenStoreOf<T> {
+  get(profileId: string): Promise<T | undefined>;
+  set(profileId: string, value: T): Promise<void>;
   clear(profileId: string): Promise<void>;
 }
+
+export type TokenStore = TokenStoreOf<SessionToken>;
 
 export interface TokenStoreOptions {
   safeStorage: SafeStorageLike;
@@ -40,13 +42,43 @@ export function isSessionCookie(name: string): boolean {
 }
 
 export function createTokenStore({ safeStorage, files, path }: TokenStoreOptions): TokenStore {
-  // Without encryption (no Keychain access) tokens stay in memory only, and
-  // the owner signs in again after a restart. Nothing is written in the clear.
-  const memory = new Map<string, SessionToken>();
+  return createSealedStore<SessionToken>({
+    safeStorage,
+    files,
+    path,
+    isValid: (value): value is SessionToken => {
+      const token = value as Partial<SessionToken> | null;
+      return typeof token?.name === 'string' && typeof token.value === 'string';
+    },
+    same: (a, b) => a.name === b.name && a.value === b.value,
+  });
+}
+
+export interface SealedStoreOptions<T> {
+  safeStorage: SafeStorageLike;
+  files: ProfileFiles;
+  /** A JSON file in userData: profile id → base64 of the encrypted value. */
+  path: string;
+  /** Whether what a file unsealed is a value; anything else reads as missing. */
+  isValid(value: unknown): value is T;
+  /** Two values are the same, so setting one again writes nothing. */
+  same?(a: T, b: T): boolean;
+}
+
+/**
+ * Values per profile, each sealed with safeStorage, in one file: the session
+ * tokens here, a paired server's device keys in ./device-keys.ts.
+ */
+export function createSealedStore<T>(options: SealedStoreOptions<T>): TokenStoreOf<T> {
+  const { safeStorage, files, path, isValid } = options;
+  const same = options.same ?? ((a: T, b: T) => JSON.stringify(a) === JSON.stringify(b));
+  // Without encryption (no Keychain access) values stay in memory only, and
+  // the owner signs in (or pairs) again after a restart. Nothing is written in the clear.
+  const memory = new Map<string, T>();
   let chain: Promise<unknown> = Promise.resolve();
   const available = () => safeStorage.isAsyncEncryptionAvailable().catch(() => false);
-  const seal = async (token: SessionToken) =>
-    (await safeStorage.encryptStringAsync(JSON.stringify(token))).toString('base64');
+  const seal = async (value: T) =>
+    (await safeStorage.encryptStringAsync(JSON.stringify(value))).toString('base64');
 
   async function read(): Promise<Record<string, string>> {
     try {
@@ -75,35 +107,35 @@ export function createTokenStore({ safeStorage, files, path }: TokenStoreOptions
       if (held || !(await available())) return held;
       const sealed = (await read())[profileId];
       if (typeof sealed !== 'string') return undefined;
-      let token: SessionToken;
+      let value: unknown;
       let reseal: boolean;
       try {
         const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(
           Buffer.from(sealed, 'base64'),
         );
-        token = JSON.parse(result) as SessionToken;
+        value = JSON.parse(result) as unknown;
         reseal = shouldReEncrypt;
       } catch {
         // Sealed by another Keychain (a restored backup): sign in again.
         return undefined;
       }
-      if (typeof token.name !== 'string' || typeof token.value !== 'string') return undefined;
-      memory.set(profileId, token);
+      if (!isValid(value)) return undefined;
+      memory.set(profileId, value);
       if (reseal) {
-        const next = await seal(token);
+        const next = await seal(value);
         await update((stored) => {
           stored[profileId] = next;
         });
       }
-      return token;
+      return value;
     },
 
-    async set(profileId, token) {
+    async set(profileId, value) {
       const held = memory.get(profileId);
-      memory.set(profileId, token);
-      if (held?.name === token.name && held.value === token.value) return;
+      memory.set(profileId, value);
+      if (held !== undefined && same(held, value)) return;
       if (!(await available())) return;
-      const sealed = await seal(token);
+      const sealed = await seal(value);
       await update((stored) => {
         stored[profileId] = sealed;
       });

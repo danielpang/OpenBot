@@ -58,6 +58,7 @@ function fakeBridge(status: StackStatus, phases: StackPhase[] = ['pulling', 'sta
       check: vi.fn(async (url: string) => ({ url, setupRequired: true, warning: null })),
       server: vi.fn(async () => undefined),
       local: vi.fn(async () => undefined),
+      pair: vi.fn(async () => undefined),
     },
   };
   return { bridge, listening: () => progress != null };

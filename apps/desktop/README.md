@@ -53,9 +53,19 @@ its files.
   - `profiles.ts`: server profiles in `profiles.json` (userData), and whether the owner has chosen
     a connection. "This Mac" (the local stack, its port from the stack's `.env`) is always there;
     "OpenBots account" is there when the build names a hosted server (`app-config.ts`); any
-    self-hosted server can be added.
-  - `launcher.ts`: which connection opens, and the three ways to choose one on first launch and
-    from "Change connection…". An account or a self-hosted server never touches the stack manager.
+    self-hosted server can be added, and any server this Mac paired with (`paired`).
+  - `launcher.ts`: which connection opens, and the ways to choose one on first launch and from
+    "Change connection…". An account, a self-hosted server or another Mac never touches the stack
+    manager.
+  - Another Mac (a thin client of another OpenBots server through its relay): `pair-link.ts` reads
+    the `openbots://pair#...` link that server's "Pair your phone…" window shows; `paired.ts` pairs
+    as a `desktop` device over `@openbots/tunnel` and keeps one tunnel open per server
+    (`createTunnelLink`); `device-keys.ts` seals the device's API key and static key; and
+    `tunnel-proxy.ts` is the loopback proxy the main window loads the server's web app from, which
+    adds the device key and carries every request and WebSocket through the tunnel. Only callers
+    with the proxy's per-run secret get through: the profile's session adds it to its own requests
+    (`index.ts`). Pasting the link into "Connect to another Mac", or opening it on this Mac, pairs;
+    removing the connection revokes the device on that server.
     `server-check.ts` checks an address is an OpenBots server (`/healthz`, `/api/v1/setup`) and
     waits for `/readyz`; `../server-url.ts` normalizes the address (https, or http on a private
     network with a warning).
@@ -165,6 +175,11 @@ its files.
   release steps and the signed, manual and unsigned paths.
 
 ## Known gaps
+
+- Another Mac: a paired Mac holds a device key, so the routes a phone may not use
+  (`DEVICE_KEY_NOT_ALLOWED`, docs/SECURITY.md 13) are refused there too, among them adding a
+  connector, a connector's OAuth sign-in, Settings, and pairing a phone; do those on the other Mac.
+  Pairing needs a relay; a server with only a direct address is added as a self-hosted server.
 
 - The tray lists approvals requested while the app was connected: the server has no route that
   lists pending approvals.

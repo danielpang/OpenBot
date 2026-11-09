@@ -50,6 +50,14 @@ describe('indicatorState', () => {
     );
     expect(indicatorState(local('running'), open).tooltip).toBe('This Mac (Docker): Connected');
     expect(indicatorState(local('running'), open).label).toBe('This Mac');
+    const paired = { ...remote, label: 'Paired', host: "Ada's MacBook" };
+    expect(indicatorState(paired, open)).toMatchObject({
+      title: 'Paired',
+      label: 'Paired',
+      tooltip: "Paired (Ada's MacBook): Connected",
+    });
+    // Any other label is the Mac app's own wording for a kind the web app already names.
+    expect(indicatorState({ ...remote, label: 'Something' }, open).label).toBe('Self-hosted');
   });
 
   it('says connecting at first and reconnecting once a connection was lost', () => {

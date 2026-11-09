@@ -50,7 +50,10 @@ is end-to-end encrypted.
 | **On a VM or home server**         | Bots and Routines that keep working when your Mac sleeps. | [VM setup with the shared relay](docs/VM_SETUP.md).                                   |
 | **On a single-container platform** | Personal hosting on Fly Machines or Sprites.              | [Deployment options](deploy/README.md). Standalone has weaker isolation than Compose. |
 
-The Mac app can also connect to an existing self-hosted server instead of running one locally.
+The Mac app can also connect to an existing self-hosted server instead of running one locally,
+or work as a thin client of OpenBots running on another Mac: on that Mac choose **Pair your phone**,
+copy the link, and on this one choose **Connect to another Mac** and paste it. The two connect
+through the relay, end to end encrypted, so neither needs a public address.
 Prefer to operate the relay yourself? Follow the optional [private relay setup](docs/PRIVATE_RELAY_SETUP.md).
 A private relay replaces the shared connection service that allows the OpenBots mobile app to pair with Openbots running on your machine; it does not run your Bots.
 

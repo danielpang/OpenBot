@@ -532,6 +532,9 @@ importers:
       '@openbots/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@openbots/tunnel':
+        specifier: workspace:*
+        version: link:../../packages/tunnel
       '@openbots/ui':
         specifier: workspace:*
         version: link:../../packages/ui

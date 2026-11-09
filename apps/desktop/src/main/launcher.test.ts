@@ -7,7 +7,8 @@ import {
   describeConnection,
   type LauncherWindow,
 } from './launcher.js';
-import { createProfileStore, type ProfileFiles } from './profiles.js';
+import { createProfileStore, pairedProxyUrl, type ProfileFiles } from './profiles.js';
+import type { ServerProfile } from '../ipc.js';
 
 const PATH = '/user-data/profiles.json';
 const LOCAL = 'http://localhost:3000';
@@ -37,6 +38,7 @@ function setup(
     status?: StackStatus;
     /** Whether the window's open passes the server check (./opener.ts). */
     opens?: boolean;
+    pair?: (link: string) => Promise<ServerProfile>;
   } = {},
 ) {
   const data = new Map<string, string>();
@@ -78,6 +80,7 @@ function setup(
     fetch,
     cloudUrl: options.cloudUrl ?? null,
     window,
+    pair: options.pair,
     wait: { sleep: async () => undefined, timeoutMs: 0 },
   });
   const stored = () => JSON.parse(data.get(PATH) ?? 'null') as unknown;
@@ -264,6 +267,49 @@ describe('later launches', () => {
     expect(stored()).toEqual(before);
     expect((await profiles.list()).profiles.map((p) => p.id)).toEqual(['local', 'a']);
     await expect(launcher.options()).resolves.toMatchObject({ chosen: true });
+  });
+});
+
+describe('another Mac', () => {
+  const paired = {
+    hostId: 'abcdefghijklmnopqrstuvwxyz',
+    relayUrl: 'wss://openbots-relay.fly.dev',
+    serverKey: 'A'.repeat(43),
+    deviceId: 'device-1',
+  };
+
+  it('pairs from the link, makes it the connection and opens it, without Docker', async () => {
+    let profiles: ReturnType<typeof setup>['profiles'] | null = null;
+    const pair = vi.fn(async () =>
+      profiles!.addPaired({ name: 'Ada', url: pairedProxyUrl(41234), paired }),
+    );
+    const env = setup({ pair });
+    profiles = env.profiles;
+    await env.launcher.connectPaired('openbots://pair#v=1');
+    expect(pair).toHaveBeenCalledWith('openbots://pair#v=1');
+    const active = await env.profiles.active();
+    expect(active).toMatchObject({ id: 'p1', kind: 'paired', url: 'http://127.0.0.1:41234' });
+    expect((await env.profiles.list()).chosen).toBe(true);
+    expect(env.window.openServer).toHaveBeenCalledWith(active);
+    await expect(env.launcher.info()).resolves.toEqual({
+      kind: 'remote',
+      label: 'Paired',
+      host: 'Ada',
+      url: 'http://127.0.0.1:41234',
+    });
+    expect(connectionHeader(active)).toBe('Paired (Ada)');
+    expect(env.stackCalls()).toBe(0);
+  });
+
+  it('chooses nothing when pairing fails', async () => {
+    const env = setup({
+      pair: async () => {
+        throw new Error('The link was already used or has expired.');
+      },
+    });
+    await expect(env.launcher.connectPaired('openbots://pair#v=1')).rejects.toThrow(/expired/);
+    expect((await env.profiles.list()).chosen).toBe(false);
+    expect(env.window.openServer).not.toHaveBeenCalled();
   });
 });
 

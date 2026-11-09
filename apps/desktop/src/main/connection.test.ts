@@ -45,7 +45,12 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
 function setup(
-  overrides: { decideStatus?: number; meStatus?: number; pending?: () => unknown[] } = {},
+  overrides: {
+    decideStatus?: number;
+    meStatus?: number;
+    pending?: () => unknown[];
+    headers?: Record<string, string>;
+  } = {},
 ) {
   const sockets: FakeSocket[] = [];
   const requests: Request[] = [];
@@ -89,7 +94,7 @@ function setup(
   });
   const connection = createConnection({
     baseUrl: 'https://openbots.example.com',
-    token,
+    ...(overrides.headers ? { headers: overrides.headers } : { token }),
     fetch: fetch as unknown as typeof globalThis.fetch,
     createSocket: (url, headers) => {
       const socket = new FakeSocket(url, headers);
@@ -292,6 +297,15 @@ describe('server connection', () => {
     const { connection, onUnauthorized } = setup({ meStatus: 401 });
     await expect(connection.refresh()).rejects.toThrow();
     expect(onUnauthorized).toHaveBeenCalled();
+    connection.close();
+  });
+
+  it('authenticates with given headers instead of a token, as a paired server does', async () => {
+    const { connection, sockets, requests } = setup({ headers: { 'x-openbots-tunnel': 's' } });
+    await connection.refresh();
+    expect(sockets[0]?.headers).toEqual({ 'x-openbots-tunnel': 's' });
+    expect(requests.every((r) => r.headers.get('x-openbots-tunnel') === 's')).toBe(true);
+    expect(requests.some((r) => r.headers.has('cookie'))).toBe(false);
     connection.close();
   });
 

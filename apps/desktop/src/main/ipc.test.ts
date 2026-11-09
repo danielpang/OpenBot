@@ -36,6 +36,7 @@ function setup(trusted = true, serverPage = false) {
     checkServer: vi.fn(async (url) => ({ url, setupRequired: false, warning: null })),
     connectServer: vi.fn(async () => undefined),
     connectLocal: vi.fn(async () => undefined),
+    connectPaired: vi.fn(async () => undefined),
     connectionInfo: vi.fn(async () => info),
     changeConnection: vi.fn(async () => undefined),
     startLocal: vi.fn(async () => info),
@@ -105,6 +106,7 @@ describe('registerDesktopIpc', () => {
       DESKTOP_CHANNELS.connectCloud,
       DESKTOP_CHANNELS.connectServer,
       DESKTOP_CHANNELS.connectLocal,
+      DESKTOP_CHANNELS.connectPair,
       DESKTOP_CHANNELS.profilesList,
     ]) {
       await expect(invoke(channel, 'https://x.example.com')).rejects.toThrow(/may not use/);
@@ -164,6 +166,7 @@ describe('registerDesktopIpc', () => {
     await expect(invoke(DESKTOP_CHANNELS.profilesOpen, {})).rejects.toThrow(/must be text/);
     await expect(invoke(DESKTOP_CHANNELS.connectServer, 7)).rejects.toThrow(/must be text/);
     await expect(invoke(DESKTOP_CHANNELS.connectCheck, null)).rejects.toThrow(/must be text/);
+    await expect(invoke(DESKTOP_CHANNELS.connectPair, {})).rejects.toThrow(/must be text/);
     await expect(invoke(DESKTOP_CHANNELS.quickAskSend, 'b1', '   ')).rejects.toThrow(
       /Type a message/,
     );

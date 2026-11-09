@@ -1,6 +1,6 @@
 # OpenBots relay and tunnel protocol, version 1
 
-What a client (the iOS app, the Node test client, later the Mac app) speaks to reach an OpenBots server through the private relay, and what the server speaks to the relay. Design background is in [MOBILE_AND_VM_PLAN.md](MOBILE_AND_VM_PLAN.md) sections 4 to 6; this document is the wire contract that `packages/tunnel`, `apps/relay` and `apps/server/src/relay` implement and test against.
+What a client (the iOS app, the Node test client, the Mac app as a thin client of another server) speaks to reach an OpenBots server through the private relay, and what the server speaks to the relay. Design background is in [MOBILE_AND_VM_PLAN.md](MOBILE_AND_VM_PLAN.md) sections 4 to 6; this document is the wire contract that `packages/tunnel`, `apps/relay` and `apps/server/src/relay` implement and test against.
 
 Layers, outermost first:
 
@@ -262,7 +262,7 @@ openbots://pair#v=1&host=<hostId>&key=<server tunnel key, base64url>&code=<32 ra
 
 The fragment is `key=value` pairs joined by `&`, each value percent-encoded as `encodeURIComponent` does (a space is `%20`, never `+`). `direct` may repeat and may be absent (the Mac app's This Mac stack lists none). `relay` is absent when the server has no relay configured, in which case `direct` is the only way in. `setup=1` is present only while the server has no owner (V2). `name` is the server's own name for the hosts list (`openbots pair --name` sets it). The same fragment may later ride on a universal link; a fragment never reaches a web server.
 
-The link is good for 5 minutes and works once. It is shown as a QR code by `POST /api/v1/devices/pairings` (the web app's Settings > Devices, the Mac app's "Pair your phone…") and by `openbots pair` in the server image.
+The link is good for 5 minutes and works once. It is shown as a QR code by `POST /api/v1/devices/pairings` (the web app's Settings > Devices, the Mac app's "Pair your phone…") and by `openbots pair` in the server image. The Mac app also takes the link pasted into "Connect to another Mac", or opened as an `openbots://` link, and pairs as a `desktop` device over the relay; a link without `relay` is refused there, with the `direct` address to connect to as a self-hosted server instead.
 
 ### 6.2 The exchange
 

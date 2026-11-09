@@ -82,6 +82,7 @@ export function fakeBridge(
       check: vi.fn(),
       server: vi.fn(async (_url: string) => undefined),
       local: vi.fn(async () => undefined),
+      pair: vi.fn(async (_link: string) => undefined),
     },
     profiles: {
       list: vi.fn(async () => profiles),

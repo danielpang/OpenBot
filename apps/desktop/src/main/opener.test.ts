@@ -66,6 +66,7 @@ function setup(
     routes?: Record<string, Answer>;
     status?: StackStatus;
     cloudUrl?: string | null;
+    prepare?: OpenerWindows<FakeWindow>['prepare'];
   } = {},
 ) {
   const data = new Map<string, string>();
@@ -102,6 +103,7 @@ function setup(
   let current: FakeWindow | null = null;
   const shown: Shown[] = [];
   const windows: OpenerWindows<FakeWindow> = {
+    ...(options.prepare ? { prepare: options.prepare } : {}),
     forProfile: async (profile) => {
       if (current?.profile.id !== profile.id) current = { profile, url: null };
       current.profile = profile;
@@ -211,6 +213,52 @@ describe('a self-hosted server', () => {
     });
     await expect(launcher.launch()).resolves.toBe('server');
     expect(shown).toEqual([{ page: 'server', url: `${SELF}/` }]);
+  });
+});
+
+describe('a paired server', () => {
+  const PROXY = 'http://127.0.0.1:41234';
+  const MOVED = 'http://127.0.0.1:5000';
+  const paired = {
+    id: 'a',
+    name: 'Ada',
+    url: PROXY,
+    kind: 'paired',
+    paired: {
+      hostId: 'abcdefghijklmnopqrstuvwxyz',
+      relayUrl: 'wss://openbots-relay.fly.dev',
+      serverKey: 'A'.repeat(43),
+      deviceId: 'device-1',
+    },
+  };
+
+  it('starts its proxy first and opens at the address the proxy got', async () => {
+    const prepare = vi.fn(async (profile: ServerProfile) => ({ ...profile, url: MOVED }));
+    const { launcher, shown, verify } = setup({
+      file: { activeId: 'a', chosen: true, profiles: [paired] },
+      routes: openBotsServer(MOVED),
+      prepare,
+    });
+    await expect(launcher.launch()).resolves.toBe('server');
+    expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', url: PROXY }));
+    expect(verify).toHaveBeenCalledWith(expect.objectContaining({ url: MOVED }));
+    expect(shown).toEqual([{ page: 'server', url: `${MOVED}/` }]);
+  });
+
+  it('shows the start page with why when its proxy cannot start', async () => {
+    const { launcher, shown, servers, verify, windows } = setup({
+      file: { activeId: 'a', chosen: true, profiles: [paired] },
+      prepare: async () => {
+        throw new Error('This Mac no longer has its keys for Ada.');
+      },
+    });
+    await expect(launcher.launch()).resolves.toBe('start');
+    expect(servers()).toEqual([]);
+    expect(verify).not.toHaveBeenCalled();
+    expect(windows.signOut).toHaveBeenCalled();
+    expect(shown).toEqual([
+      { page: 'start', profile: 'a', error: 'This Mac no longer has its keys for Ada.' },
+    ]);
   });
 });
 

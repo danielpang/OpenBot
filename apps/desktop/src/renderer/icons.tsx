@@ -2,8 +2,9 @@ import type { ReactNode, SVGProps } from 'react';
 import type { ProfileKind } from '../ipc.js';
 
 // The app pages' glyphs, inline like @openbots/ui's (no icon library). The
-// three connection kinds draw exactly as the web app's connection indicator
-// (apps/web/src/app/connection-indicator.tsx); the rest are lucide's shapes.
+// connection kinds draw as the web app's connection indicator
+// (apps/web/src/app/connection-indicator.tsx), a paired server as two linked
+// screens; the rest are lucide's shapes.
 
 type IconProps = SVGProps<SVGSVGElement>;
 
@@ -43,8 +44,25 @@ export const LaptopIcon = icon(
   </>,
 );
 
+/** Two screens, one linked to the other: another Mac or server this Mac paired with. */
+export const PairedIcon = icon(
+  <>
+    <rect x="2" y="4" width="12" height="9" rx="1.5" />
+    <path d="M5 16h6" />
+    <rect x="13" y="10" width="9" height="7" rx="1.5" />
+    <path d="M15 20h5" />
+  </>,
+);
+
 export function KindIcon({ kind, ...props }: { kind: ProfileKind } & IconProps) {
-  const Icon = kind === 'cloud' ? CloudIcon : kind === 'remote' ? ServerIcon : LaptopIcon;
+  const Icon =
+    kind === 'cloud'
+      ? CloudIcon
+      : kind === 'remote'
+        ? ServerIcon
+        : kind === 'paired'
+          ? PairedIcon
+          : LaptopIcon;
   return <Icon data-kind={kind} {...props} />;
 }
 

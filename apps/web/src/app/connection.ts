@@ -10,7 +10,7 @@ import type { DesktopConnectionInfo } from './platform.js';
 export type IndicatorTone = 'normal' | 'warning' | 'problem';
 
 export interface IndicatorState {
-  /** "This Mac (Docker)", "Self-hosted" or "OpenBots account". */
+  /** "This Mac (Docker)", "Self-hosted", "Paired" or "OpenBots account". */
   title: string;
   /** The short name beside the icon: "This Mac", "Self-hosted" or "OpenBots account". */
   label: string;
@@ -32,11 +32,15 @@ const LABELS: Record<DesktopConnectionInfo['kind'], string> = {
   cloud: 'OpenBots account',
 };
 
+/** Labels the Mac app sends for a kind beyond its own: another Mac it paired with reports `remote`. */
+const EXTRA_LABELS = new Set(['Paired']);
+
 export function indicatorState(
   info: DesktopConnectionInfo,
   realtime: RealtimeStatus,
 ): IndicatorState {
-  const title = TITLES[info.kind];
+  const own = info.kind === 'remote' && EXTRA_LABELS.has(info.label) ? info.label : null;
+  const title = own ?? TITLES[info.kind];
   const stack = info.kind === 'local' ? info.stack : undefined;
   const open = realtime.status === 'open';
   let status: string;
@@ -53,5 +57,5 @@ export function indicatorState(
     [status, tone] = ['Connecting…', 'normal'];
   }
   const where = info.kind === 'local' ? title : `${title} (${info.host})`;
-  return { title, label: LABELS[info.kind], status, tone, tooltip: `${where}: ${status}` };
+  return { title, label: own ?? LABELS[info.kind], status, tone, tooltip: `${where}: ${status}` };
 }
