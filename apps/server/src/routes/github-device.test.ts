@@ -333,10 +333,10 @@ describe('GitHub connector device authorization', () => {
     expect((await call('POST', `/connectors/${c.id}/oauth/device`, undefined, '')).status).toBe(
       401,
     );
-    await call('PUT', '/connector-policy', { catalogIds: ['github'], urlPatterns: [] });
+    await call('PUT', '/connector-policy', { urlPatterns: ['https://api.githubcopilot.com/*'] });
     expect((await call('POST', `/connectors/${c.id}/oauth/device`)).status).toBe(403);
     expect((await call('GET', `/connectors/${c.id}/oauth/start`)).status).toBe(403);
-    await call('PUT', '/connector-policy', { catalogIds: [], urlPatterns: [] });
+    await call('PUT', '/connector-policy', { urlPatterns: [] });
     // Catalog URLs are pinned. Also defend against a legacy or corrupted row.
     expect(
       (await call('PATCH', `/connectors/${c.id}`, { url: 'https://example.com/mcp' })).status,

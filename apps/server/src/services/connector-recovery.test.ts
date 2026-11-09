@@ -479,7 +479,7 @@ describe('default GitHub auth, retries and boot recovery', () => {
     }
     await t.db
       .insert(schema.connectorPolicy)
-      .values({ workspaceId: owner.workspaceId, urlPattern: '*', blocked: true });
+      .values({ workspaceId: owner.workspaceId, urlPattern: '*' });
     try {
       expect(await t.inOrganization(() => recheckConnectorsOnBoot(t.deps))).toBe(0);
     } finally {

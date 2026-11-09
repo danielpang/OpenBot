@@ -1,5 +1,5 @@
 import { DEFAULT_CAPABILITIES, type ModelCapabilities, type ModelPricing } from '@openbots/shared';
-import { Button, Input } from '@openbots/ui';
+import { Button, IconButton, Input, PlusIcon, SearchIcon, XIcon } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import {
@@ -225,14 +225,12 @@ export function ModelRows({
               </td>
               <td className="py-1">
                 {!disabled && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Remove ${model.modelId}`}
+                  <IconButton
+                    label={`Remove ${model.modelId}`}
                     onClick={() => onChange?.(models.filter((_, i) => i !== index))}
                   >
-                    Remove
-                  </Button>
+                    <XIcon />
+                  </IconButton>
                 )}
               </td>
             </tr>
@@ -308,19 +306,18 @@ export function ModelEditor({ provider, canEdit }: { provider: Provider; canEdit
               aria-label="Model id"
               className="h-8 w-56"
             />
-            <Button type="submit" variant="outline" size="sm">
-              Add model
-            </Button>
+            <IconButton label="Add model" type="submit" variant="outline">
+              <PlusIcon />
+            </IconButton>
           </form>
           {canDiscover(provider) && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={discover.isPending}
+            <IconButton
+              label={discover.isPending ? 'Discovering…' : 'Discover models'}
+              busy={discover.isPending}
               onClick={() => discover.mutate()}
             >
-              {discover.isPending ? 'Discovering…' : 'Discover models'}
-            </Button>
+              <SearchIcon />
+            </IconButton>
           )}
           {dirty && (
             <>

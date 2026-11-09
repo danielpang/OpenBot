@@ -112,7 +112,9 @@ async function until(check: () => boolean, what: string) {
 }
 
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
+  [...host.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === label || b.getAttribute('aria-label') === label,
+  );
 const click = (el: Element | null | undefined) => act(() => (el as HTMLElement).click());
 function type(el: HTMLInputElement | HTMLSelectElement, value: string) {
   const proto = Object.getPrototypeOf(el) as object;

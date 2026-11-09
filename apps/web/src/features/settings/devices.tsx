@@ -2,6 +2,9 @@ import { ApiError, unwrap, type components } from '@openbots/api-client';
 import {
   Button,
   Dialog,
+  IconButton,
+  PlusIcon,
+  TrashIcon,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -133,7 +136,9 @@ export function DevicesSettings() {
               access, so revoke a phone you lose.
             </p>
           </div>
-          <Button onClick={() => setPairing(true)}>Pair a phone</Button>
+          <IconButton label="Pair a phone" onClick={() => setPairing(true)}>
+            <PlusIcon />
+          </IconButton>
         </div>
         {devices.error && <p className="text-sm text-destructive">{devices.error.message}</p>}
         <ul className="divide-y rounded-md border">
@@ -141,7 +146,12 @@ export function DevicesSettings() {
             <DeviceRow key={device.id} device={device} onRevoke={() => setRevoking(device)} />
           ))}
           {items && !items.length && (
-            <li className="px-3 py-2 text-sm text-muted-foreground">No devices paired yet.</li>
+            <li className="flex items-center justify-between gap-4 px-3 py-2 text-sm text-muted-foreground">
+              No devices paired yet.
+              <Button size="sm" variant="outline" onClick={() => setPairing(true)}>
+                Pair your first phone
+              </Button>
+            </li>
           )}
         </ul>
       </section>
@@ -171,9 +181,9 @@ function DeviceRow({ device, onRevoke }: { device: Device; onRevoke(): void }) {
           {device.pushRegistered ? 'Push registered.' : 'Push not registered.'}
         </span>
       </div>
-      <Button variant="ghost" size="sm" onClick={onRevoke}>
-        Revoke
-      </Button>
+      <IconButton label="Revoke" onClick={onRevoke}>
+        <TrashIcon />
+      </IconButton>
     </li>
   );
 }

@@ -4,31 +4,17 @@ import type { TransportConfig } from './types.js';
 // The admin block list (T3) and per-Bot tool permissions (T1), as pure
 // functions over rows the server loads.
 //
-// A block rule names a catalog entry or a URL pattern. Patterns are globs
-// (`*` matches anything, case-insensitive, anchored) tested against an HTTP
-// connector's URL and its host, and against a stdio connector's command line,
-// so `https://*.slack.com/*`, `*.slack.com` and `*server-postgres*` all work.
-// Connectors are matched to catalog entries by URL or package even when they
-// were typed in or imported, so a catalog block cannot be dodged by pasting
-// the same server as JSON.
-//
-// The admin allow list (U3) sits in the same rules: a rule with `allow: true`
-// names a catalog entry that may be used. While there is at least one, every
-// connector that is not one of those entries (custom ones included) counts as
-// blocked; the block list still applies on top.
+// A block rule is a URL or command pattern. Patterns are globs (`*` matches
+// anything, case-insensitive, anchored) tested against an HTTP connector's URL
+// and its host, and against a stdio connector's command line, so
+// `https://*.slack.com/*`, `*.slack.com` and `*server-postgres*` all work.
+// Built-in connectors have no URL or command, so no pattern blocks them.
 
 export interface BlockRule {
-  catalogId: string | null;
-  urlPattern: string | null;
-  /** An allow-list entry rather than a block (U3). */
-  allow?: boolean;
+  urlPattern: string;
 }
 
-/** What `blockedBy` answers when a non-empty allow list leaves the target out. */
-export const NOT_ON_ALLOW_LIST: BlockRule = { catalogId: null, urlPattern: null, allow: false };
-
 export interface BlockTarget {
-  catalogId?: string | null;
   config?: TransportConfig | null;
 }
 
@@ -86,22 +72,11 @@ function subjects(config: TransportConfig | null | undefined): string[] {
 
 /** The first rule that blocks the target, or null. */
 export function blockedBy(target: BlockTarget, rules: BlockRule[]): BlockRule | null {
-  const catalogIds = new Set<string>();
-  if (target.catalogId) catalogIds.add(target.catalogId);
-  if (target.config) {
-    const matched = matchCatalog(target.config);
-    if (matched) catalogIds.add(matched);
-  }
-  const allowed = rules.filter((r) => r.allow).map((r) => r.catalogId);
-  if (allowed.length && !allowed.some((id) => id && catalogIds.has(id))) return NOT_ON_ALLOW_LIST;
   const subs = subjects(target.config);
+  if (!subs.length) return null;
   for (const rule of rules) {
-    if (rule.allow) continue;
-    if (rule.catalogId && catalogIds.has(rule.catalogId)) return rule;
-    if (rule.urlPattern) {
-      const re = globToRegExp(rule.urlPattern);
-      if (subs.some((s) => re.test(s))) return rule;
-    }
+    const re = globToRegExp(rule.urlPattern);
+    if (subs.some((s) => re.test(s))) return rule;
   }
   return null;
 }

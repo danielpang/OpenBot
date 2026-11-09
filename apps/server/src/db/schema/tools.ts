@@ -1,5 +1,4 @@
-import { sql } from 'drizzle-orm';
-import { boolean, check, jsonb, pgEnum, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
+import { boolean, jsonb, pgEnum, pgTable, text, unique, uuid } from 'drizzle-orm/pg-core';
 import { users } from './auth.js';
 import { bots } from './bots.js';
 import { bytea, createdAt, id, timestamptz, updatedAt } from './columns.js';
@@ -76,21 +75,15 @@ export const botConnectors = pgTable(
   (t) => [unique().on(t.botId, t.connectorId)],
 );
 
-/** Admin block list; shows "Disabled by admin" (T3). Exactly one of catalog_id, url_pattern. */
+/** Admin block list of URL and command patterns; matches show "Disabled by admin" (T3). */
 export const connectorPolicy = pgTable(
   'connector_policy',
   {
     id: id(),
     workspaceId: workspaceId(),
-    catalogId: text('catalog_id'),
-    urlPattern: text('url_pattern'),
-    blocked: boolean('blocked').notNull().default(true),
+    urlPattern: text('url_pattern').notNull(),
     setBy: uuid('set_by').references(() => users.id),
     createdAt: createdAt(),
   },
-  (t) => [
-    unique().on(t.workspaceId, t.catalogId),
-    unique().on(t.workspaceId, t.urlPattern),
-    check('connector_policy_target', sql`(${t.catalogId} is null) <> (${t.urlPattern} is null)`),
-  ],
+  (t) => [unique().on(t.workspaceId, t.urlPattern)],
 );

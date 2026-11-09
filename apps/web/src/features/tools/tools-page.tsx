@@ -2,9 +2,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { capabilitiesQuery, meQuery } from '../../app/api.js';
 import { adminLabel, useManaged } from '../../app/deployment.js';
+import { SettingsPanel, SettingsSection } from '../../app/settings-layout.js';
 import { settingsQuery } from '../settings/admin-settings.js';
 import { catalogQuery, connectorsQuery } from './api.js';
-import { BlockList, CustomStdioSetting } from './block-list.js';
+import { BlockedAddresses, CustomStdioSetting } from './block-list.js';
 import { Catalog } from './catalog.js';
 import { ConnectorCard } from './connector-card.js';
 import { CustomServerForm, ImportForm } from './custom-server.js';
@@ -16,8 +17,7 @@ import { useRealtime } from '../transcript/realtime.js';
 
 // The account-level Connectors page (T1 to T3, PRD section 5): the owner's
 // connectors, the catalog, a custom server, pasted JSON, and for admins the
-// connector policy: custom stdio on or off, the block list and the allow
-// list. `?connector=<id>` scrolls to a connector (the "needs login" event
+// restrictions: custom stdio on or off and the blocked addresses. `?connector=<id>` scrolls to a connector (the "needs login" event
 // links here); a sign-in in this same tab comes back with
 // `oauth=connected|error`. A sign-in finished anywhere (a popup, the Mac
 // app's browser, another tab) arrives as `connector.updated` and refreshes
@@ -169,13 +169,12 @@ export function ToolsPage({
         <ImportForm stdio={stdio} />
       </Fold>
       {isAdmin && (
-        <section className="flex flex-col gap-3" aria-labelledby="block-title">
-          <h2 id="block-title" className="font-medium">
-            {adminLabel(managed, 'connector policy')}
-          </h2>
-          <CustomStdioSetting />
-          <BlockList />
-        </section>
+        <SettingsSection title={adminLabel(managed, 'restrictions')}>
+          <SettingsPanel>
+            <CustomStdioSetting />
+            <BlockedAddresses />
+          </SettingsPanel>
+        </SettingsSection>
       )}
     </>
   );

@@ -4353,7 +4353,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** The admin block and allow lists (T3, U3) */
+    /** The admin block list (T3) */
     get: {
       parameters: {
         query?: never;
@@ -4363,7 +4363,7 @@ export interface paths {
       };
       requestBody?: never;
       responses: {
-        /** @description Blocked catalog ids and URL patterns, and allowed catalog ids */
+        /** @description Blocked URL and command patterns */
         200: {
           headers: {
             [name: string]: unknown;
@@ -4393,8 +4393,8 @@ export interface paths {
       };
     };
     /**
-     * Replace the admin block and allow lists (T3, U3)
-     * @description Running sessions of connectors the new lists block are stopped.
+     * Replace the admin block list (T3)
+     * @description Running sessions of connectors the new list blocks are stopped.
      */
     put: {
       parameters: {
@@ -4409,7 +4409,7 @@ export interface paths {
         };
       };
       responses: {
-        /** @description The lists after the change */
+        /** @description The list after the change */
         200: {
           headers: {
             [name: string]: unknown;
@@ -4418,7 +4418,7 @@ export interface paths {
             'application/json': components['schemas']['ConnectorPolicy'];
           };
         };
-        /** @description Unknown catalog id, or one both blocked and allowed (`POLICY_CONFLICT`) */
+        /** @description An invalid pattern */
         400: {
           headers: {
             [name: string]: unknown;
@@ -12934,8 +12934,6 @@ export interface components {
           message: string;
         };
     ConnectorPolicy: {
-      /** @description Blocked catalog entries */
-      catalogIds: string[];
       /**
        * @description Blocked globs (`*` matches anything) tested against HTTP URLs and hosts and stdio command lines
        * @example [
@@ -12943,12 +12941,8 @@ export interface components {
        *     ]
        */
       urlPatterns: string[];
-      /** @description The allow list (U3): when non-empty, only these catalog entries can be added or used, and custom servers cannot */
-      allowedCatalogIds: string[];
     };
     ConnectorPolicyInput: {
-      /** @description Blocked catalog entries */
-      catalogIds: string[];
       /**
        * @description Blocked globs (`*` matches anything) tested against HTTP URLs and hosts and stdio command lines
        * @example [
@@ -12956,8 +12950,6 @@ export interface components {
        *     ]
        */
       urlPatterns: string[];
-      /** @description The allow list (U3); left out, it stays as it is */
-      allowedCatalogIds?: string[];
     };
     BotConnector: {
       connector: components['schemas']['Connector'];

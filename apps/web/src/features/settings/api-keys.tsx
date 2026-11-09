@@ -1,5 +1,5 @@
 import { unwrap } from '@openbots/api-client';
-import { Button, Input } from '@openbots/ui';
+import { IconButton, Input, PlusIcon, TrashIcon } from '@openbots/ui';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FormEvent } from 'react';
 import { api } from '../../app/api.js';
@@ -35,10 +35,16 @@ export function ApiKeys() {
     <section className="flex flex-col gap-3">
       <h2 className="font-medium">API keys</h2>
       <form className="flex gap-2" onSubmit={submit}>
-        <Input name="name" placeholder="Key name" maxLength={32} required aria-label="Key name" />
-        <Button type="submit" disabled={create.isPending}>
-          Create
-        </Button>
+        <Input
+          name="name"
+          placeholder="Name a new key"
+          maxLength={32}
+          required
+          aria-label="Key name"
+        />
+        <IconButton label="Create" type="submit" variant="default" busy={create.isPending}>
+          <PlusIcon />
+        </IconButton>
       </form>
       {create.error && <p className="text-sm text-destructive">{create.error.message}</p>}
       {create.data && (
@@ -53,14 +59,13 @@ export function ApiKeys() {
             <span>
               {key.name} <span className="font-mono text-muted-foreground">{key.start}…</span>
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
+            <IconButton
+              label={`Revoke ${key.name}`}
               disabled={revoke.isPending}
               onClick={() => revoke.mutate(key.id)}
             >
-              Revoke
-            </Button>
+              <TrashIcon />
+            </IconButton>
           </li>
         ))}
         {data && !data.items.length && (

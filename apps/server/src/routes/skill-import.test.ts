@@ -544,7 +544,7 @@ describe('Skill import from GitHub', () => {
     const workspace = await ensureWorkspace(t.db);
     await t.db.insert(schema.connectorPolicy).values({
       workspaceId: workspace.id,
-      catalogId: 'github',
+      urlPattern: 'https://api.githubcopilot.com/*',
     });
     try {
       clearGithubCache();

@@ -1,5 +1,14 @@
 import type { PolicyDecision, TriggerOverride, WebhookSignaturePreset } from '@openbots/shared';
-import { Button, cn, Input } from '@openbots/ui';
+import {
+  Button,
+  cn,
+  IconButton,
+  Input,
+  RotateIcon,
+  SlidersIcon,
+  TrashIcon,
+  XIcon,
+} from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { Routine } from '../routines/api.js';
@@ -224,12 +233,11 @@ export function EndpointCard({
               : 'Generate a token to accept deliveries.'}
           </span>
         </div>
-        <div className="flex shrink-0 flex-wrap justify-end gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
           {endpoint.hasToken ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={actions.rotate.isPending}
+            <IconButton
+              label="Rotate token"
+              busy={actions.rotate.isPending}
               onClick={() => {
                 if (
                   globalThis.confirm?.('Issue a new token? The current one stops working at once.')
@@ -238,8 +246,8 @@ export function EndpointCard({
                 }
               }}
             >
-              Rotate token
-            </Button>
+              <RotateIcon />
+            </IconButton>
           ) : (
             <Button
               variant="outline"
@@ -250,22 +258,25 @@ export function EndpointCard({
               Generate token
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>
-            {editing ? 'Close' : 'Settings'}
-          </Button>
+          <IconButton
+            label={editing ? 'Close' : 'Settings'}
+            aria-pressed={editing}
+            onClick={() => setEditing((e) => !e)}
+          >
+            {editing ? <XIcon /> : <SlidersIcon />}
+          </IconButton>
           {!isInbox(endpoint) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={actions.remove.isPending}
+            <IconButton
+              label="Delete"
+              busy={actions.remove.isPending}
               onClick={() => {
                 if (globalThis.confirm?.(`Delete the endpoint “${title}” and its delivery log?`)) {
                   actions.remove.mutate(endpoint.id);
                 }
               }}
             >
-              Delete
-            </Button>
+              <TrashIcon />
+            </IconButton>
           )}
         </div>
       </div>

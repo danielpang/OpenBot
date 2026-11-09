@@ -257,7 +257,7 @@ describe('Settings > Models', () => {
   it('gives admins the edit controls and members a read-only view', async () => {
     const admin = await settings(stored, true);
     expect(admin).toContain('Add provider');
-    expect(admin).toContain('>Test<');
+    expect(admin).toContain('aria-label="Test"');
     expect(admin).toContain('type="password"');
 
     const member = await settings(stored, false);
@@ -266,8 +266,8 @@ describe('Settings > Models', () => {
     const forMember = stored.map((p) => ({ ...p, keyHint: null }));
     expect(await settings(forMember, false)).toContain('API key: set');
     expect(member).not.toContain('Add provider');
-    expect(member).not.toContain('>Test<');
-    expect(member).not.toContain('>Delete<');
+    expect(member).not.toContain('aria-label="Test"');
+    expect(member).not.toContain('aria-label="Delete"');
     expect(member).not.toContain('type="password"');
   });
 });
@@ -523,13 +523,13 @@ describe('add custom model provider', () => {
 describe('deleting a provider in use', () => {
   it('turns Delete off and says why while Bots use the provider (L5)', async () => {
     const used = await settings([provider({ botCount: 2 })], true);
-    expect(used).toMatch(/<button[^>]*disabled=""[^>]*>Delete<\/button>/);
+    expect(used).toMatch(/<button(?=[^>]*aria-label="Delete")(?=[^>]*disabled="")/);
     expect(used).toContain('Used by 2 Bots. Move them to another provider first.');
     expect(providerInUseText(1)).toBe('Used by 1 Bot. Move it to another provider first.');
     expect(providerInUseText(0)).toBeNull();
 
     const free = await settings([provider({ botCount: 0 })], true);
-    expect(free).not.toMatch(/<button[^>]*disabled=""[^>]*>Delete<\/button>/);
+    expect(free).not.toMatch(/<button(?=[^>]*aria-label="Delete")(?=[^>]*disabled="")/);
     expect(free).not.toContain('Used by');
   });
 

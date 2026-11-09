@@ -299,7 +299,9 @@ async function until(check: () => boolean, what: string) {
 const toggle = () =>
   [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Coding sessions'))!;
 const button = (label: string, within: ParentNode = host) =>
-  [...within.querySelectorAll('button')].find((b) => b.textContent === label);
+  [...within.querySelectorAll('button')].find(
+    (b) => b.textContent === label || b.getAttribute('aria-label') === label,
+  );
 const drawer = () => host.querySelector('aside');
 
 async function openSession(id: string) {

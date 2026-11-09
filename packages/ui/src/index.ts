@@ -3,7 +3,29 @@ import { packageName } from '@openbots/shared';
 export const PACKAGE_NAME = packageName('ui');
 
 export { cn } from './lib/utils.js';
-export { CheckIcon, PlusIcon, XIcon } from './components/icons.js';
+export {
+  CheckIcon,
+  CopyIcon,
+  ExternalIcon,
+  LogOutIcon,
+  PauseIcon,
+  PencilIcon,
+  PlayIcon,
+  PlusIcon,
+  RefreshIcon,
+  RotateIcon,
+  SearchIcon,
+  SendIcon,
+  SlidersIcon,
+  SpinnerGlyph,
+  TerminalIcon,
+  TrashIcon,
+  UnlinkIcon,
+  WrenchIcon,
+  XIcon,
+} from './components/icons.js';
+export { IconButton } from './components/icon-button.js';
+export { Switch } from './components/switch.js';
 export { Button, buttonVariants } from './components/button.js';
 export { Input } from './components/input.js';
 export {

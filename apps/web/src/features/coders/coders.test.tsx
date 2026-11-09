@@ -176,7 +176,9 @@ async function until(check: () => boolean, what: string) {
 
 const card = (agent: string) => host.querySelector<HTMLElement>(`[data-agent="${agent}"]`)!;
 const buttonIn = (el: Element | null, label: string) =>
-  [...(el?.querySelectorAll('button') ?? [])].find((b) => b.textContent === label);
+  [...(el?.querySelectorAll('button') ?? [])].find(
+    (b) => b.textContent === label || b.getAttribute('aria-label') === label,
+  );
 
 function setValue(el: HTMLInputElement | HTMLSelectElement, value: string) {
   act(() => {

@@ -1,5 +1,5 @@
 import { ApiError } from '@openbots/api-client';
-import { Button, cn, Input } from '@openbots/ui';
+import { Button, cn, IconButton, Input, RefreshIcon, TrashIcon, UnlinkIcon } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { GitActAs } from '@openbots/shared';
@@ -341,9 +341,13 @@ function RemoveApp() {
   });
   if (!confirm) {
     return (
-      <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setConfirm(true)}>
-        Remove the GitHub App
-      </Button>
+      <IconButton
+        label="Remove the GitHub App"
+        className="ml-auto"
+        onClick={() => setConfirm(true)}
+      >
+        <TrashIcon />
+      </IconButton>
     );
   }
   return (
@@ -352,6 +356,9 @@ function RemoveApp() {
         Remove this install&apos;s GitHub App? Its connections stop working until you create a new
         one.
       </span>
+      <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
+        Cancel
+      </Button>
       <Button
         size="sm"
         variant="destructive"
@@ -359,9 +366,6 @@ function RemoveApp() {
         onClick={() => remove.mutate()}
       >
         Remove
-      </Button>
-      <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
-        Cancel
       </Button>
       <ErrorText error={remove.error} />
     </div>
@@ -550,26 +554,30 @@ function ConnectionRow({
             Reinstall the app
           </Button>
         )}
-        {!pending && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={sync.isPending}
-            onClick={() => sync.mutate()}
-          >
-            {sync.isPending ? 'Syncing…' : 'Sync'}
-          </Button>
-        )}
         {reauthorize && (
           <Button size="sm" onClick={() => goToReauthorize(connection.id)}>
             Re-check access
           </Button>
         )}
-        {!confirm && (
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setConfirm(true)}>
-            Disconnect
-          </Button>
-        )}
+        <div className="ml-auto flex items-center gap-0.5">
+          {!pending && (
+            <IconButton
+              label={sync.isPending ? 'Syncing…' : 'Sync'}
+              busy={sync.isPending}
+              onClick={() => sync.mutate()}
+            >
+              <RefreshIcon />
+            </IconButton>
+          )}
+          {!confirm && (
+            <IconButton
+              label={`Disconnect ${connection.accountLogin}`}
+              onClick={() => setConfirm(true)}
+            >
+              <UnlinkIcon />
+            </IconButton>
+          )}
+        </div>
       </div>
       {confirm && (
         <div className="flex flex-wrap items-center gap-2 border-t pt-2">
@@ -577,6 +585,9 @@ function ConnectionRow({
             Disconnect {connection.accountLogin}? Its repositories stay on the computer, but coding
             agents can no longer push to them through this connection.
           </span>
+          <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
+            Cancel
+          </Button>
           <Button
             size="sm"
             variant="destructive"
@@ -584,9 +595,6 @@ function ConnectionRow({
             onClick={() => remove.mutate()}
           >
             Disconnect
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
-            Cancel
           </Button>
         </div>
       )}

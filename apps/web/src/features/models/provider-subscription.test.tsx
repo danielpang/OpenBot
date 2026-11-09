@@ -54,7 +54,7 @@ describe('provider subscription connections', () => {
     expect(html).toContain('Test a model to verify access');
     expect(html).toContain('Preferred over an API key');
     expect(html).toContain('We do not switch to API billing');
-    expect(html).toContain('>Disconnect<');
+    expect(html).toContain('aria-label="Disconnect"');
     expect(html).not.toContain('Subscription active');
     expect(html).not.toContain('Use API key');
   });
@@ -122,7 +122,7 @@ describe('provider subscription connections', () => {
       false,
     );
     expect(html).toContain('A computer is required');
-    expect(html).toContain('>Disconnect<');
+    expect(html).toContain('aria-label="Disconnect"');
     expect(html).not.toContain('>Enable<');
   });
   it('explains why a computer is required rather than showing dead connection actions', () => {

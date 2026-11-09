@@ -1,4 +1,4 @@
-import { Button, cn } from '@openbots/ui';
+import { Button, cn, SendIcon } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { formatWhen } from '../routines/routines-tab.js';
@@ -247,6 +247,7 @@ export function TestEventForm({
         className="self-start"
         disabled={actions.test.isPending}
       >
+        <SendIcon />
         Send test event
       </Button>
     </form>

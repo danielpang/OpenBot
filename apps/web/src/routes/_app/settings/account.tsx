@@ -1,4 +1,4 @@
-import { Button } from '@openbots/ui';
+import { IconButton, LogOutIcon } from '@openbots/ui';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { auth } from '../../../app/api.js';
@@ -33,9 +33,9 @@ function Account() {
           <p className="font-medium">{me.user.name}</p>
           <p className="text-sm text-muted-foreground">{me.user.email}</p>
         </div>
-        <Button variant="outline" disabled={signOut.isPending} onClick={() => signOut.mutate()}>
-          Sign out
-        </Button>
+        <IconButton label="Sign out" busy={signOut.isPending} onClick={() => signOut.mutate()}>
+          <LogOutIcon />
+        </IconButton>
       </section>
       <NotificationSettings />
       <ApiKeys />

@@ -1,5 +1,5 @@
 import { AvatarEditor } from '@openbots/avatars/react';
-import { Button, Input } from '@openbots/ui';
+import { Button, CopyIcon, IconButton, Input, TrashIcon } from '@openbots/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -141,10 +141,10 @@ function BotSettingsForm({ bot }: { bot: Bot }) {
             title="Duplicate"
             description="Copies the profile and settings, not the conversation."
             control={
-              <Button
+              <IconButton
+                label="Duplicate"
                 variant="outline"
-                size="sm"
-                disabled={duplicate.isPending}
+                busy={duplicate.isPending}
                 onClick={() =>
                   duplicate.mutate(bot.id, {
                     onSuccess: (copy) =>
@@ -152,17 +152,22 @@ function BotSettingsForm({ bot }: { bot: Bot }) {
                   })
                 }
               >
-                Duplicate
-              </Button>
+                <CopyIcon />
+              </IconButton>
             }
           />
           <SettingsRow
             title="Delete"
             description="Removes the profile, conversation and Routines."
             control={
-              <Button variant="destructive" size="sm" onClick={() => setDeleting(true)}>
-                Delete…
-              </Button>
+              <IconButton
+                label="Delete…"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setDeleting(true)}
+              >
+                <TrashIcon />
+              </IconButton>
             }
           />
         </SettingsPanel>

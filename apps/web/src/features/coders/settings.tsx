@@ -1,5 +1,5 @@
 import { CODER_AGENT_LABELS, coderProviderFits, type CoderAgent } from '@openbots/shared';
-import { Button } from '@openbots/ui';
+import { Button, IconButton, LogOutIcon, RefreshIcon, UnlinkIcon } from '@openbots/ui';
 import { CODER_PLAN_WORDS, coderPlanWords } from '@openbots/widgets';
 import { CoderSignInSteps } from '@openbots/widgets/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -366,14 +366,13 @@ export function CoderCard({
             >
               {inTerminal ? 'Terminal' : signInWords}
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={check.isPending}
+            <IconButton
+              label={check.isPending ? 'Checking…' : 'Check'}
+              busy={check.isPending}
               onClick={() => check.mutate()}
             >
-              {check.isPending ? 'Checking…' : 'Check'}
-            </Button>
+              <RefreshIcon />
+            </IconButton>
           </div>
         </div>
       )}
@@ -457,26 +456,26 @@ export function CoderCard({
               Use API key
             </Button>
           )}
-          {!terminalPanel && account.checkAvailable && (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={check.isPending}
-              onClick={() => check.mutate()}
-            >
-              {check.isPending ? 'Checking…' : 'Check'}
-            </Button>
-          )}
-          {signedIn && (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={signOut.isPending}
-              onClick={() => signOut.mutate()}
-            >
-              {connectionOnly ? 'Disconnect' : 'Sign out'}
-            </Button>
-          )}
+          <div className="ml-auto flex items-center gap-0.5">
+            {!terminalPanel && account.checkAvailable && (
+              <IconButton
+                label={check.isPending ? 'Checking…' : 'Check'}
+                busy={check.isPending}
+                onClick={() => check.mutate()}
+              >
+                <RefreshIcon />
+              </IconButton>
+            )}
+            {signedIn && (
+              <IconButton
+                label={connectionOnly ? 'Disconnect' : 'Sign out'}
+                busy={signOut.isPending}
+                onClick={() => signOut.mutate()}
+              >
+                {connectionOnly ? <UnlinkIcon /> : <LogOutIcon />}
+              </IconButton>
+            )}
+          </div>
         </div>
       )}
     </article>

@@ -1,4 +1,4 @@
-import { Button, cn, Input } from '@openbots/ui';
+import { Button, cn, IconButton, Input, PencilIcon, RefreshIcon, TrashIcon } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useSavedCheckbox } from '../../app/saved-checkbox.js';
@@ -75,9 +75,9 @@ export function KeyField({
       <div className="flex items-center gap-3">
         {status}
         {canEdit && (
-          <Button variant="ghost" size="sm" onClick={() => setReplacing(true)}>
-            Replace
-          </Button>
+          <IconButton label="Replace key" onClick={() => setReplacing(true)}>
+            <PencilIcon />
+          </IconButton>
         )}
       </div>
     );
@@ -226,27 +226,25 @@ export function ProviderCard({
                 </option>
               ))}
             </select>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={test.isPending}
+            <IconButton
+              label={test.isPending ? 'Testing…' : 'Test'}
+              busy={test.isPending}
               onClick={() => test.mutate()}
             >
-              {test.isPending ? 'Testing…' : 'Test'}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
+              <RefreshIcon />
+            </IconButton>
+            <IconButton
+              label="Delete"
               // A provider in use cannot be deleted (L5); say so before the confirm, not after.
-              disabled={remove.isPending || inUse !== null}
+              disabled={inUse !== null}
+              busy={remove.isPending}
               aria-describedby={inUse ? `${provider.id}-in-use` : undefined}
-              title={inUse ?? undefined}
               onClick={() => {
                 if (window.confirm(`Delete ${provider.name} and its models?`)) remove.mutate();
               }}
             >
-              Delete
-            </Button>
+              <TrashIcon />
+            </IconButton>
           </div>
         )}
       </header>

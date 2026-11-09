@@ -1,4 +1,4 @@
-import { Button } from '@openbots/ui';
+import { IconButton, PlusIcon } from '@openbots/ui';
 import { SUBSCRIPTION_PROVIDERS } from '@openbots/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -128,9 +128,9 @@ function ProviderList({
         <div className="flex items-center justify-between gap-4">
           <h3 className="text-sm font-medium">Custom model providers</h3>
           {canEdit && !adding && (
-            <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-              Add provider
-            </Button>
+            <IconButton label="Add provider" onClick={() => setAdding(true)}>
+              <PlusIcon />
+            </IconButton>
           )}
         </div>
         {adding && (

@@ -320,7 +320,13 @@ async function until(check: () => boolean, what: string, ms = 5_000) {
 }
 
 const button = (label: string, within: ParentNode = document.body) =>
-  [...within.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
+  [...within.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === label || b.getAttribute('aria-label') === label,
+  );
+const disconnectIcon = (within: ParentNode = document.body) =>
+  [...within.querySelectorAll('button')].find((b) =>
+    b.getAttribute('aria-label')?.startsWith('Disconnect '),
+  );
 const click = (el: Element | undefined | null) => act(() => (el as HTMLElement).click());
 const sent = (method: string, path: string) =>
   server.requests.filter((r) => r.method === method && r.path === path).map((r) => r.body);
@@ -452,7 +458,7 @@ describe('the GitHub card (GH1, GH8)', () => {
     click(button('Sync', row(CONN)));
     await until(() => row(CONN).textContent!.includes('5 repositories'), 'the sync');
 
-    click(button('Disconnect', row(CONN)));
+    click(disconnectIcon(row(CONN)));
     expect(row(CONN).textContent).toContain('Disconnect danielpang?');
     click(button('Disconnect', row(CONN)));
     await until(() => !row(CONN), 'disconnected');
@@ -606,7 +612,7 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
     expect(button('Connect GitHub')).toBeUndefined();
     expect(button('Reconnect GitHub')).toBeUndefined();
     expect(host.textContent).not.toContain('No public URL needed.');
-    click(button('Disconnect'));
+    click(disconnectIcon());
     click(button('Disconnect'));
     await until(() => !!button('Connect GitHub'), 'connect after disconnect');
     expect(host.querySelector('[data-connection]')).toBeNull();

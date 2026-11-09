@@ -4772,14 +4772,6 @@
       "ConnectorPolicy": {
         "type": "object",
         "properties": {
-          "catalogIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 200,
-            "description": "Blocked catalog entries"
-          },
           "urlPatterns": {
             "type": "array",
             "items": {
@@ -4790,29 +4782,13 @@
             "maxItems": 200,
             "description": "Blocked globs (`*` matches anything) tested against HTTP URLs and hosts and stdio command lines",
             "example": ["https://*.example.com/*"]
-          },
-          "allowedCatalogIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 200,
-            "description": "The allow list (U3): when non-empty, only these catalog entries can be added or used, and custom servers cannot"
           }
         },
-        "required": ["catalogIds", "urlPatterns", "allowedCatalogIds"]
+        "required": ["urlPatterns"]
       },
       "ConnectorPolicyInput": {
         "type": "object",
         "properties": {
-          "catalogIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 200,
-            "description": "Blocked catalog entries"
-          },
           "urlPatterns": {
             "type": "array",
             "items": {
@@ -4823,17 +4799,9 @@
             "maxItems": 200,
             "description": "Blocked globs (`*` matches anything) tested against HTTP URLs and hosts and stdio command lines",
             "example": ["https://*.example.com/*"]
-          },
-          "allowedCatalogIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 200,
-            "description": "The allow list (U3); left out, it stays as it is"
           }
         },
-        "required": ["catalogIds", "urlPatterns"],
+        "required": ["urlPatterns"],
         "additionalProperties": false
       },
       "BotConnector": {
@@ -13400,7 +13368,7 @@
     "/api/v1/connector-policy": {
       "get": {
         "tags": ["connectors"],
-        "summary": "The admin block and allow lists (T3, U3)",
+        "summary": "The admin block list (T3)",
         "security": [
           {
             "session": []
@@ -13411,7 +13379,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Blocked catalog ids and URL patterns, and allowed catalog ids",
+            "description": "Blocked URL and command patterns",
             "content": {
               "application/json": {
                 "schema": {
@@ -13444,8 +13412,8 @@
       },
       "put": {
         "tags": ["connectors"],
-        "summary": "Replace the admin block and allow lists (T3, U3)",
-        "description": "Running sessions of connectors the new lists block are stopped.",
+        "summary": "Replace the admin block list (T3)",
+        "description": "Running sessions of connectors the new list blocks are stopped.",
         "security": [
           {
             "session": []
@@ -13466,7 +13434,7 @@
         },
         "responses": {
           "200": {
-            "description": "The lists after the change",
+            "description": "The list after the change",
             "content": {
               "application/json": {
                 "schema": {
@@ -13476,7 +13444,7 @@
             }
           },
           "400": {
-            "description": "Unknown catalog id, or one both blocked and allowed (`POLICY_CONFLICT`)",
+            "description": "An invalid pattern",
             "content": {
               "application/problem+json": {
                 "schema": {

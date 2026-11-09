@@ -178,7 +178,9 @@ async function until(check: () => boolean, what: string) {
 }
 
 const button = (label: string) =>
-  [...document.body.querySelectorAll('button')].find((b) => b.textContent === label);
+  [...document.body.querySelectorAll('button')].find(
+    (b) => b.textContent === label || b.getAttribute('aria-label') === label,
+  );
 const dialog = () => document.body.querySelector('[role="dialog"]');
 
 describe('Settings > Devices', () => {
