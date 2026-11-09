@@ -361,10 +361,10 @@ export function toModelMessages(
     for (const part of message.parts) if (isAttachmentPart(part)) newest.set(part.file_id, index);
   }
   const results = ownResults(transcript);
-  const replayed = new Set<string>();
+  const idOf = replayIds();
   for (const [index, message] of transcript.entries()) {
     if (message.author.self) {
-      out.push(...ownMessage(message.parts, results, replayed));
+      out.push(...ownMessage(message.parts, results, idOf));
       continue;
     }
     const shown: Shown = { images: [], frames: [] };
@@ -491,23 +491,66 @@ function toolLine(calls: Extract<MessagePart, { type: 'tool_call' }>[]): string 
 type ToolCallPart = Extract<MessagePart, { type: 'tool_call' }>;
 type ToolResultPart = Extract<MessagePart, { type: 'tool_result' }>;
 
-/** The Bot's tool results by call id, across messages (a resumed run stores them later); last wins. */
-function ownResults(transcript: TranscriptMessage[]): Map<string, ToolResultPart> {
-  const results = new Map<string, ToolResultPart>();
+/** Replayed tool names in the provider's spelling, as the run offers them. */
+export function providerToolNames(
+  messages: ModelMessage[],
+  toProvider: (name: string) => string,
+): ModelMessage[] {
+  return messages.map((m) => {
+    if ((m.role !== 'assistant' && m.role !== 'tool') || typeof m.content === 'string') return m;
+    const content = m.content.map((c) =>
+      c.type === 'tool-call' || c.type === 'tool-result'
+        ? { ...c, toolName: toProvider(c.toolName) }
+        : c,
+    );
+    return { ...m, content } as ModelMessage;
+  });
+}
+
+/** Each Bot tool call's result: the last one after it, before its id is reused (some providers reuse ids). */
+function ownResults(transcript: TranscriptMessage[]): Map<ToolCallPart, ToolResultPart> {
+  const results = new Map<ToolCallPart, ToolResultPart>();
+  const open = new Map<string, ToolCallPart>();
   for (const message of transcript) {
     if (!message.author.self) continue;
     for (const part of message.parts) {
-      if (part.type === 'tool_result') results.set(part.tool_call_id, part);
+      if (part.type === 'tool_call') open.set(part.tool_call_id, part);
+      if (part.type !== 'tool_result') continue;
+      const call = open.get(part.tool_call_id);
+      if (call) results.set(call, part);
     }
   }
   return results;
 }
 
+/** Replayed call ids: unique, and in the charset every provider accepts (Anthropic's is narrowest). */
+function replayIds(): (call: ToolCallPart) => string {
+  const ids = new Map<ToolCallPart, string>();
+  const used = new Set<string>();
+  return (call) => {
+    let id = ids.get(call);
+    if (id) return id;
+    const base = call.tool_call_id.split('|')[0]!.replace(/[^A-Za-z0-9_-]/g, '_') || 'call';
+    id = base;
+    for (let n = 2; used.has(id); n++) id = `${base}_${n}`;
+    used.add(id);
+    ids.set(call, id);
+    return id;
+  };
+}
+
+/** Call input as an object: an unparsable call stores its raw string, which providers reject. */
+function callInput(args: unknown): Record<string, unknown> {
+  return args && typeof args === 'object' && !Array.isArray(args)
+    ? (args as Record<string, unknown>)
+    : {};
+}
+
 /** One Bot message as assistant turns, each followed by exactly its calls' results. */
 function ownMessage(
   parts: MessagePart[],
-  results: Map<string, ToolResultPart>,
-  replayed: Set<string>,
+  results: Map<ToolCallPart, ToolResultPart>,
+  idOf: (call: ToolCallPart) => string,
 ): ModelMessage[] {
   const out: ModelMessage[] = [];
   let assistant: Exclude<AssistantContent, string> = [];
@@ -520,10 +563,10 @@ function ownMessage(
       out.push({
         role: 'tool',
         content: calls.map((call) => {
-          const result = results.get(call.tool_call_id)!;
+          const result = results.get(call)!;
           return {
             type: 'tool-result',
-            toolCallId: call.tool_call_id,
+            toolCallId: idOf(call),
             toolName: call.tool_name,
             output: frameToolOutput(result.tool_name, result.result, result.is_error === true),
           };
@@ -536,21 +579,21 @@ function ownMessage(
   };
   for (const part of parts) {
     if (part.type === 'tool_call') {
-      if (!results.has(part.tool_call_id) || replayed.has(part.tool_call_id)) continue;
+      if (!results.has(part)) continue;
       if (answered) flush();
-      replayed.add(part.tool_call_id);
       calls.push(part);
       assistant.push({
         type: 'tool-call',
-        toolCallId: part.tool_call_id,
+        toolCallId: idOf(part),
         toolName: part.tool_name,
-        input: part.args ?? {},
+        input: callInput(part.args),
       });
     } else if (part.type === 'tool_result') {
-      if (calls.some((c) => c.tool_call_id === part.tool_call_id)) answered = true;
+      if (calls.some((c) => results.get(c) === part)) answered = true;
     } else if (part.type !== 'reasoning') {
       const text = partText(part);
-      if (!text) continue;
+      // Whitespace-only text blocks are rejected by Anthropic.
+      if (!text?.trim()) continue;
       if (answered) flush();
       assistant.push({ type: 'text', text });
     }

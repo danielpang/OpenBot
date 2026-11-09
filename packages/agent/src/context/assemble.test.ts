@@ -5,6 +5,7 @@ import {
   assembleContext,
   instructionsText,
   loadCoderContext,
+  providerToolNames,
   toModelMessages,
   type TranscriptMessage,
   type CoderContext,
@@ -451,5 +452,59 @@ describe("replaying the Bot's own tool calls", () => {
       { role: 'user', content: '[@dana (owner)] Hello' },
       { role: 'assistant', content: [{ type: 'text', text: 'Hi.' }] },
     ]);
+  });
+
+  it('pairs reused call ids by position and makes replayed ids unique', () => {
+    const messages = toModelMessages([
+      owner(1, 'Search twice'),
+      self(2, [
+        call('functions.search:0', 'search'),
+        result('functions.search:0', { n: 1 }, 'search'),
+        call('functions.search:0', 'search'),
+        result('functions.search:0', { n: 2 }, 'search'),
+      ]),
+    ]);
+    expectPaired(messages);
+    const ids = messages.flatMap((m) =>
+      m.role === 'assistant' && typeof m.content !== 'string'
+        ? m.content.flatMap((c) => (c.type === 'tool-call' ? [c.toolCallId] : []))
+        : [],
+    );
+    expect(ids).toEqual(['functions_search_0', 'functions_search_0_2']);
+    const outputs = messages.filter((m) => m.role === 'tool').map((m) => JSON.stringify(m));
+    expect(outputs[0]).toContain('\\"n\\":1');
+    expect(outputs[1]).toContain('\\"n\\":2');
+  });
+
+  it('replays unparsable args as an object and skips whitespace-only text', () => {
+    const messages = toModelMessages([
+      owner(1, 'Go'),
+      self(2, [
+        { type: 'text', text: '\n\n' },
+        { type: 'tool_call', tool_call_id: 'a', tool_name: 'x', args: '{"q": "tr' },
+        { ...result('a', { error: 'bad json' }, 'x'), is_error: true },
+      ]),
+    ]);
+    expect(messages[1]).toEqual({
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'a', toolName: 'x', input: {} }],
+    });
+  });
+
+  it("renames replayed tools to the provider's spelling", () => {
+    const messages = providerToolNames(
+      toModelMessages([
+        owner(1, 'Go'),
+        self(2, [call('a', 'notion.search'), result('a', {}, 'notion.search')]),
+      ]),
+      (name) => name.replace('.', '_'),
+    );
+    expectPaired(messages);
+    const names = messages.flatMap((m) =>
+      typeof m.content === 'string'
+        ? []
+        : m.content.flatMap((c) => ('toolName' in c ? [c.toolName] : [])),
+    );
+    expect(names).toEqual(['notion_search', 'notion_search']);
   });
 });
