@@ -55,8 +55,11 @@ export function keyProviders(agent: CoderAgent, providers: readonly Provider[]):
 /** The card's status line. */
 export function accountWords(account: CoderAccount, providers: readonly Provider[]): string {
   switch (account.authKind) {
-    case 'subscription':
-      return account.accountLabel ? `Signed in as ${account.accountLabel}` : 'Signed in';
+    case 'subscription': {
+      // Older sign-ins stored the placeholder "Signed in" as their label.
+      const label = account.accountLabel?.trim();
+      return label && label.toLowerCase() !== 'signed in' ? `Signed in as ${label}` : 'Signed in';
+    }
     case 'api_key': {
       const provider = providers.find((p) => p.id === account.providerId);
       return `Using API key: ${provider?.name ?? 'a provider from Settings > Models'}`;

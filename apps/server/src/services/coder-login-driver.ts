@@ -262,7 +262,7 @@ export async function runCoderLogin(deps: AppDeps, loginId: string): Promise<voi
     await writes;
     await scoped(async () => {
       if (result.type === 'signed_in') {
-        await signedIn(deps, row, agent, parse.accountLabel?.trim() || 'Signed in');
+        await signedIn(deps, row, agent, parse.accountLabel?.trim() || null);
       } else if (result.type === 'timeout') {
         await endLogin(deps, row, 'expired', { error: 'The sign-in expired' });
       } else if (result.type === 'exit') {
@@ -291,7 +291,8 @@ async function signedIn(
   deps: AppDeps,
   row: CoderLoginRow,
   agent: ComputerAgentClient,
-  accountLabel: string,
+  /** Null when the CLI did not say whose account it signed in to. */
+  accountLabel: string | null,
 ) {
   const agentName = row.agent as CoderAgent;
   const version = await coderVersion(agent, agentName).catch(() => null);
@@ -331,5 +332,5 @@ async function signedIn(
     targetId: row.id,
     metadata: { agent: agentName },
   });
-  await endLogin(deps, row, 'signed_in', { account_label: accountLabel });
+  await endLogin(deps, row, 'signed_in', accountLabel ? { account_label: accountLabel } : {});
 }

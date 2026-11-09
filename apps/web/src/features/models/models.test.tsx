@@ -214,14 +214,14 @@ describe('Settings > Models', () => {
     const html = await settings([provider({ baseUrl: 'https://proxy.example/v1' })], true);
     expect(html).toContain('anthropic subscription unavailable');
     expect(html).toContain('Configure a computer to connect a subscription');
-    expect(html).toContain('API key:');
+    expect(html).toContain('data-key-status');
   });
 
   it('shows key status without ever rendering a key', async () => {
     const html = await settings(stored, true);
     // The hint tells keys apart (P3).
-    expect(html).toContain('API key: sk-ant-…a1b2');
-    expect(html).toContain('API key: not set'); // OpenAI, not configured yet
+    expect(html).toContain('sk-ant-…a1b2');
+    expect(html).toContain('>not set<'); // OpenAI, not configured yet
     expect(html).not.toContain('sk-ant-secret');
     expect(html).not.toContain('header-secret');
     expect(html).toContain('headers: X-Token');
@@ -264,7 +264,7 @@ describe('Settings > Models', () => {
     expect(member).toContain('Ollama');
     // Members get no hint from the server, only that a key is set.
     const forMember = stored.map((p) => ({ ...p, keyHint: null }));
-    expect(await settings(forMember, false)).toContain('API key: set');
+    expect(await settings(forMember, false)).toContain('>set<');
     expect(member).not.toContain('Add provider');
     expect(member).not.toContain('aria-label="Test"');
     expect(member).not.toContain('aria-label="Delete"');

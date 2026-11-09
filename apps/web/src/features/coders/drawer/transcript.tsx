@@ -140,7 +140,6 @@ export function TranscriptView({
                 key={item.entry.seq}
                 result={item.entry.event}
                 usage={item.usage}
-                agent={session.agent}
                 session={item === lastResult ? session : undefined}
               />
             );
@@ -320,12 +319,10 @@ const sum = (files: CodingSession['changedFiles'], key: 'added' | 'removed') =>
 function ResultBlock({
   result,
   usage,
-  agent,
   session,
 }: {
   result: Of<'result'>['event'];
   usage?: CoderUsage;
-  agent: CoderAgent;
   session?: CodingSession;
 }) {
   const files = session?.changedFiles ?? [];

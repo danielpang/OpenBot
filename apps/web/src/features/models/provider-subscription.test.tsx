@@ -50,9 +50,9 @@ describe('provider subscription connections', () => {
       accountLabel: 'ChatGPT Plus',
       needsSignIn: false,
     });
-    expect(html).toContain('>Connected<');
+    expect(html).toContain('Signed in');
     expect(html).toContain('Test a model to verify access');
-    expect(html).toContain('Preferred over an API key');
+    expect(html).toContain('used before an API key');
     expect(html).toContain('We do not switch to API billing');
     expect(html).toContain('aria-label="Disconnect"');
     expect(html).not.toContain('Subscription active');
@@ -66,7 +66,6 @@ describe('provider subscription connections', () => {
       lastError: '401 expired',
     });
     expect(html).toContain('Reconnect required');
-    expect(html).not.toContain('>Connected<');
     expect(html).toContain('>Reconnect<');
     expect(html).toContain('extra usage');
   });
@@ -76,7 +75,6 @@ describe('provider subscription connections', () => {
       accountLabel: 'OpenAI (ChatGPT Plus/Pro)',
       needsSignIn: false,
     });
-    expect(html).not.toContain('>Connected<');
     expect(html).toContain('choose xAI for SuperGrok or X Premium');
     expect(html).toContain('>Connect<');
   });
@@ -87,7 +85,7 @@ describe('provider subscription connections', () => {
       planProvider: 'anthropic',
       needsSignIn: false,
     });
-    expect(html).toContain('>Connected<');
+    expect(html).toContain('Signed in');
     expect(html).toContain('Uses your xAI subscription');
     expect(html).not.toContain('Claude plan');
     expect(html).not.toContain('ChatGPT plan');
@@ -100,7 +98,7 @@ describe('provider subscription connections', () => {
       planProvider: 'anthropic',
     });
     expect(html).toContain('Uses your Claude account');
-    expect(html).toContain('may require extra usage');
+    expect(html).toContain('may need extra usage');
     expect(html).not.toContain('Usage is billed to your Claude plan');
   });
   it('offers a short Enable action when a connected plan needs its native bot provider', () => {

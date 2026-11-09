@@ -32,18 +32,16 @@ export function ProviderCodingKey({ provider }: { provider: Provider }) {
       ) : account?.providerId === provider.id ? (
         <p className="text-xs text-muted-foreground">Also used by {label}.</p>
       ) : (
-        <div className="flex flex-col items-start gap-1.5">
-          <p className="text-xs text-muted-foreground">For {label} coding tasks.</p>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+          <p className="text-xs text-muted-foreground">{label} does not use this key yet.</p>
           <Button
-            className="self-start"
             size="sm"
-            variant="ghost"
+            variant="outline"
             disabled={save.isPending}
             aria-label={`Use saved key for ${label}`}
-            title={`Use this saved key with ${label}`}
             onClick={() => save.mutate()}
           >
-            {save.isPending ? 'Saving…' : 'Use key'}
+            {save.isPending ? 'Saving…' : `Use for ${label}`}
           </Button>
         </div>
       )}
@@ -151,37 +149,18 @@ export function ProviderSubscription({
   if (!canEdit || !supported || !capabilities.data) return null;
   if (!enabled && !connected)
     return (
-      <section
-        className="rounded-md bg-muted/40 p-4 text-sm"
-        aria-label={`${kind} subscription unavailable`}
-      >
+      <section className="text-sm" aria-label={`${kind} subscription unavailable`}>
         <h3 className="font-medium">Subscription</h3>
-        <p className="mt-1 text-muted-foreground">
+        <p className="mt-0.5 text-xs text-muted-foreground">
           Configure a computer to connect a subscription. You can use an API key without one.
         </p>
       </section>
     );
   return (
-    <section
-      className="flex flex-col gap-3 rounded-md bg-muted/40 p-4"
-      aria-label={`${kind} connection`}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs font-medium text-muted-foreground">
-          {connected ? 'Preferred connection' : 'Use your existing plan'}
-        </span>
-        {connected && (
-          <span
-            className={`text-xs font-medium ${account?.needsSignIn ? 'text-destructive' : 'text-foreground'}`}
-          >
-            {account?.needsSignIn ? 'Reconnect required' : 'Connected'}
-          </span>
-        )}
-      </div>
-      <p className="max-w-prose text-sm text-muted-foreground">
-        One sign-in for bots and compatible coding agents. Preferred over an API key.
-        {kind === 'xai' ? ' In pi, type /login and choose xAI for SuperGrok or X Premium.' : ''}
-      </p>
+    <section className="flex flex-col gap-2" aria-label={`${kind} connection`}>
+      {connected && account?.needsSignIn && (
+        <p className="text-xs font-medium text-destructive">Reconnect required</p>
+      )}
       {!enabled && (
         <p className="text-sm text-destructive">
           A computer is required to use this subscription. Restore the computer connection, or
@@ -251,12 +230,13 @@ export function ProviderSubscription({
           agent out{account?.agent === 'pi' ? ' of all pi providers' : ''}.
         </p>
       )}
-      {kind === 'anthropic' && (
-        <p className="text-xs text-muted-foreground">
-          Claude plan access outside Claude Code may require extra usage and is subject to
-          Anthropic’s account restrictions.
-        </p>
-      )}
+      <p className="max-w-prose text-xs text-muted-foreground">
+        One sign-in for bots and coding agents, used before an API key.
+        {kind === 'xai' ? ' In pi, type /login and choose xAI for SuperGrok or X Premium.' : ''}
+        {kind === 'anthropic'
+          ? ' Claude plan access outside Claude Code may need extra usage and follows Anthropic’s account rules.'
+          : ''}
+      </p>
     </section>
   );
 }

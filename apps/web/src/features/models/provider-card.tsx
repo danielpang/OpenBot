@@ -1,5 +1,6 @@
 import {
   Button,
+  ChevronDownIcon,
   cn,
   IconButton,
   Input,
@@ -75,10 +76,17 @@ export function KeyField({
     if (apiKey) save.mutate(apiKey, { onSuccess: () => form.reset() });
   }
 
+  const value = hasKey ? (keyHint ?? 'set') : required === false ? 'none (optional)' : 'not set';
   const status = (
-    <span className={cn('text-sm', hasKey ? 'text-foreground' : 'text-muted-foreground')}>
-      {`API key: ${hasKey ? (keyHint ?? 'set') : required === false ? 'none (optional)' : 'not set'}`}
-    </span>
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="text-sm font-medium text-foreground">API key</span>
+      <span
+        className={cn('truncate text-xs text-muted-foreground', hasKey && keyHint && 'font-mono')}
+        data-key-status
+      >
+        {value}
+      </span>
+    </div>
   );
   if (!canEdit || (hasKey && !replacing)) {
     return (
@@ -93,16 +101,16 @@ export function KeyField({
     );
   }
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
+      {status}
       <form className="flex flex-wrap items-center gap-2" onSubmit={submit}>
-        {status}
         <Input
           name="apiKey"
           type="password"
           autoComplete="off"
           placeholder="Paste an API key"
           aria-label="API key"
-          className="max-w-xs"
+          className="h-8 max-w-xs flex-1"
           required
         />
         <Button type="submit" size="sm" disabled={save.isPending}>
@@ -122,17 +130,18 @@ export function KeyField({
 export function TestResult({ provider }: { provider: Provider }) {
   const result = provider.testResult;
   return (
-    <p className="text-sm">
-      <span className={STATUS_STYLES[provider.status]}>{STATUS_LABELS[provider.status]}</span>
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
+      <span className={cn('font-medium', STATUS_STYLES[provider.status])}>
+        {STATUS_LABELS[provider.status]}
+      </span>
       {result && (
-        <span className="text-muted-foreground">
-          {' '}
-          · {testSummary(result)}
+        <span className="text-xs text-muted-foreground">
+          {testSummary(result)}
           {provider.lastTestedAt && ` · tested ${new Date(provider.lastTestedAt).toLocaleString()}`}
         </span>
       )}
-      {result?.error && <span className="block text-destructive">{result.error}</span>}
-    </p>
+      {result?.error && <span className="text-xs text-destructive">{result.error}</span>}
+    </div>
   );
 }
 
@@ -205,16 +214,19 @@ export function ProviderCard({
   const headerNames = provider.headers;
   const inUse = providerInUseText(provider.botCount);
 
+  const subscription =
+    showSubscription &&
+    provider.protocol === 'native' &&
+    !provider.baseUrl &&
+    provider.headers.length === 0;
+
   return (
-    <article
-      className="flex flex-col gap-3 rounded-lg border bg-card p-4"
-      aria-label={provider.name}
-    >
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+    <article className="rounded-lg border bg-card text-sm" aria-label={provider.name}>
+      <header className="flex items-start gap-3 py-3 pr-2 pl-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h3 className="font-medium">{provider.name}</h3>
           {provider.kind === 'custom' && (
-            <p className="text-sm text-muted-foreground">
+            <p className="truncate text-xs text-muted-foreground">
               {provider.baseUrl} ·{' '}
               {provider.protocol === 'anthropic_compatible' ? 'Anthropic Messages' : 'OpenAI chat'}
               {provider.local && ' · on my network'}
@@ -222,91 +234,102 @@ export function ProviderCard({
               {headerNames.length > 0 && ` · headers: ${headerNames.join(', ')}`}
             </p>
           )}
+          {canEdit && inUse && (
+            <p id={`${provider.id}-in-use`} className="text-xs text-muted-foreground">
+              {inUse}
+            </p>
+          )}
         </div>
         {canEdit && (
-          <div className="flex flex-wrap gap-2">
-            <Select
-              size="sm"
-              aria-label="Model to test"
-              value={testModelId}
-              disabled={test.isPending || !models?.items.length}
-              onChange={(event) => setTestModelId(event.currentTarget.value)}
-              className="max-w-48"
-            >
-              <option value="">Default model</option>
-              {models?.items.map((m) => (
-                <option key={m.id} value={m.modelId}>
-                  {m.displayName}
-                </option>
-              ))}
-            </Select>
-            <IconButton
-              label={test.isPending ? 'Testing…' : 'Test'}
-              busy={test.isPending}
-              onClick={() => test.mutate()}
-            >
-              <RefreshIcon />
-            </IconButton>
-            <IconButton
-              label="Delete"
-              // A provider in use cannot be deleted (L5); say so before the confirm, not after.
-              disabled={inUse !== null}
-              busy={remove.isPending}
-              aria-describedby={inUse ? `${provider.id}-in-use` : undefined}
-              onClick={() => {
-                if (window.confirm(`Delete ${provider.name} and its models?`)) remove.mutate();
-              }}
-            >
-              <TrashIcon />
-            </IconButton>
-          </div>
+          <IconButton
+            label="Delete"
+            tooltip={inUse ?? 'Delete'}
+            // A provider in use cannot be deleted (L5); say so before the confirm, not after.
+            disabled={inUse !== null}
+            busy={remove.isPending}
+            aria-describedby={inUse ? `${provider.id}-in-use` : undefined}
+            onClick={() => {
+              if (window.confirm(`Delete ${provider.name} and its models?`)) remove.mutate();
+            }}
+          >
+            <TrashIcon />
+          </IconButton>
         )}
       </header>
-      {canEdit && inUse && (
-        <p id={`${provider.id}-in-use`} className="text-xs text-muted-foreground">
-          {inUse}
-        </p>
-      )}
       <ErrorText error={remove.error} />
-      {showSubscription &&
-        provider.protocol === 'native' &&
-        !provider.baseUrl &&
-        provider.headers.length === 0 && (
-          <ProviderSubscription
-            kind={provider.kind}
-            canEdit={canEdit}
-            fallbackProviderId={provider.hasKey ? provider.id : undefined}
-          />
+      <div className="divide-y border-t">
+        {subscription && (
+          <div className="px-4 py-3">
+            <ProviderSubscription
+              kind={provider.kind}
+              canEdit={canEdit}
+              fallbackProviderId={provider.hasKey ? provider.id : undefined}
+            />
+          </div>
         )}
-      <KeyField
-        hasKey={provider.hasKey}
-        keyHint={provider.keyHint}
-        canEdit={canEdit}
-        required={keyRequired}
-        onSave={(apiKey) => updateProvider(provider.id, { apiKey }).then(refresh)}
-      />
-      {canEdit && <ProviderCodingKey provider={provider} />}
-      {canEdit && provider.kind === 'custom' && (
-        <label className="flex items-center justify-between gap-4 text-sm">
-          <span className="flex flex-col gap-0.5">
-            <span className="font-medium">Runs on my network</span>
-            <span className="text-xs text-muted-foreground">
-              Allows a private or local base URL
-            </span>
-          </span>
-          <Switch {...localBox} />
-        </label>
-      )}
-      <ErrorText error={localError} />
-      <TestResult provider={provider} />
-      <ErrorText error={test.error} />
-      <details open={defaultOpen} className="flex flex-col gap-3">
-        <summary className="cursor-pointer text-sm font-medium">Models</summary>
-        <div className="mt-3 flex flex-col gap-4">
-          <ModelEditor provider={provider} canEdit={canEdit} />
-          <SmallModel provider={provider} canEdit={canEdit} />
+        <div className="flex flex-col gap-2 py-3 pr-2 pl-4">
+          <KeyField
+            hasKey={provider.hasKey}
+            keyHint={provider.keyHint}
+            canEdit={canEdit}
+            required={keyRequired}
+            onSave={(apiKey) => updateProvider(provider.id, { apiKey }).then(refresh)}
+          />
+          {canEdit && <ProviderCodingKey provider={provider} />}
         </div>
-      </details>
+        {canEdit && provider.kind === 'custom' && (
+          <label className="flex items-center justify-between gap-4 px-4 py-3">
+            <span className="flex flex-col gap-0.5">
+              <span className="font-medium">Runs on my network</span>
+              <span className="text-xs text-muted-foreground">
+                Allows a private or local base URL
+              </span>
+            </span>
+            <Switch {...localBox} />
+          </label>
+        )}
+        <ErrorText error={localError} />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 pr-2 pl-4">
+          <TestResult provider={provider} />
+          {canEdit && (
+            <div className="flex items-center gap-1">
+              <Select
+                size="sm"
+                aria-label="Model to test"
+                value={testModelId}
+                disabled={test.isPending || !models?.items.length}
+                onChange={(event) => setTestModelId(event.currentTarget.value)}
+                className="w-auto max-w-44"
+              >
+                <option value="">Default model</option>
+                {models?.items.map((m) => (
+                  <option key={m.id} value={m.modelId}>
+                    {m.displayName}
+                  </option>
+                ))}
+              </Select>
+              <IconButton
+                label={test.isPending ? 'Testing…' : 'Test'}
+                busy={test.isPending}
+                onClick={() => test.mutate()}
+              >
+                <RefreshIcon />
+              </IconButton>
+            </div>
+          )}
+          <ErrorText error={test.error} />
+        </div>
+        <details open={defaultOpen} className="group px-4 py-3">
+          <summary className="flex cursor-pointer list-none items-center gap-2 font-medium [&::-webkit-details-marker]:hidden">
+            <ChevronDownIcon className="size-4 -rotate-90 text-muted-foreground transition-transform group-open:rotate-0" />
+            Models
+          </summary>
+          <div className="mt-3 flex flex-col gap-4">
+            <ModelEditor provider={provider} canEdit={canEdit} />
+            <SmallModel provider={provider} canEdit={canEdit} />
+          </div>
+        </details>
+      </div>
     </article>
   );
 }
