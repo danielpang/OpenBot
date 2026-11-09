@@ -11,7 +11,6 @@ import type {
   FilePart,
   ModelMessage,
   SystemModelMessage,
-  ToolContent,
   ToolModelMessage,
 } from 'ai';
 import type { CoderAccountView, CoderServices, RepoRef } from '../tools/coder.js';
@@ -341,9 +340,10 @@ function partText(part: MessagePart): string | null {
 
 /**
  * Transcript rows to model messages. The Bot's own messages replay as native
- * assistant and tool messages (tool calls without a stored result are
- * dropped, since providers reject an unanswered call, and results replay
- * inside <tool_result>); everyone else's are user turns behind an author
+ * assistant and tool messages, each call followed by its result even when
+ * the result was stored in a later message (tool calls without a stored
+ * result are dropped, since providers reject an unanswered call, and results
+ * replay inside <tool_result>); everyone else's are user turns behind an author
  * prefix, and another Bot's tool activity in a message collapses to one line
  * where its first call was.
  *
@@ -362,9 +362,11 @@ export function toModelMessages(
   for (const [index, message] of transcript.entries()) {
     for (const part of message.parts) if (isAttachmentPart(part)) newest.set(part.file_id, index);
   }
+  const results = ownResults(transcript);
+  const replayed = new Set<string>();
   for (const [index, message] of transcript.entries()) {
     if (message.author.self) {
-      out.push(...ownMessage(message.parts));
+      out.push(...ownMessage(message.parts, results, replayed));
       continue;
     }
     const shown: Shown = { images: [], frames: [] };
@@ -488,25 +490,71 @@ function toolLine(calls: Extract<MessagePart, { type: 'tool_call' }>[]): string 
   return `[used tools: ${labels.join('; ')}${more}]`;
 }
 
-function ownMessage(parts: MessagePart[]): ModelMessage[] {
-  const answered = new Set(
-    parts
-      .filter((p) => p.type === 'tool_result')
-      .map((p) => (p as { tool_call_id: string }).tool_call_id),
-  );
+type ToolCallPart = Extract<MessagePart, { type: 'tool_call' }>;
+type ToolResultPart = Extract<MessagePart, { type: 'tool_result' }>;
+
+/**
+ * Every result of the Bot's own calls, by call id, across its messages. A
+ * call's result can land in a later message than the call: a run that waited
+ * for an approval resumes into a new message and posts the result there, and
+ * a widget posted elsewhere leaves a waiting placeholder that the real result
+ * follows. The last result is the one that counts.
+ */
+function ownResults(transcript: TranscriptMessage[]): Map<string, ToolResultPart> {
+  const results = new Map<string, ToolResultPart>();
+  for (const message of transcript) {
+    if (!message.author.self) continue;
+    for (const part of message.parts) {
+      if (part.type === 'tool_result') results.set(part.tool_call_id, part);
+    }
+  }
+  return results;
+}
+
+/**
+ * One of the Bot's messages as native assistant and tool messages. Each
+ * assistant message is followed by a tool message holding exactly the
+ * results of its calls, wherever those results sit in the transcript, so
+ * providers never see a result without its call (or the reverse). A call
+ * without a result, or one already replayed, is dropped; a result is only
+ * ever sent beside its call.
+ */
+function ownMessage(
+  parts: MessagePart[],
+  results: Map<string, ToolResultPart>,
+  replayed: Set<string>,
+): ModelMessage[] {
   const out: ModelMessage[] = [];
   let assistant: Exclude<AssistantContent, string> = [];
-  let results: ToolContent = [];
+  let calls: ToolCallPart[] = [];
+  // A result of this step's calls was seen: what comes next is a later step.
+  let answered = false;
   const flush = () => {
     if (assistant.length) out.push({ role: 'assistant', content: assistant });
-    if (results.length) out.push({ role: 'tool', content: results } satisfies ToolModelMessage);
+    if (calls.length) {
+      out.push({
+        role: 'tool',
+        content: calls.map((call) => {
+          const result = results.get(call.tool_call_id)!;
+          return {
+            type: 'tool-result',
+            toolCallId: call.tool_call_id,
+            toolName: call.tool_name,
+            output: frameToolOutput(result.tool_name, result.result, result.is_error === true),
+          };
+        }),
+      } satisfies ToolModelMessage);
+    }
     assistant = [];
-    results = [];
+    calls = [];
+    answered = false;
   };
   for (const part of parts) {
     if (part.type === 'tool_call') {
-      if (!answered.has(part.tool_call_id)) continue;
-      if (results.length) flush();
+      if (!results.has(part.tool_call_id) || replayed.has(part.tool_call_id)) continue;
+      if (answered) flush();
+      replayed.add(part.tool_call_id);
+      calls.push(part);
       assistant.push({
         type: 'tool-call',
         toolCallId: part.tool_call_id,
@@ -514,16 +562,11 @@ function ownMessage(parts: MessagePart[]): ModelMessage[] {
         input: part.args ?? {},
       });
     } else if (part.type === 'tool_result') {
-      results.push({
-        type: 'tool-result',
-        toolCallId: part.tool_call_id,
-        toolName: part.tool_name,
-        output: frameToolOutput(part.tool_name, part.result, part.is_error === true),
-      });
+      if (calls.some((c) => c.tool_call_id === part.tool_call_id)) answered = true;
     } else if (part.type !== 'reasoning') {
       const text = partText(part);
       if (!text) continue;
-      if (results.length) flush();
+      if (answered) flush();
       assistant.push({ type: 'text', text });
     }
   }

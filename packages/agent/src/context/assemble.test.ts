@@ -5,6 +5,8 @@ import {
   assembleContext,
   instructionsText,
   loadCoderContext,
+  toModelMessages,
+  type TranscriptMessage,
   type CoderContext,
   type ContextInput,
 } from './assemble.js';
@@ -349,5 +351,105 @@ describe('repositories and coding agents (GH9, I9)', () => {
       (await loadCoderContext(services, resolveToolPolicy({ coder: { defaultAgent: 'pi' } })))
         ?.defaultAgent,
     ).toBe('pi');
+  });
+});
+
+describe("replaying the Bot's own tool calls", () => {
+  const owner = (seq: number, text: string): TranscriptMessage => ({
+    seq,
+    author: { kind: 'owner', handle: 'dana' },
+    parts: [{ type: 'text', text }],
+  });
+  const self = (seq: number, parts: TranscriptMessage['parts']): TranscriptMessage => ({
+    seq,
+    author: { kind: 'bot', handle: 'scout', self: true },
+    parts,
+  });
+  const call = (id: string, name = 'send_email') =>
+    ({ type: 'tool_call', tool_call_id: id, tool_name: name, args: {} }) as const;
+  const result = (id: string, value: unknown = { ok: true }, name = 'send_email') =>
+    ({ type: 'tool_result', tool_call_id: id, tool_name: name, result: value }) as const;
+
+  /** Every tool message answers exactly the calls of the assistant message before it. */
+  function expectPaired(messages: ReturnType<typeof toModelMessages>) {
+    messages.forEach((m, i) => {
+      if (m.role !== 'tool') return;
+      const before = messages[i - 1];
+      expect(before?.role).toBe('assistant');
+      const calls =
+        before?.role === 'assistant' && typeof before.content !== 'string'
+          ? before.content.filter((c) => c.type === 'tool-call').map((c) => c.toolCallId)
+          : [];
+      expect(m.content.map((c) => (c.type === 'tool-result' ? c.toolCallId : null))).toEqual(calls);
+    });
+  }
+
+  it('pairs a result stored in the message a run resumed into with its call', () => {
+    // A run asks to send an email, waits for approval, and resumes into a new message.
+    const messages = toModelMessages([
+      owner(1, 'Email Sam'),
+      self(2, [
+        call('a', 'web_search'),
+        result('a', {}, 'web_search'),
+        call('b'),
+        { type: 'widget', kind: 'approval', props: {} },
+      ]),
+      self(3, [result('b'), { type: 'text', text: 'Sent.' }]),
+      owner(4, 'Thanks. Anything else?'),
+    ]);
+    expectPaired(messages);
+    expect(messages.map((m) => m.role)).toEqual([
+      'user',
+      'assistant',
+      'tool',
+      'assistant',
+      'tool',
+      'assistant',
+      'user',
+    ]);
+    const tool = messages[4];
+    expect(tool?.role === 'tool' && tool.content[0]).toMatchObject({ toolCallId: 'b' });
+  });
+
+  it('uses the real result over the waiting placeholder a posted widget left', () => {
+    const messages = toModelMessages([
+      owner(1, 'Ask the researcher'),
+      self(2, [call('b'), result('b', { status: 'waiting_for_owner' })]),
+      self(3, [result('b', { sent: true }), { type: 'text', text: 'Done.' }]),
+    ]);
+    expectPaired(messages);
+    const tool = messages[2];
+    const output = tool?.role === 'tool' ? tool.content[0] : undefined;
+    expect(JSON.stringify(output)).toContain('sent');
+    expect(JSON.stringify(output)).not.toContain('waiting_for_owner');
+  });
+
+  it('keeps parallel results together when a card lands between them', () => {
+    const messages = toModelMessages([
+      owner(1, 'Make two artifacts'),
+      self(2, [
+        call('a', 'create_artifact'),
+        call('b', 'create_artifact'),
+        result('a', {}, 'create_artifact'),
+        { type: 'artifact', artifact_id: 'x', title: 'One' },
+        result('b', {}, 'create_artifact'),
+        { type: 'artifact', artifact_id: 'y', title: 'Two' },
+        { type: 'text', text: 'Both made.' },
+      ]),
+    ]);
+    expectPaired(messages);
+    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
+  });
+
+  it('drops results whose call is not in the transcript', () => {
+    const messages = toModelMessages([
+      owner(1, 'Hello'),
+      self(2, [result('gone'), { type: 'text', text: 'Hi.' }]),
+    ]);
+    expectPaired(messages);
+    expect(messages).toEqual([
+      { role: 'user', content: '[@dana (owner)] Hello' },
+      { role: 'assistant', content: [{ type: 'text', text: 'Hi.' }] },
+    ]);
   });
 });
