@@ -20,7 +20,7 @@ import { createStackBridge, type IpcRendererLike, type StackBridge } from '../st
 // default browser); the server's pages (the web app, possibly a
 // remote server's) get nothing more. The app's own pages (the start page and
 // the quick-ask and pairing windows, loaded from the app bundle) also get the
-// profiles, the three ways to connect, the local stack, quick ask and pairing; the main process
+// profiles, the ways to connect, the local stack, quick ask and pairing; the main process
 // checks the sender again, so a page that reaches these channels some other
 // way is refused. `connection` answers only the active server's page in the
 // main window, and its Start, Stop and Show logs only for This Mac; `oauth`
@@ -62,6 +62,8 @@ export interface AppBridge extends WebBridge {
     server(url: string): Promise<void>;
     /** Waits for the started local stack, then opens its setup, or sign-in. */
     local(): Promise<void>;
+    /** Pairs this Mac with another OpenBots server, or another Mac's, from its pairing link. */
+    pair(link: string): Promise<void>;
   };
   profiles: {
     list(): Promise<ProfilesView>;
@@ -145,6 +147,7 @@ export function createAppBridge(ipcRenderer: IpcRendererLike, platform: Platform
       check: (url) => invoke<ServerCheckResult>(DESKTOP_CHANNELS.connectCheck, url),
       server: (url) => invoke<void>(DESKTOP_CHANNELS.connectServer, url),
       local: () => invoke<void>(DESKTOP_CHANNELS.connectLocal),
+      pair: (link) => invoke<void>(DESKTOP_CHANNELS.connectPair, String(link)),
     },
     stack: createStackBridge(ipcRenderer),
     quickAsk: {

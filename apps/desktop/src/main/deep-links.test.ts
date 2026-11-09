@@ -41,6 +41,18 @@ describe('deep links', () => {
     expect(parseDeepLink('openbots://devices?next=/x')).toBeNull();
   });
 
+  it('hands on another server’s pairing link as it came', () => {
+    const link = 'openbots://pair#v=1&host=abc&key=k&code=c';
+    expect(parseDeepLink(link)).toEqual({ kind: 'pair', link });
+    expect(formatDeepLink({ kind: 'pair', link })).toBe(link);
+    expect(deepLinkPath({ kind: 'pair', link })).toBe('/');
+    expect(parseDeepLink('openbots://pair')).toBeNull();
+    expect(parseDeepLink('openbots://pair#')).toBeNull();
+    expect(parseDeepLink('openbots://pair/x#v=1')).toBeNull();
+    expect(parseDeepLink('openbots://pair?x=1#v=1')).toBeNull();
+    expect(parseDeepLink(`openbots://pair#${'a'.repeat(5000)}`)).toBeNull();
+  });
+
   it('lowercases the id', () => {
     expect(parseDeepLink(`openbots://bot/${BOT.toUpperCase()}/message/1`)).toEqual({
       kind: 'bot',

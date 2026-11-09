@@ -33,6 +33,7 @@
     "@openbots/api-client": "workspace:*",
     "@openbots/avatars": "workspace:*",
     "@openbots/shared": "workspace:*",
+    "@openbots/tunnel": "workspace:*",
     "@openbots/ui": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",

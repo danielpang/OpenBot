@@ -68,11 +68,7 @@ export function PairWindow({ flow }: { flow: PairFlow }) {
       )}
       {state.step === 'code' && <CodeStep flow={flow} state={state} />}
       {state.step === 'paired' && (
-        <Done
-          id="paired"
-          title={`Paired ${state.paired}`}
-          text="Your phone can reach your Bots now."
-        >
+        <Done id="paired" title={`Paired ${state.paired}`} text="It can reach your Bots now.">
           <Button id="done" onClick={() => flow.close()}>
             Done
           </Button>
@@ -243,7 +239,8 @@ function CodeStep({ flow, state }: { flow: PairFlow; state: PairState }) {
       <header className="flex flex-col items-center gap-1 text-center">
         <h1 className="text-lg font-semibold">Pair your phone</h1>
         <p className="text-sm text-muted-foreground">
-          Scan this code with the OpenBots app on your iPhone.
+          Scan this code with the OpenBots app on your iPhone, or paste the link into OpenBots on
+          another Mac.
         </p>
       </header>
       {state.code && state.link === 'failed' ? (
@@ -374,7 +371,7 @@ function Code({ code, onRenew }: { code: PairCode; onRenew(): void }) {
       </Button>
       <p className="max-w-80 text-center text-xs text-muted-foreground">
         The code works once and expires in 5 minutes. Copy the link to send it to your phone by
-        AirDrop or Messages.
+        AirDrop or Messages. On another Mac, choose Connect to another Mac and paste it there.
       </p>
     </div>
   );

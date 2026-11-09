@@ -5,6 +5,8 @@ import {
   LOCAL_PROFILE_ID,
   localServerUrl,
   normalizeServerUrl,
+  pairedPort,
+  pairedProxyUrl,
   parseProfiles,
   ProfileError,
   type ProfileFiles,
@@ -256,5 +258,83 @@ describe('profile store', () => {
   it('gives the local profile the stack URL it reads now', async () => {
     const { profiles } = store(undefined, 'http://localhost:8080');
     expect((await profiles.active()).url).toBe('http://localhost:8080');
+  });
+});
+
+describe('paired servers', () => {
+  const paired = {
+    hostId: 'abcdefghijklmnopqrstuvwxyz',
+    relayUrl: 'wss://openbots-relay.fly.dev',
+    serverKey: 'A'.repeat(43),
+    deviceId: 'device-1',
+  };
+
+  it('saves one, keeps it across a read and moves it to another port', async () => {
+    const { profiles, data } = store();
+    const added = await profiles.addPaired({
+      name: "Ada's MacBook",
+      url: pairedProxyUrl(41234),
+      paired,
+    });
+    expect(added).toEqual({
+      id: 'p1',
+      name: "Ada's MacBook",
+      url: 'http://127.0.0.1:41234',
+      kind: 'paired',
+      paired,
+    });
+    expect(JSON.parse(data.get(PATH)!).profiles).toEqual([added]);
+    expect((await profiles.list()).profiles.at(-1)).toEqual(added);
+
+    const moved = await profiles.setUrl('p1', pairedProxyUrl(5000));
+    expect(moved.url).toBe('http://127.0.0.1:5000');
+    await expect(profiles.setUrl('local', pairedProxyUrl(1))).rejects.toThrow(ProfileError);
+
+    // Pairing the same server again updates it in place.
+    const again = await profiles.addPaired({
+      name: 'Ada',
+      url: pairedProxyUrl(6000),
+      paired: { ...paired, deviceId: 'device-2' },
+    });
+    expect(again).toMatchObject({ id: 'p1', name: 'Ada', url: 'http://127.0.0.1:5000' });
+    expect(again.paired?.deviceId).toBe('device-2');
+    expect((await profiles.list()).profiles).toHaveLength(2);
+
+    // A self-hosted server at the same address is a different connection.
+    await profiles.add({ url: 'http://127.0.0.1:5000' });
+    expect((await profiles.list()).profiles).toHaveLength(3);
+
+    const view = await profiles.remove('p1');
+    expect(view.profiles.map((p) => p.kind)).toEqual(['local', 'remote']);
+  });
+
+  it('drops a stored paired profile that lost what it needs', () => {
+    const text = JSON.stringify({
+      profiles: [
+        { id: 'a', name: 'A', url: 'http://127.0.0.1:1', kind: 'paired', paired },
+        { id: 'b', name: 'B', url: 'https://b.example.com', kind: 'paired', paired },
+        { id: 'c', name: 'C', url: 'http://127.0.0.1:2', kind: 'paired' },
+        {
+          id: 'd',
+          name: 'D',
+          url: 'http://127.0.0.1:3',
+          kind: 'paired',
+          paired: { ...paired, relayUrl: 'http://insecure.example' },
+        },
+        { id: 'e', name: 'E', url: 'https://e.example.com', kind: 'remote', paired },
+      ],
+    });
+    const { profiles } = parseProfiles(text, 'http://localhost:3000');
+    expect(profiles.map((p) => p.id)).toEqual(['local', 'a', 'e']);
+    expect(profiles[2]).not.toHaveProperty('paired');
+    expect(pairedPort('http://127.0.0.1:41234')).toBe(41234);
+    expect(pairedPort('http://localhost:41234')).toBeNull();
+  });
+
+  it('needs a proxy address', async () => {
+    const { profiles } = store();
+    await expect(
+      profiles.addPaired({ name: 'A', url: 'https://a.example.com', paired }),
+    ).rejects.toThrow(ProfileError);
   });
 });

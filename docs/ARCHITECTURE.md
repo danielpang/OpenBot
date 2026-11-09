@@ -86,6 +86,29 @@ Choosing an OpenBots account or an existing self-hosted server makes the Mac app
 server. It does not start the local stack and does not need local Docker containers. The computers,
 database and other services run wherever that server is hosted.
 
+### Connecting to another Mac
+
+**Connect to another Mac** makes this Mac a thin client of OpenBots on another Mac (its This Mac
+stack) or any server with a relay. It pairs the way a phone does, with the link from that Mac's
+**Pair your phone…** window, and becomes a `desktop` device of that server:
+
+```text
+This Mac (Electron UI)
+        |
+        v
+loopback proxy (127.0.0.1, app windows only) -- device API key added
+        |
+        v
+Noise IK tunnel ---> relay ---> other Mac's OpenBots server ---> its computers
+```
+
+The main window loads the other server's web app from a proxy in the app on `127.0.0.1`. Every
+request and WebSocket goes on through one encrypted tunnel over the relay, as the device, with the
+device's API key, so the web app, its realtime socket, the terminal and the screen all work. The
+proxy refuses anything that does not carry a per-run secret, which only that profile's window
+session and the app's own process send. The device keys are sealed in the Keychain. Nothing runs
+in Docker on this Mac, and Bots pause while the other Mac sleeps.
+
 ## Standalone: an alternative, not an extra service
 
 The Compose stack separates the backend, database and Bot computers into different containers.

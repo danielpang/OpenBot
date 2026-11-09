@@ -36,6 +36,8 @@ export interface DesktopHandlers {
   checkServer(url: string): Promise<ServerCheckResult>;
   connectServer(url: string): Promise<void>;
   connectLocal(): Promise<void>;
+  /** Pairs with another OpenBots server, or another Mac's, from the link it shows. */
+  connectPaired(link: string): Promise<void>;
   connectionInfo(): Promise<ConnectionInfo>;
   changeConnection(): Promise<void>;
   startLocal(): Promise<ConnectionInfo>;
@@ -100,6 +102,9 @@ export function registerDesktopIpc(
     handlers.connectServer(text(url, 'The server address')),
   );
   handle(DESKTOP_CHANNELS.connectLocal, () => handlers.connectLocal());
+  handle(DESKTOP_CHANNELS.connectPair, (link) =>
+    handlers.connectPaired(text(link, 'The pairing link')),
+  );
   handleConnection(DESKTOP_CHANNELS.updateStatus, () => handlers.updateStatus());
   handleConnection(DESKTOP_CHANNELS.updateCheck, () => handlers.checkUpdates());
   handleConnection(DESKTOP_CHANNELS.updateDismiss, () => handlers.dismissUpdate());
