@@ -313,6 +313,26 @@ describe('executeRun', () => {
     expect(prompt).not.toContain(WAITING_RESULT.status);
   });
 
+  it('saves a question asked in a later step with its placeholder, so the run can resume', async () => {
+    const question = { question: 'Which repo?', options: [{ id: 'a', label: 'openbots' }] };
+    const h = harness([
+      [{ text: 'Looking.' }, { tool: 'search_memory', args: { query: 'repo' }, id: 's1' }],
+      [{ tool: 'ask_user', args: question, id: 'q2' }],
+    ]);
+    const outcome = await executeRun(h.input);
+    if (outcome.status !== 'waiting') throw new Error(`expected waiting, got ${outcome.status}`);
+    expect(outcome.messages.map((m) => m.role)).toEqual([
+      'user',
+      'assistant',
+      'tool',
+      'assistant',
+      'tool',
+    ]);
+    // Resuming injects the answer where the placeholder is (it threw when the step was lost).
+    const resumed = injectToolResult(outcome.messages, 'q2', { answered: true, option_id: 'a' });
+    expect(JSON.stringify(resumed.at(-1))).toContain('option_id');
+  });
+
   it('pauses on request_login: its own widget, or none when the main Bot posted it (K8)', async () => {
     const args = { site: 'github.com', reason: 'Read the private repo' };
     const props = { site: 'github.com', reason: args.reason };

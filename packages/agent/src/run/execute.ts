@@ -487,7 +487,8 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
   if (aborted || abortSignal.aborted) return { status: 'cancelled', usage };
   const pending = wait as PendingWait | null;
   if (pending) {
-    const responses = (await result.response).messages;
+    // Every step's messages; `response.messages` holds only the last step's.
+    const responses = await result.responseMessages;
     return {
       status: 'waiting',
       usage,
