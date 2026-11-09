@@ -353,7 +353,7 @@ function CreateSheet({
           </>
         ) : (
           <Label muted>
-            Choose a model in Bot details → About. Configure Skills and tools on your computer.
+            Choose a model and Skills in Bot details → About. Configure tools on your computer.
           </Label>
         )}
         <ErrorNote error={error} />

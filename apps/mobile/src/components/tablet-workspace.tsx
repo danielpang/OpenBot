@@ -21,6 +21,7 @@ export function TabletWorkspace({ children }: PropsWithChildren) {
     'artifact',
     'licenses',
     'coding-session',
+    'skills',
   ].includes(segments[0] ?? '');
   const sidebar = wide && mobile.ready && !!mobile.host && workspaceRoute;
   return (
