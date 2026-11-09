@@ -340,10 +340,8 @@ function partText(part: MessagePart): string | null {
 
 /**
  * Transcript rows to model messages. The Bot's own messages replay as native
- * assistant and tool messages, each call followed by its result even when
- * the result was stored in a later message (tool calls without a stored
- * result are dropped, since providers reject an unanswered call, and results
- * replay inside <tool_result>); everyone else's are user turns behind an author
+ * assistant and tool messages (unanswered calls are dropped; results replay
+ * inside <tool_result>); everyone else's are user turns behind an author
  * prefix, and another Bot's tool activity in a message collapses to one line
  * where its first call was.
  *
@@ -493,13 +491,7 @@ function toolLine(calls: Extract<MessagePart, { type: 'tool_call' }>[]): string 
 type ToolCallPart = Extract<MessagePart, { type: 'tool_call' }>;
 type ToolResultPart = Extract<MessagePart, { type: 'tool_result' }>;
 
-/**
- * Every result of the Bot's own calls, by call id, across its messages. A
- * call's result can land in a later message than the call: a run that waited
- * for an approval resumes into a new message and posts the result there, and
- * a widget posted elsewhere leaves a waiting placeholder that the real result
- * follows. The last result is the one that counts.
- */
+/** The Bot's tool results by call id, across messages (a resumed run stores them later); last wins. */
 function ownResults(transcript: TranscriptMessage[]): Map<string, ToolResultPart> {
   const results = new Map<string, ToolResultPart>();
   for (const message of transcript) {
@@ -511,14 +503,7 @@ function ownResults(transcript: TranscriptMessage[]): Map<string, ToolResultPart
   return results;
 }
 
-/**
- * One of the Bot's messages as native assistant and tool messages. Each
- * assistant message is followed by a tool message holding exactly the
- * results of its calls, wherever those results sit in the transcript, so
- * providers never see a result without its call (or the reverse). A call
- * without a result, or one already replayed, is dropped; a result is only
- * ever sent beside its call.
- */
+/** One Bot message as assistant turns, each followed by exactly its calls' results. */
 function ownMessage(
   parts: MessagePart[],
   results: Map<string, ToolResultPart>,
@@ -527,7 +512,7 @@ function ownMessage(
   const out: ModelMessage[] = [];
   let assistant: Exclude<AssistantContent, string> = [];
   let calls: ToolCallPart[] = [];
-  // A result of this step's calls was seen: what comes next is a later step.
+  // Past a result: the next text or call starts a new step.
   let answered = false;
   const flush = () => {
     if (assistant.length) out.push({ role: 'assistant', content: assistant });
