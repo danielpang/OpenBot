@@ -1,5 +1,17 @@
 import { DEFAULT_CAPABILITIES, type ModelCapabilities, type ModelPricing } from '@openbots/shared';
-import { Button, IconButton, Input, PlusIcon, SearchIcon, XIcon } from '@openbots/ui';
+import {
+  Button,
+  ChevronDownIcon,
+  EyeIcon,
+  IconButton,
+  Input,
+  LightbulbIcon,
+  PlusIcon,
+  SearchIcon,
+  Switch,
+  WrenchIcon,
+  XIcon,
+} from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import {
@@ -79,30 +91,58 @@ export function modelsPatch(saved: ModelDraft[], draft: ModelDraft[]) {
 
 const optionalNumber = (value: string) => (value.trim() === '' ? null : Number(value));
 
-function NumberCell({
+/** 1000000 as "1M", 200000 as "200K". */
+export function compactTokens(n: number): string {
+  if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${+(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+/** The one line a collapsed row shows for its limits and prices. */
+export function modelSummary(model: Pick<ModelDraft, 'capabilities' | 'pricing'>): string {
+  const parts: string[] = [];
+  const { context_window: context, max_output: output } = model.capabilities;
+  if (context) parts.push(`${compactTokens(context)} context`);
+  if (output) parts.push(`${compactTokens(output)} out`);
+  if (model.pricing) parts.push(`$${model.pricing.input} / $${model.pricing.output}`);
+  return parts.join(' · ');
+}
+
+const FLAG_GLYPHS = {
+  tools: { name: 'Tools', Icon: WrenchIcon },
+  vision: { name: 'Vision', Icon: EyeIcon },
+  reasoning: { name: 'Reasoning', Icon: LightbulbIcon },
+} as const;
+
+function NumberField({
   value,
   disabled,
   label,
+  ariaLabel,
   step,
   onChange,
 }: {
   value: number | null | undefined;
   disabled: boolean;
   label: string;
+  ariaLabel: string;
   step?: number;
   onChange: (value: number | null) => void;
 }) {
   return (
-    <Input
-      type="number"
-      min={0}
-      step={step ?? 1}
-      aria-label={label}
-      disabled={disabled}
-      value={value ?? ''}
-      onChange={(event) => onChange(optionalNumber(event.currentTarget.value))}
-      className="h-8 w-24 px-2"
-    />
+    <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
+      {label}
+      <Input
+        type="number"
+        min={0}
+        step={step ?? 1}
+        aria-label={ariaLabel}
+        disabled={disabled}
+        value={value ?? ''}
+        onChange={(event) => onChange(optionalNumber(event.currentTarget.value))}
+        className="h-8 px-2 tabular-nums"
+      />
+    </label>
   );
 }
 
@@ -115,6 +155,7 @@ export function ModelRows({
   canEdit: boolean;
   onChange?: (models: ModelDraft[]) => void;
 }) {
+  const [open, setOpen] = useState<string | null>(null);
   const disabled = !canEdit || !onChange;
   const update = (index: number, patch: Partial<ModelDraft>) =>
     onChange?.(models.map((m, i) => (i === index ? { ...m, ...patch } : m)));
@@ -133,111 +174,116 @@ export function ModelRows({
 
   if (!models.length) return <p className="text-sm text-muted-foreground">No models yet.</p>;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-left text-muted-foreground">
-          <tr>
-            <th className="py-1 pr-2 font-normal">On</th>
-            <th className="py-1 pr-2 font-normal">Model</th>
-            {FLAGS.map((flag) => (
-              <th key={flag} className="py-1 pr-2 font-normal capitalize">
-                {flag}
-              </th>
-            ))}
-            <th className="py-1 pr-2 font-normal">Context</th>
-            <th className="py-1 pr-2 font-normal">Max output</th>
-            <th className="py-1 pr-2 font-normal">$ in / 1M</th>
-            <th className="py-1 pr-2 font-normal">$ out / 1M</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {models.map((model, index) => (
-            <tr key={model.modelId} className="border-t">
-              <td className="py-1 pr-2">
-                <input
-                  type="checkbox"
-                  aria-label={`Enable ${model.modelId}`}
-                  checked={model.enabled}
-                  disabled={disabled}
-                  onChange={(event) => update(index, { enabled: event.currentTarget.checked })}
-                />
-              </td>
-              <td className="py-1 pr-2">
-                <span className="block">{model.displayName}</span>
-                {model.displayName !== model.modelId && (
-                  <span className="block font-mono text-xs text-muted-foreground">
-                    {model.modelId}
-                  </span>
-                )}
-                <span className="text-xs text-muted-foreground">{model.source}</span>
-              </td>
-              {FLAGS.map((flag) => (
-                <td key={flag} className="py-1 pr-2">
-                  <input
-                    type="checkbox"
-                    aria-label={`${model.modelId} ${flag}`}
-                    checked={model.capabilities[flag]}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      setCapability(index, { [flag]: event.currentTarget.checked })
+    <ul className="divide-y rounded-lg border bg-card text-sm" aria-label="Models">
+      {models.map((model, index) => {
+        const expanded = open === model.modelId;
+        const summary = modelSummary(model);
+        return (
+          <li key={model.modelId} className="flex flex-col gap-3 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <Switch
+                aria-label={`Enable ${model.modelId}`}
+                checked={model.enabled}
+                disabled={disabled}
+                onChange={(event) => update(index, { enabled: event.currentTarget.checked })}
+              />
+              <div className="flex min-w-40 flex-1 flex-col">
+                <span className="truncate font-medium text-foreground">{model.displayName}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {model.displayName !== model.modelId && (
+                    <span className="font-mono">{model.modelId} · </span>
+                  )}
+                  {model.source}
+                  {summary && <span className="tabular-nums"> · {summary}</span>}
+                </span>
+              </div>
+              <div className="flex items-center gap-0.5">
+                {FLAGS.map((flag) => {
+                  const { name, Icon } = FLAG_GLYPHS[flag];
+                  const on = model.capabilities[flag];
+                  return (
+                    <IconButton
+                      key={flag}
+                      label={`${model.modelId} ${flag}`}
+                      tooltip={`${name} ${on ? 'on' : 'off'}`}
+                      aria-pressed={on}
+                      disabled={disabled}
+                      className={
+                        on
+                          ? 'bg-accent text-foreground hover:text-foreground'
+                          : 'text-muted-foreground/40'
+                      }
+                      onClick={() => setCapability(index, { [flag]: !on })}
+                    >
+                      <Icon />
+                    </IconButton>
+                  );
+                })}
+                <IconButton
+                  label={`${model.modelId} limits and pricing`}
+                  tooltip="Limits and pricing"
+                  aria-expanded={expanded}
+                  onClick={() => setOpen(expanded ? null : model.modelId)}
+                >
+                  <ChevronDownIcon
+                    className={
+                      expanded ? 'rotate-180 transition-transform' : 'transition-transform'
                     }
                   />
-                </td>
-              ))}
-              <td className="py-1 pr-2">
-                <NumberCell
-                  label={`${model.modelId} context window`}
+                </IconButton>
+                {!disabled && (
+                  <IconButton
+                    label={`Remove ${model.modelId}`}
+                    tooltip="Remove"
+                    onClick={() => onChange?.(models.filter((_, i) => i !== index))}
+                  >
+                    <XIcon />
+                  </IconButton>
+                )}
+              </div>
+            </div>
+            {expanded && (
+              <div className="grid grid-cols-2 gap-3 pb-1 sm:grid-cols-4">
+                <NumberField
+                  label="Context window"
+                  ariaLabel={`${model.modelId} context window`}
                   value={model.capabilities.context_window}
                   disabled={disabled}
                   onChange={(context_window) =>
                     setCapability(index, { context_window: context_window || null })
                   }
                 />
-              </td>
-              <td className="py-1 pr-2">
-                <NumberCell
-                  label={`${model.modelId} max output`}
+                <NumberField
+                  label="Max output"
+                  ariaLabel={`${model.modelId} max output`}
                   value={model.capabilities.max_output}
                   disabled={disabled}
                   onChange={(max_output) =>
                     setCapability(index, { max_output: max_output || null })
                   }
                 />
-              </td>
-              <td className="py-1 pr-2">
-                <NumberCell
-                  label={`${model.modelId} input price`}
+                <NumberField
+                  label="$ in per 1M tokens"
+                  ariaLabel={`${model.modelId} input price`}
                   value={model.pricing?.input}
                   step={0.01}
                   disabled={disabled}
                   onChange={(value) => setPrice(index, 'input', value)}
                 />
-              </td>
-              <td className="py-1 pr-2">
-                <NumberCell
-                  label={`${model.modelId} output price`}
+                <NumberField
+                  label="$ out per 1M tokens"
+                  ariaLabel={`${model.modelId} output price`}
                   value={model.pricing?.output}
                   step={0.01}
                   disabled={disabled}
                   onChange={(value) => setPrice(index, 'output', value)}
                 />
-              </td>
-              <td className="py-1">
-                {!disabled && (
-                  <IconButton
-                    label={`Remove ${model.modelId}`}
-                    onClick={() => onChange?.(models.filter((_, i) => i !== index))}
-                  >
-                    <XIcon />
-                  </IconButton>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -302,9 +348,9 @@ export function ModelEditor({ provider, canEdit }: { provider: Provider; canEdit
           <form className="flex gap-2" onSubmit={add}>
             <Input
               name="modelId"
-              placeholder="Model id"
+              placeholder="Add a model by id"
               aria-label="Model id"
-              className="h-8 w-56"
+              className="h-8 w-56 font-mono text-xs"
             />
             <IconButton label="Add model" type="submit" variant="outline">
               <PlusIcon />

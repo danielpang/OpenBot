@@ -365,9 +365,9 @@ function ResultBlock({
           ))}
         </ul>
       )}
-      {(usage || session?.prUrl) && (
+      {((usage && usageWords(usage)) || session?.prUrl) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {usage && <span data-usage>{usageWords(usage, agent)}</span>}
+          {usage && usageWords(usage) && <span data-usage>{usageWords(usage)}</span>}
           {session?.prUrl && (
             <a
               href={session.prUrl}

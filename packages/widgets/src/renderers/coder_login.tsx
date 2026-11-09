@@ -1,7 +1,6 @@
 import { CODER_AGENT_LABELS, type CoderAgent } from '@openbots/shared';
 import { Button, Input } from '@openbots/ui';
 import { useState, type FormEvent } from 'react';
-import { CODER_PLAN_WORDS } from '../kinds/coder-words.js';
 import type { CoderLoginProps, CoderLoginWidgetState } from '../kinds/coder_login.js';
 import { QrCode } from './qr-code.js';
 import type { WidgetRendererProps } from './types.js';
@@ -220,7 +219,6 @@ export function CoderLoginWidget({
     submitted.error === (current.error ?? null);
   const disabled = busy || !onAction;
   const label = CODER_AGENT_LABELS[props.agent];
-  const plan = CODER_PLAN_WORDS[props.agent];
   const waiting = props.waiting ?? [];
 
   async function send(action: { type: 'code'; code: string } | { type: 'cant' | 'api_key' }) {
@@ -256,7 +254,6 @@ export function CoderLoginWidget({
     >
       <p>
         <span className="font-medium">Sign in to {label}</span>
-        {plan && <span className="text-muted-foreground"> {plan}</span>}
       </p>
       {waiting.length > 0 && (
         <p className="text-xs text-muted-foreground">

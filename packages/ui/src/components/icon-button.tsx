@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tool
 
 export function IconButton({
   label,
+  tooltip,
   children,
   busy = false,
   className,
@@ -19,6 +20,8 @@ export function IconButton({
   ...props
 }: Omit<ComponentProps<typeof Button>, 'size' | 'aria-label'> & {
   label: string;
+  /** Shown on hover when it should differ from the accessible name. */
+  tooltip?: string;
   children: ReactNode;
   busy?: boolean;
 }) {
@@ -42,7 +45,7 @@ export function IconButton({
             {busy ? <SpinnerGlyph className="animate-spin" /> : children}
           </Button>
         </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
+        <TooltipContent>{tooltip ?? label}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

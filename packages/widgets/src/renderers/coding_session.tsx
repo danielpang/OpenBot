@@ -334,7 +334,9 @@ export function CodingSessionWidget({
             </ul>
           )}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            {result.usage && <span data-usage>{usageWords(result.usage, props.agent)}</span>}
+            {result.usage && usageWords(result.usage) && (
+              <span data-usage>{usageWords(result.usage)}</span>
+            )}
             {diffArtifactId && onOpenArtifact && (
               <button
                 type="button"

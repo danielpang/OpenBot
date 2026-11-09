@@ -169,9 +169,9 @@ export function CodingSessionBody({
             {plural(result.changed_files.length, 'file changed', 'files changed')} (+{added}, -
             {removed}), {plural(result.commits.length, 'commit', 'commits')}
           </Label>
-          {result.usage ? (
+          {result.usage && usageWords(result.usage) ? (
             <Label muted size={14}>
-              {usageWords(result.usage, props.agent)}
+              {usageWords(result.usage)}
             </Label>
           ) : null}
           {typeof diffId === 'string' && diffId ? (

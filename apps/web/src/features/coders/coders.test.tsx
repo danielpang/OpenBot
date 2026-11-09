@@ -587,36 +587,20 @@ describe('Settings > Coding agents: Codex, pi and Check (CA3)', () => {
     expect(server.requests.some((r) => r.path === '/api/v1/coders/codex/check')).toBe(false);
   });
 
-  it('says what a signed-in plan bills, by the provider pi signed in to', async () => {
-    const signedIn = {
-      authKind: 'subscription',
-      accountLabel: 'dan@example.com',
-      needsSignIn: false,
-    } as const;
+  it('says nothing about billing for a signed-in plan', async () => {
     agents = [
-      account({ agent: 'claude', ...signedIn, planProvider: 'anthropic' }),
-      account({ agent: 'codex', ...signedIn, planProvider: 'openai' }),
-      account({ agent: 'pi', ...signedIn, planProvider: 'anthropic' }),
+      account({
+        agent: 'codex',
+        authKind: 'subscription',
+        accountLabel: 'dan@example.com',
+        needsSignIn: false,
+        planProvider: 'openai',
+      }),
     ];
     render(<CodingAgentsSettings />);
-    await until(() => !!card('pi')?.querySelector('[data-plan]'), 'the plan line');
-    const plan = (agent: string) => card(agent).querySelector('[data-plan]')?.textContent;
-    expect(plan('claude')).toBe('Usage is billed to your Claude plan.');
-    expect(plan('codex')).toBe('Usage is billed to your ChatGPT plan.');
-    expect(plan('pi')).toBe('Usage is billed to your Claude plan as extra usage.');
-    act(() => root!.unmount());
-    host.remove();
-    agents = [account({ agent: 'pi', ...signedIn, planProvider: 'openai' })];
-    render(<CodingAgentsSettings />);
-    await until(() => !!card('pi')?.querySelector('[data-plan]'), 'the plan line');
-    expect(plan('pi')).toBe('Usage is billed to your ChatGPT plan.');
-    act(() => root!.unmount());
-    host.remove();
-    agents = [account({ agent: 'pi', ...signedIn, planProvider: 'other' })];
-    render(<CodingAgentsSettings />);
-    await until(() => !!card('pi')?.querySelector('[data-plan]'), 'the plan line');
-    expect(plan('pi')).toBe('Usage is billed to your plan.');
-    expect(host.textContent).not.toMatch(/[–—]| - /);
+    await until(() => !!card('codex'), 'the card');
+    expect(card('codex').querySelector('[data-plan]')).toBeNull();
+    expect(host.textContent).not.toContain('billed to');
   });
 
   it('says a rejected key with a link to Settings > Models, and other errors as they are', async () => {

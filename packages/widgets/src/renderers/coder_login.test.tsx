@@ -75,7 +75,8 @@ describe('<CoderLoginWidget>', () => {
 
   it('shows the instructions, the link with Copy and Open link, and the code field', () => {
     render(<CoderLoginWidget props={props} state={{ status: 'pending' }} onAction={vi.fn()} />);
-    expect(host.textContent).toContain('Sign in to Claude Code billed to your Claude plan');
+    expect(host.textContent).toContain('Sign in to Claude Code');
+    expect(host.textContent).not.toContain('billed to');
     expect(host.textContent).toContain(props.instructions);
     expect(host.querySelector('[data-sign-in-url]')?.textContent).toBe(URL);
     expect(button('Copy')).toBeDefined();
@@ -106,7 +107,7 @@ describe('<CoderLoginWidget>', () => {
         onAction={vi.fn()}
       />,
     );
-    expect(host.textContent).toContain('billed to your ChatGPT plan');
+    expect(host.textContent).not.toContain('billed to');
     expect(host.querySelector('[data-device-code]')?.textContent).toBe('ABCD-1234');
     expect(host.querySelector('input[aria-label="Code"]')).toBeNull();
   });

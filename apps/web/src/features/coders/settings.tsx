@@ -1,6 +1,12 @@
 import { CODER_AGENT_LABELS, coderProviderFits, type CoderAgent } from '@openbots/shared';
-import { Button, IconButton, LogOutIcon, RefreshIcon, UnlinkIcon } from '@openbots/ui';
-import { CODER_PLAN_WORDS, coderPlanWords } from '@openbots/widgets';
+import {
+  Button,
+  IconButton,
+  LogOutIcon,
+  RefreshIcon,
+  TerminalIcon,
+  UnlinkIcon,
+} from '@openbots/ui';
 import { CoderSignInSteps } from '@openbots/widgets/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -278,10 +284,8 @@ export function CoderCard({
       ? 'Sign in again'
       : 'Sign in';
   const choices = keyProviders(agent, providers);
-  const plan = CODER_PLAN_WORDS[agent];
   const signedIn = account.authKind !== 'none';
   const note = agentNote(account);
-  const billed = coderPlanWords(agent, account.planProvider);
 
   return (
     <article
@@ -302,9 +306,9 @@ export function CoderCard({
           {accountWords(account, providers)}
         </span>
       </div>
-      {account.authKind === 'subscription' && (
+      {account.authKind === 'subscription' && connectionBilling && (
         <p className="text-xs text-muted-foreground" data-plan>
-          {connectionBilling ?? `Usage is ${billed}.`}
+          {connectionBilling}
         </p>
       )}
       {!connectionOnly && note && <p className="text-xs text-muted-foreground">{note}</p>}
@@ -312,10 +316,7 @@ export function CoderCard({
 
       {signingIn && current && (
         <div className="flex flex-col gap-2 rounded-md border p-3" data-login={current.id}>
-          <p>
-            <span className="font-medium">Sign in to {label}</span>
-            {plan && <span className="text-muted-foreground"> {plan}</span>}
-          </p>
+          <p className="font-medium">Sign in to {label}</p>
           {checking ? (
             <p role="status" className="text-muted-foreground">
               Checking the code with {label}…
@@ -357,15 +358,19 @@ export function CoderCard({
           </p>
           <ErrorText error={signIn.error ?? check.error} />
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              disabled={signIn.isPending}
-              onClick={() =>
-                inTerminal ? onNavigate(computerTerminalHref(inTerminal.terminal)) : signIn.mutate()
-              }
-            >
-              {inTerminal ? 'Terminal' : signInWords}
-            </Button>
+            {inTerminal ? (
+              <IconButton
+                label="Terminal"
+                variant="outline"
+                onClick={() => onNavigate(computerTerminalHref(inTerminal.terminal))}
+              >
+                <TerminalIcon />
+              </IconButton>
+            ) : (
+              <Button size="sm" disabled={signIn.isPending} onClick={() => signIn.mutate()}>
+                {signInWords}
+              </Button>
+            )}
             <IconButton
               label={check.isPending ? 'Checking…' : 'Check'}
               busy={check.isPending}
