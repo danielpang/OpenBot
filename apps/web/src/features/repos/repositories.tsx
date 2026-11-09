@@ -1,4 +1,18 @@
-import { Button, cn, Input, Spinner } from '@openbots/ui';
+import {
+  Button,
+  cn,
+  IconButton,
+  Input,
+  PlusIcon,
+  RefreshIcon,
+  SearchIcon,
+  Spinner,
+  Switch,
+  TerminalIcon,
+  TrashIcon,
+  XIcon,
+} from '@openbots/ui';
+import type { SVGProps } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { ErrorText } from '../models/error-text.js';
@@ -202,9 +216,9 @@ export function Repositories({
           </a>
         )}
         {adding !== 'url' && (
-          <Button variant="outline" size="sm" onClick={() => setAdding('url')}>
-            Add by URL
-          </Button>
+          <IconButton label="Add by URL" onClick={() => setAdding('url')}>
+            <LinkIcon />
+          </IconButton>
         )}
         <RescueButton disabled={!running || list.length === 0} />
       </div>
@@ -256,16 +270,17 @@ export function Repositories({
       {(unremembered.length > 0 || running) && (
         <div className="flex flex-col gap-2" aria-label="Found on the computer">
           <div className="flex items-center gap-2">
-            <h3 className="flex-1 text-sm font-medium">Found on the computer, not remembered</h3>
+            <h3 className="min-w-0 flex-1 text-sm font-medium">
+              Found on the computer, not remembered
+            </h3>
             {running && (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={scan.isPending || !!scanning}
+              <IconButton
+                label={scan.isPending || scanning ? 'Scanning…' : 'Scan now'}
+                busy={scan.isPending || !!scanning}
                 onClick={() => scan.mutate()}
               >
-                {scan.isPending || scanning ? 'Scanning…' : 'Scan now'}
-              </Button>
+                <SearchIcon />
+              </IconButton>
             )}
           </div>
           <ErrorText error={scan.error} />
@@ -301,13 +316,9 @@ function Toast({ children, onClose }: { children: ReactNode; onClose(): void }) 
       className="fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-3 rounded-lg border bg-popover p-3 text-sm text-popover-foreground shadow-lg"
     >
       <span className="min-w-0 flex-1">{children}</span>
-      <button
-        type="button"
-        className="text-xs font-medium underline-offset-2 hover:underline"
-        onClick={onClose}
-      >
-        Dismiss
-      </button>
+      <IconButton label="Dismiss" className="-my-1 -mr-1" onClick={onClose}>
+        <XIcon />
+      </IconButton>
     </div>
   );
 }
@@ -425,44 +436,45 @@ function RepoRow({
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {onComputer && (
-            <Button size="sm" variant="outline" disabled={pending} onClick={() => update.mutate()}>
-              Update
-            </Button>
-          )}
+        <div className="flex items-center gap-0.5">
           {(state === 'missing' || state === 'error') && (
             <Button size="sm" variant="outline" disabled={pending} onClick={() => clone.mutate()}>
               Clone
             </Button>
           )}
-          {onComputer && running && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onOpenTerminal(repo.checkout!.path!)}
+          {onComputer && (
+            <IconButton
+              label="Update"
+              busy={update.isPending}
+              disabled={pending}
+              onClick={() => update.mutate()}
             >
-              Open terminal
-            </Button>
+              <RefreshIcon />
+            </IconButton>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
+          {onComputer && running && (
+            <IconButton label="Open terminal" onClick={() => onOpenTerminal(repo.checkout!.path!)}>
+              <TerminalIcon />
+            </IconButton>
+          )}
+          <IconButton
+            label={repo.pinned ? 'Unpin' : 'Pin'}
+            aria-pressed={repo.pinned}
             disabled={patch.isPending}
+            className={repo.pinned ? 'text-foreground' : undefined}
             onClick={() => patch.mutate({ pinned: !repo.pinned })}
           >
-            {repo.pinned ? 'Unpin' : 'Pin'}
-          </Button>
+            <PinIcon />
+          </IconButton>
           {!confirm && (
-            <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirm(true)}>
-              Forget
-            </Button>
+            <IconButton label="Forget" disabled={pending} onClick={() => setConfirm(true)}>
+              <TrashIcon />
+            </IconButton>
           )}
         </div>
       </div>
       <label className="flex items-center gap-2 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
+        <Switch
           name="keepCloned"
           checked={repo.keepCloned}
           disabled={patch.isPending}
@@ -479,6 +491,9 @@ function RepoRow({
             <p className="min-w-0 flex-1 text-xs">
               Forget {repo.fullName}? Coding agents can no longer use it until you add it again.
             </p>
+            <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
+              Keep it
+            </Button>
             <Button
               size="sm"
               variant="destructive"
@@ -486,9 +501,6 @@ function RepoRow({
               onClick={() => forget.mutate()}
             >
               Forget
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
-              Keep it
             </Button>
           </div>
           {repo.checkout?.path && (
@@ -534,14 +546,9 @@ function FoundRow({ item }: { item: FoundRepo }) {
             {item.path} · {item.remoteUrl}
           </p>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={remember.isPending}
-          onClick={() => remember.mutate()}
-        >
-          Remember
-        </Button>
+        <IconButton label="Remember" busy={remember.isPending} onClick={() => remember.mutate()}>
+          <PlusIcon />
+        </IconButton>
       </div>
       <ErrorText error={remember.error} />
     </li>
@@ -627,11 +634,9 @@ function RescueButton({ disabled }: { disabled: boolean }) {
           ) : null}
           <ErrorText error={start.error ?? status.error} />
           {!runningNow && (
-            <div>
-              <Button size="sm" variant="ghost" onClick={close}>
-                Close
-              </Button>
-            </div>
+            <IconButton label="Close" className="self-end" onClick={close}>
+              <XIcon />
+            </IconButton>
           )}
         </div>
       )}
@@ -691,8 +696,7 @@ function AddRepoForm({ onDone }: { onDone(): void }) {
         />
       </label>
       <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
+        <Switch
           name="keepCloned"
           checked={keepCloned}
           onChange={(e) => setKeepCloned(e.target.checked)}
@@ -709,5 +713,40 @@ function AddRepoForm({ onDone }: { onDone(): void }) {
         </Button>
       </div>
     </form>
+  );
+}
+
+function Glyph({ children, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      {children}
+    </svg>
+  );
+}
+
+function PinIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Glyph {...props}>
+      <path d="M12 17v5" />
+      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+    </Glyph>
+  );
+}
+
+function LinkIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Glyph {...props}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </Glyph>
   );
 }

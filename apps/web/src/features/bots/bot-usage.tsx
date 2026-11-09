@@ -1,4 +1,5 @@
 import { unwrap, type components } from '@openbots/api-client';
+import { Select } from '@openbots/ui';
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../../app/api.js';
@@ -52,17 +53,17 @@ export function BotUsageSection({ botId }: { botId: string }) {
     <div className="flex flex-col gap-3">
       <label className="flex items-center gap-2 self-start">
         <span className="sr-only">Period</span>
-        <select
+        <Select
+          className="w-auto"
           value={days}
           onChange={(event) => setDays(Number(event.currentTarget.value) as UsageWindow)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
         >
           {USAGE_WINDOWS.map((value) => (
             <option key={value} value={value}>
               Last {value} days
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       {error && <p className="text-destructive">{error.message}</p>}
       {data && <UsageSummary usage={data} />}
@@ -129,29 +130,35 @@ export function UsageSummary({ usage }: { usage: BotUsage }) {
       {totals.unpricedRuns > 0 && <p className="text-xs">{unpricedNote(totals.unpricedRuns)}</p>}
       {coding && <CodingSummary coding={coding} />}
       {models.length > 0 && (
-        <table className="w-full text-left text-xs">
-          <caption className="sr-only">Usage by model</caption>
-          <thead>
-            <tr className="border-b">
-              <th className="py-1.5 font-medium">Model</th>
-              <th className="py-1.5 text-right font-medium">Runs</th>
-              <th className="py-1.5 text-right font-medium">Input tokens</th>
-              <th className="py-1.5 text-right font-medium">Output tokens</th>
-              <th className="py-1.5 text-right font-medium">Estimated cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {models.map((row) => (
-              <tr key={row.model ?? ''} className="border-b last:border-0">
-                <td className="py-1.5 text-foreground">{row.model ?? 'Unknown model'}</td>
-                <td className="py-1.5 text-right tabular-nums">{count.format(row.runs)}</td>
-                <td className="py-1.5 text-right tabular-nums">{count.format(row.inputTokens)}</td>
-                <td className="py-1.5 text-right tabular-nums">{count.format(row.outputTokens)}</td>
-                <td className="py-1.5 text-right tabular-nums">{formatCost(row.costUsd)}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[28rem] text-left text-xs">
+            <caption className="sr-only">Usage by model</caption>
+            <thead>
+              <tr className="border-b">
+                <th className="py-1.5 font-medium">Model</th>
+                <th className="py-1.5 text-right font-medium">Runs</th>
+                <th className="py-1.5 text-right font-medium">Input tokens</th>
+                <th className="py-1.5 text-right font-medium">Output tokens</th>
+                <th className="py-1.5 text-right font-medium">Estimated cost</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {models.map((row) => (
+                <tr key={row.model ?? ''} className="border-b last:border-0">
+                  <td className="py-1.5 text-foreground">{row.model ?? 'Unknown model'}</td>
+                  <td className="py-1.5 text-right tabular-nums">{count.format(row.runs)}</td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {count.format(row.inputTokens)}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {count.format(row.outputTokens)}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">{formatCost(row.costUsd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );

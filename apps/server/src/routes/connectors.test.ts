@@ -462,7 +462,7 @@ describe('/api/v1/connectors', () => {
 
         const blocked = await started('Blocked');
         const policy = (urlPatterns: string[]) =>
-          call(admin, 'PUT', '/connector-policy', { catalogIds: [], urlPatterns });
+          call(admin, 'PUT', '/connector-policy', { urlPatterns });
         expect((await policy([new URL(server.url).host])).status).toBe(200);
         try {
           await stopped(blocked.id);
@@ -1458,29 +1458,20 @@ describe('/api/v1/connectors', () => {
         .where(eq(schema.connectors.id, c.id));
       tools = await toolsOf(member, botId);
       expect(tools.get('wiki-defaults__read_page')!.decision).toBe('auto');
-
-      // A built-in an admin blocks reads as disabled even without a connector row.
-      const policy = (body: object) =>
-        call(admin, 'PUT', '/connector-policy', { catalogIds: [], urlPatterns: [], ...body });
-      expect((await policy({ catalogIds: ['web_fetch'] })).status).toBe(200);
-      try {
-        tools = await toolsOf(member, botId);
-        expect(tools.get('web_fetch')!.disabledByAdmin).toBe(true);
-        expect(tools.get('web_search')!.disabledByAdmin).toBe(false);
-      } finally {
-        await policy({ allowedCatalogIds: [] });
-      }
     });
   });
 
   describe('admin block list (T3)', () => {
-    it('blocks by catalog id and URL pattern for every member', async () => {
+    it('blocks by URL and command pattern for every member', async () => {
+      expect((await call(member, 'PUT', '/connector-policy', { urlPatterns: [] })).status).toBe(
+        403,
+      );
+      expect((await call(admin, 'PUT', '/connector-policy', { urlPatterns: [''] })).status).toBe(
+        400,
+      );
+      // The old catalog id lists are refused, not ignored.
       expect(
-        (await call(member, 'PUT', '/connector-policy', { catalogIds: [], urlPatterns: [] }))
-          .status,
-      ).toBe(403);
-      expect(
-        (await call(admin, 'PUT', '/connector-policy', { catalogIds: ['nope'], urlPatterns: [] }))
+        (await call(admin, 'PUT', '/connector-policy', { urlPatterns: [], catalogIds: ['slack'] }))
           .status,
       ).toBe(400);
 
@@ -1496,15 +1487,14 @@ describe('/api/v1/connectors', () => {
       ).toBe(true);
 
       let res = await call(admin, 'PUT', '/connector-policy', {
-        catalogIds: ['postgres'],
-        urlPatterns: ['*.slack.com', `*${TEST_STDIO_SERVER.split('/').at(-1)}*`],
+        urlPatterns: [
+          '*server-postgres*',
+          '*.slack.com',
+          `*${TEST_STDIO_SERVER.split('/').at(-1)}*`,
+        ],
       });
       expect(res.status).toBe(200);
-      const policy = {
-        catalogIds: ['postgres'],
-        urlPatterns: ['*.slack.com', '*stdio-server.mjs*'],
-        allowedCatalogIds: [],
-      };
+      const policy = { urlPatterns: ['*server-postgres*', '*.slack.com', '*stdio-server.mjs*'] };
       expect(await res.json()).toEqual(policy);
       expect(await (await call(admin, 'GET', '/connector-policy')).json()).toEqual(policy);
       expect((await call(member, 'GET', '/connector-policy')).status).toBe(403);
@@ -1561,86 +1551,13 @@ describe('/api/v1/connectors', () => {
         t.inOrganization(() => callToolForBot(t.ownerDeps, botId, 'local', 'echo', { text: 'x' })),
       ).rejects.toThrow();
 
-      res = await call(admin, 'PUT', '/connector-policy', { catalogIds: [], urlPatterns: [] });
-      expect(await res.json()).toEqual({ catalogIds: [], urlPatterns: [], allowedCatalogIds: [] });
+      res = await call(admin, 'PUT', '/connector-policy', { urlPatterns: [] });
+      expect(await res.json()).toEqual({ urlPatterns: [] });
       expect(
         (await t.inOrganization(() => listToolsForBot(t.ownerDeps, botId))).some(
           (x) => x.connectorSlug === 'local',
         ),
       ).toBe(true);
-    });
-  });
-
-  describe('admin allow list (U3)', () => {
-    it('lets only listed catalog entries be added or used once it has one', async () => {
-      const put = (body: Record<string, unknown>) => call(admin, 'PUT', '/connector-policy', body);
-      expect(
-        (
-          await call(member, 'PUT', '/connector-policy', {
-            catalogIds: [],
-            urlPatterns: [],
-            allowedCatalogIds: ['github'],
-          })
-        ).status,
-      ).toBe(403);
-      let res = await put({ catalogIds: [], urlPatterns: [], allowedCatalogIds: ['nope'] });
-      expect(res.status).toBe(400);
-      res = await put({ catalogIds: ['github'], urlPatterns: [], allowedCatalogIds: ['github'] });
-      expect(res.status).toBe(400);
-      expect(((await res.json()) as { code: string }).code).toBe('POLICY_CONFLICT');
-
-      res = await put({
-        catalogIds: ['slack'],
-        urlPatterns: [],
-        allowedCatalogIds: ['filesystem', 'web_search'],
-      });
-      expect(await res.json()).toEqual({
-        catalogIds: ['slack'],
-        urlPatterns: [],
-        allowedCatalogIds: ['filesystem', 'web_search'],
-      });
-      // Leaving the allow list out of a PUT keeps it.
-      res = await put({ catalogIds: [], urlPatterns: [] });
-      expect(await res.json()).toEqual({
-        catalogIds: [],
-        urlPatterns: [],
-        allowedCatalogIds: ['filesystem', 'web_search'],
-      });
-      expect(await (await call(admin, 'GET', '/connector-policy')).json()).toMatchObject({
-        allowedCatalogIds: ['filesystem', 'web_search'],
-      });
-
-      const catalog = (await (await call(member, 'GET', '/connectors/catalog')).json()) as {
-        items: { id: string; disabledByAdmin: boolean }[];
-      };
-      expect(catalog.items.filter((i) => !i.disabledByAdmin).map((i) => i.id)).toEqual([
-        'filesystem',
-        'web_search',
-      ]);
-      expect((await call(member, 'POST', '/connectors', { catalogId: 'web_search' })).status).toBe(
-        201,
-      );
-      res = await call(member, 'POST', '/connectors', {
-        catalogId: 'postgres',
-        secrets: { POSTGRES_URL: SECRETS.postgres },
-      });
-      expect(res.status).toBe(403);
-      expect(await res.json()).toMatchObject({ code: 'CONNECTOR_BLOCKED' });
-      // Custom servers are not on the list.
-      res = await call(member, 'POST', '/connectors', { url: 'https://mcp.example.com/other' });
-      expect(res.status).toBe(403);
-      const listed = (await (await call(member, 'GET', '/connectors')).json()) as {
-        items: Connector[];
-      };
-      expect(listed.items.find((c) => c.catalogId === 'postgres')!.disabledByAdmin).toBe(true);
-      expect(listed.items.find((c) => c.catalogId === 'filesystem')!.disabledByAdmin).toBe(false);
-
-      res = await put({ catalogIds: [], urlPatterns: [], allowedCatalogIds: [] });
-      expect(await res.json()).toEqual({ catalogIds: [], urlPatterns: [], allowedCatalogIds: [] });
-      expect(
-        (await call(member, 'POST', '/connectors', { url: 'https://mcp.example.com/other' }))
-          .status,
-      ).toBe(201);
     });
   });
 

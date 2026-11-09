@@ -62,7 +62,9 @@ export function CodingSessionDetailsScreen({ id }: { id: string }) {
                 <Label selectable>{current.summary}</Label>
               </Section>
             )}
-            {current.usage && <Label muted>{usageWords(current.usage, current.agent)}</Label>}
+            {current.usage && usageWords(current.usage) ? (
+              <Label muted>{usageWords(current.usage)}</Label>
+            ) : null}
             {current.prUrl && (
               <Button
                 title="Open pull request"

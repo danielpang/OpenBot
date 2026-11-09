@@ -1,5 +1,5 @@
 import { CODING_SESSION_LIVE, sessionTitle, type CodingSessionStatus } from '@openbots/shared';
-import { Button, cn } from '@openbots/ui';
+import { Button, cn, IconButton, TerminalIcon } from '@openbots/ui';
 import { sessionStatusWords } from '@openbots/widgets';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -110,14 +110,14 @@ export function SessionView({
                 Stop
               </Button>
             )}
-            <Button
-              size="sm"
-              variant={terminal ? 'secondary' : 'outline'}
+            <IconButton
+              label="Terminal"
+              variant={terminal ? 'secondary' : 'ghost'}
               aria-pressed={terminal}
               onClick={() => setTerminal((on) => !on)}
             >
-              Terminal
-            </Button>
+              <TerminalIcon />
+            </IconButton>
           </div>
         </div>
         <ErrorText error={stop.error} />

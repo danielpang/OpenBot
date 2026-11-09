@@ -4,6 +4,7 @@ import {
   type ModelConfig,
   type ModelNeed,
 } from '@openbots/shared';
+import { Select } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { pickerModelsQuery, type PickerGroup, type ProviderModel } from './api.js';
@@ -94,13 +95,13 @@ export function ModelPicker({ value, onChange, needs, botId, id, disabled }: Mod
 
   return (
     <div className="flex flex-col gap-1.5">
-      <select
+      <Select
+        className="w-auto"
         id={id}
         aria-label={id ? undefined : 'Model'}
         disabled={disabled}
         value={value ? optionValue(value.provider_id, value.model_id) : ''}
         onChange={(event) => onChange(chooseModel(groups, value, event.currentTarget.value))}
-        className="h-9 rounded-md border border-input bg-background px-3 text-sm"
       >
         {!value && (
           <option value="" disabled>
@@ -121,7 +122,7 @@ export function ModelPicker({ value, onChange, needs, botId, id, disabled }: Mod
             ))}
           </optgroup>
         ))}
-      </select>
+      </Select>
       {value && !selected && (
         <p className="text-sm text-destructive">
           The current model is disabled, removed, or lacks {required.join(' or ')}. Pick another.

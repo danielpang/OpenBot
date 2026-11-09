@@ -49,8 +49,8 @@ import { botToolDefaults } from '../services/policy.js';
 // own; another user's answers 404. Secret values are write-only: responses
 // list secret names with `set: true | false` and never a value (P3); env and
 // header values are secrets too, so only their names come back (S-9). Admins
-// manage the block and allow lists; blocked connectors read
-// `disabledByAdmin: true`, shown as "Disabled by admin" (T3, U3). Custom
+// manage the block list of URL and command patterns; blocked connectors read
+// `disabledByAdmin: true`, shown as "Disabled by admin" (T3). Custom
 // stdio servers are for admins only, once the workspace turns them on (S-1).
 // Only admins mark a connector's MCP hints trusted (S-16), or an HTTP
 // connector as on their own network (S-8).
@@ -251,32 +251,18 @@ const UpdateConnectorSchema = z
   })
   .openapi('UpdateConnector');
 
-const policyFields = {
-  catalogIds: z.array(z.string()).max(200).openapi({ description: 'Blocked catalog entries' }),
-  urlPatterns: z
-    .array(z.string().min(1).max(512))
-    .max(200)
-    .openapi({
-      description:
-        'Blocked globs (`*` matches anything) tested against HTTP URLs and hosts and stdio command lines',
-      example: ['https://*.example.com/*'],
-    }),
-};
-const allowedCatalogIds = z.array(z.string()).max(200).openapi({
-  description:
-    'The allow list (U3): when non-empty, only these catalog entries can be added or used, and custom servers cannot',
-});
+const urlPatterns = z
+  .array(z.string().min(1).max(512))
+  .max(200)
+  .openapi({
+    description:
+      'Blocked globs (`*` matches anything) tested against HTTP URLs and hosts and stdio command lines',
+    example: ['https://*.example.com/*'],
+  });
 
-const PolicySchema = z.object({ ...policyFields, allowedCatalogIds }).openapi('ConnectorPolicy');
+const PolicySchema = z.object({ urlPatterns }).openapi('ConnectorPolicy');
 
-const PolicyInputSchema = z
-  .strictObject({
-    ...policyFields,
-    allowedCatalogIds: allowedCatalogIds.optional().openapi({
-      description: 'The allow list (U3); left out, it stays as it is',
-    }),
-  })
-  .openapi('ConnectorPolicyInput');
+const PolicyInputSchema = z.strictObject({ urlPatterns }).openapi('ConnectorPolicyInput');
 
 export const BotConnectorSchema = z
   .object({
@@ -899,11 +885,11 @@ export const connectorRoutes = createRouter()
       method: 'get',
       path: '/connector-policy',
       tags: ['connectors'],
-      summary: 'The admin block and allow lists (T3, U3)',
+      summary: 'The admin block list (T3)',
       middleware: [requireAdmin] as const,
       security: authenticated,
       responses: {
-        200: json(PolicySchema, 'Blocked catalog ids and URL patterns, and allowed catalog ids'),
+        200: json(PolicySchema, 'Blocked URL and command patterns'),
         ...adminProblems,
       },
     }),
@@ -914,18 +900,16 @@ export const connectorRoutes = createRouter()
       method: 'put',
       path: '/connector-policy',
       tags: ['connectors'],
-      summary: 'Replace the admin block and allow lists (T3, U3)',
-      description: 'Running sessions of connectors the new lists block are stopped.',
+      summary: 'Replace the admin block list (T3)',
+      description: 'Running sessions of connectors the new list blocks are stopped.',
       middleware: [requireAdmin] as const,
       security: authenticated,
       request: {
         body: { required: true, content: { 'application/json': { schema: PolicyInputSchema } } },
       },
       responses: {
-        200: json(PolicySchema, 'The lists after the change'),
-        400: problemResponse(
-          'Unknown catalog id, or one both blocked and allowed (`POLICY_CONFLICT`)',
-        ),
+        200: json(PolicySchema, 'The list after the change'),
+        400: problemResponse('An invalid pattern'),
         ...adminProblems,
       },
     }),

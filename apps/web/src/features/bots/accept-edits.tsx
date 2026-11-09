@@ -6,11 +6,12 @@ import { botsQuery, updateBot } from './queries.js';
 import { ErrorText } from '../models/error-text.js';
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Select,
 } from '@openbots/ui';
 
 export function AcceptEdits({
@@ -122,16 +123,16 @@ export function AcceptEdits({
       </summary>
       <label className="flex items-center gap-2 py-2">
         <span>File edit approvals</span>
-        <select
+        <Select
+          className="w-auto"
           aria-label="Accept edits"
           disabled={save.isPending}
           value={acceptsEdits(bot.toolPolicy) ? 'on' : 'off'}
           onChange={(e) => save.mutate(e.target.value === 'on')}
-          className="rounded-md border bg-background p-2 text-foreground"
         >
           <option value="off">Ask before edits</option>
           <option value="on">Accept edits</option>
-        </select>
+        </Select>
       </label>
       <p>{ACCEPT_EDITS_HELP}</p>
       <ErrorText error={save.error} />

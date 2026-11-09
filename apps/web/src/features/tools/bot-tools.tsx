@@ -11,7 +11,7 @@ import {
   type ToolGroupName,
   type ToolPolicy,
 } from '@openbots/shared';
-import { Button } from '@openbots/ui';
+import { Button, Input, Select, Switch, Textarea } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -153,9 +153,9 @@ export function BotToolsForm({
           title="Accept edits"
           description={ACCEPT_EDITS_HELP}
           control={
-            <select
+            <Select
+              className="w-auto"
               aria-label="Accept edits"
-              className="rounded-md border bg-background p-2 text-sm"
               value={acceptsEdits(policy) ? 'on' : 'off'}
               onChange={(event) =>
                 setPolicy((current) => withAcceptEdits(current, event.target.value === 'on'))
@@ -163,7 +163,7 @@ export function BotToolsForm({
             >
               <option value="off">Ask before edits</option>
               <option value="on">Accept edits</option>
-            </select>
+            </Select>
           }
         />
       </SettingsPanel>
@@ -218,13 +218,13 @@ export function BotToolsForm({
           </label>
           {mode === 'list' && (
             <div className="flex flex-col gap-1.5 pl-6">
-              <textarea
+              <Textarea
                 aria-label="Allowed hosts"
                 value={hostsText}
                 onChange={(e) => setHostsText(e.target.value)}
                 rows={3}
                 placeholder={'api.example.com\n*.example.org'}
-                className="w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs text-foreground"
+                className="w-full font-mono text-xs"
               />
               <span className="text-xs">One per line: a host, or *.domain for its subdomains.</span>
               {hosts.errors.length > 0 && (
@@ -240,15 +240,13 @@ export function BotToolsForm({
         {computer ? (
           <>
             <SettingsRow
-              title={
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={computerOn}
-                    onChange={(e) => setPolicy((p) => setComputerEnabled(p, e.target.checked))}
-                  />
-                  Use its computer
-                </label>
+              title="Use its computer"
+              control={
+                <Switch
+                  aria-label="Use its computer"
+                  checked={computerOn}
+                  onChange={(e) => setPolicy((p) => setComputerEnabled(p, e.target.checked))}
+                />
               }
               description={
                 computerOn
@@ -320,7 +318,6 @@ export function BotToolsForm({
         <Button type="submit" disabled={save.isPending}>
           Save
         </Button>
-        {save.isSuccess && <span className="text-xs">Saved</span>}
       </div>
     </form>
   );
@@ -376,7 +373,8 @@ function CoderSettings({
     <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3" data-coder-settings>
       <label className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 flex-1 text-foreground">Default agent</span>
-        <select
+        <Select
+          size="sm"
           aria-label="Default coding agent"
           value={coder.defaultAgent ?? ''}
           onChange={(e) =>
@@ -386,7 +384,7 @@ function CoderSettings({
               }),
             )
           }
-          className="h-8 max-w-64 rounded-md border bg-background px-2.5 text-xs text-foreground"
+          className="max-w-64"
         >
           <option value="">Not set</option>
           {agentChoices.map((agent) => (
@@ -394,7 +392,7 @@ function CoderSettings({
               {CODER_AGENT_LABELS[agent]}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       <fieldset className="flex flex-col gap-1.5">
@@ -410,7 +408,7 @@ function CoderSettings({
                   <span className="min-w-0 flex-1 text-xs text-foreground">
                     {CODER_AGENT_LABELS[agent]}
                   </span>
-                  <input
+                  <Input
                     type="text"
                     aria-label={`${CODER_AGENT_LABELS[agent]} model`}
                     aria-invalid={problem ? true : undefined}
@@ -420,7 +418,7 @@ function CoderSettings({
                     autoComplete="off"
                     spellCheck={false}
                     onChange={(e) => onChange((p) => setCoderModel(p, agent, e.target.value))}
-                    className="h-8 w-64 max-w-full rounded-md border bg-background px-2.5 font-mono text-xs text-foreground placeholder:font-sans"
+                    className="h-8 w-64 max-w-full font-mono text-xs placeholder:font-sans"
                   />
                 </label>
                 {problem && (
@@ -569,8 +567,7 @@ function ConnectorPermissions({
       <div className="flex flex-wrap items-center gap-3">
         <ConnectorIcon icon={iconOf(connector)} name={connector.name} />
         <label className="flex min-w-0 flex-1 items-center gap-2 font-medium text-foreground">
-          <input
-            type="checkbox"
+          <Switch
             checked={enabled}
             onChange={(e) => onPermission(setConnectorEnabled(permission, e.target.checked))}
           />
@@ -636,11 +633,12 @@ export function DecisionSelect({
   onChange(value: PolicyDecision | undefined): void;
 }) {
   return (
-    <select
+    <Select
+      size="sm"
       aria-label={label}
       value={value ?? ''}
       onChange={(e) => onChange((e.target.value || undefined) as PolicyDecision | undefined)}
-      className="h-8 max-w-64 rounded-md border bg-background px-2.5 text-xs text-foreground"
+      className="max-w-64"
     >
       <option value="">{`Default: ${inherited}`}</option>
       {choices.map((d) => (
@@ -648,6 +646,6 @@ export function DecisionSelect({
           {DECISION_LABELS[d]}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }

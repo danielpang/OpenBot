@@ -3,7 +3,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { createXai } from '@ai-sdk/xai';
-import type { ProviderKind, ProviderProtocol } from '@openbots/shared';
+import { speaksOpenAI, type ProviderKind, type ProviderProtocol } from '@openbots/shared';
 import type { LanguageModel } from 'ai';
 import { presetById } from './catalog.js';
 
@@ -94,7 +94,7 @@ export function createModelFactory(
   const headers = config.headers;
   const fetch = config.fetch;
 
-  if (config.protocol === 'openai_compatible') {
+  if (speaksOpenAI(config)) {
     if (!config.baseUrl) throw new Error(`provider ${config.slug} has no base URL`);
     const split = splitBaseUrl(config.baseUrl);
     const provider = sdk.createOpenAICompatible({
@@ -133,6 +133,7 @@ export function createModelFactory(
       const provider = sdk.createXai({ baseURL, apiKey, headers, fetch });
       return (modelId) => provider(modelId);
     }
+    case 'ollama':
     case 'custom':
       throw new Error(
         `custom provider ${config.slug} needs an openai_compatible or anthropic_compatible protocol`,

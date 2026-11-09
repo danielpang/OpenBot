@@ -211,7 +211,7 @@ describe('coding session widget', () => {
     expect(screen.getByText('12,000 in / 600 out tokens, $0.40')).toBeTruthy();
     first.unmount();
     session(settled({ input_tokens: 1, output_tokens: 2, billed: 'subscription' }));
-    expect(screen.getByText('Billed to your Claude plan')).toBeTruthy();
+    expect(screen.queryByText(/Billed to/)).toBeNull();
   });
 
   it('has no diff link without a diff Artifact', () => {

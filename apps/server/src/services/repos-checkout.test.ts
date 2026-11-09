@@ -127,7 +127,10 @@ describe('repos checkout', () => {
     );
     expect(row).toMatchObject({ path: REPO_PATH, state: 'ready', headSha: 'abc1234', error: null });
     expect(row.lastFetchAt).not.toBeNull();
-    const calls = w.coder.calls.slice(before);
+    // The computer's start also writes the owner's git identity as bot and coder (git-identity.ts).
+    const calls = w.coder.calls
+      .slice(before)
+      .filter((c) => !(c.launch.args?.[0] === 'config' && c.launch.args[1] === '--global'));
     const clone = calls.find((c) => gitArgs(c.launch.args)[0] === 'clone')!;
     expect(clone.launch).toMatchObject({ user: 'runner', command: 'git', git_credentials: true });
     expect(clone.launch.env).toMatchObject({ GIT_ATTR_NOSYSTEM: '1', GIT_OPTIONAL_LOCKS: '0' });

@@ -1,5 +1,5 @@
 import { AvatarEditor } from '@openbots/avatars/react';
-import { Button, Input } from '@openbots/ui';
+import { Button, CopyIcon, IconButton, Input, Switch, Textarea, TrashIcon } from '@openbots/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -75,11 +75,11 @@ function BotSettingsForm({ bot }: { bot: Bot }) {
           />
         </Field>
         <Field label="Description" help={DESCRIPTION_HELP}>
-          <textarea
+          <Textarea
             value={draft.description}
             onChange={(event) => setDraft({ ...draft, description: event.target.value })}
             rows={6}
-            className="w-full rounded-md border bg-transparent px-3 py-2 text-sm"
+            className="w-full"
           />
         </Field>
         <Field label="Avatar" group>
@@ -141,10 +141,10 @@ function BotSettingsForm({ bot }: { bot: Bot }) {
             title="Duplicate"
             description="Copies the profile and settings, not the conversation."
             control={
-              <Button
+              <IconButton
+                label="Duplicate"
                 variant="outline"
-                size="sm"
-                disabled={duplicate.isPending}
+                busy={duplicate.isPending}
                 onClick={() =>
                   duplicate.mutate(bot.id, {
                     onSuccess: (copy) =>
@@ -152,17 +152,22 @@ function BotSettingsForm({ bot }: { bot: Bot }) {
                   })
                 }
               >
-                Duplicate
-              </Button>
+                <CopyIcon />
+              </IconButton>
             }
           />
           <SettingsRow
             title="Delete"
             description="Removes the profile, conversation and Routines."
             control={
-              <Button variant="destructive" size="sm" onClick={() => setDeleting(true)}>
-                Delete…
-              </Button>
+              <IconButton
+                label="Delete…"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setDeleting(true)}
+              >
+                <TrashIcon />
+              </IconButton>
             }
           />
         </SettingsPanel>
@@ -182,9 +187,8 @@ export function MainBotToggle({ bot, others }: { bot: Bot; others: readonly Bot[
   );
   const current = others.find((b) => b.isMain && b.id !== bot.id);
   return (
-    <label className="flex items-start gap-2 text-sm">
-      <input type="checkbox" {...box} className="mt-0.5" />
-      <span className="flex flex-col gap-0.5">
+    <label className="flex items-start gap-4 text-sm">
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="font-medium">Main Bot</span>
         <span className="text-muted-foreground">{MAIN_BOT_HELP}</span>
         {current && !bot.isMain && (
@@ -194,6 +198,7 @@ export function MainBotToggle({ bot, others }: { bot: Bot; others: readonly Bot[
         )}
         {error && <span className="text-xs text-destructive">{error.message}</span>}
       </span>
+      <Switch {...box} className="mt-0.5" />
     </label>
   );
 }

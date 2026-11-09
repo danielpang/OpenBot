@@ -67,7 +67,7 @@ test('add a connector, then approve its destructive tool from the transcript', a
   await expect(card.locator('[data-status]')).toHaveAttribute('data-status', 'error', {
     timeout: 20_000,
   });
-  await card.getByRole('checkbox', { name: /runs on my network/i }).check();
+  await card.getByRole('switch', { name: /runs on my network/i }).check();
   await expect(card.getByText('· on my network')).toBeVisible();
   await card.getByRole('button', { name: 'Test' }).click();
   await expect(card.getByText(/Working · 2 tools/)).toBeVisible({ timeout: 20_000 });

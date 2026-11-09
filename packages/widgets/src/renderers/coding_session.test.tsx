@@ -249,7 +249,7 @@ describe('<CodingSessionWidget>', () => {
     );
     expect(host.textContent).toContain('a1b2c3d');
     expect(host.textContent).toContain('relay: back off reconnects after a sleep');
-    expect(host.querySelector('[data-usage]')?.textContent).toBe('Billed to your Claude plan');
+    expect(host.querySelector('[data-usage]')).toBeNull();
     const pr = [...host.querySelectorAll('a')].find((a) => a.textContent === 'Open PR')!;
     expect(pr.getAttribute('href')).toBe(settled.result!.pr_url);
     expect(button('Stop')).toBeUndefined();

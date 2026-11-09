@@ -1,5 +1,17 @@
 import { OutboundEventSchema, type OutboundEvent } from '@openbots/shared';
-import { Button, cn, Input } from '@openbots/ui';
+import {
+  Button,
+  cn,
+  IconButton,
+  Input,
+  PauseIcon,
+  PencilIcon,
+  PlayIcon,
+  PlusIcon,
+  RotateIcon,
+  Switch,
+  TrashIcon,
+} from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { adminLabel, useManaged } from '../../app/deployment.js';
@@ -51,9 +63,9 @@ export function EventSubscriptions({ admin = false }: { admin?: boolean }) {
           Send signed events from your Bots to another service.
         </p>
         {!adding && (
-          <Button size="sm" className="shrink-0" onClick={() => setAdding(true)}>
-            Add subscription
-          </Button>
+          <IconButton label="Add subscription" className="shrink-0" onClick={() => setAdding(true)}>
+            <PlusIcon />
+          </IconButton>
         )}
       </div>
       {adding && (
@@ -149,10 +161,9 @@ function SubscriptionRow({
             {subscription.events.map((e) => EVENT_WORDS[e]).join(' · ')}
           </span>
         </div>
-        <div className="flex shrink-0 flex-wrap justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
+        <div className="flex shrink-0 items-center gap-0.5">
+          <IconButton
+            label={subscription.enabled ? 'Pause' : 'Resume'}
             disabled={actions.update.isPending}
             onClick={() =>
               actions.update.mutate({
@@ -161,14 +172,13 @@ function SubscriptionRow({
               })
             }
           >
-            {subscription.enabled ? 'Pause' : 'Resume'}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-            Edit
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
+            {subscription.enabled ? <PauseIcon /> : <PlayIcon />}
+          </IconButton>
+          <IconButton label="Edit" onClick={() => setEditing(true)}>
+            <PencilIcon />
+          </IconButton>
+          <IconButton
+            label="Rotate secret"
             disabled={actions.update.isPending}
             onClick={() => {
               if (
@@ -183,20 +193,19 @@ function SubscriptionRow({
               }
             }}
           >
-            Rotate secret
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={actions.remove.isPending}
+            <RotateIcon />
+          </IconButton>
+          <IconButton
+            label="Delete"
+            busy={actions.remove.isPending}
             onClick={() => {
               if (globalThis.confirm?.(`Stop sending events to ${subscription.url}?`)) {
                 actions.remove.mutate(subscription.id);
               }
             }}
           >
-            Delete
-          </Button>
+            <TrashIcon />
+          </IconButton>
         </div>
       </div>
       {secret && (
@@ -303,8 +312,7 @@ function SubscriptionForm({
       />
       {admin && (
         <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
+          <Switch
             name="local"
             checked={local}
             onChange={(e) => setLocal(e.currentTarget.checked)}

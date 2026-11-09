@@ -1,4 +1,5 @@
-import { Button } from '@openbots/ui';
+import { IconButton, PlusIcon } from '@openbots/ui';
+import { SettingsSubheading } from '../../app/settings-layout.js';
 import { SUBSCRIPTION_PROVIDERS } from '@openbots/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -15,6 +16,7 @@ import {
 import { AddEndpoint } from './add-endpoint.js';
 import { ErrorText } from './error-text.js';
 import { BUILT_IN_KINDS } from './format.js';
+import { isOllamaCloud, OllamaSetup } from './ollama.js';
 import { KeyField, ProviderCard } from './provider-card.js';
 import { AdditionalCodingSubscriptions, ProviderSubscription } from './provider-subscription.js';
 
@@ -38,7 +40,7 @@ function UnconfiguredBuiltIn({
 }) {
   const queryClient = useQueryClient();
   return (
-    <article className="flex flex-col gap-3 rounded-md border p-4" aria-label={preset.name}>
+    <article className="flex flex-col gap-3 rounded-lg border bg-card p-4" aria-label={preset.name}>
       <h3 className="font-medium">{preset.name}</h3>
       {scope !== 'organization' && (
         <ProviderSubscription
@@ -83,14 +85,23 @@ function ProviderList({
   return (
     <>
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium">Providers</h3>
+        <SettingsSubheading>Providers</SettingsSubheading>
         {BUILT_IN_KINDS.map((kind) => {
           const configured = providers.filter((p) => p.kind === kind);
           const preset = presetById.get(kind);
           if (!configured.length) {
-            return preset ? (
+            if (!preset) return null;
+            return kind === 'ollama' ? (
+              <OllamaSetup
+                key={kind}
+                preset={preset}
+                canEdit={canEdit}
+                allowLocal={allowLocal}
+                scope={scope}
+              />
+            ) : (
               <UnconfiguredBuiltIn key={kind} preset={preset} canEdit={canEdit} scope={scope} />
-            ) : null;
+            );
           }
           const native = configured.find(
             (p) => p.protocol === 'native' && !p.baseUrl && !p.headers.length,
@@ -102,7 +113,7 @@ function ProviderList({
               aria-label={`${preset?.name ?? kind} connections`}
             >
               {!native && kind in SUBSCRIPTION_PROVIDERS && scope !== 'organization' && (
-                <article className="flex flex-col gap-3 rounded-md border p-4">
+                <article className="flex flex-col gap-3 rounded-lg border bg-card p-4">
                   <h3 className="font-medium">{preset?.name ?? kind}</h3>
                   <ProviderSubscription
                     kind={kind}
@@ -120,17 +131,32 @@ function ProviderList({
                   showSubscription={scope !== 'organization' && provider.id === native?.id}
                 />
               ))}
+              {kind === 'ollama' && preset && canEdit && (
+                <OllamaSetup
+                  preset={preset}
+                  canEdit={canEdit}
+                  allowLocal={allowLocal}
+                  scope={scope}
+                  available={
+                    configured.some(isOllamaCloud)
+                      ? configured.some((p) => !isOllamaCloud(p))
+                        ? []
+                        : ['local']
+                      : ['cloud']
+                  }
+                />
+              )}
             </section>
           );
         })}
       </section>
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-4">
-          <h3 className="text-sm font-medium">Custom model providers</h3>
+          <SettingsSubheading>Custom model providers</SettingsSubheading>
           {canEdit && !adding && (
-            <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-              Add provider
-            </Button>
+            <IconButton label="Add provider" onClick={() => setAdding(true)}>
+              <PlusIcon />
+            </IconButton>
           )}
         </div>
         {adding && (
@@ -189,7 +215,7 @@ export function ModelsSettings({ canEdit }: { canEdit: boolean }) {
     return (
       <div className="flex flex-col gap-8">
         <header className="space-y-2">
-          <h2 className="text-xl font-semibold tracking-tight">Model connections</h2>
+          <h2 className="text-base font-semibold">Model connections</h2>
           <p className="max-w-prose text-sm text-muted-foreground">
             Connect a subscription or add an API key. Your bots and coding agents share these
             connections.
@@ -209,7 +235,7 @@ export function ModelsSettings({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="flex flex-col gap-10">
       <header className="space-y-2">
-        <h2 className="text-xl font-semibold tracking-tight">Model connections</h2>
+        <h2 className="text-base font-semibold">Model connections</h2>
         <p className="max-w-prose text-sm text-muted-foreground">
           Subscriptions belong to your account. Your bots use your subscription before an API key,
           including for organization providers.
@@ -217,7 +243,7 @@ export function ModelsSettings({ canEdit }: { canEdit: boolean }) {
       </header>
       <section className="flex flex-col gap-6" aria-label="Organization">
         <div className="flex flex-col gap-1">
-          <h2 className="font-medium">Organization</h2>
+          <h2 className="text-base font-semibold">Organization</h2>
           <p className="text-sm text-muted-foreground">Every member&apos;s Bots can use these.</p>
         </div>
         <ProviderList
@@ -230,7 +256,7 @@ export function ModelsSettings({ canEdit }: { canEdit: boolean }) {
       </section>
       <section className="flex flex-col gap-6" aria-label="Yours">
         <div className="flex flex-col gap-1">
-          <h2 className="font-medium">Yours</h2>
+          <h2 className="text-base font-semibold">Yours</h2>
           <p className="text-sm text-muted-foreground">
             Only you see these. Your Bots use them first.
           </p>

@@ -195,7 +195,10 @@ describe('repository refresh and reconcile', () => {
   });
 
   it('starts every runner git command with config the repository cannot override', () => {
-    const git = j.w.coder.calls.filter((c) => c.launch.command === 'git');
+    // The runner's git; the owner's git identity written at start is bot's and coder's.
+    const git = j.w.coder.calls.filter(
+      (c) => c.launch.command === 'git' && c.launch.user === 'runner',
+    );
     expect(git.length).toBeGreaterThan(20);
     for (const call of git) {
       expect(call.launch.args!.slice(0, RUNNER_GIT_CONFIG.length)).toEqual([...RUNNER_GIT_CONFIG]);

@@ -4,7 +4,7 @@ import {
   type BuiltinServices,
   type ConnectorTools,
 } from '@openbots/agent';
-import { blockedBy, loadCatalog, toolPermitted, type BlockRule } from '@openbots/mcp';
+import { toolPermitted } from '@openbots/mcp';
 import { PolicyDecisionSchema, resolveToolPolicy, wsEvent } from '@openbots/shared';
 import type { EmailDraftState } from '@openbots/widgets';
 import { and, eq } from 'drizzle-orm';
@@ -12,9 +12,7 @@ import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
 import { publishEvent } from '../infra/index.js';
 import {
-  blockRules,
   callToolForBot,
-  connectorBlocked,
   discoverUntested,
   errorStatus,
   listToolsForBot,
@@ -37,16 +35,6 @@ import { fetchPage, httpRequest } from './web.js';
 
 type BotRow = typeof schema.bots.$inferSelect;
 
-/**
- * The built-ins (by their `builtin` id) the admin rules block or leave off the allow list.
- * Web fetch and HTTP request need no connector row, so the rules are checked against the
- * catalog entries themselves, the way the catalog's "Disabled by admin" is (T3, U3).
- */
-export function blockedBuiltins(rules: BlockRule[]): string[] {
-  return loadCatalog()
-    .entries.filter((entry) => entry.builtin && blockedBy({ catalogId: entry.id }, rules))
-    .map((entry) => entry.builtin!);
-}
 type BuiltinsDeps = Pick<AppDeps, 'db' | 'config' | 'logger'>;
 
 export interface BuiltinOptions {
@@ -61,7 +49,7 @@ export async function loadBuiltins(
   bot: Pick<BotRow, 'id' | 'ownerId' | 'workspaceId' | 'toolPolicy'>,
   options: BuiltinOptions = {},
 ): Promise<BuiltinServices> {
-  const [rows, permissions, rules] = await Promise.all([
+  const [rows, permissions] = await Promise.all([
     deps.db
       .select()
       .from(schema.connectors)
@@ -73,10 +61,8 @@ export async function loadBuiltins(
         ),
       ),
     deps.db.select().from(schema.botConnectors).where(eq(schema.botConnectors.botId, bot.id)),
-    blockRules(deps.db, bot.workspaceId),
   ]);
   const ruleFor = new Map(permissions.map((p) => [p.connectorId, p]));
-  const blocked = blockedBuiltins(rules);
   const connectors: Record<string, BuiltinConnector> = {};
   const secretsOf = new Map<string, () => Record<string, string>>();
   const paramsOf = new Map<string, Record<string, string>>();
@@ -89,8 +75,6 @@ export async function loadBuiltins(
     }
     if (stored.transport.transport !== 'builtin') continue;
     const builtin = stored.transport.builtin;
-    if (blocked.includes(builtin)) continue;
-    if (blockedBy({ catalogId: row.catalogId, config: stored.transport }, rules)) continue;
     if (connectors[builtin]) continue;
     const rule = ruleFor.get(row.id);
     const override = PolicyDecisionSchema.safeParse(rule?.approvalOverride);
@@ -169,12 +153,6 @@ export async function loadBuiltins(
       return { file_id: file.id, name: file.name, mime: file.mime, size: file.size };
     },
     connectors,
-    blocked,
-    // An admin may block a built-in while a run is going: the call reads the rules again.
-    assertNotBlocked: async (builtin) => {
-      const current = await blockRules(deps.db, bot.workspaceId);
-      if (blockedBuiltins(current).includes(builtin)) throw connectorBlocked();
-    },
   };
 }
 

@@ -178,7 +178,9 @@ async function until(check: () => boolean, what: string) {
 }
 
 const button = (label: string) =>
-  [...document.body.querySelectorAll('button')].find((b) => b.textContent === label);
+  [...document.body.querySelectorAll('button')].find(
+    (b) => b.textContent === label || b.getAttribute('aria-label') === label,
+  );
 const dialog = () => document.body.querySelector('[role="dialog"]');
 
 describe('Settings > Devices', () => {
@@ -244,7 +246,7 @@ describe('Settings > Devices', () => {
 
     act(() => button('Copy link')!.click());
     expect(writeText).toHaveBeenCalledWith(LINK);
-    await until(() => !!button('Copied'), 'Copied');
+    expect(button('Copied')).toBeUndefined();
 
     // A device of an older pairing (another tab's) is no news here.
     live.emit('device.paired', { device: device({ name: 'Old phone' }) });

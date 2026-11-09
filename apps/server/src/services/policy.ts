@@ -20,7 +20,6 @@ import {
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
-import { blockedBuiltins } from '../builtins/index.js';
 import { assertBotOwner } from '../ownership.js';
 import { audit } from './approvals.js';
 import {
@@ -194,7 +193,7 @@ export interface BotToolDefault extends DefaultSummary {
   connectorId: string | null;
   /** Offered only once the owner adds its built-in connector (email, GitHub). */
   needsConnector: boolean;
-  /** A workspace admin blocked it, or its connector (T3, U3). */
+  /** A workspace admin blocked its connector (T3). */
   disabledByAdmin: boolean;
 }
 
@@ -230,7 +229,6 @@ export async function botToolDefaults(
     blockRules(deps.db, bot.workspaceId),
     customStdioRefusal(deps, bot.workspaceId, bot.ownerId),
   ]);
-  const blocked = new Set(blockedBuiltins(rules));
   const builtinRows = new Map<string, string>();
   for (const row of connectors) {
     if (row.kind !== 'builtin') continue;
@@ -246,7 +244,7 @@ export async function botToolDefaults(
   const out: BotToolDefault[] = everyToolDefault().map(({ builtin, ...tool }) => ({
     ...tool,
     connectorId: builtin ? (builtinRows.get(builtin) ?? null) : null,
-    disabledByAdmin: builtin ? blocked.has(builtin) : false,
+    disabledByAdmin: false,
   }));
 
   const mcp = connectors.filter((c) => c.kind === 'mcp_stdio' || c.kind === 'mcp_http');

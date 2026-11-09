@@ -1,4 +1,4 @@
-import { Button, Input } from '@openbots/ui';
+import { Button, Input, Textarea } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useManaged } from '../../app/deployment.js';
@@ -241,11 +241,11 @@ function StdioServerForm() {
         note="optional"
         help="KEY=value, one per line. Stored as secrets."
       >
-        <textarea
+        <Textarea
           value={input.env}
           onChange={(e) => set({ env: e.target.value })}
           rows={3}
-          className="w-full rounded-md border bg-transparent px-3 py-2 font-mono text-sm"
+          className="font-mono"
         />
       </Labelled>
       <ErrorText error={error ?? create.error} />
@@ -287,24 +287,19 @@ export function ImportForm({ stdio = 'on' }: { stdio?: StdioAvailability }) {
         label="mcpServers JSON"
         help='Paste a config like {"mcpServers": {"name": {"command": "npx", "args": [...]}}}.'
       >
-        <textarea
+        <Textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={6}
-          className="w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs"
+          className="font-mono text-xs"
           required
         />
       </Labelled>
       {stdio !== 'on' && <p className="text-xs text-muted-foreground">{IMPORT_STDIO_NOTE}</p>}
       <ErrorText error={error ?? run.error} />
-      {run.data && (
+      {run.data && run.data.errors.length > 0 && (
         <div role="status" className="flex flex-col gap-0.5 text-xs">
-          <span>
-            {run.data.items.length === 1
-              ? 'Imported 1 server.'
-              : `Imported ${run.data.items.length} servers.`}
-          </span>
-          {run.data.errors.length > 0 && <span>Not imported:</span>}
+          <span>Not imported:</span>
           {run.data.errors.map((e) => (
             <span key={e.name} className="text-destructive">
               {e.name}: {e.message}

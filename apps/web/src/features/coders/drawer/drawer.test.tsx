@@ -299,7 +299,9 @@ async function until(check: () => boolean, what: string) {
 const toggle = () =>
   [...host.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Coding sessions'))!;
 const button = (label: string, within: ParentNode = host) =>
-  [...within.querySelectorAll('button')].find((b) => b.textContent === label);
+  [...within.querySelectorAll('button')].find(
+    (b) => b.textContent === label || b.getAttribute('aria-label') === label,
+  );
 const drawer = () => host.querySelector('aside');
 
 async function openSession(id: string) {
@@ -554,7 +556,7 @@ describe('the coding sessions drawer (CA15)', () => {
     expect(host.querySelector('button[aria-label="Add to coding message"]')).not.toBeNull();
     expect(host.textContent).not.toContain('Ask before edits');
     expect(textarea().disabled).toBe(true);
-    expect(host.textContent).toContain('Working. Send your next message when this turn ends.');
+    expect(host.textContent).not.toContain('Send your next message');
     expect(button('Stop')).toBeDefined();
 
     sessions = sessions.map((s) => ({ ...s, status: 'settled' as const }));

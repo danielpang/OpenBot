@@ -1,4 +1,9 @@
-import type { ModelConfig, ProviderKind, ProviderProtocol } from '@openbots/shared';
+import {
+  speaksOpenAI,
+  type ModelConfig,
+  type ProviderKind,
+  type ProviderProtocol,
+} from '@openbots/shared';
 import type { JSONValue } from 'ai';
 
 // `model_config.reasoning` to AI SDK `providerOptions` (plan 5.9). The Bot's
@@ -17,7 +22,7 @@ export function reasoningProviderOptions(
   if (!modelCanReason || reasoning === undefined || reasoning === false) return {};
   const level: Level | undefined = reasoning === true ? undefined : reasoning;
 
-  if (provider.protocol === 'openai_compatible') {
+  if (speaksOpenAI(provider)) {
     // `openaiCompatible` is the key the adapter reads whatever the endpoint's name.
     return { openaiCompatible: { reasoningEffort: level ?? 'medium' } };
   }

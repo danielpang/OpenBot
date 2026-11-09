@@ -515,7 +515,7 @@ class SessionRunner {
     const agent = session.agent as CoderAgent;
     const model = this.policy.coder.models?.[agent];
     const keyEnv = await this.providerEnv();
-    this.identity = await sessionIdentity(deps, this.bot!, session.ownerId);
+    this.identity = await sessionIdentity(deps, this.bot!, session.ownerId, session.workspaceId);
     const spec: CoderSessionSpec = {
       sessionId: session.id,
       agent: session.agent as CoderAgent,

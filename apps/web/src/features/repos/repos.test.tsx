@@ -100,6 +100,12 @@ let remotes: RemoteRepo[];
 let repos: ReturnType<typeof repo>[];
 let found: { path: string; remoteUrl: string; fullName: string | null }[];
 let rescuePolls: number;
+let identity: {
+  commitAs: 'bot' | 'owner';
+  name: string | null;
+  email: string | null;
+  account: { name: string; email: string };
+};
 let actAsAnswer: 'ok' | 'needs-sign-in';
 let syncReauthorize: boolean;
 let deviceNext: 'authorization' | 'installation' | 'connected' | 'error';
@@ -135,6 +141,12 @@ beforeEach(() => {
     },
   ];
   rescuePolls = 0;
+  identity = {
+    commitAs: 'bot',
+    name: null,
+    email: null,
+    account: { name: 'Daniel', email: 'owner@openbots.local' },
+  };
   server.handle = async (request) => {
     const { pathname, searchParams } = new URL(request.url);
     const method = request.method;
@@ -182,6 +194,14 @@ beforeEach(() => {
         url: 'https://github.com/settings/apps/new?state=s1',
         manifest: { name: 'OpenBots', url: 'https://bots.example.com' },
       });
+    }
+    if (pathname === '/api/v1/git-identity') {
+      if (method === 'PUT') {
+        const body = await json();
+        identity = { ...identity, ...body } as typeof identity;
+        return Response.json({ ...identity, computer: 'applied' });
+      }
+      return Response.json(identity);
     }
     if (pathname === '/api/v1/git-connections') return Response.json({ connections });
     if (pathname === '/api/v1/git-connections/token') {
@@ -320,7 +340,13 @@ async function until(check: () => boolean, what: string, ms = 5_000) {
 }
 
 const button = (label: string, within: ParentNode = document.body) =>
-  [...within.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
+  [...within.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === label || b.getAttribute('aria-label') === label,
+  );
+const disconnectIcon = (within: ParentNode = document.body) =>
+  [...within.querySelectorAll('button')].find((b) =>
+    b.getAttribute('aria-label')?.startsWith('Disconnect '),
+  );
 const click = (el: Element | undefined | null) => act(() => (el as HTMLElement).click());
 const sent = (method: string, path: string) =>
   server.requests.filter((r) => r.method === method && r.path === path).map((r) => r.body);
@@ -452,11 +478,37 @@ describe('the GitHub card (GH1, GH8)', () => {
     click(button('Sync', row(CONN)));
     await until(() => row(CONN).textContent!.includes('5 repositories'), 'the sync');
 
-    click(button('Disconnect', row(CONN)));
+    click(disconnectIcon(row(CONN)));
     expect(row(CONN).textContent).toContain('Disconnect danielpang?');
     click(button('Disconnect', row(CONN)));
     await until(() => !row(CONN), 'disconnected');
     expect(sent('DELETE', `/api/v1/git-connections/${CONN}`)).toHaveLength(1);
+    noDashes();
+  });
+
+  it('saves who commits, with the name and email git uses on the computer', async () => {
+    render(<GithubCard admin />);
+    const form = () => host.querySelector<HTMLFormElement>('form[aria-label="Commit identity"]');
+    await until(() => !!form(), 'the commit identity');
+    expect(form()!.textContent).toContain('Add the email on your GitHub account');
+    const me = [...form()!.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(
+      (b) => b.textContent === 'Me',
+    )!;
+    click(me);
+    setValue(form()!.querySelector<HTMLInputElement>('input[type="email"]')!, 'dan@example.com');
+    expect(form()!.querySelector('[data-identity-preview]')!.textContent).toContain(
+      'Author: Daniel <dan@example.com>',
+    );
+    act(() => form()!.requestSubmit());
+    await until(() => sent('PUT', '/api/v1/git-identity').length === 1, 'the save');
+    expect(sent('PUT', '/api/v1/git-identity')).toEqual([
+      { commitAs: 'owner', name: null, email: 'dan@example.com' },
+    ]);
+    await until(
+      () => form()!.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled,
+      'the save to settle',
+    );
+    expect(form()!.textContent).not.toContain('Saved');
     noDashes();
   });
 
@@ -516,7 +568,6 @@ describe('the GitHub card (GH1, GH8)', () => {
     const handled = vi.fn();
     render(<GithubCard admin arrival={{ connection: CONN }} onArrivalHandled={handled} />);
     await until(() => !!document.querySelector('[data-remote="danielpang/site"]'), 'the picker');
-    expect(host.querySelector('[role="status"]')!.textContent).toContain('GitHub is connected');
     expect(handled).toHaveBeenCalledTimes(1);
   });
 });
@@ -606,7 +657,7 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
     expect(button('Connect GitHub')).toBeUndefined();
     expect(button('Reconnect GitHub')).toBeUndefined();
     expect(host.textContent).not.toContain('No public URL needed.');
-    click(button('Disconnect'));
+    click(disconnectIcon());
     click(button('Disconnect'));
     await until(() => !!button('Connect GitHub'), 'connect after disconnect');
     expect(host.querySelector('[data-connection]')).toBeNull();
@@ -635,7 +686,7 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
       () => !!document.querySelector('[data-remote="danielpang/site"]'),
       'the coding repository picker',
     );
-    expect(host.textContent).toContain('GitHub is connected');
+    expect(host.textContent).not.toContain('GitHub is connected');
     expect(host.querySelector('[data-connection]')!.textContent).toContain('alice');
     expect(host.querySelectorAll('[data-status="connected"]')).toHaveLength(1);
     expect(button('Connect GitHub')).toBeUndefined();
@@ -902,7 +953,7 @@ describe('the Repositories section (GH3 to GH6)', () => {
     const stuck = row('danielpang/OpenBots');
     expect(stuck.querySelector('[data-stuck]')!.textContent).toBe('Stuck');
     expect(stuck.textContent).toContain('Will retry when the computer starts.');
-    expect(stuck.querySelector('svg')).toBeNull();
+    expect(stuck.querySelector('svg.animate-spin')).toBeNull();
     expect(row('danielpang/relay').querySelector('[data-stuck]')).toBeNull();
     expect(row('danielpang/relay').textContent).toContain('Updating');
   });

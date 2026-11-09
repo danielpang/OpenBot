@@ -912,50 +912,16 @@ describe('loadBuiltins', () => {
     await expect(builtins.file('not-a-uuid')).rejects.toThrow('No stored file');
   });
 
-  it('leaves out every built-in an admin blocks, and refuses calls blocked mid-run (T3, U3)', async () => {
-    const policy = (body: object) =>
-      call('PUT', '/connector-policy', { catalogIds: [], urlPatterns: [], ...body });
-    const offered = async () => Object.keys(tools(await loadBuiltins(t.ownerDeps, await bot())));
+  it('keeps built-ins whatever patterns an admin blocks (T3)', async () => {
+    const policy = (urlPatterns: string[]) => call('PUT', '/connector-policy', { urlPatterns });
     try {
-      expect(await offered()).toEqual(
+      // Built-ins have no URL or command line, so no pattern reaches them.
+      expect((await policy(['*'])).status).toBe(200);
+      expect(Object.keys(tools(await loadBuiltins(t.ownerDeps, await bot())))).toEqual(
         expect.arrayContaining(['web_search', 'web_fetch', 'http_request', 'attach_file']),
       );
-      // Web fetch and HTTP request need no connector row, yet a block still removes them.
-      expect((await policy({ catalogIds: ['web_fetch', 'http_request'] })).status).toBe(200);
-      let names = await offered();
-      expect(names).not.toContain('web_fetch');
-      expect(names).not.toContain('http_request');
-      expect(names).toContain('web_search');
-
-      // An allow list that names only the built-in GitHub removes search, fetch, HTTP and email.
-      expect((await policy({ catalogIds: [], allowedCatalogIds: ['github_builtin'] })).status).toBe(
-        200,
-      );
-      const builtins = await loadBuiltins(t.ownerDeps, await bot());
-      names = Object.keys(tools(builtins));
-      for (const name of ['web_search', 'web_fetch', 'http_request', 'send_email', 'read_inbox']) {
-        expect(names).not.toContain(name);
-      }
-      expect(names).toEqual(expect.arrayContaining(['github_list_issues', 'attach_file']));
-      expect(builtins.blocked).toEqual(
-        expect.arrayContaining(['web_search', 'web_fetch', 'http_request', 'email']),
-      );
-
-      // A block made after the run loaded its tools refuses the call.
-      expect((await policy({ allowedCatalogIds: [] })).status).toBe(200);
-      const loaded = await loadBuiltins(t.ownerDeps, await bot());
-      const fetchTool = tools(loaded).web_fetch!;
-      expect((await policy({ catalogIds: ['web_fetch'] })).status).toBe(200);
-      await expect(
-        fetchTool.execute(
-          fetchTool.inputSchema.parse({ url: 'https://api.example.com/' }) as never,
-          {
-            builtins: loaded,
-          } as unknown as ToolContext,
-        ),
-      ).rejects.toThrow('blocked by the connector policy');
     } finally {
-      await policy({ allowedCatalogIds: [] });
+      await policy([]);
     }
   });
 

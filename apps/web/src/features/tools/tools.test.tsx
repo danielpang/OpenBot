@@ -13,7 +13,7 @@ import {
   type CatalogEntry,
   type Connector,
 } from './api.js';
-import { BlockList } from './block-list.js';
+import { BlockedAddresses } from './block-list.js';
 import { BotToolsForm } from './bot-tools.js';
 import { CatalogCard } from './catalog.js';
 import { ConnectorCard, ConnectorSettings } from './connector-card.js';
@@ -51,11 +51,7 @@ const server = vi.hoisted(() => {
     realFetch: globalThis.fetch,
     requests: [] as { method: string; path: string; body: unknown }[],
     tools: [] as unknown[],
-    policy: {
-      catalogIds: [] as string[],
-      urlPatterns: [] as string[],
-      allowedCatalogIds: [] as string[],
-    },
+    policy: { urlPatterns: [] as string[] },
     catalog: [] as unknown[],
     connectors: [] as Record<string, unknown>[],
     imported: { items: [] as unknown[], errors: [] as { name: string; message: string }[] },
@@ -165,7 +161,9 @@ async function until(check: () => boolean, what: string) {
   throw new Error(`timed out waiting for ${what}: ${host.textContent}`);
 }
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent === label);
+  [...host.querySelectorAll('button')].find(
+    (b) => b.textContent === label || b.getAttribute('aria-label') === label,
+  );
 
 function setValue(el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, value: string) {
   act(() => {
@@ -453,7 +451,7 @@ describe('pasted mcpServers JSON (T2, S-1)', () => {
     act(() => button('Import')!.closest('form')!.requestSubmit());
     await until(() => Boolean(host.querySelector('[role="status"]')), 'the import result');
     const status = host.querySelector('[role="status"]')!.textContent;
-    expect(status).toContain('Imported 1 server.');
+    expect(status).not.toContain('Imported');
     expect(status).toContain('Not imported:');
     expect(status).toContain(`local: ${refusal}`);
     const sent = server.requests.find((r) => r.path === '/api/v1/connectors/import');
@@ -464,30 +462,24 @@ describe('pasted mcpServers JSON (T2, S-1)', () => {
   });
 });
 
-describe('admin allow list (U3)', () => {
-  it('saves ticked catalog entries as the allow list, never also blocked', async () => {
-    server.catalog = [entry({ id: 'github', name: 'GitHub' }), entry()];
-    server.policy = { catalogIds: ['postgres'], urlPatterns: [], allowedCatalogIds: [] };
-    render(<BlockList />);
-    // The form mounts once the policy loads, and only then asks for the
-    // catalog, so wait for the catalog's rows rather than a fixed delay.
-    const allowBoxes = () => {
-      const allowList = [...host.querySelectorAll('fieldset')].find((f) =>
-        f.textContent?.includes('Allowed catalog connectors'),
-      );
-      return [...(allowList?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [])];
-    };
-    await until(() => allowBoxes().length === 2, 'the catalog in the allow list');
-    const boxes = allowBoxes();
-    expect(boxes.map((b) => b.checked)).toEqual([false, false]);
-    act(() => boxes[0]!.click());
-    act(() => boxes[1]!.click());
-    act(() => button('Save connector policy')!.closest('form')!.requestSubmit());
-    await until(() => server.requests.some((r) => r.method === 'PUT'), 'the policy PUT');
+describe('blocked addresses (T3)', () => {
+  it('adds a pattern and removes one, saving each change at once', async () => {
+    server.policy = { urlPatterns: ['npx *'] };
+    render(<BlockedAddresses />);
+    await until(() => !!button('Unblock npx *'), 'the saved pattern');
+    act(() => button('Block an address')!.click());
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="Address pattern"]')!;
+    act(() => setValue(input, ' https://*.example.com/* '));
+    act(() => input.closest('form')!.requestSubmit());
+    await until(() => server.requests.some((r) => r.method === 'PUT'), 'the add');
     expect(server.requests.find((r) => r.method === 'PUT')).toMatchObject({
       path: '/api/v1/connector-policy',
-      body: { catalogIds: [], urlPatterns: [], allowedCatalogIds: ['github', 'postgres'] },
+      body: { urlPatterns: ['npx *', 'https://*.example.com/*'] },
     });
+    server.requests.length = 0;
+    act(() => button('Unblock npx *')!.click());
+    await until(() => server.requests.some((r) => r.method === 'PUT'), 'the removal');
+    expect(server.requests.find((r) => r.method === 'PUT')!.body).toEqual({ urlPatterns: [] });
   });
 });
 
@@ -777,13 +769,11 @@ describe('Bot tools tab (T5)', () => {
   it('turns computer use off for the Bot, as groups.computer = deny', async () => {
     render(<BotToolsForm bot={bot()} entries={entries()} tools={TOOLS} computer />);
     await flush();
-    const toggle = [...host.querySelectorAll('label')].find(
-      (l) => l.textContent === 'Use its computer',
-    )!;
-    expect(toggle.querySelector('input')!.checked).toBe(true);
+    const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Use its computer"]')!;
+    expect(toggle.checked).toBe(true);
     // Never is the switch, not a choice in the group's select.
     expect([...select('Computer tools').options].map((o) => o.value)).toEqual(['', 'auto', 'ask']);
-    act(() => toggle.querySelector('input')!.click());
+    act(() => toggle.click());
     expect(select('bash approval')).toBeNull();
     expect(host.textContent).toContain('Off: no computer tools');
     act(() => button('Save')!.closest('form')!.requestSubmit());

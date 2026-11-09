@@ -238,7 +238,9 @@ async function until(check: () => boolean, what: string) {
 }
 
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent === label);
+  [...host.querySelectorAll('button')].find(
+    (b) => b.textContent === label || b.getAttribute('aria-label') === label,
+  );
 const started = () => server.requests.find((r) => r.path.endsWith('/oauth/start'));
 const tested = () => server.requests.some((r) => r.path === `/api/v1/connectors/${ID}/test`);
 

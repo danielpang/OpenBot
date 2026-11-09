@@ -1,4 +1,4 @@
-import { Button, Input } from '@openbots/ui';
+import { Button, Input, Select, Switch, Textarea } from '@openbots/ui';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import {
@@ -21,7 +21,6 @@ import { GENERIC_PRESETS, parseHeaders, parseModelIds } from './format.js';
 type Protocol = 'openai_compatible' | 'anthropic_compatible';
 
 const field = 'flex flex-col gap-1.5 text-sm font-medium';
-const select = 'h-9 rounded-md border border-input bg-background px-3 text-sm';
 
 /** The POST body for the form; throws when the headers do not parse. */
 export function endpointBody(
@@ -142,14 +141,14 @@ export function AddEndpoint({
       <h3 className="font-medium">Add custom model provider</h3>
       <label className={field}>
         Preset
-        <select value={presetId} onChange={(e) => choose(e.currentTarget.value)} className={select}>
+        <Select value={presetId} onChange={(e) => choose(e.currentTarget.value)}>
           <option value="">None</option>
           {choices.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       {preset?.notes && <p className="text-sm text-muted-foreground">{preset.notes}</p>}
       <label className={field}>
@@ -172,33 +171,30 @@ export function AddEndpoint({
         />
       </label>
       {allowLocal && (
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            name="local"
-            checked={local}
-            onChange={(e) => setLocal(e.currentTarget.checked)}
-            className="mt-0.5"
-          />
+        <label className="flex items-center justify-between gap-4 text-sm">
           <span className="flex flex-col gap-0.5">
             <span className="font-medium">Runs on my network</span>
             <span className="text-muted-foreground">
               For a server on this machine or your LAN, such as Ollama.
             </span>
           </span>
+          <Switch
+            name="local"
+            checked={local}
+            onChange={(e) => setLocal(e.currentTarget.checked)}
+          />
         </label>
       )}
       <label className={field}>
         Protocol
-        <select
+        <Select
           value={protocol}
           disabled={!!preset}
           onChange={(e) => setProtocol(e.currentTarget.value as Protocol)}
-          className={select}
         >
           <option value="openai_compatible">OpenAI chat completions</option>
           <option value="anthropic_compatible">Anthropic Messages</option>
-        </select>
+        </Select>
       </label>
       <label className={field}>
         API key {preset?.keyRequired ? '' : '(optional)'}
@@ -206,19 +202,15 @@ export function AddEndpoint({
       </label>
       <label className={field}>
         Extra headers (optional, one &quot;Name: value&quot; per line)
-        <textarea
-          name="headers"
-          rows={2}
-          className="rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm"
-        />
+        <Textarea name="headers" rows={2} className="font-mono" />
       </label>
       <label className={field}>
         Models (one id per line)
-        <textarea
+        <Textarea
           name="models"
           rows={3}
           placeholder={discovers ? 'Leave empty to discover them' : 'model-id'}
-          className="rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm"
+          className="font-mono"
         />
         {preset && preset.models.length > 0 && (
           <span className="font-normal text-muted-foreground">

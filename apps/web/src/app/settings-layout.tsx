@@ -7,20 +7,26 @@ import { useId, type ComponentProps, type ReactNode } from 'react';
 export function SettingsSection({
   title,
   description,
+  action,
   children,
 }: {
   title: string;
   description?: ReactNode;
-  children: ReactNode;
+  /** An icon button or two beside the title, such as Add. */
+  action?: ReactNode;
+  children?: ReactNode;
 }) {
   const id = useId();
   return (
     <section aria-labelledby={id} className="flex flex-col gap-3 text-sm text-muted-foreground">
-      <header className="flex flex-col gap-1">
-        <h2 id={id} className="text-base font-semibold text-foreground">
-          {title}
-        </h2>
-        {description && <p>{description}</p>}
+      <header className="flex items-start gap-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h2 id={id} className="text-base font-semibold text-foreground">
+            {title}
+          </h2>
+          {description && <p>{description}</p>}
+        </div>
+        {action && <div className="flex shrink-0 items-center gap-0.5">{action}</div>}
       </header>
       {children}
     </section>

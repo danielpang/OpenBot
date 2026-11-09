@@ -1,6 +1,13 @@
 import { CODER_AGENT_LABELS, coderProviderFits, type CoderAgent } from '@openbots/shared';
-import { Button } from '@openbots/ui';
-import { CODER_PLAN_WORDS, coderPlanWords } from '@openbots/widgets';
+import {
+  Button,
+  IconButton,
+  LogOutIcon,
+  RefreshIcon,
+  Select,
+  TerminalIcon,
+  UnlinkIcon,
+} from '@openbots/ui';
 import { CoderSignInSteps } from '@openbots/widgets/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -48,8 +55,11 @@ export function keyProviders(agent: CoderAgent, providers: readonly Provider[]):
 /** The card's status line. */
 export function accountWords(account: CoderAccount, providers: readonly Provider[]): string {
   switch (account.authKind) {
-    case 'subscription':
-      return account.accountLabel ? `Signed in as ${account.accountLabel}` : 'Signed in';
+    case 'subscription': {
+      // Older sign-ins stored the placeholder "Signed in" as their label.
+      const label = account.accountLabel?.trim();
+      return label && label.toLowerCase() !== 'signed in' ? `Signed in as ${label}` : 'Signed in';
+    }
     case 'api_key': {
       const provider = providers.find((p) => p.id === account.providerId);
       return `Using API key: ${provider?.name ?? 'a provider from Settings > Models'}`;
@@ -104,7 +114,7 @@ export function CodingAgentsSettings({
               key={account.agent}
               aria-label={account.label}
               data-agent={account.agent}
-              className="flex flex-col gap-3 rounded-md border p-4 text-sm"
+              className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm"
             >
               <header className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-medium">{account.label}</h3>
@@ -278,17 +288,15 @@ export function CoderCard({
       ? 'Sign in again'
       : 'Sign in';
   const choices = keyProviders(agent, providers);
-  const plan = CODER_PLAN_WORDS[agent];
   const signedIn = account.authKind !== 'none';
   const note = agentNote(account);
-  const billed = coderPlanWords(agent, account.planProvider);
 
   return (
     <article
       className={
         connectionOnly
           ? 'flex min-w-0 flex-col gap-3 text-sm'
-          : 'flex flex-col gap-3 rounded-md border bg-card p-4 text-sm'
+          : 'flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm'
       }
       aria-label={connectionOnly ? `${label} subscription` : label}
       data-agent={agent}
@@ -302,9 +310,9 @@ export function CoderCard({
           {accountWords(account, providers)}
         </span>
       </div>
-      {account.authKind === 'subscription' && (
+      {account.authKind === 'subscription' && connectionBilling && (
         <p className="text-xs text-muted-foreground" data-plan>
-          {connectionBilling ?? `Usage is ${billed}.`}
+          {connectionBilling}
         </p>
       )}
       {!connectionOnly && note && <p className="text-xs text-muted-foreground">{note}</p>}
@@ -312,10 +320,7 @@ export function CoderCard({
 
       {signingIn && current && (
         <div className="flex flex-col gap-2 rounded-md border p-3" data-login={current.id}>
-          <p>
-            <span className="font-medium">Sign in to {label}</span>
-            {plan && <span className="text-muted-foreground"> {plan}</span>}
-          </p>
+          <p className="font-medium">Sign in to {label}</p>
           {checking ? (
             <p role="status" className="text-muted-foreground">
               Checking the code with {label}…
@@ -357,23 +362,26 @@ export function CoderCard({
           </p>
           <ErrorText error={signIn.error ?? check.error} />
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              disabled={signIn.isPending}
-              onClick={() =>
-                inTerminal ? onNavigate(computerTerminalHref(inTerminal.terminal)) : signIn.mutate()
-              }
-            >
-              {inTerminal ? 'Terminal' : signInWords}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={check.isPending}
+            {inTerminal ? (
+              <IconButton
+                label="Terminal"
+                variant="outline"
+                onClick={() => onNavigate(computerTerminalHref(inTerminal.terminal))}
+              >
+                <TerminalIcon />
+              </IconButton>
+            ) : (
+              <Button size="sm" disabled={signIn.isPending} onClick={() => signIn.mutate()}>
+                {signInWords}
+              </Button>
+            )}
+            <IconButton
+              label={check.isPending ? 'Checking…' : 'Check'}
+              busy={check.isPending}
               onClick={() => check.mutate()}
             >
-              {check.isPending ? 'Checking…' : 'Check'}
-            </Button>
+              <RefreshIcon />
+            </IconButton>
           </div>
         </div>
       )}
@@ -392,11 +400,10 @@ export function CoderCard({
           {choices.length ? (
             <label className="flex flex-col gap-1">
               <span className="font-medium">API key</span>
-              <select
+              <Select
                 aria-label={`${label} API key`}
                 value={providerId}
                 onChange={(e) => setProviderId(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
               >
                 <option value="">Choose a provider</option>
                 {choices.map((p) => (
@@ -404,7 +411,7 @@ export function CoderCard({
                     {p.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           ) : (
             <p className="text-muted-foreground">
@@ -457,26 +464,26 @@ export function CoderCard({
               Use API key
             </Button>
           )}
-          {!terminalPanel && account.checkAvailable && (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={check.isPending}
-              onClick={() => check.mutate()}
-            >
-              {check.isPending ? 'Checking…' : 'Check'}
-            </Button>
-          )}
-          {signedIn && (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={signOut.isPending}
-              onClick={() => signOut.mutate()}
-            >
-              {connectionOnly ? 'Disconnect' : 'Sign out'}
-            </Button>
-          )}
+          <div className="ml-auto flex items-center gap-0.5">
+            {!terminalPanel && account.checkAvailable && (
+              <IconButton
+                label={check.isPending ? 'Checking…' : 'Check'}
+                busy={check.isPending}
+                onClick={() => check.mutate()}
+              >
+                <RefreshIcon />
+              </IconButton>
+            )}
+            {signedIn && (
+              <IconButton
+                label={connectionOnly ? 'Disconnect' : 'Sign out'}
+                busy={signOut.isPending}
+                onClick={() => signOut.mutate()}
+              >
+                {connectionOnly ? <UnlinkIcon /> : <LogOutIcon />}
+              </IconButton>
+            )}
+          </div>
         </div>
       )}
     </article>
