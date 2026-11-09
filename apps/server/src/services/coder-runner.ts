@@ -513,7 +513,9 @@ class SessionRunner {
     const { deps, session } = this;
     const adapter = this.adapter!;
     const agent = session.agent as CoderAgent;
-    const model = this.policy.coder.models?.[agent];
+    // The session's own model, fixed when it started (CA9); older sessions
+    // kept none and follow the Bot's setting.
+    const model = session.model ?? this.policy.coder.models?.[agent];
     const keyEnv = await this.providerEnv();
     this.identity = await sessionIdentity(deps, this.bot!, session.ownerId, session.workspaceId);
     const spec: CoderSessionSpec = {

@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { Linking, Text, View } from 'react-native';
+import { Linking, Switch, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import {
   CODER_AGENT_LABELS,
+  CODER_MODEL_SUGGESTIONS,
   CODING_SESSION_ENDED,
+  CoderModelNameSchema,
+  type CoderAgent,
   type CodingSessionStatus,
 } from '@openbots/shared';
 import {
@@ -11,6 +14,8 @@ import {
   sessionErrorWords,
   sessionStatusWords,
   usageWords,
+  type CoderChoiceProps,
+  type CoderChoiceState,
   type CoderLoginProps,
   type CoderLoginWidgetState,
   type CodingSessionProps,
@@ -334,4 +339,112 @@ function loginStatusText(state: Partial<CoderLoginWidgetState>, label: string) {
     default:
       return 'Sign-in did not finish.';
   }
+}
+
+/**
+ * The owner picks the coding agent and model for a task (CA9): one button
+ * per agent, the model with the agent's suggestions as buttons, and "Use as
+ * my default" so later tasks do not ask.
+ */
+export function CoderChoiceBody({
+  props,
+  state: raw,
+  busy,
+  act,
+}: {
+  props: CoderChoiceProps;
+  state: Record<string, unknown>;
+  busy: boolean;
+  act: Act;
+}) {
+  const state = raw as Partial<CoderChoiceState>;
+  const initial =
+    props.agent && props.agents.some((a) => a.agent === props.agent)
+      ? props.agent
+      : (props.agents.find((a) => a.signed_in)?.agent ?? props.agents[0]!.agent);
+  const [agent, setAgent] = useState<CoderAgent>(initial);
+  const modelFor = (next: CoderAgent) =>
+    props.agents.find((a) => a.agent === next)?.model ?? CODER_MODEL_SUGGESTIONS[next][0] ?? '';
+  const [model, setModel] = useState(() => modelFor(initial));
+  const [remember, setRemember] = useState(true);
+  const status = state.status ?? 'pending';
+  const valid = CoderModelNameSchema.safeParse(model).success;
+  return (
+    <>
+      <View style={row.base}>
+        <Icon name="code-slash-outline" />
+        <Label weight="600">Choose a coding agent</Label>
+      </View>
+      {props.repo ? <Label muted>For {props.repo}</Label> : null}
+      {props.prompt_excerpt ? (
+        <Label muted size={14}>
+          {props.prompt_excerpt}
+        </Label>
+      ) : null}
+      {status === 'pending' ? (
+        <>
+          {props.agents.map((a) => (
+            <Button
+              key={a.agent}
+              title={`${CODER_AGENT_LABELS[a.agent]}${a.signed_in ? '' : ' (sign in)'}`}
+              variant={agent === a.agent ? 'primary' : 'secondary'}
+              disabled={busy}
+              onPress={() => {
+                setAgent(a.agent);
+                setModel(modelFor(a.agent));
+              }}
+            />
+          ))}
+          <Label muted size={14}>
+            Model
+          </Label>
+          <View style={[row.base, { flexWrap: 'wrap' }]}>
+            {CODER_MODEL_SUGGESTIONS[agent].map((name) => (
+              <Button
+                key={name}
+                title={name}
+                variant={model === name ? 'primary' : 'ghost'}
+                disabled={busy}
+                onPress={() => setModel(name)}
+              />
+            ))}
+          </View>
+          <Field
+            accessibilityLabel="Model"
+            placeholder="A model name"
+            value={model}
+            onChangeText={setModel}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <View style={row.base}>
+            <Switch value={remember} onValueChange={setRemember} disabled={busy} />
+            <Label size={14} style={{ flex: 1 }}>
+              Use as my default for later tasks
+            </Label>
+          </View>
+          <Button
+            title="Start"
+            loading={busy}
+            disabled={!valid}
+            onPress={() => void act({ type: 'choose', agent, model: model.trim(), remember })}
+          />
+          <Button
+            title="Cancel"
+            variant="ghost"
+            disabled={busy}
+            onPress={() => void act({ type: 'cancel' })}
+          />
+        </>
+      ) : (
+        <Label muted>
+          {status === 'chosen' && state.agent
+            ? `Chose ${CODER_AGENT_LABELS[state.agent]} with ${state.model ?? 'its model'}${
+                state.remember ? ', saved as your default' : ''
+              }.`
+            : 'Not started.'}
+        </Label>
+      )}
+    </>
+  );
 }

@@ -281,6 +281,13 @@
       "when": 1794195858189,
       "tag": "0039_git_identities",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794242879141,
+      "tag": "0040_coder_defaults",
+      "breakpoints": true
     }
   ]
 }

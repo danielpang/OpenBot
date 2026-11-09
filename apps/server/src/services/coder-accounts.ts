@@ -57,6 +57,10 @@ export interface CoderAccountInfo {
   checkAvailable: boolean;
   /** How the agent signs in. */
   signIn: CoderSignInStyle;
+  /** The owner's default model for the agent; null when not chosen (CA9). */
+  model: string | null;
+  /** The owner's default agent (CA9): at most one. */
+  isDefault: boolean;
 }
 
 export type CoderLastErrorKind = 'sign_in' | 'key' | 'other';
@@ -161,6 +165,8 @@ function toAccountInfo(agent: CoderAgent, row: AccountRow | undefined): CoderAcc
     lastErrorKind: lastErrorKind({ authKind, lastError }),
     planProvider: planProviderOf(agent, authKind, row?.accountLabel ?? null),
     ...adapterFacts(agent),
+    model: row?.model ?? null,
+    isDefault: row?.isDefault ?? false,
   };
 }
 
@@ -251,7 +257,74 @@ export function toAccountView(info: CoderAccountInfo): CoderAccountView {
     // A lapsed sign-in reads as none, so `code_task` asks for it again.
     authKind: needsSignIn(info) ? 'none' : info.authKind,
     ...(info.accountLabel ? { label: info.accountLabel } : {}),
+    ...(info.isDefault ? { isDefault: true } : {}),
+    ...(info.model ? { model: info.model } : {}),
+    ...(info.available ? {} : { available: false }),
   };
+}
+
+/** The owner's coding defaults (CA9): the default agent, and a model per agent. */
+export interface CoderDefaults {
+  /** Null clears the default agent, so `code_task` asks again. */
+  defaultAgent?: CoderAgent | null;
+  /** A model per agent; null (or an empty name) clears that agent's. Agents left out keep theirs. */
+  models?: Partial<Record<CoderAgent, string | null>>;
+}
+
+/**
+ * Writes the owner's coding defaults on their `coder_accounts` rows (a row
+ * is made for an agent never signed in): `is_default` moves to the one
+ * agent, and each model named is set or cleared. In `db`, so a widget
+ * action's transaction can use it.
+ */
+export async function writeCoderDefaults(
+  db: Db,
+  owner: Owner,
+  defaults: CoderDefaults,
+): Promise<void> {
+  if (defaults.defaultAgent !== undefined) {
+    // Cleared first: the partial unique index allows one default per owner.
+    await db
+      .update(schema.coderAccounts)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.coderAccounts.ownerId, owner.id),
+          eq(schema.coderAccounts.workspaceId, owner.workspaceId),
+          eq(schema.coderAccounts.isDefault, true),
+        ),
+      );
+    if (defaults.defaultAgent) {
+      await upsertAccount(db, owner, defaults.defaultAgent, { isDefault: true });
+    }
+  }
+  for (const [agent, model] of Object.entries(defaults.models ?? {}) as [
+    CoderAgent,
+    string | null | undefined,
+  ][]) {
+    if (model === undefined) continue;
+    await upsertAccount(db, owner, agent, { model: model?.trim() || null });
+  }
+}
+
+/** Settings > Coding agents' Defaults: written together, then the cards read again. */
+export async function setCoderDefaults(
+  deps: Pick<AppDeps, 'db'>,
+  owner: Owner,
+  defaults: CoderDefaults,
+): Promise<CoderAccountInfo[]> {
+  await deps.db.transaction(async (tx) => {
+    await writeCoderDefaults(tx, owner, defaults);
+    await recordAudit(tx, {
+      workspaceId: owner.workspaceId,
+      actor: userActor(owner),
+      action: 'coder.defaults',
+      targetType: 'coder_account',
+      targetId: null,
+      metadata: { ...defaults },
+    });
+  });
+  return listCoderAccounts(deps, owner);
 }
 
 async function upsertAccount(

@@ -356,6 +356,7 @@ export async function startCodingSession(
           branch,
           base,
           mode,
+          ...(input.model ? { model: input.model } : {}),
           prompt: input.prompt,
           title: sessionTitle(input.prompt, repo.fullName),
           status: 'queued',

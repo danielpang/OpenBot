@@ -355,3 +355,48 @@ describe('coding agent sign-in widget', () => {
     expect(screen.queryByLabelText('Code from the sign-in page')).toBeNull();
   });
 });
+
+describe('the coder_choice widget (CA9)', () => {
+  const choiceProps = {
+    agents: [
+      { agent: 'claude', signed_in: true, model: 'sonnet' },
+      { agent: 'codex', signed_in: false },
+    ],
+    repo: 'danielpang/openbots-relay',
+  };
+  function choice(state: Record<string, unknown> = {}) {
+    return render(
+      <NativeWidget
+        messageId="choice-message"
+        index={0}
+        part={{ type: 'widget', kind: 'coder_choice', props: choiceProps, state }}
+      />,
+    );
+  }
+  beforeEach(() => {
+    mockPost.mockReset();
+    mockPost.mockResolvedValue({ data: {}, response: { ok: true, status: 200 } });
+  });
+
+  it('posts the agent and model chosen, kept as the default', async () => {
+    choice();
+    expect(screen.getByText('For danielpang/openbots-relay')).toBeTruthy();
+    expect(screen.getByLabelText('Model').props.value).toBe('sonnet');
+    fireEvent.press(screen.getByLabelText('Codex (sign in)'));
+    expect(screen.getByLabelText('Model').props.value).toBe('gpt-5.3-codex');
+    fireEvent.press(screen.getByLabelText('Start'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    expect(mockPost.mock.calls[0]![1]).toMatchObject({
+      params: { path: { id: 'choice-message', part: 0 } },
+      body: {
+        action: { type: 'choose', agent: 'codex', model: 'gpt-5.3-codex', remember: true },
+      },
+    });
+  });
+
+  it('says what was chosen once answered', () => {
+    choice({ status: 'chosen', agent: 'claude', model: 'opus', remember: true });
+    expect(screen.getByText('Chose Claude Code with opus, saved as your default.')).toBeTruthy();
+    expect(screen.queryByLabelText('Start')).toBeNull();
+  });
+});

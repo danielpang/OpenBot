@@ -80,6 +80,14 @@ export const OWNER_INPUT_WIDGETS: Readonly<
           ? `Sign in to ${props.site}`
           : 'Open to sign in',
   },
+  // `code_task` with no agent or model set (CA9): the owner picks them.
+  coder_choice: {
+    title: 'needs you to pick a coding agent',
+    body: (props) =>
+      typeof props.repo === 'string'
+        ? `Choose the agent and model for ${props.repo}`
+        : 'Choose the coding agent and model',
+  },
 };
 
 /** A run that ends after this long, while the owner is elsewhere, is a "finished long task". */

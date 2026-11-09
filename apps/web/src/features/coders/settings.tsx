@@ -1,7 +1,14 @@
-import { CODER_AGENT_LABELS, coderProviderFits, type CoderAgent } from '@openbots/shared';
+import {
+  CODER_AGENT_LABELS,
+  CODER_MODEL_SUGGESTIONS,
+  CoderModelNameSchema,
+  coderProviderFits,
+  type CoderAgent,
+} from '@openbots/shared';
 import {
   Button,
   IconButton,
+  Input,
   LogOutIcon,
   RefreshIcon,
   Select,
@@ -23,6 +30,7 @@ import {
   getCoderLogin,
   sendCoderLoginCode,
   setCoderApiKey,
+  setCoderDefaults,
   signOutCoder,
   type CoderAccount,
   type CoderLogin,
@@ -103,6 +111,7 @@ export function CodingAgentsSettings({
           This install has no computer for its Bots, so coding agents cannot run.
         </p>
       )}
+      {coders.data && <CodingDefaults accounts={coders.data.agents} />}
       {coders.error ? (
         <ErrorText error={coders.error} />
       ) : !coders.data ? (
@@ -146,6 +155,147 @@ export function CodingAgentsSettings({
         )
       )}
     </section>
+  );
+}
+
+/** Why a default model name would be refused, or null when it is fine (or empty). */
+export function defaultModelError(value: string): string | null {
+  if (!value.trim()) return null;
+  const parsed = CoderModelNameSchema.safeParse(value.trim());
+  return parsed.success ? null : (parsed.error.issues[0]?.message ?? 'Not a model name');
+}
+
+/** The defaults as the cards hold them: the default agent ('' for none) and a model per agent. */
+function storedDefaults(accounts: readonly CoderAccount[]) {
+  return {
+    agent: (accounts.find((a) => a.isDefault)?.agent ?? '') as CoderAgent | '',
+    models: Object.fromEntries(accounts.map((a) => [a.agent, a.model ?? ''])) as Record<
+      CoderAgent,
+      string
+    >,
+  };
+}
+
+/**
+ * Defaults (CA9): the agent and model a coding task uses when neither the
+ * task nor the Bot's settings name one. Left unset, the Bot asks in the
+ * chat which agent and model to use, and can keep the answer here.
+ */
+export function CodingDefaults({ accounts }: { accounts: readonly CoderAccount[] }) {
+  const queryClient = useQueryClient();
+  const stored = storedDefaults(accounts);
+  const [agent, setAgent] = useState<CoderAgent | ''>(stored.agent);
+  const [models, setModels] = useState(stored.models);
+  // The cards read again (a save, another tab): the form follows them.
+  const storedKey = JSON.stringify(stored);
+  const [seen, setSeen] = useState(storedKey);
+  if (seen !== storedKey) {
+    setSeen(storedKey);
+    setAgent(stored.agent);
+    setModels(stored.models);
+  }
+  const runnable = accounts.filter((a) => a.available !== false || a.isDefault);
+  const problems = Object.fromEntries(
+    runnable.map((a) => [a.agent, defaultModelError(models[a.agent] ?? '')]),
+  ) as Record<CoderAgent, string | null>;
+  const changed =
+    agent !== stored.agent ||
+    runnable.some((a) => (models[a.agent] ?? '').trim() !== stored.models[a.agent]);
+  const save = useMutation({
+    mutationFn: () =>
+      setCoderDefaults({
+        defaultAgent: agent || null,
+        models: Object.fromEntries(
+          runnable.map((a) => [a.agent, (models[a.agent] ?? '').trim() || null]),
+        ),
+      }),
+    onSuccess: (next) => queryClient.setQueryData(codersQuery.queryKey, next),
+  });
+
+  return (
+    <article
+      aria-label="Defaults"
+      data-coder-defaults
+      className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm"
+    >
+      <header className="flex flex-col gap-1">
+        <h3 className="font-medium">Defaults</h3>
+        <p className="text-xs text-muted-foreground">
+          What a coding task runs with when the Bot&apos;s own settings name nothing. Left empty,
+          the Bot asks you to choose when it starts a task.
+        </p>
+      </header>
+      <label className="flex flex-wrap items-center gap-2">
+        <span className="min-w-0 flex-1">Default agent</span>
+        <Select
+          size="sm"
+          aria-label="Default coding agent"
+          value={agent}
+          onChange={(e) => setAgent(e.target.value as CoderAgent | '')}
+          className="max-w-64"
+        >
+          <option value="">Ask each time</option>
+          {runnable.map((a) => (
+            <option key={a.agent} value={a.agent}>
+              {a.label || CODER_AGENT_LABELS[a.agent]}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1">Default model</legend>
+        {runnable.map((a) => {
+          const label = a.label || CODER_AGENT_LABELS[a.agent];
+          const problem = problems[a.agent];
+          const listId = `coder-models-${a.agent}`;
+          return (
+            <div key={a.agent} className="flex flex-col gap-1" data-default-model={a.agent}>
+              <label className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 text-xs">{label}</span>
+                <Input
+                  type="text"
+                  aria-label={`${label} default model`}
+                  aria-invalid={problem ? true : undefined}
+                  placeholder="Ask each time"
+                  list={listId}
+                  value={models[a.agent] ?? ''}
+                  maxLength={100}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(e) => setModels((m) => ({ ...m, [a.agent]: e.target.value }))}
+                  className="h-8 w-64 max-w-full font-mono text-xs placeholder:font-sans"
+                />
+                <datalist id={listId}>
+                  {CODER_MODEL_SUGGESTIONS[a.agent].map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </label>
+              {problem && (
+                <span className="text-xs text-destructive" role="alert">
+                  {problem}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </fieldset>
+      <ErrorText error={save.error} />
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          disabled={!changed || save.isPending || Object.values(problems).some(Boolean)}
+          onClick={() => save.mutate()}
+        >
+          {save.isPending ? 'Saving…' : 'Save defaults'}
+        </Button>
+        {save.isSuccess && !changed && (
+          <span role="status" className="text-xs text-muted-foreground">
+            Saved
+          </span>
+        )}
+      </div>
+    </article>
   );
 }
 

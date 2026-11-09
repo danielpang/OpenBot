@@ -10,12 +10,13 @@ import {
   RoutineRunPropsSchema,
   CodingSessionPropsSchema,
   CoderLoginPropsSchema,
+  CoderChoicePropsSchema,
 } from '@openbots/widgets';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApi } from '../api/provider';
 import { Button, Card, ErrorNote, Field, Icon, Label, row } from '../components/ui';
 import { AcceptEdits } from '../components/accept-edits';
-import { CoderLoginBody, CodingSessionBody } from './coder-widgets';
+import { CoderChoiceBody, CoderLoginBody, CodingSessionBody } from './coder-widgets';
 import type { Message } from './model';
 
 export function NativeWidget({
@@ -247,6 +248,15 @@ export function NativeWidget({
     body = (
       <CoderLoginBody
         props={CoderLoginPropsSchema.parse(part.props)}
+        state={state}
+        busy={busy}
+        act={act}
+      />
+    );
+  } else if (part.kind === 'coder_choice') {
+    body = (
+      <CoderChoiceBody
+        props={CoderChoicePropsSchema.parse(part.props)}
         state={state}
         busy={busy}
         act={act}

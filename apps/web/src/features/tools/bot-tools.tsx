@@ -323,7 +323,12 @@ export function BotToolsForm({
   );
 }
 
-/** The Bot's coding agent settings (CA9): default agent, allowed repositories, action decisions. */
+/**
+ * The Bot's coding agent settings (CA9): its own agent and model, which
+ * override the owner's defaults (Settings > Coding agents), allowed
+ * repositories and action decisions. An empty agent or model shows the
+ * owner's default it falls back to.
+ */
 function CoderSettings({
   policy,
   onChange,
@@ -347,6 +352,10 @@ function CoderSettings({
   const modelAgents = CODER_AGENTS.filter(
     (agent) => runnable.includes(agent) || coder.models?.[agent] !== undefined,
   );
+  // The owner's own defaults (Settings > Coding agents), shown as what an empty field falls back to.
+  const ownerAgent = coders.data?.agents.find((a) => a.isDefault)?.agent;
+  const ownerModel = (agent: CoderAgent) =>
+    coders.data?.agents.find((a) => a.agent === agent)?.model ?? null;
   const allowed = coder.allowedRepos ?? [];
   const known = (repos.data?.repos ?? []).map((r) => r.fullName);
   // A stored repository the owner has since forgotten stays listed, so it can be unticked.
@@ -371,11 +380,22 @@ function CoderSettings({
 
   return (
     <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3" data-coder-settings>
+      <p className="text-xs" data-coder-override-note>
+        The agent and model below apply to this Bot only. Left on &ldquo;Use my default&rdquo;, it
+        follows your defaults in{' '}
+        <a
+          href="/settings/coding-agents"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Settings &gt; Coding agents
+        </a>
+        .
+      </p>
       <label className="flex flex-wrap items-center gap-2">
-        <span className="min-w-0 flex-1 text-foreground">Default agent</span>
+        <span className="min-w-0 flex-1 text-foreground">Agent for this Bot</span>
         <Select
           size="sm"
-          aria-label="Default coding agent"
+          aria-label="Agent for this Bot"
           value={coder.defaultAgent ?? ''}
           onChange={(e) =>
             onChange((p) =>
@@ -386,7 +406,9 @@ function CoderSettings({
           }
           className="max-w-64"
         >
-          <option value="">Not set</option>
+          <option value="">
+            Use my default ({ownerAgent ? CODER_AGENT_LABELS[ownerAgent] : 'ask each time'})
+          </option>
           {agentChoices.map((agent) => (
             <option key={agent} value={agent}>
               {CODER_AGENT_LABELS[agent]}
@@ -396,12 +418,15 @@ function CoderSettings({
       </label>
 
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-foreground">Model</legend>
-        <span className="text-xs">Leave a field empty to use the agent&apos;s own default.</span>
+        <legend className="mb-1 text-foreground">Model for this Bot</legend>
+        <span className="text-xs">
+          Leave a field empty to use your default model; with none set, the Bot asks you to choose.
+        </span>
         <ul className="flex flex-col gap-2">
           {modelAgents.map((agent) => {
             const value = coder.models?.[agent] ?? '';
             const problem = coderModelError(value);
+            const fallback = ownerModel(agent);
             return (
               <li key={agent} className="flex flex-col gap-1" data-coder-model={agent}>
                 <label className="flex flex-wrap items-center gap-2">
@@ -410,9 +435,9 @@ function CoderSettings({
                   </span>
                   <Input
                     type="text"
-                    aria-label={`${CODER_AGENT_LABELS[agent]} model`}
+                    aria-label={`${CODER_AGENT_LABELS[agent]} model for this Bot`}
                     aria-invalid={problem ? true : undefined}
-                    placeholder="the agent's default"
+                    placeholder={`${fallback ?? 'ask each time'} (my default)`}
                     value={value}
                     maxLength={100}
                     autoComplete="off"

@@ -209,7 +209,8 @@ export function setCoderPolicy(policy: ToolPolicy, patch: Partial<CoderPolicy>):
 
 /**
  * Sets the model one agent runs with (`coder.models[agent]`); an empty
- * field removes the key, so the agent uses its own default again.
+ * field removes the key, so the owner's default (Settings > Coding agents)
+ * applies again, and with none the Bot asks.
  */
 export function setCoderModel(policy: ToolPolicy, agent: CoderAgent, value: string): ToolPolicy {
   const models = { ...policy.coder?.models };

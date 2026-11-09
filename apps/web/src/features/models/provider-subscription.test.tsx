@@ -27,6 +27,8 @@ function connection(
     planProvider: null,
     checkAvailable: true,
     signIn: agent === 'pi' ? 'terminal' : 'link',
+    model: null,
+    isDefault: false,
     ...overrides,
   };
   const client = new QueryClient();

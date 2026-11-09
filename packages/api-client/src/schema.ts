@@ -6335,6 +6335,60 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/coders/defaults': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Set the default coding agent and models
+     * @description The agent and model a coding task uses when neither the task nor the Bot names one. Without them the task asks the owner to choose.
+     */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['CoderDefaults'];
+        };
+      };
+      responses: {
+        /** @description One per agent */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              agents: components['schemas']['CoderAccount'][];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/coding-sessions': {
     parameters: {
       query?: never;
@@ -13279,6 +13333,10 @@ export interface components {
        * @enum {string}
        */
       signIn: 'link' | 'device' | 'terminal';
+      /** @description The owner's default model for this agent, as its CLI names it; null when not chosen, so a coding task asks */
+      model: string | null;
+      /** @description The owner's default agent for coding tasks; at most one is */
+      isDefault: boolean;
     };
     CoderLogin: {
       /** Format: uuid */
@@ -13315,6 +13373,19 @@ export interface components {
     CoderApiKey: {
       /** Format: uuid */
       providerId: string;
+    };
+    CoderDefaults: {
+      /**
+       * @description The default agent; null clears it, so a coding task asks. Absent keeps it
+       * @enum {string|null}
+       */
+      defaultAgent?: 'claude' | 'codex' | 'pi' | null;
+      /** @description A default model per agent; null or an empty string clears it. Agents left out keep theirs */
+      models?: {
+        claude?: string | '' | null;
+        codex?: string | '' | null;
+        pi?: string | '' | null;
+      };
     };
     CodingSession: {
       /** Format: uuid */

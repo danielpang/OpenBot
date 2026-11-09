@@ -42,6 +42,19 @@ export const CODER_AGENT_LABELS: Record<CoderAgent, string> = {
 };
 
 /**
+ * Model names offered as suggestions where the owner picks a coding agent's
+ * model (Settings > Coding agents, the `coder_choice` card). Only
+ * suggestions: any name `CoderModelNameSchema` takes can be typed instead.
+ * Claude Code and pi take the short aliases and follow them to the current
+ * model.
+ */
+export const CODER_MODEL_SUGGESTIONS: Record<CoderAgent, readonly string[]> = {
+  claude: ['opus', 'sonnet', 'haiku'],
+  codex: ['gpt-5.3-codex'],
+  pi: ['sonnet', 'opus', 'gpt-5.3-codex'],
+};
+
+/**
  * What a session may do: `plan` reads and proposes, `edit` changes and
  * commits on its branch, `pr` also pushes and opens a pull request after the
  * owner approves.

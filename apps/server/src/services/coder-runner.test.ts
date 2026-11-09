@@ -1200,6 +1200,16 @@ describe('coder runner, across agents and accounts', () => {
     ).toBe('read-only');
   });
 
+  it('runs with the model kept on the session (CA9)', async () => {
+    await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
+    codexSuccess();
+    const { sessionId } = await w.newSession({ agent: 'codex', model: 'gpt-5.3-codex' });
+    expect((await run(sessionId)).status).toBe('settled');
+    expect(
+      framesOf(sessionId).find((frame) => frame.method === 'thread/start')?.params?.model,
+    ).toBe('gpt-5.3-codex');
+  });
+
   it('runs Codex on app-server: the handshake in order, .git writable, and its posture', () =>
     withEdits(async () => {
       await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
