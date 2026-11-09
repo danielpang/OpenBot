@@ -122,22 +122,30 @@ export function BotsScreen({
               <View
                 accessibilityRole="image"
                 accessibilityLabel={
-                  mobile.connected ? 'Connected to server' : 'Disconnected from server'
+                  mobile.connected
+                    ? 'Connected to server'
+                    : mobile.connectionFailed
+                      ? 'Disconnected from server'
+                      : 'Server'
                 }
                 style={{
                   width: 8,
                   height: 8,
                   borderRadius: 4,
-                  backgroundColor: mobile.connected ? c.success : c.danger,
+                  backgroundColor: mobile.connected
+                    ? c.success
+                    : mobile.connectionFailed
+                      ? c.danger
+                      : c.mutedForeground,
                 }}
               />
               <Label muted size={13}>
-                {mobile.host?.name ?? 'OpenBots'} ·{' '}
+                {mobile.host?.name ?? 'OpenBots'}
                 {mobile.connected
-                  ? 'Connected'
-                  : mobile.connecting
-                    ? 'Reconnecting…'
-                    : 'Disconnected'}
+                  ? ' · Connected'
+                  : mobile.connectionFailed
+                    ? ' · Disconnected'
+                    : ''}
               </Label>
             </View>
           </View>

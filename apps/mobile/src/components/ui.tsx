@@ -1,4 +1,5 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import { useContext, type PropsWithChildren, type ReactNode } from 'react';
+import { ConnectionErrorsContext, isConnectionError } from '../api/connection-state';
 import {
   ActivityIndicator,
   Pressable,
@@ -219,7 +220,8 @@ export function Empty({
   );
 }
 export function ErrorNote({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
-  if (!error) return null;
+  const connectionErrorsOwned = useContext(ConnectionErrorsContext);
+  if (!error || (connectionErrorsOwned && isConnectionError(error))) return null;
   return (
     <Card>
       <Label>{error instanceof Error ? error.message : String(error)}</Label>

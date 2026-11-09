@@ -39,6 +39,17 @@ export function useCodingSessions(botId?: string) {
   });
 }
 
+export function useCodingSession(id: string) {
+  const api = useApi();
+  useCodingUpdates();
+  return useQuery({
+    queryKey: ['coding-sessions', id],
+    queryFn: async () =>
+      (await unwrap(api.GET('/api/v1/coding-sessions/{id}', { params: { path: { id } } }))).session,
+    refetchInterval: 3000,
+  });
+}
+
 export function useCodingTranscript(id: string) {
   const api = useApi();
   const cache = useQueryClient();

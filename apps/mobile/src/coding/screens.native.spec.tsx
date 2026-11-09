@@ -1,14 +1,23 @@
 import React from 'react';
-import { Alert, Keyboard, StyleSheet } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, RefreshControl, StyleSheet } from 'react-native';
 import type * as ReactNative from 'react-native';
 import { describe, expect, it, jest, beforeEach, afterEach } from '@jest/globals';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CodingSessionScreen, CodingSessionsScreen, Entry } from './screens';
+import { CodingSessionDetailsScreen } from './session-details';
+import { ConnectionErrorsContext, OfflineError } from '../api/connection-state';
 
 const mockGet = jest.fn<(path: string, ...args: unknown[]) => Promise<unknown>>();
 const mockPost = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockPatch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+let mockHeaderOptions: {
+  unstable_headerRightItems?: () => Array<{
+    accessibilityLabel: string;
+    icon: { type: string; name: string };
+    onPress: () => void;
+  }>;
+};
 const mockPush = jest.fn();
 const mockApi = { GET: mockGet, POST: mockPost, PATCH: mockPatch };
 jest.mock('../api/provider', () => ({
@@ -19,7 +28,12 @@ jest.mock('../screens/data', () => ({
   useBots: () => ({ data: [{ id: 'bot1', name: 'Builder', toolPolicy: {} }] }),
 }));
 jest.mock('expo-router', () => ({
-  Stack: { Screen: () => null },
+  Stack: {
+    Screen: ({ options }: { options: typeof mockHeaderOptions }) => {
+      mockHeaderOptions = options;
+      return null;
+    },
+  },
   router: { push: (path: string) => mockPush(path) },
 }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
@@ -44,6 +58,7 @@ const session = {
   status: 'settled',
   repoFullName: 'team/app',
   branch: 'fix',
+  mode: 'pr',
 };
 const clients: QueryClient[] = [];
 afterEach(() => {
@@ -111,6 +126,105 @@ describe('coding conversations', () => {
     expect(screen.queryByText('Done')).toBeNull();
     fireEvent.press(sessionButton);
     expect(mockPush).toHaveBeenCalledWith('/coding-session/s1');
+  });
+  it('keeps initial loading separate from pull-to-refresh', async () => {
+    let finish!: () => void;
+    mockGet.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ data: { sessions: [session] }, response: { ok: true } });
+        }),
+    );
+    mount(<CodingSessionsScreen />);
+    expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(false);
+    expect(screen.UNSAFE_getByType(ActivityIndicator)).toBeTruthy();
+    await act(async () => finish());
+    expect(await screen.findByRole('button', { name: 'Open Fix reconnect' })).toBeTruthy();
+    expect(screen.UNSAFE_queryByType(ActivityIndicator)).toBeNull();
+  });
+  it('keeps cached sessions visible without pull-to-refresh during background updates', async () => {
+    mount(<CodingSessionsScreen />);
+    await screen.findByRole('button', { name: 'Open Fix reconnect' });
+    let finish!: () => void;
+    mockGet.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ data: { sessions: [session] }, response: { ok: true } });
+        }),
+    );
+    act(() => {
+      void clients[0]!.invalidateQueries({ queryKey: ['coding-sessions'] });
+    });
+    await waitFor(() => expect(clients[0]!.isFetching()).toBe(1));
+    expect(screen.getByRole('button', { name: 'Open Fix reconnect' })).toBeTruthy();
+    expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(false);
+    await act(async () => finish());
+  });
+  it.each([false, true])('ends manual refreshing after a request (failure: %s)', async (fails) => {
+    mount(<CodingSessionsScreen />);
+    await screen.findByRole('button', { name: 'Open Fix reconnect' });
+    let finish!: () => void;
+    mockGet.mockImplementationOnce(
+      () =>
+        new Promise((resolve, reject) => {
+          finish = () =>
+            fails
+              ? reject(new Error('Refresh failed'))
+              : resolve({ data: { sessions: [session] }, response: { ok: true } });
+        }),
+    );
+    act(() => screen.UNSAFE_getByType(RefreshControl).props.onRefresh());
+    expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(true);
+    expect(screen.getByRole('button', { name: 'Open Fix reconnect' })).toBeTruthy();
+    await act(async () => finish());
+    await waitFor(() =>
+      expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(false),
+    );
+    expect(screen.getByRole('button', { name: 'Open Fix reconnect' })).toBeTruthy();
+  });
+  it('opens session metadata from the native info button, not the conversation body', async () => {
+    mount(<CodingSessionScreen id="s1" />);
+    await screen.findByLabelText('Message');
+    expect(screen.queryByText('team/app · fix')).toBeNull();
+    expect(screen.queryByText('Done')).toBeNull();
+    const info = mockHeaderOptions.unstable_headerRightItems!()[0]!;
+    expect(info.accessibilityLabel).toBe('Session details');
+    expect(info.icon).toEqual({ type: 'sfSymbol', name: 'info.circle' });
+    act(() => info.onPress());
+    expect(mockPush).toHaveBeenCalledWith('/coding-session/s1/details');
+  });
+  it('shows session metadata and the actual server error on the details page', async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        session: {
+          ...session,
+          status: 'failed',
+          error: 'The server restarted before saving the outcome',
+        },
+      },
+      response: { ok: true },
+    });
+    mount(<CodingSessionDetailsScreen id="s1" />);
+    expect(await screen.findByText('team/app')).toBeTruthy();
+    expect(screen.getByText('fix')).toBeTruthy();
+    expect(screen.getByText('Failed')).toBeTruthy();
+    expect(screen.getByText('The server restarted before saving the outcome')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+  });
+  it('does not stack offline errors from session, transcript, and approvals', async () => {
+    mount(
+      <ConnectionErrorsContext.Provider value>
+        <CodingSessionScreen id="s1" />
+      </ConnectionErrorsContext.Provider>,
+    );
+    await screen.findByLabelText('Message');
+    mockGet.mockRejectedValue(new OfflineError());
+    await act(async () => {
+      await clients[0]!.invalidateQueries();
+    });
+    expect(screen.queryAllByText(/You’re offline/)).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: 'Try again' })).toHaveLength(0);
+    expect(screen.getByLabelText('Message')).toBeTruthy();
   });
   it('shows edit modes only while composing, in an in-app popup', async () => {
     mount(<CodingSessionScreen id="s1" />);

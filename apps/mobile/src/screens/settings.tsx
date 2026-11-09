@@ -73,7 +73,9 @@ export function SettingsScreen() {
               <Label size={12} muted>
                 {mobile.connected
                   ? `Connected · ${mobile.transport?.kind ?? 'direct'}`
-                  : 'Reconnecting…'}
+                  : mobile.connectionFailed
+                    ? 'Disconnected'
+                    : 'Your server'}
                 {host.lastSeenAt
                   ? ` · Last seen ${new Date(host.lastSeenAt).toLocaleDateString()}`
                   : ''}
@@ -211,9 +213,8 @@ export function SettingsScreen() {
           </Label>
         </Card>
         <Label size={13} muted>
-          Model provider setup, Skills, Connectors, computer control and organization
-          administration are available on your computer. Change a Bot’s model in Bot details →
-          About.
+          Model provider setup, Skills, Connectors, computer control and organization administration
+          are available on your computer. Change a Bot’s model in Bot details → About.
         </Label>
       </Section>
     </Page>
