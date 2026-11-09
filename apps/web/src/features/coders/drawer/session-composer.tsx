@@ -216,11 +216,6 @@ export function SessionComposer({
           Send
         </Button>
       </div>
-      {!ended && (
-        <p className="text-xs text-muted-foreground">
-          Working. Send your next message when this turn ends.
-        </p>
-      )}
       <ErrorText error={attachmentError || send.error} />
     </form>
   );
