@@ -19,6 +19,8 @@ import {
   toolFacts,
   TOOL_GROUPS,
   toolsFor,
+  transcriptResult,
+  type AnyAgentTool,
   type AssembledContext,
   type CheckpointCall,
   type Embedder,
@@ -405,6 +407,7 @@ async function processRun(
       call: { toolCallId: string; toolName: string; args: unknown },
       gate: boolean,
       messages: ModelMessage[],
+      announce = gate,
     ) =>
       runToolCall({
         run: toolContext.run,
@@ -412,7 +415,7 @@ async function processRun(
         tools,
         toolContext,
         policy: gate ? policy : null,
-        announce: gate,
+        announce,
         sink,
         setState: async (s, action, tool) => {
           if (s === 'working') {
@@ -458,6 +461,7 @@ async function processRun(
       seenSeq = resuming.seenSeq!;
       contextLength = resuming.contextLength;
       let output = resuming.resume!.output;
+      let posted = false;
       const extra = await resumeContext(deps, bot, chat, pending, output, vision);
       if (pending.reason === 'approval') {
         await steps.record({
@@ -469,8 +473,10 @@ async function processRun(
           await settleDraft(pending.toolCallId, pending.toolName, output, true);
         } else {
           // The gate threw before the tool ran; run it now, exactly once (this
-          // run was claimed queued -> running, and is never re-run).
-          const call = await callOutside(pending, false, [...resuming.messages!, ...extra]);
+          // run was claimed queued -> running, and is never re-run). The call
+          // goes in this message too, beside its result.
+          const call = await callOutside(pending, false, [...resuming.messages!, ...extra], true);
+          posted = true;
           if (call.status === 'waiting') {
             await pauseEarly({ ...call.wait, toolCallId: pending.toolCallId }, resuming.messages!);
             return;
@@ -479,6 +485,9 @@ async function processRun(
           await settleDraft(pending.toolCallId, pending.toolName, output);
         }
       }
+      // Any other answer (a denial, a question's answer, a sign-in) goes in the
+      // transcript as the call's result too, so later runs read it.
+      if (!posted) await postAnswer(sink, pending, output, tools, labelsOf(pending.toolName));
       messages = [
         ...injectToolResult(
           resuming.messages!,
@@ -791,6 +800,10 @@ function runCheckpointer(
     finished: (toolCallId, output) => {
       const call = current?.calls.find((c) => c.toolCallId === toolCallId);
       if (call) call.output = output;
+      return write();
+    },
+    reply: (content) => {
+      if (current) current.reply = content;
       return write();
     },
     outside: (messages, call) => begin(messages, [{ ...call, inMessages: true }], NO_USAGE),
@@ -1248,6 +1261,32 @@ function decisionLabel(output: unknown): string {
   if (isApproved(output)) return 'Approved';
   const error = (output as ApprovalOutcome | null)?.error ?? '';
   return error.includes('expired') ? 'Approval expired' : 'Denied';
+}
+
+/** A waiting call and the answer it resumed with, as the call's parts in the resumed message. */
+async function postAnswer(
+  sink: RunSink,
+  pending: PendingWait,
+  output: unknown,
+  tools: Record<string, AnyAgentTool>,
+  labels?: LabelContext,
+) {
+  const name = pending.toolName;
+  const answer = pending.reason === 'approval' ? output : transcriptResult(tools[name], output);
+  await sink.part({
+    type: 'tool_call',
+    tool_call_id: pending.toolCallId,
+    tool_name: name,
+    args: pending.args,
+    label: labelFor(name, pending.args, undefined, labels),
+  });
+  await sink.part({
+    type: 'tool_result',
+    tool_call_id: pending.toolCallId,
+    tool_name: name,
+    result: answer,
+    label: labelFor(name, pending.args, answer, labels),
+  });
 }
 
 /**

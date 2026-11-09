@@ -6,7 +6,12 @@ import { promptText, scriptedModel, type ScriptedTurn } from '../testing.js';
 import { toolsFor } from '../tools/index.js';
 import type { MemoryItem, ToolContext } from '../tools/types.js';
 import { ContextOverflowError } from './errors.js';
-import { executeRun, type ExecuteRunInput, type StepRecord } from './execute.js';
+import {
+  executeRun,
+  type ExecuteRunInput,
+  type RunCheckpointer,
+  type StepRecord,
+} from './execute.js';
 import { toolCallMessages } from './call.js';
 import {
   injectToolResult,
@@ -14,6 +19,7 @@ import {
   resumeFromCheckpoint,
   trimContext,
   WAITING_RESULT,
+  type RunCheckpoint,
 } from './state.js';
 
 const run = { id: 'run-1', botId: 'bot-1', chatId: 'chat-1', trigger: 'message' };
@@ -510,6 +516,62 @@ describe('executeRun', () => {
     expect(outside).toHaveLength(2);
     expect(JSON.stringify(outside)).not.toContain(WAITING_RESULT.status);
     expect(JSON.stringify(outside)).toContain('interrupted_by_restart');
+  });
+
+  const none = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, steps: 0 };
+
+  it("keeps a cut-off step's reasoning and text for the takeover (K4)", async () => {
+    // A checkpoint store like the server's: what a crash right after the tool ran would leave.
+    let current: RunCheckpoint = {
+      messageId: 'm',
+      messages: [],
+      calls: [],
+      seenSeq: 0,
+      usage: none,
+    };
+    let atCrash: RunCheckpoint | undefined;
+    const checkpoint: RunCheckpointer = {
+      step: async (messages) => {
+        current = { ...current, messages, calls: [] };
+        delete current.reply;
+      },
+      started: async (call) => {
+        current.calls.push(call);
+      },
+      finished: async (id, output) => {
+        current.calls.find((c) => c.toolCallId === id)!.output = output;
+        atCrash ??= structuredClone(current);
+      },
+      reply: async (content) => {
+        current.reply = content;
+      },
+    };
+    const h = harness(
+      [
+        [
+          { reasoning: 'Save it first.', signature: 'sig-1' },
+          { text: 'Saving.' },
+          { tool: 'remember', args: { kind: 'fact', content: 'x' }, id: 'c1' },
+        ],
+        [{ text: 'Noted.' }],
+      ],
+      { checkpoint },
+    );
+    await executeRun(h.input);
+    const rebuilt = resumeFromCheckpoint(atCrash!);
+    expect(rebuilt.at(-2)).toEqual({
+      role: 'assistant',
+      content: [
+        {
+          type: 'reasoning',
+          text: 'Save it first.',
+          providerOptions: { anthropic: { signature: 'sig-1' } },
+        },
+        { type: 'text', text: 'Saving.' },
+        expect.objectContaining({ type: 'tool-call', toolCallId: 'c1', toolName: 'remember' }),
+      ],
+    });
+    expect(rebuilt.at(-1)).toMatchObject({ role: 'tool', content: [{ toolCallId: 'c1' }] });
   });
 
   it('stops at max_steps', async () => {
