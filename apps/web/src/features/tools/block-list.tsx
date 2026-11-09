@@ -58,13 +58,15 @@ export function TrustedHintsSetting({ connector }: { connector: Connector }) {
   );
   return (
     <div className="flex flex-col gap-1 border-t pt-2 text-sm">
-      <label className="flex items-center gap-2">
-        <input type="checkbox" {...box} />
-        {adminLabel(managed, 'trust its read-only hints')}
+      <label className="flex items-center justify-between gap-4">
+        <span className="flex flex-col gap-0.5">
+          <span className="font-medium">{adminLabel(managed, 'trust its read-only hints')}</span>
+          <span className="text-xs text-muted-foreground">
+            Its read-only tools then run without asking, so trust only servers you know.
+          </span>
+        </span>
+        <Switch {...box} />
       </label>
-      <p className="text-xs text-muted-foreground">
-        Its read-only tools then run without asking, so trust only servers you know.
-      </p>
       <ErrorText error={error} />
     </div>
   );
@@ -81,9 +83,12 @@ export function LocalNetworkSetting({ connector }: { connector: Connector }) {
   );
   return (
     <div className="flex flex-col gap-1 text-sm">
-      <label className="flex items-center gap-2">
-        <input type="checkbox" {...box} />
-        {adminLabel(managed, 'runs on my network (allows a private or local address)')}
+      <label className="flex items-center justify-between gap-4">
+        <span className="flex flex-col gap-0.5">
+          <span className="font-medium">{adminLabel(managed, 'runs on my network')}</span>
+          <span className="text-xs text-muted-foreground">Allows a private or local address</span>
+        </span>
+        <Switch {...box} />
       </label>
       <ErrorText error={error} />
     </div>

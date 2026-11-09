@@ -1,4 +1,5 @@
 import { IconButton, LogOutIcon } from '@openbots/ui';
+import { SettingsPanel, SettingsRow } from '../../../app/settings-layout.js';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { auth } from '../../../app/api.js';
@@ -28,15 +29,17 @@ function Account() {
 
   return (
     <div className="flex flex-col gap-8">
-      <section className="flex items-center justify-between gap-4">
-        <div>
-          <p className="font-medium">{me.user.name}</p>
-          <p className="text-sm text-muted-foreground">{me.user.email}</p>
-        </div>
-        <IconButton label="Sign out" busy={signOut.isPending} onClick={() => signOut.mutate()}>
-          <LogOutIcon />
-        </IconButton>
-      </section>
+      <SettingsPanel>
+        <SettingsRow
+          title={me.user.name}
+          description={me.user.email}
+          control={
+            <IconButton label="Sign out" busy={signOut.isPending} onClick={() => signOut.mutate()}>
+              <LogOutIcon />
+            </IconButton>
+          }
+        />
+      </SettingsPanel>
       <NotificationSettings />
       <ApiKeys />
     </div>

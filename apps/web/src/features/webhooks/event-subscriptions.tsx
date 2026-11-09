@@ -9,6 +9,7 @@ import {
   PlayIcon,
   PlusIcon,
   RotateIcon,
+  Switch,
   TrashIcon,
 } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -311,8 +312,7 @@ function SubscriptionForm({
       />
       {admin && (
         <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
+          <Switch
             name="local"
             checked={local}
             onChange={(e) => setLocal(e.currentTarget.checked)}

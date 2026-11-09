@@ -1,5 +1,5 @@
 import { CODER_AGENT_LABELS, SUBSCRIPTION_PROVIDERS, type ProviderKind } from '@openbots/shared';
-import { Button } from '@openbots/ui';
+import { Button, IconButton, RefreshIcon } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { capabilitiesQuery } from '../../app/api.js';
 import { codersQuery, setCoderApiKey } from '../coders/api.js';
@@ -66,7 +66,10 @@ export function AdditionalCodingSubscriptions() {
   )
     return null;
   return (
-    <section className="space-y-4 rounded-md border p-4" aria-label="Other coding subscriptions">
+    <section
+      className="space-y-4 rounded-lg border bg-card p-4"
+      aria-label="Other coding subscriptions"
+    >
       <div className="space-y-1">
         <h3 className="font-medium">Other coding subscriptions</h3>
         <p className="max-w-prose text-sm text-muted-foreground">
@@ -187,14 +190,9 @@ export function ProviderSubscription({
       )}
       <ErrorText error={accounts.error ?? provision.error ?? useSavedKey.error} />
       {provision.isError && (
-        <Button
-          className="self-start"
-          size="sm"
-          variant="outline"
-          onClick={() => provision.mutate()}
-        >
-          Retry
-        </Button>
+        <IconButton label="Retry" className="self-start" onClick={() => provision.mutate()}>
+          <RefreshIcon />
+        </IconButton>
       )}
       {!account && !accounts.error && (
         <p role="status" className="text-sm text-muted-foreground">

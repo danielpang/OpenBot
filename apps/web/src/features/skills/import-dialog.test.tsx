@@ -140,7 +140,9 @@ function preview(overrides: Partial<SkillImportPreview> = {}): SkillImportPrevie
 const page = () => document.body;
 const settle = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 const button = (text: string) =>
-  [...page().querySelectorAll('button')].find((b) => b.textContent === text);
+  [...page().querySelectorAll('button')].find(
+    (b) => b.textContent === text || b.getAttribute('aria-label') === text,
+  );
 const click = async (text: string) => {
   const found = button(text);
   expect(found, text).toBeDefined();

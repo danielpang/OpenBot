@@ -769,13 +769,11 @@ describe('Bot tools tab (T5)', () => {
   it('turns computer use off for the Bot, as groups.computer = deny', async () => {
     render(<BotToolsForm bot={bot()} entries={entries()} tools={TOOLS} computer />);
     await flush();
-    const toggle = [...host.querySelectorAll('label')].find(
-      (l) => l.textContent === 'Use its computer',
-    )!;
-    expect(toggle.querySelector('input')!.checked).toBe(true);
+    const toggle = host.querySelector<HTMLInputElement>('input[aria-label="Use its computer"]')!;
+    expect(toggle.checked).toBe(true);
     // Never is the switch, not a choice in the group's select.
     expect([...select('Computer tools').options].map((o) => o.value)).toEqual(['', 'auto', 'ask']);
-    act(() => toggle.querySelector('input')!.click());
+    act(() => toggle.click());
     expect(select('bash approval')).toBeNull();
     expect(host.textContent).toContain('Off: no computer tools');
     act(() => button('Save')!.closest('form')!.requestSubmit());

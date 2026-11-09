@@ -10,7 +10,7 @@ export const Route = createFileRoute('/_app/settings')({
 // Link's `data-status`, because a variant beats the base text colour where a
 // second plain colour class may not.
 const TAB_CLASS =
-  'rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent data-[status=active]:bg-accent data-[status=active]:font-medium data-[status=active]:text-foreground';
+  'shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent data-[status=active]:bg-accent data-[status=active]:font-medium data-[status=active]:text-foreground';
 
 /**
  * The tabs a caller gets. Devices, the owner's paired phones, follows the
@@ -42,7 +42,7 @@ function Settings() {
 
   return (
     <Page title="Settings">
-      <div role="tablist" className="flex gap-1 border-b pb-2">
+      <div role="tablist" className="-mx-1 flex gap-1 overflow-x-auto border-b px-1 pb-2">
         {tabs.map((tab) => (
           <Link
             key={tab.to}

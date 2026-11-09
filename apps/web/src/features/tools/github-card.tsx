@@ -1,5 +1,14 @@
 import { ApiError } from '@openbots/api-client';
-import { Button, cn, IconButton, Input, RefreshIcon, TrashIcon, UnlinkIcon } from '@openbots/ui';
+import {
+  Button,
+  cn,
+  IconButton,
+  Input,
+  RefreshIcon,
+  Select,
+  TrashIcon,
+  UnlinkIcon,
+} from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { GitActAs } from '@openbots/shared';
@@ -62,8 +71,6 @@ const KIND: Record<GitConnectionView['kind'], string> = {
   oauth: 'Signed in with GitHub',
   token: 'Token',
 };
-
-const selectClass = 'h-8 rounded-md border bg-transparent px-2 text-sm';
 
 const repoCount = (n: number) => (n === 1 ? '1 repository' : `${n} repositories`);
 
@@ -501,16 +508,17 @@ function ConnectionRow({
           {connection.kind === 'app' && (
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               Act as
-              <select
+              <Select
+                size="sm"
                 aria-label={`Act as for ${connection.accountLogin}`}
-                className={selectClass}
+                className="w-auto"
                 value={connection.actAs}
                 disabled={actAs.isPending}
                 onChange={(e) => actAs.mutate(e.target.value as GitActAs)}
               >
                 <option value="bot">The Bot (OpenBots app)</option>
                 <option value="owner">Me</option>
-              </select>
+              </Select>
             </label>
           )}
         </div>

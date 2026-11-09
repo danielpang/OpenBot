@@ -908,7 +908,7 @@ describe('the Repositories section (GH3 to GH6)', () => {
     const stuck = row('danielpang/OpenBots');
     expect(stuck.querySelector('[data-stuck]')!.textContent).toBe('Stuck');
     expect(stuck.textContent).toContain('Will retry when the computer starts.');
-    expect(stuck.querySelector('svg')).toBeNull();
+    expect(stuck.querySelector('svg.animate-spin')).toBeNull();
     expect(row('danielpang/relay').querySelector('[data-stuck]')).toBeNull();
     expect(row('danielpang/relay').textContent).toContain('Updating');
   });

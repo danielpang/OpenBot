@@ -61,7 +61,9 @@ function type(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
 const field = (label: string) =>
   host.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[aria-label="${label}"]`)!;
 const button = (text: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent === text);
+  [...host.querySelectorAll('button')].find(
+    (b) => b.textContent === text || b.getAttribute('aria-label') === text,
+  );
 const click = (text: string) => act(async () => button(text)!.click());
 const settle = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 

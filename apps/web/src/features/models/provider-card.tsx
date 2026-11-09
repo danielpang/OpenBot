@@ -1,4 +1,14 @@
-import { Button, cn, IconButton, Input, PencilIcon, RefreshIcon, TrashIcon } from '@openbots/ui';
+import {
+  Button,
+  cn,
+  IconButton,
+  Input,
+  PencilIcon,
+  RefreshIcon,
+  Select,
+  Switch,
+  TrashIcon,
+} from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useSavedCheckbox } from '../../app/saved-checkbox.js';
@@ -137,11 +147,11 @@ function SmallModel({ provider, canEdit }: { provider: Provider; canEdit: boolea
   return (
     <label className="flex flex-col gap-1.5 text-sm">
       Small model for background tasks
-      <select
+      <Select
         value={provider.smallModelId ?? ''}
         disabled={!canEdit || save.isPending}
         onChange={(event) => save.mutate(event.currentTarget.value || null)}
-        className="h-9 max-w-xs rounded-md border border-input bg-background px-3 text-sm"
+        className="max-w-xs"
       >
         <option value="">Automatic (catalog pick, else cheapest with tools)</option>
         {candidates.map((m) => (
@@ -149,7 +159,7 @@ function SmallModel({ provider, canEdit }: { provider: Provider; canEdit: boolea
             {m.displayName}
           </option>
         ))}
-      </select>
+      </Select>
       <ErrorText error={save.error} />
     </label>
   );
@@ -196,7 +206,10 @@ export function ProviderCard({
   const inUse = providerInUseText(provider.botCount);
 
   return (
-    <article className="flex flex-col gap-3 rounded-md border p-4" aria-label={provider.name}>
+    <article
+      className="flex flex-col gap-3 rounded-lg border bg-card p-4"
+      aria-label={provider.name}
+    >
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h3 className="font-medium">{provider.name}</h3>
@@ -212,12 +225,13 @@ export function ProviderCard({
         </div>
         {canEdit && (
           <div className="flex flex-wrap gap-2">
-            <select
+            <Select
+              size="sm"
               aria-label="Model to test"
               value={testModelId}
               disabled={test.isPending || !models?.items.length}
               onChange={(event) => setTestModelId(event.currentTarget.value)}
-              className="h-8 max-w-48 rounded-md border border-input bg-background px-2 text-sm"
+              className="max-w-48"
             >
               <option value="">Default model</option>
               {models?.items.map((m) => (
@@ -225,7 +239,7 @@ export function ProviderCard({
                   {m.displayName}
                 </option>
               ))}
-            </select>
+            </Select>
             <IconButton
               label={test.isPending ? 'Testing…' : 'Test'}
               busy={test.isPending}
@@ -273,9 +287,14 @@ export function ProviderCard({
       />
       {canEdit && <ProviderCodingKey provider={provider} />}
       {canEdit && provider.kind === 'custom' && (
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" {...localBox} />
-          Runs on my network (allows a private or local base URL)
+        <label className="flex items-center justify-between gap-4 text-sm">
+          <span className="flex flex-col gap-0.5">
+            <span className="font-medium">Runs on my network</span>
+            <span className="text-xs text-muted-foreground">
+              Allows a private or local base URL
+            </span>
+          </span>
+          <Switch {...localBox} />
         </label>
       )}
       <ErrorText error={localError} />

@@ -79,10 +79,10 @@ export function ConnectorCard({
         highlighted && 'ring-2 ring-ring',
       )}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <ConnectorIcon icon={entry?.icon} name={connector.name} />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="font-medium">{connector.name}</span>
+        <div className="flex min-w-32 flex-1 flex-col gap-0.5">
+          <span className="truncate font-medium">{connector.name}</span>
           <span
             className={cn(
               'text-xs',
@@ -186,7 +186,7 @@ export function ConnectorCard({
         />
       )}
       {panel === 'delete' && (
-        <div className="flex items-center gap-2 border-t pt-2">
+        <div className="flex flex-wrap items-center gap-2 border-t pt-2">
           <span className="text-muted-foreground">
             Delete {connector.name}, its login and its per-Bot settings?
           </span>

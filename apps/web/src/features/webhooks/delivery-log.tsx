@@ -1,4 +1,4 @@
-import { Button, cn, SendIcon } from '@openbots/ui';
+import { Button, cn, ExternalIcon, IconButton, RotateIcon, SendIcon, Textarea } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { formatWhen } from '../routines/routines-tab.js';
@@ -73,7 +73,7 @@ export function DeliveryRow({
   const origin = ORIGIN_WORDS[delivery.origin];
   return (
     <li className="flex flex-col" data-delivery={delivery.id} data-status={delivery.status}>
-      <span className="flex flex-wrap items-baseline gap-x-2">
+      <span className="flex flex-wrap items-center gap-x-2">
         <span
           className={cn(
             (delivery.status === 'failed' || delivery.status === 'refused') && 'text-destructive',
@@ -92,25 +92,18 @@ export function DeliveryRow({
             .filter(Boolean)
             .join(' · ')}
         </span>
-        {delivery.runId && onOpenRun && (
-          <button
-            type="button"
-            className="font-medium hover:underline"
-            onClick={() => onOpenRun(delivery.runId!)}
-          >
-            Activity log
-          </button>
-        )}
-        {delivery.status !== 'refused' && (
-          <button
-            type="button"
-            className="font-medium hover:underline disabled:opacity-50"
-            disabled={replaying}
-            onClick={onReplay}
-          >
-            Replay
-          </button>
-        )}
+        <span className="ml-auto flex items-center gap-0.5">
+          {delivery.runId && onOpenRun && (
+            <IconButton label="Activity log" onClick={() => onOpenRun(delivery.runId!)}>
+              <ExternalIcon />
+            </IconButton>
+          )}
+          {delivery.status !== 'refused' && (
+            <IconButton label="Replay" busy={replaying} onClick={onReplay}>
+              <RotateIcon />
+            </IconButton>
+          )}
+        </span>
       </span>
       {delivery.error && <span className="text-muted-foreground">{delivery.error}</span>}
       <details>
@@ -207,20 +200,20 @@ export function TestEventForm({
   return (
     <form className="flex flex-col gap-2" onSubmit={submit} aria-label="Test event">
       <span className="text-xs font-medium">Send a test event</span>
-      <textarea
+      <Textarea
         aria-label="Test payload"
         value={payload}
         onChange={(e) => setPayload(e.target.value)}
         rows={4}
-        className="w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs"
+        className="w-full font-mono text-xs"
       />
-      <textarea
+      <Textarea
         aria-label="Test headers"
         value={headers}
         onChange={(e) => setHeaders(e.target.value)}
         rows={2}
         placeholder="Header: value, one per line (optional)"
-        className="w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs"
+        className="w-full font-mono text-xs"
       />
       {(problem ?? actions.test.error) && (
         <p className="text-xs text-destructive">{problem ?? actions.test.error?.message}</p>

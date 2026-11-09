@@ -4,6 +4,7 @@ import {
   IconButton,
   LogOutIcon,
   RefreshIcon,
+  Select,
   TerminalIcon,
   UnlinkIcon,
 } from '@openbots/ui';
@@ -110,7 +111,7 @@ export function CodingAgentsSettings({
               key={account.agent}
               aria-label={account.label}
               data-agent={account.agent}
-              className="flex flex-col gap-3 rounded-md border p-4 text-sm"
+              className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm"
             >
               <header className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-medium">{account.label}</h3>
@@ -292,7 +293,7 @@ export function CoderCard({
       className={
         connectionOnly
           ? 'flex min-w-0 flex-col gap-3 text-sm'
-          : 'flex flex-col gap-3 rounded-md border bg-card p-4 text-sm'
+          : 'flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm'
       }
       aria-label={connectionOnly ? `${label} subscription` : label}
       data-agent={agent}
@@ -396,11 +397,10 @@ export function CoderCard({
           {choices.length ? (
             <label className="flex flex-col gap-1">
               <span className="font-medium">API key</span>
-              <select
+              <Select
                 aria-label={`${label} API key`}
                 value={providerId}
                 onChange={(e) => setProviderId(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
               >
                 <option value="">Choose a provider</option>
                 {choices.map((p) => (
@@ -408,7 +408,7 @@ export function CoderCard({
                     {p.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           ) : (
             <p className="text-muted-foreground">

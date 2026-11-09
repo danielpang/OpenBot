@@ -1,4 +1,5 @@
 import { botModelNeeds, type ModelConfig } from '@openbots/shared';
+import { Select } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { capabilitiesQuery } from '../../app/api.js';
 import { pickerModelsQuery } from '../models/api.js';
@@ -62,19 +63,19 @@ export function BotModelFields({
       {value && current?.capabilities.reasoning && (
         <label className="flex flex-col gap-1.5 text-sm">
           <span className="font-medium">Thinking</span>
-          <select
+          <Select
+            className="w-auto"
             value={thinkingOf(value.reasoning)}
             onChange={(event) =>
               onChange(withThinking(value, event.currentTarget.value as Thinking))
             }
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           >
             {THINKING_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
           <span className="text-xs text-muted-foreground">{THINKING_HELP}</span>
         </label>
       )}

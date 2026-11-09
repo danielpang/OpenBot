@@ -1,5 +1,6 @@
 import { unwrap, type components } from '@openbots/api-client';
 import { Button, Input } from '@openbots/ui';
+import { SettingsPanel } from '../../app/settings-layout.js';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FormEvent } from 'react';
 import { api, meQuery } from '../../app/api.js';
@@ -72,22 +73,28 @@ export function useSaveSettings() {
 export function LimitFields({ limits, ceilings }: { limits: Limits; ceilings?: Limits | null }) {
   const localAuth = useLocalAuth();
   return (
-    <fieldset className="grid grid-cols-2 gap-4">
-      <legend className="mb-2 text-sm font-medium">Limits</legend>
-      {(Object.keys(LIMIT_LABELS) as (keyof Limits)[]).map((key) => (
-        <label key={key} className="flex flex-col gap-1.5 text-sm">
-          {limitLabel(key, localAuth)}
-          <Input
-            name={key}
-            type="number"
-            min={1}
-            max={ceilings?.[key]}
-            step={1}
-            defaultValue={limits[key]}
-            required
-          />
-        </label>
-      ))}
+    <fieldset className="flex min-w-0 flex-col">
+      <legend className="mb-3 text-base font-semibold">Limits</legend>
+      <SettingsPanel>
+        {(Object.keys(LIMIT_LABELS) as (keyof Limits)[]).map((key) => (
+          <label
+            key={key}
+            className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5"
+          >
+            <span className="min-w-0 flex-1 text-foreground">{limitLabel(key, localAuth)}</span>
+            <Input
+              name={key}
+              type="number"
+              min={1}
+              max={ceilings?.[key]}
+              step={1}
+              defaultValue={limits[key]}
+              required
+              className="h-8 w-28 tabular-nums"
+            />
+          </label>
+        ))}
+      </SettingsPanel>
     </fieldset>
   );
 }
