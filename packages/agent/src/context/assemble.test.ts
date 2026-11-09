@@ -306,8 +306,9 @@ describe('repositories and coding agents (GH9, I9)', () => {
         '- danielpang/site (default branch trunk; not on the computer yet)',
         '</repositories>',
         '<coding_agents>Signed in: Claude Code (signed in as dana@example.com), Codex (API key). ' +
-          'Not signed in: pi. Your default: Claude Code. Pick one that is signed in; code_task ' +
-          'asks your owner to sign in to one that is not.</coding_agents>',
+          'Not signed in: pi. Your default: Claude Code. Leave agent and model out of code_task ' +
+          'unless your owner named them: it uses the default, and asks your owner to choose when ' +
+          'there is none, and to sign in when the agent is not.</coding_agents>',
         '',
         '## Memory',
       ].join('\n'),

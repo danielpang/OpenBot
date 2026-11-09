@@ -16,6 +16,7 @@ export {
   type ArtifactCardState,
 } from './renderers/artifact.js';
 export { chartTable, ChartWidget, niceTicks } from './renderers/chart.js';
+export { CoderChoiceWidget, coderChoiceModelError, firstModel } from './renderers/coder_choice.js';
 export {
   CoderLoginWidget,
   CoderSignInSteps,

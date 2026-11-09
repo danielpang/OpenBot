@@ -93,7 +93,7 @@ export function skillBlock(skill: ReferencedSkill): string {
 export interface CoderContext {
   repos: RepoRef[];
   accounts: CoderAccountView[];
-  /** The Bot's `coder.defaultAgent`, when set. */
+  /** The Bot's `coder.defaultAgent`, else the owner's default agent, when set. */
   defaultAgent?: CoderAgent;
 }
 
@@ -107,7 +107,8 @@ export async function loadCoderContext(
 ): Promise<CoderContext | undefined> {
   if (!services || !coderEnabled(policy)) return undefined;
   const [repos, accounts] = await Promise.all([services.repos(), services.accounts()]);
-  const defaultAgent = policy.coder.defaultAgent ?? services.defaultAgent;
+  const defaultAgent =
+    policy.coder.defaultAgent ?? services.defaultAgent ?? accounts.find((a) => a.isDefault)?.agent;
   return { repos, accounts, ...(defaultAgent ? { defaultAgent } : {}) };
 }
 
@@ -295,8 +296,11 @@ function agentsLine(accounts: CoderAccountView[], defaultAgent?: CoderAgent): st
   const parts = [
     signedIn.length ? `Signed in: ${signedIn.join(', ')}.` : 'No coding agent is signed in yet.',
     not.length ? `Not signed in: ${not.join(', ')}.` : null,
-    defaultAgent ? `Your default: ${CODER_AGENT_LABELS[defaultAgent]}.` : null,
-    'Pick one that is signed in; code_task asks your owner to sign in to one that is not.',
+    defaultAgent
+      ? `Your default: ${CODER_AGENT_LABELS[defaultAgent]}.`
+      : 'No default agent is set yet.',
+    'Leave agent and model out of code_task unless your owner named them: it uses the default, ' +
+      'and asks your owner to choose when there is none, and to sign in when the agent is not.',
   ];
   return parts.filter(Boolean).join(' ');
 }

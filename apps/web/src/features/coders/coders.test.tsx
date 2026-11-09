@@ -57,6 +57,8 @@ const account = (over: Partial<CoderAccount> & Pick<CoderAccount, 'agent'>): Cod
   planProvider: null,
   checkAvailable: over.agent === 'pi',
   signIn: ({ claude: 'link', codex: 'device', pi: 'terminal' } as const)[over.agent],
+  model: null,
+  isDefault: false,
   ...over,
 });
 
@@ -134,6 +136,18 @@ beforeEach(() => {
         a.agent === 'claude' ? { ...a, authKind: 'api_key', providerId } : a,
       );
       return Response.json({ account: agents[0] });
+    }
+    if (path === '/api/v1/coders/defaults' && request.method === 'PUT') {
+      const { defaultAgent, models } = body as {
+        defaultAgent?: CoderAccount['agent'] | null;
+        models?: Record<string, string | null>;
+      };
+      agents = agents.map((a) => ({
+        ...a,
+        ...(defaultAgent !== undefined ? { isDefault: a.agent === defaultAgent } : {}),
+        ...(models && a.agent in models ? { model: models[a.agent] || null } : {}),
+      }));
+      return Response.json({ agents });
     }
     if (path === '/api/v1/coders/codex/sign-out') {
       agents = agents.map((a) =>
@@ -257,6 +271,38 @@ describe('Settings > Coding agents (CA2)', () => {
     expect(card('claude').querySelector('a')?.getAttribute('href')).toBe('/settings/models');
     expect(buttonIn(card('claude'), 'Sign in')).toBeUndefined();
     expect(buttonIn(card('codex'), 'Use API key')).toBeUndefined();
+  });
+
+  it('saves the default agent and models (CA9)', async () => {
+    agents = agents.map((a) => (a.agent === 'claude' ? { ...a, model: 'sonnet' } : a));
+    render(<CodingAgentsSettings connectionsOnModels />);
+    const defaults = () => host.querySelector<HTMLElement>('[data-coder-defaults]')!;
+    await until(() => !!defaults(), 'the defaults');
+    const select = defaults().querySelector<HTMLSelectElement>('select')!;
+    const model = (label: string) =>
+      defaults().querySelector<HTMLInputElement>(`input[aria-label="${label} default model"]`)!;
+    const save = () => buttonIn(defaults(), 'Save defaults')!;
+    expect(select.value).toBe('');
+    expect(select.options[0]!.textContent).toBe('Ask each time');
+    expect(model('Claude Code').value).toBe('sonnet');
+    expect(save().disabled).toBe(true);
+
+    setValue(select, 'codex');
+    setValue(model('Codex'), '--yolo');
+    expect(defaults().textContent).toContain('A model name like');
+    expect(save().disabled).toBe(true);
+    setValue(model('Codex'), 'gpt-5.3-codex');
+    setValue(model('Claude Code'), '');
+    await act(async () => save().click());
+    await until(() => defaults().textContent!.includes('Saved'), 'the save');
+
+    const put = server.requests.find((r) => r.path === '/api/v1/coders/defaults')!;
+    expect(put.body).toEqual({
+      defaultAgent: 'codex',
+      models: { claude: null, codex: 'gpt-5.3-codex', pi: null },
+    });
+    expect(select.value).toBe('codex');
+    expect(save().disabled).toBe(true);
   });
 
   it('shows a card per agent with its version, status and error', async () => {

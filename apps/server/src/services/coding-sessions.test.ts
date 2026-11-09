@@ -365,6 +365,7 @@ describe('coding agents', () => {
           repo: 'ACME/relay',
           prompt: 'Fix the reconnect loop in the relay',
           mode: 'pr',
+          model: 'opus',
         }),
       );
       expect(started).toMatchObject({
@@ -383,6 +384,7 @@ describe('coding agents', () => {
         remoteUrl: 'https://github.com/acme/relay.git',
         base: 'main',
         mode: 'pr',
+        model: 'opus',
         messageId: started.posted.messageId,
         partIndex: 0,
       });
@@ -512,6 +514,7 @@ describe('coding agents', () => {
         .set({
           vendorSessionId: 'vendor-1',
           worktreePath: '/home/bot/repos/acme/relay/.worktrees/w1',
+          model: 'opus',
         })
         .where(eq(schema.codingSessions.botId, bot.id))
         .returning();
@@ -519,6 +522,7 @@ describe('coding agents', () => {
       const started = await t.inOrganization(async () =>
         (await services(run.id)).start({
           agent: 'codex',
+          model: 'haiku',
           repo: 'acme/relay',
           prompt: 'Now add a test',
           mode: 'edit',
@@ -532,6 +536,8 @@ describe('coding agents', () => {
         prompt: 'Now add a test',
         runId: run.id,
         agent: 'claude',
+        // The session's own model, not the one the call named (CA9).
+        model: 'opus',
         branch: ended!.branch,
         vendorSessionId: 'vendor-1',
         worktreePath: '/home/bot/repos/acme/relay/.worktrees/w1',
@@ -1073,6 +1079,8 @@ describe('coding agents', () => {
         planProvider: 'anthropic',
         checkAvailable: true,
         signIn: 'link',
+        model: null,
+        isDefault: false,
       });
       expect(agents[1]).toMatchObject({
         agent: 'codex',
@@ -1148,6 +1156,111 @@ describe('coding agents', () => {
         .where(
           and(eq(schema.coderAccounts.ownerId, danaId), eq(schema.coderAccounts.agent, 'codex')),
         );
+    });
+
+    it('keeps the default agent and models, one default at a time, per owner (CA9)', async () => {
+      const put = (cookie: string, body: unknown) => call(cookie, 'PUT', '/coders/defaults', body);
+      const pick = (agents: { agent: string; isDefault: boolean; model: string | null }[]) =>
+        agents.map((a) => [a.agent, a.isDefault, a.model]);
+
+      let res = await put(dana, { defaultAgent: 'codex', models: { codex: 'gpt-5.3-codex' } });
+      expect(res.status).toBe(200);
+      expect(pick(((await res.json()) as { agents: never[] }).agents)).toEqual([
+        ['claude', false, null],
+        ['codex', true, 'gpt-5.3-codex'],
+        ['pi', false, null],
+      ]);
+      res = await put(dana, { defaultAgent: 'claude', models: { claude: ' opus ' } });
+      expect(pick(((await res.json()) as { agents: never[] }).agents)).toEqual([
+        ['claude', true, 'opus'],
+        ['codex', false, 'gpt-5.3-codex'],
+        ['pi', false, null],
+      ]);
+      // The Bot sees them as the owner's defaults.
+      const context = await t.inOrganization(() =>
+        coderContextFor(t.ownerDeps, owner(), { toolPolicy: {} }),
+      );
+      expect(context.accounts.find((a) => a.agent === 'claude')).toMatchObject({
+        isDefault: true,
+        model: 'opus',
+      });
+      // Another owner's are their own.
+      const eves = (await (await call(eve, 'GET', '/coders')).json()) as { agents: never[] };
+      expect(pick(eves.agents).every(([, isDefault, model]) => !isDefault && !model)).toBe(true);
+      // A bad model name is refused; null and '' clear.
+      expect((await put(dana, { models: { claude: '--yolo' } })).status).toBe(400);
+      res = await put(dana, { defaultAgent: null, models: { claude: null, codex: '' } });
+      expect(pick(((await res.json()) as { agents: never[] }).agents)).toEqual([
+        ['claude', false, null],
+        ['codex', false, null],
+        ['pi', false, null],
+      ]);
+    });
+
+    it('saves a choice from the coder_choice card as the defaults, and resumes the run (CA9)', async () => {
+      const run = await waitingRun();
+      const [message] = await t.db
+        .insert(schema.messages)
+        .values({
+          workspaceId,
+          chatId: bot.chatId,
+          seq: 9_000,
+          authorType: 'bot',
+          authorId: bot.id,
+          parts: [
+            {
+              type: 'widget',
+              kind: 'coder_choice',
+              props: {
+                agents: [
+                  { agent: 'claude', signed_in: true },
+                  { agent: 'pi', signed_in: false },
+                ],
+              },
+            },
+          ],
+        })
+        .returning();
+      await t.db.insert(schema.widgetStates).values({
+        workspaceId,
+        messageId: message!.id,
+        partIndex: 0,
+        state: { status: 'pending' },
+        pendingRunId: run.id,
+      });
+      expect(
+        (
+          await call(eve, 'POST', `/messages/${message!.id}/widgets/0/action`, {
+            action: { type: 'choose', agent: 'pi', model: 'sonnet', remember: true },
+          })
+        ).status,
+      ).toBe(404);
+      const res = await call(dana, 'POST', `/messages/${message!.id}/widgets/0/action`, {
+        action: { type: 'choose', agent: 'pi', model: 'sonnet', remember: true },
+      });
+      expect(res.status).toBe(200);
+      const agents = (await (await call(dana, 'GET', '/coders')).json()) as {
+        agents: { agent: string; isDefault: boolean; model: string | null }[];
+      };
+      expect(agents.agents.find((a) => a.agent === 'pi')).toMatchObject({
+        isDefault: true,
+        model: 'sonnet',
+      });
+      const resumed = await runRow(run.id);
+      expect((resumed.state as RunState).resume?.output).toMatchObject({
+        chosen: true,
+        agent: 'pi',
+        model: 'sonnet',
+        saved_as_default: true,
+      });
+      expect(
+        (
+          await call(dana, 'POST', `/messages/${message!.id}/widgets/0/action`, {
+            action: { type: 'cancel' },
+          })
+        ).status,
+      ).toBe(409);
+      await call(dana, 'PUT', '/coders/defaults', { defaultAgent: null, models: { pi: null } });
     });
 
     it('signs out by emptying the config directory on the computer as coder', async () => {

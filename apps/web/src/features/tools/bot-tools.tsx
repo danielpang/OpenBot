@@ -386,7 +386,7 @@ function CoderSettings({
           }
           className="max-w-64"
         >
-          <option value="">Not set</option>
+          <option value="">Your default (Settings &gt; Coding agents)</option>
           {agentChoices.map((agent) => (
             <option key={agent} value={agent}>
               {CODER_AGENT_LABELS[agent]}
@@ -397,7 +397,10 @@ function CoderSettings({
 
       <fieldset className="flex flex-col gap-1.5">
         <legend className="mb-1 text-foreground">Model</legend>
-        <span className="text-xs">Leave a field empty to use the agent&apos;s own default.</span>
+        <span className="text-xs">
+          Leave a field empty to use your default from Settings &gt; Coding agents; with none set,
+          the Bot asks you to choose.
+        </span>
         <ul className="flex flex-col gap-2">
           {modelAgents.map((agent) => {
             const value = coder.models?.[agent] ?? '';
@@ -412,7 +415,7 @@ function CoderSettings({
                     type="text"
                     aria-label={`${CODER_AGENT_LABELS[agent]} model`}
                     aria-invalid={problem ? true : undefined}
-                    placeholder="the agent's default"
+                    placeholder="your default"
                     value={value}
                     maxLength={100}
                     autoComplete="off"

@@ -14,6 +14,12 @@ Click **+** beside the coding composer to attach screenshots/images or files, or
 
 Each turn accepts up to 10 files, at most 20 MiB per file and 50 MiB total, subject to the account's upload limit. The server verifies attachment ownership and purpose, then stages copies in a fresh directory under `/home/bot/repos/.openbots-attachments-*`, outside git worktrees. The agent receives local reference paths (and can inspect screenshots with its image-reading tool); these are not automatically committed. Files are retained on the computer for subsequent turns. Failed staging and rejected session transitions clean up their staging directory.
 
+## Choosing the agent and model
+
+Settings > Coding agents has a **Defaults** card: a default agent (Claude Code, Codex or pi) and a default model per agent, typed as that agent's CLI names it (suggestions are offered). A Bot's own settings, under Tools and permissions, override them for that Bot.
+
+When a Bot starts a coding task and neither the Bot nor your defaults name both an agent and a model, the Bot asks in the chat with a **Choose a coding agent** card: pick the agent, pick or type the model, and leave "Use as my default" ticked to save the choice so later tasks do not ask. Cancel tells the Bot not to start. A continued session keeps the agent and model it started with.
+
 ## Edit approvals
 
 “Ask before edits” is the default. “Accept edits” updates ordinary bot file-write/edit rules and the coding-edit rule; other configured policies are preserved. Bot settings and approval cards expose the same setting.

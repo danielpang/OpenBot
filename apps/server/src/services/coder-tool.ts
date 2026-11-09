@@ -17,6 +17,7 @@ export function coderServices(deps: AppDeps, run: CoderRun): CoderServices {
   const policy = resolveToolPolicy(run.bot.toolPolicy);
   return {
     ...(policy.coder.defaultAgent ? { defaultAgent: policy.coder.defaultAgent } : {}),
+    ...(policy.coder.models ? { models: policy.coder.models } : {}),
     repos: async () => allowedRepos(await reposForContext(deps, owner), policy.coder.allowedRepos),
     accounts: async () => (await listCoderAccounts(deps, owner)).map(toAccountView),
     start: (input) => startCodingSession(deps, run, input),

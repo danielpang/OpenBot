@@ -115,6 +115,15 @@ export const setCoderApiKey = (agent: CoderAgent, providerId: string) =>
     (r) => asAccount(r.account),
   );
 
+/** The default agent and models a coding task uses when the Bot names none (CA9). */
+export type CoderDefaults = components['schemas']['CoderDefaults'];
+
+export const setCoderDefaults = (defaults: CoderDefaults) =>
+  unwrap(api.PUT('/api/v1/coders/defaults', { body: defaults })).then((r) => ({
+    ...r,
+    agents: r.agents.map(asAccount),
+  }));
+
 export const signOutCoder = (agent: CoderAgent) =>
   unwrap(api.POST('/api/v1/coders/{agent}/sign-out', path(agent))).then((r) =>
     asAccount(r.account),

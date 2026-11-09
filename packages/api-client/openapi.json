@@ -5372,6 +5372,14 @@
             "type": "string",
             "enum": ["link", "device", "terminal"],
             "description": "How the agent signs in: a link to open, a link and a code to enter there (`device`), or in the computer's terminal"
+          },
+          "model": {
+            "type": ["string", "null"],
+            "description": "The owner's default model for this agent, as its CLI names it; null when not chosen, so a coding task asks"
+          },
+          "isDefault": {
+            "type": "boolean",
+            "description": "The owner's default agent for coding tasks; at most one is"
           }
         },
         "required": [
@@ -5388,7 +5396,9 @@
           "lastErrorKind",
           "planProvider",
           "checkAvailable",
-          "signIn"
+          "signIn",
+          "model",
+          "isDefault"
         ]
       },
       "CoderLogin": {
@@ -5488,6 +5498,74 @@
           }
         },
         "required": ["providerId"],
+        "additionalProperties": false
+      },
+      "CoderDefaults": {
+        "type": "object",
+        "properties": {
+          "defaultAgent": {
+            "type": ["string", "null"],
+            "enum": ["claude", "codex", "pi", null],
+            "description": "The default agent; null clears it, so a coding task asks. Absent keeps it"
+          },
+          "models": {
+            "type": "object",
+            "properties": {
+              "claude": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                  },
+                  {
+                    "type": "string",
+                    "enum": [""]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "codex": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                  },
+                  {
+                    "type": "string",
+                    "enum": [""]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pi": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                  },
+                  {
+                    "type": "string",
+                    "enum": [""]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "description": "A default model per agent; null or an empty string clears it. Agents left out keep theirs"
+          }
+        },
         "additionalProperties": false
       },
       "CodingSession": {
@@ -15588,6 +15666,62 @@
           },
           "503": {
             "description": "The computer could not start (`COMPUTER_UNAVAILABLE`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/coders/defaults": {
+      "put": {
+        "tags": ["coders"],
+        "summary": "Set the default coding agent and models",
+        "description": "The agent and model a coding task uses when neither the task nor the Bot names one. Without them the task asks the owner to choose.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoderDefaults"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One per agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "agents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CoderAccount"
+                      }
+                    }
+                  },
+                  "required": ["agents"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
             "content": {
               "application/problem+json": {
                 "schema": {

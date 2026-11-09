@@ -870,7 +870,7 @@ describe('Bot tools tab (T5)', () => {
     // A stored model for an agent this build does not run stays listed so it can be cleared.
     expect(model('pi').value).toBe('sonnet:high');
     expect(model('Codex')).toBeNull();
-    expect(model('Claude Code').placeholder).toBe("the agent's default");
+    expect(model('Claude Code').placeholder).toBe('your default');
     setValue(model('Claude Code'), '--dangerously-skip');
     const row = host.querySelector('[data-coder-model="claude"]')!;
     expect(row.querySelector('[role="alert"]')?.textContent).toBe(

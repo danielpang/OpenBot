@@ -7,6 +7,7 @@ import {
   widgetToolCall,
   widgetToolResult,
   type ApprovalState,
+  type CoderChoiceState,
   type FormState,
 } from '@openbots/widgets';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
@@ -26,6 +27,7 @@ import {
   type ApprovalRow,
 } from './approvals.js';
 import { setState } from './bot-state.js';
+import { writeCoderDefaults } from './coder-accounts.js';
 import { onCoderLoginAction } from './coder-login.js';
 import { onCodingSessionAction } from './coder-widget-actions.js';
 import { threadBotId } from './chats.js';
@@ -478,6 +480,7 @@ const SETTLED_KINDS = new Set([
   'login_request',
   'coding_session',
   'coder_login',
+  'coder_choice',
 ]);
 
 /**
@@ -499,6 +502,21 @@ const BUILTIN_HOOKS: Record<string, WidgetActionHook> = {
         action as Parameters<typeof onCoderLoginAction>[2],
       ),
   }),
+  // A choice kept as the owner's defaults (CA9) is saved with the answer.
+  coder_choice: async (_deps, tx, { message, state }) => {
+    const chosen = state as CoderChoiceState;
+    if (chosen.status !== 'chosen' || !chosen.remember || !chosen.agent || !chosen.model) return;
+    const [chat] = await tx
+      .select({ ownerId: schema.chats.ownerId })
+      .from(schema.chats)
+      .where(eq(schema.chats.id, message.chatId));
+    if (!chat) return;
+    await writeCoderDefaults(
+      tx,
+      { id: chat.ownerId, workspaceId: message.workspaceId },
+      { defaultAgent: chosen.agent, models: { [chosen.agent]: chosen.model } },
+    );
+  },
 };
 
 export const widgetClosed = (message: string) => new DomainError(409, 'WIDGET_CLOSED', message);

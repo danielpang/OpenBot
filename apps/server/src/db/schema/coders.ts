@@ -4,6 +4,7 @@ import type {
   CoderTranscriptEvent,
   CoderUsage,
 } from '@openbots/shared';
+import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
@@ -13,6 +14,7 @@ import {
   pgTable,
   text,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { artifacts } from './artifacts.js';
@@ -51,10 +53,22 @@ export const coderAccounts = pgTable(
     lastError: text('last_error'),
     /** The CLI's version on the computer, from `<cli> --version`. */
     version: text('version'),
+    /**
+     * The owner's default model for this agent (Settings > Coding agents),
+     * as its CLI names it; null means not chosen, so `code_task` asks.
+     */
+    model: text('model'),
+    /** The owner's default agent: at most one row per owner. */
+    isDefault: boolean('is_default').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [unique('coder_accounts_owner_agent').on(t.workspaceId, t.ownerId, t.agent)],
+  (t) => [
+    unique('coder_accounts_owner_agent').on(t.workspaceId, t.ownerId, t.agent),
+    uniqueIndex('coder_accounts_owner_default')
+      .on(t.workspaceId, t.ownerId)
+      .where(sql`${t.isDefault}`),
+  ],
 );
 
 /**
@@ -157,6 +171,12 @@ export const codingSessions = pgTable(
     branch: text('branch'),
     base: text('base'),
     mode: text('mode').notNull(),
+    /**
+     * The model the session runs with, as its CLI names it, fixed when the
+     * session starts so a continued session keeps it; null for sessions from
+     * before it was kept, which use the Bot's setting.
+     */
+    model: text('model'),
     prompt: text('prompt').notNull(),
     /** Its name in the drawer, from the first prompt (`sessionTitle`); a later prompt leaves it. */
     title: text('title'),
