@@ -13,6 +13,7 @@ import {
   resumeFromCheckpoint,
   trimContext,
   runToolCall,
+  providerToolNames,
   toModelMessages,
   toolCallMessages,
   toolFacts,
@@ -349,6 +350,10 @@ async function processRun(
     }
     const policy = options.policy ?? (await loadRunPolicy(deps, run, bot, facts));
     const toolNames = resolved.toolNames?.(Object.keys(tools));
+    // The transcript stores OpenBots names; the request offers the provider's.
+    const spelled = (c: typeof context) =>
+      toolNames ? { ...c, messages: providerToolNames(c.messages, toolNames.toProvider) } : c;
+    context = spelled(context);
     const labelsOf = (name: string) => tools[name]?.label;
     const startInput = state?.input;
     /** The send an email draft asked for (W2) settles the draft widget. */
@@ -561,7 +566,7 @@ async function processRun(
           type: 'error',
           label: `Context too long; retrying with the last ${window} messages`,
         });
-        context = await buildContext(deps, run, bot, chat, embedder, window, vision);
+        context = spelled(await buildContext(deps, run, bot, chat, embedder, window, vision));
         messages = [...context.messages, ...madeCalls];
         contextLength = context.messages.length;
         seenSeq = context.seenSeq;

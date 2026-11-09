@@ -5,6 +5,9 @@ import {
   assembleContext,
   instructionsText,
   loadCoderContext,
+  providerToolNames,
+  toModelMessages,
+  type TranscriptMessage,
   type CoderContext,
   type ContextInput,
 } from './assemble.js';
@@ -349,5 +352,159 @@ describe('repositories and coding agents (GH9, I9)', () => {
       (await loadCoderContext(services, resolveToolPolicy({ coder: { defaultAgent: 'pi' } })))
         ?.defaultAgent,
     ).toBe('pi');
+  });
+});
+
+describe("replaying the Bot's own tool calls", () => {
+  const owner = (seq: number, text: string): TranscriptMessage => ({
+    seq,
+    author: { kind: 'owner', handle: 'dana' },
+    parts: [{ type: 'text', text }],
+  });
+  const self = (seq: number, parts: TranscriptMessage['parts']): TranscriptMessage => ({
+    seq,
+    author: { kind: 'bot', handle: 'scout', self: true },
+    parts,
+  });
+  const call = (id: string, name = 'send_email') =>
+    ({ type: 'tool_call', tool_call_id: id, tool_name: name, args: {} }) as const;
+  const result = (id: string, value: unknown = { ok: true }, name = 'send_email') =>
+    ({ type: 'tool_result', tool_call_id: id, tool_name: name, result: value }) as const;
+
+  /** Every tool message answers exactly the calls of the assistant message before it. */
+  function expectPaired(messages: ReturnType<typeof toModelMessages>) {
+    messages.forEach((m, i) => {
+      if (m.role !== 'tool') return;
+      const before = messages[i - 1];
+      expect(before?.role).toBe('assistant');
+      const calls =
+        before?.role === 'assistant' && typeof before.content !== 'string'
+          ? before.content.filter((c) => c.type === 'tool-call').map((c) => c.toolCallId)
+          : [];
+      expect(m.content.map((c) => (c.type === 'tool-result' ? c.toolCallId : null))).toEqual(calls);
+    });
+  }
+
+  it('pairs a result stored in the message a run resumed into with its call', () => {
+    // A run asks to send an email, waits for approval, and resumes into a new message.
+    const messages = toModelMessages([
+      owner(1, 'Email Sam'),
+      self(2, [
+        call('a', 'web_search'),
+        result('a', {}, 'web_search'),
+        call('b'),
+        { type: 'widget', kind: 'approval', props: {} },
+      ]),
+      self(3, [result('b'), { type: 'text', text: 'Sent.' }]),
+      owner(4, 'Thanks. Anything else?'),
+    ]);
+    expectPaired(messages);
+    expect(messages.map((m) => m.role)).toEqual([
+      'user',
+      'assistant',
+      'tool',
+      'assistant',
+      'tool',
+      'assistant',
+      'user',
+    ]);
+    const tool = messages[4];
+    expect(tool?.role === 'tool' && tool.content[0]).toMatchObject({ toolCallId: 'b' });
+  });
+
+  it('uses the real result over the waiting placeholder a posted widget left', () => {
+    const messages = toModelMessages([
+      owner(1, 'Ask the researcher'),
+      self(2, [call('b'), result('b', { status: 'waiting_for_owner' })]),
+      self(3, [result('b', { sent: true }), { type: 'text', text: 'Done.' }]),
+    ]);
+    expectPaired(messages);
+    const tool = messages[2];
+    const output = tool?.role === 'tool' ? tool.content[0] : undefined;
+    expect(JSON.stringify(output)).toContain('sent');
+    expect(JSON.stringify(output)).not.toContain('waiting_for_owner');
+  });
+
+  it('keeps parallel results together when a card lands between them', () => {
+    const messages = toModelMessages([
+      owner(1, 'Make two artifacts'),
+      self(2, [
+        call('a', 'create_artifact'),
+        call('b', 'create_artifact'),
+        result('a', {}, 'create_artifact'),
+        { type: 'artifact', artifact_id: 'x', title: 'One' },
+        result('b', {}, 'create_artifact'),
+        { type: 'artifact', artifact_id: 'y', title: 'Two' },
+        { type: 'text', text: 'Both made.' },
+      ]),
+    ]);
+    expectPaired(messages);
+    expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
+  });
+
+  it('drops results whose call is not in the transcript', () => {
+    const messages = toModelMessages([
+      owner(1, 'Hello'),
+      self(2, [result('gone'), { type: 'text', text: 'Hi.' }]),
+    ]);
+    expectPaired(messages);
+    expect(messages).toEqual([
+      { role: 'user', content: '[@dana (owner)] Hello' },
+      { role: 'assistant', content: [{ type: 'text', text: 'Hi.' }] },
+    ]);
+  });
+
+  it('pairs reused call ids by position and makes replayed ids unique', () => {
+    const messages = toModelMessages([
+      owner(1, 'Search twice'),
+      self(2, [
+        call('functions.search:0', 'search'),
+        result('functions.search:0', { n: 1 }, 'search'),
+        call('functions.search:0', 'search'),
+        result('functions.search:0', { n: 2 }, 'search'),
+      ]),
+    ]);
+    expectPaired(messages);
+    const ids = messages.flatMap((m) =>
+      m.role === 'assistant' && typeof m.content !== 'string'
+        ? m.content.flatMap((c) => (c.type === 'tool-call' ? [c.toolCallId] : []))
+        : [],
+    );
+    expect(ids).toEqual(['functions_search_0', 'functions_search_0_2']);
+    const outputs = messages.filter((m) => m.role === 'tool').map((m) => JSON.stringify(m));
+    expect(outputs[0]).toContain('\\"n\\":1');
+    expect(outputs[1]).toContain('\\"n\\":2');
+  });
+
+  it('replays unparsable args as an object and skips whitespace-only text', () => {
+    const messages = toModelMessages([
+      owner(1, 'Go'),
+      self(2, [
+        { type: 'text', text: '\n\n' },
+        { type: 'tool_call', tool_call_id: 'a', tool_name: 'x', args: '{"q": "tr' },
+        { ...result('a', { error: 'bad json' }, 'x'), is_error: true },
+      ]),
+    ]);
+    expect(messages[1]).toEqual({
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'a', toolName: 'x', input: {} }],
+    });
+  });
+
+  it("renames replayed tools to the provider's spelling", () => {
+    const messages = providerToolNames(
+      toModelMessages([
+        owner(1, 'Go'),
+        self(2, [call('a', 'notion.search'), result('a', {}, 'notion.search')]),
+      ]),
+      (name) => name.replace('.', '_'),
+    );
+    expectPaired(messages);
+    const names = messages.flatMap((m) =>
+      typeof m.content === 'string'
+        ? []
+        : m.content.flatMap((c) => ('toolName' in c ? [c.toolName] : [])),
+    );
+    expect(names).toEqual(['notion_search', 'notion_search']);
   });
 });
