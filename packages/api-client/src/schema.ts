@@ -7644,6 +7644,96 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/git-identity': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Who the owner's coding sessions commit as */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The saved identity, with the account fallback */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['GitIdentity'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    /**
+     * Sets who the owner's coding sessions commit as
+     * @description Also writes the name and email into git's global config on the owner's computer when it runs, for commits made by hand there.
+     */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['GitIdentityInput'];
+        };
+      };
+      responses: {
+        /** @description The saved identity */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['GitIdentitySaved'];
+          };
+        };
+        /** @description A name or email that is not valid (`GIT_IDENTITY_NAME_INVALID`, `GIT_IDENTITY_EMAIL_INVALID`), or committing as the owner with no email (`GIT_IDENTITY_EMAIL_REQUIRED`) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/git-connections': {
     parameters: {
       query?: never;
@@ -13462,6 +13552,38 @@ export interface components {
     RepoPatch: {
       keepCloned?: boolean;
       pinned?: boolean;
+    };
+    GitIdentity: {
+      /**
+       * @description `bot`: the Bot is author and committer, the owner co-author. `owner`: the owner is author and committer
+       * @enum {string}
+       */
+      commitAs: 'bot' | 'owner';
+      /** @description The saved name; null uses the account name */
+      name: string | null;
+      /** @description The saved email; null uses the account email */
+      email: string | null;
+      /** @description The signed-in account's name and email, the fallback */
+      account: {
+        name: string;
+        email: string;
+      };
+    };
+    GitIdentitySaved: components['schemas']['GitIdentity'] & {
+      /**
+       * @description Whether git's global config on the owner's computer took the identity: `off` when it was not running
+       * @enum {string}
+       */
+      computer: 'applied' | 'off' | 'failed';
+    };
+    GitIdentityInput: {
+      /**
+       * @description `bot`: the Bot is author and committer, the owner co-author. `owner`: the owner is author and committer
+       * @enum {string}
+       */
+      commitAs: 'bot' | 'owner';
+      name: string | null;
+      email: string | null;
     };
     GitConnection: {
       /** Format: uuid */

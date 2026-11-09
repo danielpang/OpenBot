@@ -182,3 +182,15 @@ export function ago(iso: string | null | undefined, now = Date.now()): string | 
     year: 'numeric',
   });
 }
+
+/** Who coding sessions commit as, and the owner's name and address for git (GH8). */
+export type GitIdentity = components['schemas']['GitIdentity'];
+export type GitIdentityInput = components['schemas']['GitIdentityInput'];
+
+export const gitIdentityQuery = queryOptions({
+  queryKey: ['git-identity'],
+  queryFn: () => unwrap(api.GET('/api/v1/git-identity')),
+});
+
+export const putGitIdentity = (body: GitIdentityInput) =>
+  unwrap(api.PUT('/api/v1/git-identity', { body }));

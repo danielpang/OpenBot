@@ -493,6 +493,12 @@ async function start(deps: AppDeps, owner: Owner, by: AuditActor): Promise<Start
   row = await setStatus(deps, row, 'running', { lastUsedAt: new Date(), spec: settledSpec(row) });
   await auditComputer(deps, row, by, 'computer.start', { durationMs: Date.now() - began });
   queueRepoJobs(deps, row.id);
+  // The owner's git identity in the computer's git config (git-identity.ts),
+  // for commits made by hand in the terminal. Loaded here, not imported, so
+  // the two modules do not import each other.
+  void import('./git-identity.js')
+    .then(({ applyGitIdentityOnComputer }) => applyGitIdentityOnComputer(deps, owner))
+    .catch((error: unknown) => deps.logger.warn({ err: error }, 'git identity failed'));
   // The hour's wallpaper (K5) on the computer's own clock (its TZ); the agent
   // keeps it current from here.
   agentFor(deps, row)

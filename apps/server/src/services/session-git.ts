@@ -1,6 +1,6 @@
 import { posix } from 'node:path';
 import type { CoderChangedFile, CoderCommit } from '@openbots/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
 import { GITHUB_API } from '../builtins/github.js';
@@ -29,29 +29,57 @@ const identityName = (text: string) =>
     .trim();
 
 /**
- * Who the commits are by (GH8): the Bot as author and committer,
- * `<Bot name> (OpenBots)` at `<bot handle>@openbots.local`, and the owner
- * credited as co-author, with their name and address.
+ * Who the commits are by (GH8), from the owner's git identity
+ * (git-identity.ts). By default the Bot is author and committer,
+ * `<Bot name> (OpenBots)` at `<bot handle>@openbots.local`, and the owner is
+ * credited as co-author with the name and address they saved, else their
+ * account's. With `commitAs: 'owner'` the owner is author and committer, and
+ * there is no co-author.
  */
 export async function sessionIdentity(
   deps: Pick<AppDeps, 'db'>,
   bot: Pick<typeof schema.bots.$inferSelect, 'name' | 'handle'>,
   ownerId: string,
+  workspaceId?: string,
 ): Promise<Required<Pick<SessionIdentity, 'gitIdentity'>> & SessionIdentity> {
   const [owner] = await deps.db
     .select({ name: schema.users.name, email: schema.users.email })
     .from(schema.users)
     .where(eq(schema.users.id, ownerId))
     .catch(() => []);
-  const gitIdentity = {
+  const [saved] = workspaceId
+    ? await deps.db
+        .select()
+        .from(schema.gitIdentities)
+        .where(
+          and(
+            eq(schema.gitIdentities.ownerId, ownerId),
+            eq(schema.gitIdentities.workspaceId, workspaceId),
+          ),
+        )
+        .catch(() => [])
+    : [];
+  const botIdentity = {
     name: `${identityName(bot.name)} (OpenBots)`,
     email: `${bot.handle}@openbots.local`,
   };
-  const name = owner ? identityName(owner.name) || owner.email : '';
-  return owner?.email && !/[<>\s]/.test(owner.email)
-    ? { gitIdentity, coAuthor: { name, email: owner.email } }
-    : { gitIdentity };
+  const email = saved?.email || owner?.email || '';
+  const usable = !!email && !/[<>\s]/.test(email);
+  const name = identityName(saved?.name || owner?.name || '') || email.split('@')[0] || email;
+  if (saved?.commitAs === 'owner') {
+    const ownEmail =
+      saved.email || (owner && !PLACEHOLDER_EMAIL.test(owner.email) ? owner.email : '');
+    if (ownEmail && !/[<>\s]/.test(ownEmail)) {
+      return { gitIdentity: { name: name || ownEmail, email: ownEmail } };
+    }
+  }
+  return usable
+    ? { gitIdentity: botIdentity, coAuthor: { name, email } }
+    : { gitIdentity: botIdentity };
 }
+
+/** The Mac app's local owner address: no one on GitHub, so never a commit's author. */
+const PLACEHOLDER_EMAIL = /@openbots\.local$/i;
 
 /** What the branch has against its base, from git; empty when git cannot say. */
 export async function branchResult(

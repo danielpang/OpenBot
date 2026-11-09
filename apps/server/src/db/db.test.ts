@@ -33,6 +33,7 @@ const SECTION_4_TABLES = [
   'coder_logins',
   // Git connections (I17).
   'git_connections',
+  'git_identities',
   'skills',
   'bot_skills',
   'routines',

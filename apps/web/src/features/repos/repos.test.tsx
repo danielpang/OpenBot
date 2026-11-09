@@ -100,6 +100,12 @@ let remotes: RemoteRepo[];
 let repos: ReturnType<typeof repo>[];
 let found: { path: string; remoteUrl: string; fullName: string | null }[];
 let rescuePolls: number;
+let identity: {
+  commitAs: 'bot' | 'owner';
+  name: string | null;
+  email: string | null;
+  account: { name: string; email: string };
+};
 let actAsAnswer: 'ok' | 'needs-sign-in';
 let syncReauthorize: boolean;
 let deviceNext: 'authorization' | 'installation' | 'connected' | 'error';
@@ -135,6 +141,12 @@ beforeEach(() => {
     },
   ];
   rescuePolls = 0;
+  identity = {
+    commitAs: 'bot',
+    name: null,
+    email: null,
+    account: { name: 'Daniel', email: 'owner@openbots.local' },
+  };
   server.handle = async (request) => {
     const { pathname, searchParams } = new URL(request.url);
     const method = request.method;
@@ -182,6 +194,14 @@ beforeEach(() => {
         url: 'https://github.com/settings/apps/new?state=s1',
         manifest: { name: 'OpenBots', url: 'https://bots.example.com' },
       });
+    }
+    if (pathname === '/api/v1/git-identity') {
+      if (method === 'PUT') {
+        const body = await json();
+        identity = { ...identity, ...body } as typeof identity;
+        return Response.json({ ...identity, computer: 'applied' });
+      }
+      return Response.json(identity);
     }
     if (pathname === '/api/v1/git-connections') return Response.json({ connections });
     if (pathname === '/api/v1/git-connections/token') {
@@ -463,6 +483,28 @@ describe('the GitHub card (GH1, GH8)', () => {
     click(button('Disconnect', row(CONN)));
     await until(() => !row(CONN), 'disconnected');
     expect(sent('DELETE', `/api/v1/git-connections/${CONN}`)).toHaveLength(1);
+    noDashes();
+  });
+
+  it('saves who commits, with the name and email git uses on the computer', async () => {
+    render(<GithubCard admin />);
+    const form = () => host.querySelector<HTMLFormElement>('form[aria-label="Commit identity"]');
+    await until(() => !!form(), 'the commit identity');
+    expect(form()!.textContent).toContain('Add the email on your GitHub account');
+    const me = [...form()!.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(
+      (b) => b.textContent === 'Me',
+    )!;
+    click(me);
+    setValue(form()!.querySelector<HTMLInputElement>('input[type="email"]')!, 'dan@example.com');
+    expect(form()!.querySelector('[data-identity-preview]')!.textContent).toContain(
+      'Author: Daniel <dan@example.com>',
+    );
+    act(() => form()!.requestSubmit());
+    await until(() => sent('PUT', '/api/v1/git-identity').length === 1, 'the save');
+    expect(sent('PUT', '/api/v1/git-identity')).toEqual([
+      { commitAs: 'owner', name: null, email: 'dan@example.com' },
+    ]);
+    await until(() => form()!.textContent!.includes('set on the computer'), 'the saved note');
     noDashes();
   });
 

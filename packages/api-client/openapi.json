@@ -6184,6 +6184,76 @@
         },
         "additionalProperties": false
       },
+      "GitIdentity": {
+        "type": "object",
+        "properties": {
+          "commitAs": {
+            "type": "string",
+            "enum": ["bot", "owner"],
+            "description": "`bot`: the Bot is author and committer, the owner co-author. `owner`: the owner is author and committer"
+          },
+          "name": {
+            "type": ["string", "null"],
+            "description": "The saved name; null uses the account name"
+          },
+          "email": {
+            "type": ["string", "null"],
+            "description": "The saved email; null uses the account email"
+          },
+          "account": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "email"],
+            "description": "The signed-in account's name and email, the fallback"
+          }
+        },
+        "required": ["commitAs", "name", "email", "account"]
+      },
+      "GitIdentitySaved": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GitIdentity"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "computer": {
+                "type": "string",
+                "enum": ["applied", "off", "failed"],
+                "description": "Whether git's global config on the owner's computer took the identity: `off` when it was not running"
+              }
+            },
+            "required": ["computer"]
+          }
+        ]
+      },
+      "GitIdentityInput": {
+        "type": "object",
+        "properties": {
+          "commitAs": {
+            "type": "string",
+            "enum": ["bot", "owner"],
+            "description": "`bot`: the Bot is author and committer, the owner co-author. `owner`: the owner is author and committer"
+          },
+          "name": {
+            "type": ["string", "null"],
+            "maxLength": 200
+          },
+          "email": {
+            "type": ["string", "null"],
+            "maxLength": 300
+          }
+        },
+        "required": ["commitAs", "name", "email"],
+        "additionalProperties": false
+      },
       "GitConnection": {
         "type": "object",
         "properties": {
@@ -16974,6 +17044,97 @@
           },
           "409": {
             "description": "The account has no computer yet (`NO_COMPUTER`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-identity": {
+      "get": {
+        "tags": ["git-connections"],
+        "summary": "Who the owner's coding sessions commit as",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The saved identity, with the account fallback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitIdentity"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["git-connections"],
+        "summary": "Sets who the owner's coding sessions commit as",
+        "description": "Also writes the name and email into git's global config on the owner's computer when it runs, for commits made by hand there.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitIdentityInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitIdentitySaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A name or email that is not valid (`GIT_IDENTITY_NAME_INVALID`, `GIT_IDENTITY_EMAIL_INVALID`), or committing as the owner with no email (`GIT_IDENTITY_EMAIL_REQUIRED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
             "content": {
               "application/problem+json": {
                 "schema": {
