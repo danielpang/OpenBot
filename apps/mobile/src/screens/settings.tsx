@@ -100,6 +100,28 @@ export function SettingsScreen() {
           onPress={() => router.push('/(onboarding)/welcome')}
         />
       </Section>
+      <Section title="Skills">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Skills library"
+          disabled={!mobile.client}
+          onPress={() => router.push('/skills')}
+          style={({ pressed }) => ({ opacity: !mobile.client ? 0.45 : pressed ? 0.7 : 1 })}
+        >
+          <Card>
+            <View style={row.base}>
+              <Icon name="sparkles-outline" />
+              <View style={{ flex: 1 }}>
+                <Label weight="600">Skills library</Label>
+                <Label muted size={13}>
+                  Write Skills, fill them from a file, or import them from GitHub.
+                </Label>
+              </View>
+              <Icon name="chevron-forward" size={17} />
+            </View>
+          </Card>
+        </Pressable>
+      </Section>
       <Section title="Appearance">
         <Card>
           {(
@@ -213,8 +235,8 @@ export function SettingsScreen() {
           </Label>
         </Card>
         <Label size={13} muted>
-          Model provider setup, Skills, Connectors, computer control and organization administration
-          are available on your computer. Change a Bot’s model in Bot details → About.
+          Model provider setup, Connectors, computer control and organization administration are
+          available on your computer. Change a Bot’s model and Skills in Bot details → About.
         </Label>
       </Section>
     </Page>

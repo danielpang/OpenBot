@@ -178,11 +178,13 @@ apps/mobile/
 | Pair       | The camera, then the server's name and the path found (direct or relay), then the name to pair as                                         | Pair; on a server with no owner (V2), the owner's name, a provider key with Test, and the first Bot |
 | Bots       | Pinned, Bots, Groups; avatar animated by `bot.state`, name, label, the current action under it when working                               | Open; New (a Bot from a name and avatar; a group of 2 to 6)                                         |
 | Transcript | Title bar (name, label, Preview dot); messages with parts, threads and reactions; the composer                                            | Send text, photos, files; `@`; react; open a thread; answer a widget; the Bot menu                  |
-| Bot menu   | Activity (run steps for the current or last run), Preview (view only), Artifacts, Routines, About (model, tools, Skills, read only)       | Run a Routine now; enable or disable it; open an Artifact                                           |
+| Bot menu   | Activity (run steps for the current or last run), Preview (view only), Artifacts, Routines, About (model, tools, Skills on or off)        | Run a Routine now; enable or disable it; open an Artifact                                           |
 | Inbox      | Pending approvals, questions and sign-in requests across Bots, newest first, each with its Bot and the tool and arguments or the question | Approve, Deny, Answer, Open; the tab's badge is the count                                           |
 | Settings   | Hosts (name, kind, path in use, last seen); This device (its name, notifications per kind, Face ID); About                                | Add, switch, remove a host; rename the device; sign out of an account host                          |
 
-Not on the phone (M10): Takeover, the terminal, the computer's files, Connectors, Skills editing, Settings > Models, organization administration. Each shows a one-line "On the desktop" where the web app would have it.
+Skills (Settings > Skills library): write, edit and delete Skills, fill a new one from a markdown file in Files, and import Skills from a GitHub link.
+
+Not on the phone (M10): Takeover, the terminal, the computer's files, Connectors, Settings > Models, organization administration. Each shows a one-line "On the desktop" where the web app would have it.
 
 ---
 
