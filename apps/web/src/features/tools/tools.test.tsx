@@ -93,6 +93,9 @@ const server = vi.hoisted(() => {
           version: null,
           lastError: null,
           providerId: null,
+          // The owner's defaults (Settings > Coding agents): Claude Code with opus.
+          isDefault: agent === 'claude',
+          model: agent === 'claude' ? 'opus' : null,
         })),
       });
     }
@@ -836,11 +839,18 @@ describe('Bot tools tab (T5)', () => {
     act(() => repo('danielpang/site').click());
     // Only the agents this build runs are offered.
     await until(
-      () => [...select('Default coding agent').options].some((o) => o.value === 'claude'),
+      () => [...select('Agent for this Bot').options].some((o) => o.value === 'claude'),
       'the agents',
     );
-    expect([...select('Default coding agent').options].map((o) => o.value)).toEqual(['', 'claude']);
-    setValue(select('Default coding agent'), 'claude');
+    expect([...select('Agent for this Bot').options].map((o) => o.value)).toEqual(['', 'claude']);
+    // An empty choice says which of the owner's defaults it follows, and that it is this Bot's.
+    expect(select('Agent for this Bot').options[0]!.textContent).toBe(
+      'Use my default (Claude Code)',
+    );
+    expect(settings.querySelector('[data-coder-override-note]')?.textContent).toBe(
+      'The agent and model below apply to this Bot only. Left on “Use my default”, it follows your defaults in Settings > Coding agents.',
+    );
+    setValue(select('Agent for this Bot'), 'claude');
     setValue(select('Push a branch approval'), 'auto');
     setValue(select('Open a pull request approval'), 'deny');
     act(() => button('Save')!.closest('form')!.requestSubmit());
@@ -865,12 +875,14 @@ describe('Bot tools tab (T5)', () => {
       />,
     );
     const model = (label: string) =>
-      host.querySelector<HTMLInputElement>(`input[aria-label="${label} model"]`)!;
+      host.querySelector<HTMLInputElement>(`input[aria-label="${label} model for this Bot"]`)!;
     await until(() => !!model('Claude Code'), 'the model fields');
     // A stored model for an agent this build does not run stays listed so it can be cleared.
     expect(model('pi').value).toBe('sonnet:high');
     expect(model('Codex')).toBeNull();
-    expect(model('Claude Code').placeholder).toBe('your default');
+    // An empty field shows the owner's default model it falls back to.
+    expect(model('Claude Code').placeholder).toBe('opus (my default)');
+    expect(model('pi').placeholder).toBe('ask each time (my default)');
     setValue(model('Claude Code'), '--dangerously-skip');
     const row = host.querySelector('[data-coder-model="claude"]')!;
     expect(row.querySelector('[role="alert"]')?.textContent).toBe(
