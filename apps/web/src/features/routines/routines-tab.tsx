@@ -78,7 +78,6 @@ export function lastRunText(routine: Pick<Routine, 'lastRun'>) {
 export function RoutinesTab({ botId }: { botId: string }) {
   const { data, error } = useQuery(routinesQuery(botId));
   const [adding, setAdding] = useState(false);
-  const [created, setCreated] = useState<string | null>(null);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 p-8">
@@ -91,7 +90,6 @@ export function RoutinesTab({ botId }: { botId: string }) {
             size="sm"
             className="shrink-0"
             onClick={() => {
-              setCreated(null);
               setAdding(true);
             }}
           >
@@ -99,20 +97,7 @@ export function RoutinesTab({ botId }: { botId: string }) {
           </Button>
         )}
       </div>
-      {adding && (
-        <NewRoutine
-          botId={botId}
-          onDone={(name) => {
-            setAdding(false);
-            setCreated(name ?? null);
-          }}
-        />
-      )}
-      {created && (
-        <p role="status" className="rounded-md border px-3 py-2 text-sm" data-routine-created>
-          Created the Routine {created}.
-        </p>
-      )}
+      {adding && <NewRoutine botId={botId} onDone={() => setAdding(false)} />}
       {error && <p className="text-sm text-destructive">{error.message}</p>}
       {data && !data.length && !adding && (
         <p className="text-sm text-muted-foreground">No Routines yet.</p>

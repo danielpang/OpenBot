@@ -246,7 +246,7 @@ describe('Settings > Devices', () => {
 
     act(() => button('Copy link')!.click());
     expect(writeText).toHaveBeenCalledWith(LINK);
-    await until(() => !!button('Copied'), 'Copied');
+    expect(button('Copied')).toBeUndefined();
 
     // A device of an older pairing (another tab's) is no news here.
     live.emit('device.paired', { device: device({ name: 'Old phone' }) });

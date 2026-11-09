@@ -382,11 +382,6 @@ export function ModelEditor({ provider, canEdit }: { provider: Provider; canEdit
           )}
         </div>
       )}
-      {discover.data && (
-        <p className="text-sm text-muted-foreground">
-          Discovered {discover.data.added} new {discover.data.added === 1 ? 'model' : 'models'}.
-        </p>
-      )}
       <ErrorText error={discover.error ?? save.error} />
     </div>
   );

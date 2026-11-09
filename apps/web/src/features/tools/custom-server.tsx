@@ -297,14 +297,9 @@ export function ImportForm({ stdio = 'on' }: { stdio?: StdioAvailability }) {
       </Labelled>
       {stdio !== 'on' && <p className="text-xs text-muted-foreground">{IMPORT_STDIO_NOTE}</p>}
       <ErrorText error={error ?? run.error} />
-      {run.data && (
+      {run.data && run.data.errors.length > 0 && (
         <div role="status" className="flex flex-col gap-0.5 text-xs">
-          <span>
-            {run.data.items.length === 1
-              ? 'Imported 1 server.'
-              : `Imported ${run.data.items.length} servers.`}
-          </span>
-          {run.data.errors.length > 0 && <span>Not imported:</span>}
+          <span>Not imported:</span>
           {run.data.errors.map((e) => (
             <span key={e.name} className="text-destructive">
               {e.name}: {e.message}

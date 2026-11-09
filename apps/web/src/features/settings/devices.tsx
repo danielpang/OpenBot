@@ -364,7 +364,7 @@ function PairingCode({
         }}
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
-        {copied ? 'Copied' : 'Copy link'}
+        Copy link
       </Button>
       <p className="text-center text-xs text-muted-foreground">
         The code works once and expires in 5 minutes. Copy the link to send it to your phone by

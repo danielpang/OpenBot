@@ -91,7 +91,7 @@ export function ToolsPage({
   const legacyGitHub = items?.filter((connector) => isLegacyGitHubTool(connector.catalogId));
   return (
     <>
-      {notice && (
+      {notice && !notice.ok && (
         <p
           role="status"
           className={

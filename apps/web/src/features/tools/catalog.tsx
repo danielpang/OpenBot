@@ -488,7 +488,7 @@ function CallbackUrl({ url }: { url: string }) {
           onFocus={(e) => e.currentTarget.select()}
         />
         <IconButton
-          label={copied ? 'Copied' : 'Copy'}
+          label="Copy"
           variant="outline"
           onClick={() => {
             void navigator.clipboard?.writeText(url).then(

@@ -104,9 +104,7 @@ export function GithubCard({
   const queryClient = useQueryClient();
   const [pasting, setPasting] = useState(false);
   const [picking, setPicking] = useState<GitConnectionView | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const device = useGitDeviceConnection((connection) => {
-    setNotice('GitHub is connected. Pick the repositories to keep on the computer.');
     setPicking(connection);
   });
 
@@ -117,11 +115,9 @@ export function GithubCard({
     if (handled.current || (!arrival?.githubApp && !arrival?.connection)) return;
     handled.current = true;
     if (arrival.connection) {
-      setNotice('GitHub is connected. Pick the repositories to keep on the computer.');
       pendingPick.current = arrival.connection;
       void queryClient.invalidateQueries({ queryKey: gitConnectionsQuery.queryKey });
     } else {
-      setNotice('Your GitHub App is ready. Install it to pick repositories.');
       void queryClient.invalidateQueries({ queryKey: githubAppQuery.queryKey });
     }
     onArrivalHandled?.();
@@ -176,13 +172,8 @@ export function GithubCard({
           </p>
         </div>
       </header>
-      {(notice || app.error || connections.error) && (
+      {(app.error || connections.error) && (
         <div className="flex flex-col gap-1 px-4 pb-3">
-          {notice && (
-            <p role="status" className="text-xs text-muted-foreground">
-              {notice}
-            </p>
-          )}
           <ErrorText error={app.error} />
           <ErrorText error={connections.error} />
         </div>

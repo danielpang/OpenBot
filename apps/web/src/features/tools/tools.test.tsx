@@ -451,7 +451,7 @@ describe('pasted mcpServers JSON (T2, S-1)', () => {
     act(() => button('Import')!.closest('form')!.requestSubmit());
     await until(() => Boolean(host.querySelector('[role="status"]')), 'the import result');
     const status = host.querySelector('[role="status"]')!.textContent;
-    expect(status).toContain('Imported 1 server.');
+    expect(status).not.toContain('Imported');
     expect(status).toContain('Not imported:');
     expect(status).toContain(`local: ${refusal}`);
     const sent = server.requests.find((r) => r.path === '/api/v1/connectors/import');

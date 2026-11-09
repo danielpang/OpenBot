@@ -568,7 +568,6 @@ describe('the GitHub card (GH1, GH8)', () => {
     const handled = vi.fn();
     render(<GithubCard admin arrival={{ connection: CONN }} onArrivalHandled={handled} />);
     await until(() => !!document.querySelector('[data-remote="danielpang/site"]'), 'the picker');
-    expect(host.querySelector('[role="status"]')!.textContent).toContain('GitHub is connected');
     expect(handled).toHaveBeenCalledTimes(1);
   });
 });
@@ -687,7 +686,7 @@ describe('coding repository device authorization, not MCP (GH1, GH2, GH8)', () =
       () => !!document.querySelector('[data-remote="danielpang/site"]'),
       'the coding repository picker',
     );
-    expect(host.textContent).toContain('GitHub is connected');
+    expect(host.textContent).not.toContain('GitHub is connected');
     expect(host.querySelector('[data-connection]')!.textContent).toContain('alice');
     expect(host.querySelectorAll('[data-status="connected"]')).toHaveLength(1);
     expect(button('Connect GitHub')).toBeUndefined();

@@ -33,20 +33,14 @@ export const DEVICE_CODE_NOTE: Record<CoderAgent, string> = {
 };
 
 export function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
   return (
     <Button
       type="button"
       size="sm"
       variant="outline"
-      onClick={() => {
-        void navigator.clipboard?.writeText(text).then(
-          () => setCopied(true),
-          () => setCopied(false),
-        );
-      }}
+      onClick={() => void navigator.clipboard?.writeText(text).catch(() => undefined)}
     >
-      {copied ? 'Copied' : label}
+      {label}
     </Button>
   );
 }

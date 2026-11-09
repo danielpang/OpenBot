@@ -96,7 +96,7 @@ describe('<CoderLoginWidget>', () => {
     render(<CoderLoginWidget props={props} onAction={vi.fn()} />);
     await act(async () => button('Copy')!.click());
     expect(writeText).toHaveBeenCalledWith(URL);
-    expect(button('Copied')).toBeDefined();
+    expect(button('Copied')).toBeUndefined();
   });
 
   it("shows Codex's device code, with no paste field", () => {
