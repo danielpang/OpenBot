@@ -254,6 +254,45 @@ describe('Settings > Models', () => {
     expect(html).not.toContain('ollama connection');
   });
 
+  it('offers Ollama Cloud beside a local Ollama, and only the way not set up yet', async () => {
+    const fresh = await settings([], true);
+    expect(fresh).toContain('aria-label="Where Ollama runs"');
+    expect(fresh).toContain('Ollama Cloud');
+
+    const local = provider({
+      id: CUSTOM_ID,
+      name: 'Ollama',
+      slug: 'ollama',
+      kind: 'ollama',
+      protocol: 'native',
+      baseUrl: 'http://host.docker.internal:11434/v1',
+      local: true,
+      hasKey: false,
+      keyHint: null,
+      discovery: 'list_models',
+      presetId: 'ollama',
+    });
+    const withLocal = await settings([local], true);
+    expect(withLocal).toContain('Add Ollama Cloud');
+    expect(withLocal).not.toContain('aria-label="Where Ollama runs"');
+
+    const cloud = provider({
+      ...local,
+      id: '00000000-0000-4000-8000-0000000000c1',
+      name: 'Ollama Cloud',
+      slug: 'ollama-cloud',
+      baseUrl: 'https://ollama.com/v1',
+      local: false,
+    });
+    const both = await settings([local, cloud], true);
+    expect(both).not.toContain('Add Ollama');
+    // The cloud card has a fixed address and needs its key.
+    const cloudOnly = await settings([cloud], true);
+    expect(cloudOnly).toContain('Add Ollama on your machine');
+    expect(cloudOnly).not.toContain('data-base-url');
+    expect(cloudOnly).toContain('>not set<');
+  });
+
   it('shows key status without ever rendering a key', async () => {
     const html = await settings(stored, true);
     // The hint tells keys apart (P3).

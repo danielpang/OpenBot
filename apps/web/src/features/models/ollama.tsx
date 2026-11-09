@@ -12,42 +12,79 @@ import {
 } from './api.js';
 import { ErrorText } from './error-text.js';
 
-// Ollama, the built-in for models on the owner's own machine. It has no key
-// and no SDK: it is an address, and its models come from Discover. The Mac
-// app runs the server in Docker, where `localhost` is the container, so there
-// the address starts at the host instead.
+// Ollama, the built-in for open models. It runs two ways: on the owner's own
+// machine (an address, no key) or as Ollama Cloud (a fixed address and an API
+// key). Both speak the OpenAI chat API under `/v1`, and both find their
+// models with Discover. The Mac app runs the server in Docker, where
+// `localhost` is the container, so there a local address starts at the host.
 
 const DOCKER_HOST_URL = 'http://host.docker.internal:11434/v1';
+export const OLLAMA_CLOUD_URL = 'https://ollama.com/v1';
+const CLOUD_KEYS_URL = 'https://ollama.com/settings/keys';
 
 type Scope = 'organization' | 'account';
+export type OllamaMode = 'local' | 'cloud';
 
-/** Ollama before it is set up: its address and Connect, which also discovers its models. */
+/** Whether an Ollama provider is Ollama Cloud rather than a server of the owner's. */
+export function isOllamaCloud(provider: Pick<Provider, 'baseUrl'>): boolean {
+  try {
+    return new URL(provider.baseUrl ?? '').hostname === 'ollama.com';
+  } catch {
+    return false;
+  }
+}
+
+const MODES: { mode: OllamaMode; label: string; add: string }[] = [
+  { mode: 'local', label: 'On my machine', add: 'Add Ollama on your machine' },
+  { mode: 'cloud', label: 'Ollama Cloud', add: 'Add Ollama Cloud' },
+];
+
+/**
+ * Sets up Ollama: on the owner's machine by address, or Ollama Cloud by key.
+ * Connect also discovers the models. `available` leaves out a way already set
+ * up, so a second card only offers the other.
+ */
 export function OllamaSetup({
   preset,
   canEdit,
   allowLocal,
   scope,
+  available = ['local', 'cloud'],
 }: {
   preset: ProviderPreset;
   canEdit: boolean;
   allowLocal: boolean;
   scope?: Scope;
+  available?: OllamaMode[];
 }) {
   const queryClient = useQueryClient();
   const localAuth = useLocalAuth();
+  const modes = MODES.filter((m) => available.includes(m.mode));
+  const [mode, setMode] = useState<OllamaMode>(modes[0]?.mode ?? 'local');
   const [baseUrl, setBaseUrl] = useState(
     localAuth ? DOCKER_HOST_URL : (preset.baseUrl ?? DOCKER_HOST_URL),
   );
+  const [apiKey, setApiKey] = useState('');
   const connect = useMutation({
     mutationFn: async () => {
-      const created = await createProvider({
-        presetId: preset.id,
-        baseUrl: baseUrl.trim(),
-        local: allowLocal,
-        ...(scope ? { scope } : {}),
-      });
+      const created = await createProvider(
+        mode === 'cloud'
+          ? {
+              presetId: preset.id,
+              name: 'Ollama Cloud',
+              baseUrl: OLLAMA_CLOUD_URL,
+              apiKey: apiKey.trim(),
+              ...(scope ? { scope } : {}),
+            }
+          : {
+              presetId: preset.id,
+              baseUrl: baseUrl.trim(),
+              local: allowLocal,
+              ...(scope ? { scope } : {}),
+            },
+      );
       // A first list of models, so the card is useful at once. Ollama being
-      // down is not a reason to undo the setup: the card offers Discover again.
+      // unreachable is not a reason to undo the setup: the card offers Discover again.
       await discoverModels(created.id).catch(() => undefined);
       return created;
     },
@@ -56,33 +93,90 @@ export function OllamaSetup({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (baseUrl.trim()) connect.mutate();
+    if (mode === 'cloud' ? apiKey.trim() : baseUrl.trim()) connect.mutate();
   }
 
+  if (!modes.length) return null;
+  const adding = available.length < MODES.length;
   return (
-    <article className="flex flex-col gap-3 rounded-lg border bg-card p-4" aria-label={preset.name}>
+    <article
+      className="flex flex-col gap-3 rounded-lg border bg-card p-4"
+      aria-label={adding ? modes[0]!.add : preset.name}
+    >
       <div className="flex flex-col gap-0.5">
-        <h3 className="font-medium">{preset.name}</h3>
+        <h3 className="font-medium">{adding ? modes[0]!.add : preset.name}</h3>
         <p className="text-xs text-muted-foreground">
-          Models running on your own machine. No API key needed.
+          {mode === 'cloud'
+            ? 'Larger open models hosted by Ollama, with an Ollama API key.'
+            : 'Models running on your own machine. No API key needed.'}
         </p>
       </div>
+      {canEdit && modes.length > 1 && (
+        <div
+          role="radiogroup"
+          aria-label="Where Ollama runs"
+          className="flex gap-1 self-start rounded-md bg-muted p-0.5"
+        >
+          {modes.map((m) => (
+            <button
+              key={m.mode}
+              type="button"
+              role="radio"
+              aria-checked={mode === m.mode}
+              onClick={() => setMode(m.mode)}
+              className={cn(
+                'rounded px-3 py-1 text-xs font-medium text-muted-foreground transition-colors',
+                mode === m.mode && 'bg-background text-foreground shadow-sm',
+              )}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
       {canEdit && (
         <form className="flex flex-wrap items-center gap-2" onSubmit={submit}>
-          <Input
-            type="url"
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.currentTarget.value)}
-            aria-label="Ollama address"
-            className="h-8 max-w-sm flex-1 font-mono text-xs"
-            required
-          />
+          {mode === 'cloud' ? (
+            <Input
+              type="password"
+              autoComplete="off"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.currentTarget.value)}
+              placeholder="Paste an Ollama API key"
+              aria-label="Ollama API key"
+              className="h-8 max-w-sm flex-1"
+              required
+            />
+          ) : (
+            <Input
+              type="url"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.currentTarget.value)}
+              aria-label="Ollama address"
+              className="h-8 max-w-sm flex-1 font-mono text-xs"
+              required
+            />
+          )}
           <Button type="submit" size="sm" disabled={connect.isPending}>
             {connect.isPending ? 'Connecting…' : 'Connect'}
           </Button>
         </form>
       )}
-      {canEdit && localAuth && (
+      {canEdit && mode === 'cloud' && (
+        <p className="text-xs text-muted-foreground">
+          Create a key at{' '}
+          <a
+            href={CLOUD_KEYS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            ollama.com/settings/keys
+          </a>
+          .
+        </p>
+      )}
+      {canEdit && mode === 'local' && localAuth && (
         <p className="text-xs text-muted-foreground">
           OpenBots runs in Docker on this Mac, so host.docker.internal reaches Ollama on the Mac.
         </p>

@@ -25,7 +25,7 @@ import {
 import { ErrorText } from './error-text.js';
 import { providerInUseText, testSummary } from './format.js';
 import { ModelEditor } from './model-editor.js';
-import { BaseUrlField } from './ollama.js';
+import { BaseUrlField, isOllamaCloud } from './ollama.js';
 import { ProviderCodingKey, ProviderSubscription } from './provider-subscription.js';
 
 // One provider: key status, Test (of the default model or one the admin
@@ -216,6 +216,7 @@ export function ProviderCard({
   );
   const headerNames = provider.headers;
   const inUse = providerInUseText(provider.botCount);
+  const cloud = provider.kind === 'ollama' && isOllamaCloud(provider);
 
   const subscription =
     showSubscription &&
@@ -270,7 +271,7 @@ export function ProviderCard({
             />
           </div>
         )}
-        {provider.kind === 'ollama' && (
+        {provider.kind === 'ollama' && !cloud && (
           <div className="py-3 pr-2 pl-4">
             <BaseUrlField provider={provider} canEdit={canEdit} />
           </div>
@@ -280,12 +281,12 @@ export function ProviderCard({
             hasKey={provider.hasKey}
             keyHint={provider.keyHint}
             canEdit={canEdit}
-            required={provider.kind === 'ollama' ? false : keyRequired}
+            required={provider.kind === 'ollama' ? cloud : keyRequired}
             onSave={(apiKey) => updateProvider(provider.id, { apiKey }).then(refresh)}
           />
           {canEdit && <ProviderCodingKey provider={provider} />}
         </div>
-        {canEdit && (provider.kind === 'custom' || provider.kind === 'ollama') && (
+        {canEdit && (provider.kind === 'custom' || (provider.kind === 'ollama' && !cloud)) && (
           <label className="flex items-center justify-between gap-4 px-4 py-3">
             <span className="flex flex-col gap-0.5">
               <span className="font-medium">Runs on my network</span>

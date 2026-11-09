@@ -16,7 +16,7 @@ import {
 import { AddEndpoint } from './add-endpoint.js';
 import { ErrorText } from './error-text.js';
 import { BUILT_IN_KINDS } from './format.js';
-import { OllamaSetup } from './ollama.js';
+import { isOllamaCloud, OllamaSetup } from './ollama.js';
 import { KeyField, ProviderCard } from './provider-card.js';
 import { AdditionalCodingSubscriptions, ProviderSubscription } from './provider-subscription.js';
 
@@ -131,6 +131,21 @@ function ProviderList({
                   showSubscription={scope !== 'organization' && provider.id === native?.id}
                 />
               ))}
+              {kind === 'ollama' && preset && canEdit && (
+                <OllamaSetup
+                  preset={preset}
+                  canEdit={canEdit}
+                  allowLocal={allowLocal}
+                  scope={scope}
+                  available={
+                    configured.some(isOllamaCloud)
+                      ? configured.some((p) => !isOllamaCloud(p))
+                        ? []
+                        : ['local']
+                      : ['cloud']
+                  }
+                />
+              )}
             </section>
           );
         })}
