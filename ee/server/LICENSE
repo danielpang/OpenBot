@@ -3,8 +3,9 @@ OpenBots Enterprise License
 Copyright (c) 2026 Daniel Pang. All rights reserved.
 
 The software in this "ee/" directory and its subdirectories (the "Enterprise
-Software") is proprietary. It is not covered by the Business Source License
-that applies to the rest of this repository.
+Software") is proprietary. It is not covered by the Apache License 2.0
+that applies to the core of this repository. The mobile app is separately
+licensed under apps/mobile/LICENSE.
 
 You may view the Enterprise Software, and you may copy and modify it only to
 develop and test the Enterprise Software or OpenBots.

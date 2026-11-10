@@ -3,7 +3,7 @@ Pod::Spec.new do |s|
   s.version = '1.0.0'
   s.summary = 'Device-only shared notification keys for OpenBots'
   s.description = s.summary
-  s.license = { :type => 'BUSL-1.1' }
+  s.license = { :type => 'Proprietary', :file => '../LICENSE' }
   s.author = 'OpenBots'
   s.homepage = 'https://github.com/openbots'
   s.platforms = { :ios => '17.0' }

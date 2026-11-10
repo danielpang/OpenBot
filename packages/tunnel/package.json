@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Noise IK tunnel: handshake, framing and multiplexing over a relay stream (docs/RELAY_PROTOCOL.md)",
-  "license": "BUSL-1.1",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {

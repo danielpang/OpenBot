@@ -1,0 +1,11 @@
+OpenBots
+Copyright 2026 Daniel Pang.
+
+OpenBots is licensed under the Apache License 2.0 in LICENSE, except:
+
+- Content under ee/ is governed by ee/LICENSE.
+- Content under apps/mobile/ is governed by apps/mobile/LICENSE.
+- Third-party components retain their own licenses.
+
+The OpenBots name and logo are trademarks of Daniel Pang and are not licensed
+under the Apache License 2.0.

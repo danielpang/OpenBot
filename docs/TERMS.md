@@ -24,8 +24,12 @@ This summary is part of the Terms, but the full sections below control.
 
 ## 2. The software license
 
-The OpenBots source code is licensed under the [Business Source License 1.1](../LICENSE), and the
-`ee/` directory under [ee/LICENSE](../ee/LICENSE). Those licenses govern your rights to use,
+The OpenBots core is licensed under [Apache License 2.0](../LICENSE). The `ee/` directory is
+proprietary under [ee/LICENSE](../ee/LICENSE). The mobile app source is visible, with all rights
+reserved under [apps/mobile/LICENSE](../apps/mobile/LICENSE); copying, modifying, building,
+distributing or publishing it requires written permission. The OpenBots name and logo are
+trademarks of Daniel Pang and may not be used for forks or hosted services without permission.
+Third-party components retain their own licenses. Those licenses govern your rights to use,
 copy, change and distribute the code. These Terms add to the licenses and do not reduce any right
 they grant. If these Terms and a license conflict about the code itself, the license controls.
 

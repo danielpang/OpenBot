@@ -5,12 +5,13 @@ features, and later billing and Stripe, and anything else that is not part
 of self-hosted OpenBots.
 
 Everything in this directory is proprietary and covered by
-[ee/LICENSE](LICENSE). The rest of the repository is under the Business Source
-License in the root [LICENSE](../LICENSE).
+[ee/LICENSE](LICENSE). The core is under the Apache License 2.0
+in the root [LICENSE](../LICENSE). The mobile app is proprietary and
+source-visible under [apps/mobile/LICENSE](../apps/mobile/LICENSE).
 
 Rules for code here:
 
-- The core (`apps/`, `packages/`) never imports from `ee/`. Enterprise code
+- Nothing in `apps/` or `packages/`, the mobile app included, imports from `ee/`. Enterprise code
   plugs into the core through its extension points, so self-hosted OpenBots
   builds and runs without this directory. `node scripts/check-licenses.mjs`
   checks both.

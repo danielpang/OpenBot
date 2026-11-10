@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The catalog's stdio MCP servers, installed into the server image from package-lock.json (S-20). Versions match packages/mcp/catalog.json.",
-  "license": "BUSL-1.1",
+  "license": "Apache-2.0",
   "dependencies": {
     "@modelcontextprotocol/server-filesystem": "2026.8.31",
     "@modelcontextprotocol/server-postgres": "0.6.2"
