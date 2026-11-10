@@ -1,4 +1,4 @@
-import { CODER_FEED_LINE_MAX, type CoderEvent } from '@openbots/shared';
+import { CODER_FEED_LINE_MAX, CODER_PUBLISH_TOOL, type CoderEvent } from '@openbots/shared';
 import { IGNORED_SESSION_ID, type CoderSessionSpec } from './types.js';
 
 // What every adapter reads its CLI's output with, and the parts of a launch
@@ -48,7 +48,13 @@ export function preamble(spec: CoderSessionSpec, options: PreambleOptions = {}):
   const lines = [
     `You are working for OpenBots in the git worktree ${spec.worktreePath}, on the branch ${spec.branch}, made from ${spec.base} of ${spec.repoFullName}.`,
     'Commit as you go, with clear messages.',
-    'Do not push: OpenBots pushes the branch after the owner approves.',
+    "Do not run git push, gh pr create, or other providers' PR tools. Only the OpenBots runner publishes branches and pull requests.",
+    'Git author and committer identity are already set in the environment. Do not change repository Git configuration.',
+    ...(spec.mode === 'plan'
+      ? []
+      : [
+          `After making changes, run the relevant checks, commit your work, and automatically call the OpenBots ${CODER_PUBLISH_TOOL} tool with a clear title and body summarizing changes and verification. Do not wait for the user to ask for a PR. OpenBots applies the existing approval policy. Report the returned PR URL; if publication is denied or fails, explain that and do not bypass it with shell commands or another tool.`,
+        ]),
     "Run the repository's tests when it has them.",
     ...(options.notes ?? []),
     'Finish with a short summary of what changed and what the owner should verify.',

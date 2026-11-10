@@ -119,6 +119,8 @@ describe('codex adapter', () => {
       '-c',
       `sandbox_workspace_write.writable_roots=["${REPO}/.git"]`,
       '-c',
+      'mcp_servers.openbots={command="node",args=["/app/apps/computer-agent/dist/coder-permission-mcp.js"],enabled_tools=["publish_pull_request"],tool_timeout_sec=86460,env={OPENBOTS_CODER_SOCKET="{{session_dir}}/permission.sock",OPENBOTS_APPROVAL_TTL_MS="86400000"}}',
+      '-c',
       'model_provider="openai"',
     ]);
     // app-server has no --ignore-user-config, and the prompt goes over stdin.

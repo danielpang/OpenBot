@@ -1,4 +1,4 @@
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { unwrap, type components } from '@openbots/api-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi, useMobile } from '../api/provider';
@@ -17,16 +17,12 @@ export function SessionApprovals({ sessionId }: { sessionId: string }) {
     [];
   if (!pending.length && !approvals.error) return null;
   return (
-    <ScrollView
-      style={{ maxHeight: 250, flexGrow: 0 }}
-      contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
-      keyboardShouldPersistTaps="handled"
-    >
+    <View testID="session-approvals" style={{ gap: 10 }}>
       <ErrorNote error={approvals.error} onRetry={() => void approvals.refetch()} />
       {pending.map((approval) => (
         <SessionApproval key={approval.id} approval={approval} />
       ))}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -56,8 +52,10 @@ export function SessionApproval({
   });
   return (
     <Card>
-      <Label weight="600">{approval.reason || 'Approval needed'}</Label>
-      <Label muted size={13}>
+      <Label weight="600" style={{ flexShrink: 1 }}>
+        {approval.reason || 'Approval needed'}
+      </Label>
+      <Label muted size={13} style={{ flexShrink: 1 }}>
         {approval.summary || approval.toolName}
       </Label>
       <View style={row.base}>

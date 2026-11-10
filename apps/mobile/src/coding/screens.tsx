@@ -22,6 +22,7 @@ import Markdown from 'react-native-markdown-display';
 import { useApi, useMobile } from '../api/provider';
 import { Card, Empty, ErrorNote, Icon, Label, Page, row } from '../components/ui';
 import { useTheme } from '../theme';
+import { useConversationHeader } from '../components/conversation-header';
 import { Composer } from '../transcript/composer';
 import { SessionApprovals } from './approvals';
 import { AcceptEdits } from '../components/accept-edits';
@@ -29,6 +30,7 @@ import { AgentOrb } from './agent-orb';
 import { useCodingSession, useCodingSessions, useCodingTranscript } from './data';
 
 export function CodingSessionsScreen({ botId }: { botId?: string }) {
+  const header = useConversationHeader();
   const sessions = useCodingSessions(botId);
   const [refreshing, setRefreshing] = useState(false);
   async function refreshManually() {
@@ -42,7 +44,7 @@ export function CodingSessionsScreen({ botId }: { botId?: string }) {
   const c = useTheme();
   return (
     <>
-      <Stack.Screen options={{ title: 'Code' }} />
+      <Stack.Screen options={{ ...header, title: 'Code' }} />
       <FlatList
         style={{ flex: 1, backgroundColor: c.background }}
         contentInsetAdjustmentBehavior="automatic"
@@ -99,6 +101,7 @@ export function CodingSessionsScreen({ botId }: { botId?: string }) {
 }
 
 export function CodingSessionScreen({ id }: { id: string }) {
+  const header = useConversationHeader();
   const api = useApi();
   const { connected } = useMobile();
   const [inputFocused, setInputFocused] = useState(false);
@@ -149,6 +152,7 @@ export function CodingSessionScreen({ id }: { id: string }) {
     >
       <Stack.Screen
         options={{
+          ...header,
           title: current?.title || 'Code',
           unstable_headerRightItems: () => [
             {
@@ -174,7 +178,9 @@ export function CodingSessionScreen({ id }: { id: string }) {
           <>
             <ErrorNote error={session.error} onRetry={() => void session.refetch()} />
             <FlatList
+              testID="coding-transcript"
               ref={log}
+              contentInsetAdjustmentBehavior="automatic"
               data={entries}
               keyExtractor={(entry) => String(entry.seq)}
               contentContainerStyle={{ padding: 18, gap: 18 }}
@@ -212,6 +218,7 @@ export function CodingSessionScreen({ id }: { id: string }) {
                       }
                     />
                   )}
+                  <SessionApprovals sessionId={id} />
                   {current.status === 'waiting' && (
                     <Label muted>Waiting for approval or the agent to become available.</Label>
                   )}
@@ -219,7 +226,6 @@ export function CodingSessionScreen({ id }: { id: string }) {
               }
             />
             <View style={{ gap: 8 }}>
-              <SessionApprovals sessionId={id} />
               {inputFocused && (
                 <View style={{ paddingHorizontal: 22 }}>
                   <AcceptEdits botId={current.botId} composer />

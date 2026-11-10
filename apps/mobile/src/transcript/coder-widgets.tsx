@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, Switch, Text, View } from 'react-native';
+import { Linking, Switch, View } from 'react-native';
 import { router } from 'expo-router';
 import {
   CODER_AGENT_LABELS,
@@ -10,7 +10,6 @@ import {
   type CodingSessionStatus,
 } from '@openbots/shared';
 import {
-  approvalStatusWords,
   sessionErrorWords,
   sessionStatusWords,
   usageWords,
@@ -30,9 +29,6 @@ import { useTheme, type Theme } from '../theme';
 /** Sends a widget action; resolves false when it failed. */
 type Act = (action: Record<string, unknown>) => Promise<boolean | void>;
 type Decide = (approvalId: string, decision: 'approve' | 'deny') => Promise<boolean | void>;
-
-/** How many feed lines the phone shows. */
-export const PHONE_FEED_LINES = 8;
 
 function statusColor(status: CodingSessionStatus, c: Theme) {
   if (status === 'running' || status === 'starting' || status === 'settled') return c.success;
@@ -66,8 +62,7 @@ export function CodingSessionBody({
   const state = raw as Partial<CodingSessionState>;
   const status: CodingSessionStatus = state.status ?? 'queued';
   const ended = CODING_SESSION_ENDED.includes(status);
-  const feed = (state.feed ?? []).slice(-PHONE_FEED_LINES);
-  const approvals = state.approvals ?? [];
+  const approvals = (state.approvals ?? []).filter((approval) => approval.status === 'pending');
   const result = state.result;
   const added = result?.changed_files.reduce((sum, file) => sum + file.added, 0) ?? 0;
   const removed = result?.changed_files.reduce((sum, file) => sum + file.removed, 0) ?? 0;
@@ -107,27 +102,6 @@ export function CodingSessionBody({
         icon="code-slash-outline"
         onPress={() => router.push(`/coding-session/${props.session_id}`)}
       />
-      {feed.length ? (
-        <View
-          testID="coding-session-feed"
-          style={{ backgroundColor: c.muted, borderRadius: 12, padding: 10, gap: 2 }}
-        >
-          {feed.map((line, i) => (
-            <Text
-              key={`${line.t}-${i}`}
-              numberOfLines={2}
-              style={{
-                color: c.mutedForeground,
-                fontFamily: 'Menlo',
-                fontSize: 12,
-                lineHeight: 17,
-              }}
-            >
-              {line.text}
-            </Text>
-          ))}
-        </View>
-      ) : null}
       {approvals.map((approval) =>
         approval.status === 'pending' ? (
           <View
@@ -161,11 +135,7 @@ export function CodingSessionBody({
               </View>
             </View>
           </View>
-        ) : (
-          <Label key={approval.id} muted size={14}>
-            {approval.title}: {approvalStatusWords[approval.status]}
-          </Label>
-        ),
+        ) : null,
       )}
       {result ? (
         <View style={{ gap: 6 }}>

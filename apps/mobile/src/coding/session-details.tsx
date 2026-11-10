@@ -7,8 +7,10 @@ import { sessionErrorWords, sessionStatusWords, usageWords } from '@openbots/wid
 import { useApi, useMobile } from '../api/provider';
 import { Button, Card, ErrorNote, Label, Page, Section } from '../components/ui';
 import { useCodingSession } from './data';
+import { useConversationHeader } from '../components/conversation-header';
 
 export function CodingSessionDetailsScreen({ id }: { id: string }) {
+  const header = useConversationHeader();
   const session = useCodingSession(id);
   const api = useApi();
   const { connected } = useMobile();
@@ -21,7 +23,7 @@ export function CodingSessionDetailsScreen({ id }: { id: string }) {
   const current = session.data;
   return (
     <>
-      <Stack.Screen options={{ title: 'Session details' }} />
+      <Stack.Screen options={{ ...header, title: 'Session details' }} />
       <Page>
         <ErrorNote error={session.error} onRetry={() => void session.refetch()} />
         {!current ? (

@@ -1,13 +1,15 @@
 import React from 'react';
+import { ScrollView } from 'react-native';
 import { describe, expect, it, jest, beforeEach, afterEach } from '@jest/globals';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { components } from '@openbots/api-client';
-import { SessionApproval } from './approvals';
+import { SessionApproval, SessionApprovals } from './approvals';
 
 const mockPost = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+const mockGet = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 jest.mock('../api/provider', () => ({
-  useApi: () => ({ POST: mockPost }),
+  useApi: () => ({ POST: mockPost, GET: mockGet }),
   useMobile: () => ({ connected: true }),
 }));
 jest.mock('../components/accept-edits', () => ({ AcceptEdits: () => null }));
@@ -28,8 +30,23 @@ afterEach(() => {
 });
 beforeEach(() => {
   mockPost.mockReset().mockResolvedValue({ data: {}, response: { ok: true } });
+  mockGet.mockReset().mockResolvedValue({ data: { items: [approval] }, response: { ok: true } });
 });
 describe('session approval controls', () => {
+  it('lets approval text wrap without a fixed-height nested scroll view', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
+    clients.push(client);
+    render(
+      <QueryClientProvider client={client}>
+        <SessionApprovals sessionId="s1" />
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Create pull request');
+    expect(screen.UNSAFE_queryByType(ScrollView)).toBeNull();
+    expect(screen.getByTestId('session-approvals').props.style.maxHeight).toBeUndefined();
+    expect(screen.getByText('Create pull request').props.numberOfLines).toBeUndefined();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
+  });
   it.each([
     ['Approve', 'approve'],
     ['Decline', 'deny'],

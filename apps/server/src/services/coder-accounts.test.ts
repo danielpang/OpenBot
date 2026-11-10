@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COMPUTER_HOME } from '@openbots/computer';
-import { CODERS_QUEUE } from '@openbots/shared';
+import { CODERS_QUEUE, ToolPolicySchema } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
@@ -80,7 +80,24 @@ describe('coding agent accounts and their sessions', () => {
     await w.close();
   });
 
-  const run = (sessionId: string) => w.runToEnd(sessionId);
+  const run = async (sessionId: string) => {
+    // Account tests do not authorize publishing. Completion must respect this denial.
+    const [bot] = await w.t.db.select().from(schema.bots).where(eq(schema.bots.id, w.bot.id));
+    const policy = ToolPolicySchema.parse(bot!.toolPolicy ?? {});
+    await w.t.db
+      .update(schema.bots)
+      .set({
+        toolPolicy: {
+          ...policy,
+          coder: {
+            ...policy.coder,
+            actions: { ...policy.coder?.actions, push: 'deny', pr: 'deny' },
+          },
+        },
+      })
+      .where(eq(schema.bots.id, w.bot.id));
+    return w.runToEnd(sessionId);
+  };
   const setAccount: CoderWorld['setAccount'] = (agent, set) => w.setAccount(agent, set);
   const claudeSuccess = () => {
     w.coder.agent = (io) => {

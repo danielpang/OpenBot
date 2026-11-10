@@ -15,7 +15,7 @@ import {
   type WsEvent,
 } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { schema } from '../db/client.js';
 import {
   codexAppServer,
@@ -94,6 +94,19 @@ describe('coder runner', () => {
     await new Promise((resolve) => github.close(resolve));
     await w.close();
   });
+
+  // Non-publishing tests deny publication; dedicated cases opt back into ask.
+  const publishingPolicy = async (decision: 'ask' | 'deny') => {
+    await w.t.db
+      .update(schema.bots)
+      .set({ toolPolicy: { coder: { actions: { push: decision, pr: decision } } } })
+      .where(eq(schema.bots.id, w.bot.id));
+  };
+  beforeEach(() => publishingPolicy('deny'));
+  const newPublishingSession = async (over: Parameters<CoderWorld['newSession']>[0]) => {
+    await publishingPolicy('ask');
+    return w.newSession(over);
+  };
 
   const start = (sessionId: string) =>
     w.t.inOrganization(() => enqueueCoderJob(w.t.deps, { kind: 'session', sessionId }));
@@ -368,7 +381,7 @@ describe('coder runner', () => {
       io.stdout(jsonl(resultLine('Fixed the loop.\nVerify a reconnect after a drop.')));
       io.exit(0);
     };
-    const { sessionId, runId } = await w.newSession({ mode: 'pr' });
+    const { sessionId, runId } = await newPublishingSession({ mode: 'pr' });
     await start(sessionId);
     const approval = await w.until(async () => {
       const [row] = await w.t.db
@@ -396,9 +409,8 @@ describe('coder runner', () => {
       '-C',
       WORKTREE,
       'push',
-      '-u',
       'origin',
-      'bot/fix-reconnect',
+      'abc1234:refs/heads/bot/fix-reconnect',
     ]);
     expect(row).toMatchObject({
       pushAllowed: true,
@@ -434,7 +446,7 @@ describe('coder runner', () => {
       io.stdout(jsonl(initLine(), resultLine('Done')));
       io.exit(0);
     };
-    const { sessionId } = await w.newSession({ mode: 'pr' });
+    const { sessionId } = await newPublishingSession({ mode: 'pr' });
     await start(sessionId);
     const approval = await w.until(async () => {
       const [row] = await w.t.db
@@ -451,7 +463,7 @@ describe('coder runner', () => {
     const row = await ended(sessionId, 'settled');
     expect(row.prUrl).toBeNull();
     expect(row.pushAllowed).toBe(false);
-    expect(row.summary).toContain('did not approve the push');
+    expect(row.summary).toContain('not approved');
     expect(w.coder.gitCalls().filter((a) => a.includes('push')).length).toBe(pushesBefore);
   });
 
@@ -460,7 +472,7 @@ describe('coder runner', () => {
       io.stdout(jsonl(initLine(), resultLine('Done')));
       io.exit(0);
     };
-    const { sessionId, runId } = await w.newSession({ mode: 'pr' });
+    const { sessionId, runId } = await newPublishingSession({ mode: 'pr' });
     await start(sessionId);
     const approval = await w.until(async () => {
       const [row] = await w.t.db
@@ -593,7 +605,7 @@ describe('coder runner', () => {
       io.stdout(jsonl(resultLine('Added left-pad')));
       io.exit(0);
     };
-    const { sessionId } = await w.newSession({ runId: null, mode: 'pr' });
+    const { sessionId } = await newPublishingSession({ runId: null, mode: 'pr' });
     const pushes = () => w.coder.gitCalls().filter((args) => args.includes('push')).length;
     const pushesBefore = pushes();
     const requested: WsEvent[] = [];
@@ -663,9 +675,8 @@ describe('coder runner', () => {
         '-C',
         WORKTREE,
         'push',
-        '-u',
         'origin',
-        'bot/fix-reconnect',
+        'abc1234:refs/heads/bot/fix-reconnect',
       ]);
       expect(row).toMatchObject({
         runId: null,
@@ -776,7 +787,7 @@ describe('coder runner', () => {
       io.stdout(jsonl(initLine(), resultLine('Done')));
       io.exit(0);
     };
-    const { sessionId } = await w.newSession({ mode: 'pr' });
+    const { sessionId } = await newPublishingSession({ mode: 'pr' });
     await start(sessionId);
     const approval = await w.until(async () => {
       const [row] = await w.t.db
@@ -1117,6 +1128,11 @@ describe('coder runner, across agents and accounts', () => {
 
   beforeAll(async () => {
     w = await coderWorld('coder-phase3@example.com');
+    // Publication is covered separately; keep account and sandbox tests focused on their gates.
+    await w.t.db
+      .update(schema.bots)
+      .set({ toolPolicy: { coder: { actions: { push: 'deny', pr: 'deny' } } } })
+      .where(eq(schema.bots.id, w.bot.id));
     await w.t.deps.infra
       .queue<CoderJob>(CODERS_QUEUE)
       .process(createCoderWorker(w.t.deps, options), { concurrency: 4 });
@@ -1262,6 +1278,30 @@ describe('coder runner, across agents and accounts', () => {
         CODEX_POSTURE,
       );
     }));
+
+  it('logs resumed Codex startup details without repeating them in the conversation', async () => {
+    await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
+    codexSuccess();
+    const { sessionId } = await w.newSession({ agent: 'codex' });
+    expect((await run(sessionId)).status).toBe('settled');
+    const before = (await readEntries(w.t.db, sessionId, { limit: 500 })).entries;
+    await w.t.db
+      .update(schema.codingSessions)
+      .set({ status: 'queued' })
+      .where(eq(schema.codingSessions.id, sessionId));
+    const row = await run(sessionId);
+    expect(row.status).toBe('settled');
+    const feed = (await w.widget(sessionId)).feed.map((line) => line.text);
+    expect(feed.filter((text) => text === CODEX_POSTURE)).toHaveLength(1);
+    expect(feed.some((text) => text.startsWith('Continued Codex in '))).toBe(false);
+    const after = (await readEntries(w.t.db, sessionId, { limit: 500 })).entries;
+    const added = JSON.stringify(after.filter((entry) => entry.seq > before.at(-1)!.seq));
+    expect(added).not.toContain('Continued Codex in ');
+    expect(added).not.toContain(CODEX_POSTURE);
+    const log = readFileSync(row.logPath!, 'utf8');
+    expect(log).toContain(`Continued Codex in ${WORKTREE}`);
+    expect(log).toContain(CODEX_POSTURE);
+  });
 
   /** The session's one `approvals` row, once it is there. */
   const approvalOf = (sessionId: string) =>

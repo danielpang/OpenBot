@@ -1,6 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Alert, Keyboard, RefreshControl, StyleSheet } from 'react-native';
 import type * as ReactNative from 'react-native';
+import type * as Glass from '../components/glass';
 import { describe, expect, it, jest, beforeEach, afterEach } from '@jest/globals';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -11,7 +12,15 @@ import { ConnectionErrorsContext, OfflineError } from '../api/connection-state';
 const mockGet = jest.fn<(path: string, ...args: unknown[]) => Promise<unknown>>();
 const mockPost = jest.fn<(...args: unknown[]) => Promise<unknown>>();
 const mockPatch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
+let mockGlass = true;
+jest.mock('../components/glass', () => ({
+  ...jest.requireActual<typeof Glass>('../components/glass'),
+  useGlassEnabled: () => mockGlass,
+}));
 let mockHeaderOptions: {
+  headerTransparent?: boolean;
+  headerStyle?: { backgroundColor: string };
+  scrollEdgeEffects?: { top: string };
   unstable_headerRightItems?: () => Array<{
     accessibilityLabel: string;
     icon: { type: string; name: string };
@@ -76,6 +85,7 @@ function mount(node: React.ReactNode) {
   return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
 }
 beforeEach(() => {
+  mockGlass = true;
   mockKeyboard.height.value = 0;
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   mockPush.mockReset();
@@ -99,6 +109,57 @@ beforeEach(() => {
   }));
 });
 describe('coding conversations', () => {
+  it.each([0, 320])(
+    'keeps long approval cards inside the transcript scroll surface (keyboard: %s)',
+    async (height) => {
+      mockKeyboard.height.value = height;
+      const original = mockGet.getMockImplementation()!;
+      mockGet.mockImplementation(async (path, ...args) =>
+        path.endsWith('/approvals')
+          ? {
+              data: {
+                items: [1, 2, 3].map((n) => ({
+                  id: `a${n}`,
+                  botId: 'bot1',
+                  sessionId: 's1',
+                  status: 'pending',
+                  reason: `Approval ${n}: ${'long command '.repeat(100)}`,
+                  summary: 'Review the complete command',
+                  toolName: 'Bash',
+                })),
+              },
+              response: { ok: true },
+            }
+          : original(path, ...args),
+      );
+      mount(<CodingSessionScreen id="s1" />);
+      await screen.findByTestId('session-approvals');
+      const transcript = within(screen.getByTestId('coding-transcript'));
+      expect(transcript.getByTestId('session-approvals')).toBeTruthy();
+      expect(transcript.getAllByRole('button', { name: 'Approve' })).toHaveLength(3);
+    },
+  );
+  it.each([true, false])('matches the bot header glass treatment (enabled: %s)', async (glass) => {
+    mockGlass = glass;
+    mount(<CodingSessionScreen id="s1" />);
+    await screen.findByLabelText('Message');
+    expect(mockHeaderOptions.headerTransparent).toBe(true);
+    expect(mockHeaderOptions.headerStyle?.backgroundColor).toBe(glass ? 'transparent' : '#ffffff');
+    expect(mockHeaderOptions.scrollEdgeEffects?.top).toBe(glass ? 'soft' : 'hidden');
+  });
+  it.each([true, false])(
+    'uses the same glass header in session details (enabled: %s)',
+    async (glass) => {
+      mockGlass = glass;
+      mount(<CodingSessionDetailsScreen id="s1" />);
+      await screen.findByText('Fix reconnect');
+      expect(mockHeaderOptions.headerTransparent).toBe(true);
+      expect(mockHeaderOptions.headerStyle?.backgroundColor).toBe(
+        glass ? 'transparent' : '#ffffff',
+      );
+      expect(mockHeaderOptions.scrollEdgeEffects?.top).toBe(glass ? 'soft' : 'hidden');
+    },
+  );
   it('expands and collapses command details', () => {
     render(
       <Entry

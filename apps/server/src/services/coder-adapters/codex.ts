@@ -1,4 +1,8 @@
-import type { CoderEvent } from '@openbots/shared';
+import {
+  CODER_PERMISSION_MCP,
+  DEFAULT_CODER_APPROVAL_TTL_MS,
+  type CoderEvent,
+} from '@openbots/shared';
 import { CLASS_RANK, classifyCommandLine, classifyPathAccess, strictest } from './classify.js';
 import {
   gitIdentityEnv,
@@ -93,6 +97,7 @@ const toml = (value: string) => JSON.stringify(value);
 function launch(spec: CoderSessionSpec): CoderLaunchPlan {
   const sandbox = sandboxFor(spec);
   const gitDir = gitDirOf(spec);
+  const approvalTtl = spec.approvalTtlMs ?? DEFAULT_CODER_APPROVAL_TTL_MS;
   // A plan sign-in uses the built-in provider and the sign-in in CODEX_HOME.
   // An API key comes in the environment (OPENAI_API_KEY), which app-server's
   // built-in provider does not read, so the session names a provider that
@@ -120,6 +125,9 @@ function launch(spec: CoderSessionSpec): CoderLaunchPlan {
     '-c',
     'sandbox_workspace_write.network_access=false',
     ...(gitDir ? ['-c', `sandbox_workspace_write.writable_roots=[${toml(gitDir)}]`] : []),
+    // Explicit session-local server; it needs no network or server credentials.
+    '-c',
+    `mcp_servers.openbots={command="node",args=[${toml(CODER_PERMISSION_MCP)}],enabled_tools=["publish_pull_request"],tool_timeout_sec=${Math.ceil(approvalTtl / 1000) + 60},env={OPENBOTS_CODER_SOCKET="{{session_dir}}/permission.sock",OPENBOTS_APPROVAL_TTL_MS=${toml(String(approvalTtl))}}}`,
     ...provider,
   ];
   // CODEX_HOME (the sign-in) is set by the computer agent; the prompt goes over stdin.

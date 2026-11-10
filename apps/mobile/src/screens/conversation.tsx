@@ -5,24 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 import { unwrap } from '@openbots/api-client';
 import { useApi } from '../api/provider';
 import { ErrorNote, Page } from '../components/ui';
-import { useGlassEnabled } from '../components/glass';
-import { useTheme } from '../theme';
+import { useConversationHeader } from '../components/conversation-header';
 import { Transcript } from '../transcript/transcript';
 import { groupTitle, useBots, useChats } from './data';
 import { GroupMembers } from './group-members';
-
-// Keep content underneath the native navigation controls. On iOS 26 the
-// system's soft scroll edge protects the title; accessibility/older-OS fallbacks
-// keep an opaque bar without changing the scroll view's inset geometry.
-function useConversationHeader() {
-  const glass = useGlassEnabled();
-  const c = useTheme();
-  return {
-    headerTransparent: true,
-    headerStyle: { backgroundColor: glass ? 'transparent' : c.background },
-    scrollEdgeEffects: { top: glass ? ('soft' as const) : ('hidden' as const) },
-  };
-}
 
 export function BotScreen() {
   const header = useConversationHeader();
