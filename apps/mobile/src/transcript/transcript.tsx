@@ -12,6 +12,7 @@ import { BotAvatar } from '../components/bot-avatar';
 import { GlassIconButton } from '../components/glass';
 import { useTheme } from '../theme';
 import { Composer } from './composer';
+import { DancingBotAvatar } from './dancing-avatar';
 import { MessagePartView } from './parts';
 import type { Message } from './model';
 import type { Bot } from '../screens/data';
@@ -126,6 +127,7 @@ function ConversationTranscript({
   // when they are slow: a spinner that flashes on every open is its own flicker.
   const waiting = hidden || (messages.loading && messages.messages.length === 0);
   const [slow, setSlow] = useState(false);
+  const chatBot = bots.find((bot) => bot.chatId === chatId);
   useEffect(() => {
     if (!waiting) return;
     const spinner = setTimeout(() => setSlow(true), WAITING_SPINNER_MS);
@@ -302,10 +304,22 @@ function ConversationTranscript({
           />
         </View>
         {waiting && slow ? (
-          <ActivityIndicator
+          <View
             testID="chat-transcript-loading"
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: composerHeight }}
-          />
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: composerHeight,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {/* A Bot's own chat shows that Bot; a group has no single Bot to show. */}
+            {chatBot ? <DancingBotAvatar bot={chatBot} /> : <ActivityIndicator />}
+          </View>
         ) : null}
         {awayFromBottom && !hidden ? (
           <View

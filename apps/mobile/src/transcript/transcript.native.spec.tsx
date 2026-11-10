@@ -1,8 +1,9 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { Transcript } from './transcript';
+import type { Bot } from '../screens/data';
 
 let mockKeyboardHeight = 0;
 type ListProps = {
@@ -292,6 +293,23 @@ describe('reopening a conversation', () => {
     await advance(2700);
     expect(opacity()).toBe(1);
     expect(screen.queryByTestId('chat-transcript-loading')).toBeNull();
+  });
+
+  it('shows the Bot dancing while its own conversation is slow to open', async () => {
+    const bot = { id: 'bot', name: 'Atlas', chatId: 'chat' } as unknown as Bot;
+    render(<Transcript chatId="chat" bots={[bot]} title="Atlas" />);
+    await advance(300);
+    expect(
+      within(screen.getByTestId('chat-transcript-loading')).getByLabelText(
+        'Loading your conversation with Atlas',
+      ),
+    ).toBeTruthy();
+    // A group has no single Bot, so it keeps the plain spinner.
+    screen.unmount();
+    render(<Transcript chatId="group" bots={[bot]} title="Team" />);
+    await advance(300);
+    expect(screen.getByTestId('chat-transcript-loading')).toBeTruthy();
+    expect(screen.queryByTestId('chat-loading-avatar')).toBeNull();
   });
 
   it('shows an empty conversation immediately and its first message without a blink', () => {
