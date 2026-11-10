@@ -38,7 +38,7 @@ in the final summary and error if unresolved. A cached URL is accepted only afte
 an open matching PR at the pushed SHA. Tests in
 `apps/server/src/services/coder-publish.integration.test.ts` cover these lifecycle paths, metadata
 changes, trigger floors, duplicate recovery and timeout expiry. `repos-checkout.test.ts` covers
-cancellation of runner operations. See [Coding-session publishing](CODING_SESSION_PUBLISHING.md).
+cancellation of runner operations. See [Coding-session publishing](../CODING_SESSION_PUBLISHING.md).
 
 Bot-chat cards omit CLI output and completed approval history; session diagnostics remain available.
 The native coding screens share the bot's glass header and accessibility fallback. Long approval
