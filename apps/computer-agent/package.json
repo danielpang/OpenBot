@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Control agent inside the sandbox image",
-  "license": "BUSL-1.1",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {

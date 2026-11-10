@@ -1,10 +1,9 @@
 #!/usr/bin/env node
-// The license pass of the 1.0 gate (plan 18.9): every
-// core workspace package (apps/, packages/) is BUSL-1.1 like the LICENSE
-// file, every ee/ package is private and under ee/LICENSE ("SEE LICENSE IN
-// LICENSE", with a copy of it beside its package.json), every production
-// dependency carries a permissive license we can ship, and the core never
-// imports the proprietary ee/ directory (plan 21.5).
+// The license pass of the 1.0 gate (plan 18.9): core
+// packages use Apache-2.0. Enterprise and mobile packages are private and
+// use "SEE LICENSE IN LICENSE", with their own license beside package.json.
+// Production dependencies must carry reviewed licenses, and apps/packages
+// must never import the proprietary ee/ directory (plan 21.5).
 //
 //   node scripts/check-licenses.mjs
 //
@@ -15,7 +14,7 @@
 // so we may ship them. Anything not listed here fails until
 // someone reviews it.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const ALLOWED = new Set([
@@ -50,34 +49,36 @@ const ALLOWED = new Set([
 const root = join(import.meta.dirname, '..');
 const problems = [];
 
-const manifests = ['package.json'];
-for (const dir of ['apps', 'packages']) {
-  for (const name of readdirSync(join(root, dir))) manifests.push(join(dir, name, 'package.json'));
-}
+const manifests = execFileSync('git', ['ls-files', '--', 'package.json', '**/package.json'], {
+  cwd: root,
+  encoding: 'utf8',
+})
+  .trim()
+  .split('\n');
 for (const path of manifests) {
   const pkg = JSON.parse(readFileSync(join(root, path), 'utf8'));
-  if (pkg.license !== 'BUSL-1.1') problems.push(`${path}: license is ${pkg.license ?? 'missing'}`);
+  const proprietary = path.startsWith('ee/') || path.startsWith('apps/mobile/');
+  const expected = proprietary ? 'SEE LICENSE IN LICENSE' : 'Apache-2.0';
+  if (pkg.license !== expected) {
+    problems.push(`${path}: license is ${pkg.license ?? 'missing'}, not "${expected}"`);
+  }
+  if (!proprietary) continue;
+  if (pkg.private !== true) problems.push(`${path}: must be private`);
+  const licensePath = path.startsWith('ee/') ? 'ee/LICENSE' : 'apps/mobile/LICENSE';
+  const copy = join(root, dirname(path), 'LICENSE');
+  if (
+    !existsSync(copy) ||
+    readFileSync(copy, 'utf8') !== readFileSync(join(root, licensePath), 'utf8')
+  ) {
+    problems.push(`${dirname(path)}/LICENSE: must be a copy of ${licensePath}`);
+  }
 }
 
-const EE_LICENSE = 'SEE LICENSE IN LICENSE';
-const eeLicense = readFileSync(join(root, 'ee', 'LICENSE'), 'utf8');
-const eeManifests = readdirSync(join(root, 'ee'), { withFileTypes: true })
-  .filter(
-    (entry) => entry.isDirectory() && existsSync(join(root, 'ee', entry.name, 'package.json')),
-  )
-  .map((entry) => join('ee', entry.name, 'package.json'));
-for (const path of eeManifests) {
-  const pkg = JSON.parse(readFileSync(join(root, path), 'utf8'));
-  if (pkg.license !== EE_LICENSE) {
-    problems.push(`${path}: license is ${pkg.license ?? 'missing'}, not "${EE_LICENSE}"`);
-  }
-  if (pkg.private !== true) problems.push(`${path}: must be private`);
-  const copy = join(root, dirname(path), 'LICENSE');
-  if (!existsSync(copy) || readFileSync(copy, 'utf8') !== eeLicense) {
-    problems.push(`${dirname(path)}/LICENSE: must be a copy of ee/LICENSE`);
-  }
+// Report manifest failures even when dependency tooling is unavailable.
+if (problems.length) {
+  console.error(`License check failed:\n${problems.map((p) => `  ${p}`).join('\n')}`);
+  process.exit(1);
 }
-manifests.push(...eeManifests);
 
 const listed = JSON.parse(
   execFileSync('pnpm', ['-r', 'licenses', 'list', '--prod', '--json'], {

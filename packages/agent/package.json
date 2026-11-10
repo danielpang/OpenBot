@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "run loop, context assembly, tool registry, policy, steering, activity labels",
-  "license": "BUSL-1.1",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {

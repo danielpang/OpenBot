@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "who-replies logic, loop guards, Bot to Bot",
-  "license": "BUSL-1.1",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {

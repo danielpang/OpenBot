@@ -2,7 +2,7 @@
   "name": "@openbots/mobile",
   "version": "0.0.0",
   "private": true,
-  "license": "BUSL-1.1",
+  "license": "SEE LICENSE IN LICENSE",
   "main": "index.js",
   "scripts": {
     "dev": "node --dns-result-order=ipv4first node_modules/expo/bin/cli start --dev-client",

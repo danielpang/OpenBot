@@ -159,7 +159,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=openbots-${{ matrix.image }}
             org.opencontainers.image.description=${{ matrix.description }}
-            org.opencontainers.image.licenses=BUSL-1.1
+            org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.version=${{ inputs.version }}
 
       # The archives: one platform each, in the format `docker save` writes,

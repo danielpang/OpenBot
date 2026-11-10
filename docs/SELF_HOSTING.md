@@ -572,14 +572,15 @@ Before a release, also run the
 
 ## License
 
-OpenBots is source available under the [Business Source License 1.1](../LICENSE).
-You can self-host it and change it for your own company or team. You can't
-offer it to others as a hosted service, or sell setup or consulting services
-for it, without a separate agreement. Each version becomes Apache 2.0 four
-years after it is published.
+The OpenBots core is under [Apache License 2.0](../LICENSE). You may use,
+modify, self-host, host for others, and sell setup or support services.
 
-The `ee/` directory holds the managed service's proprietary code, under
-[ee/LICENSE](../ee/LICENSE).
+The `ee/` directory (organizations, billing and subscriptions) is proprietary
+under [ee/LICENSE](../ee/LICENSE). The mobile app source is visible for review,
+but all rights are reserved under [apps/mobile/LICENSE](../apps/mobile/LICENSE).
+Copying, modifying, building, distributing or publishing it requires written permission.
+The OpenBots name and logo are trademarks of Daniel Pang and may not be used
+for forks or hosted services without permission.
 
 ## Terms
 

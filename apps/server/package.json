@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Hono API, WS gateway, workers, scheduler (roles: api | worker | all)",
-  "license": "BUSL-1.1",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {

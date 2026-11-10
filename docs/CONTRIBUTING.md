@@ -99,3 +99,9 @@ images, builds the Mac app and makes a GitHub Release with the DMG, the compose 
 image archives (`.github/workflows/release.yml`). CI derives the version from the tag and stamps
 the build checkouts, so no version bump commit is needed. See
 [apps/desktop/RELEASING.md](../apps/desktop/RELEASING.md) for the steps.
+
+## Contribution licenses
+
+Contributions to the core are under Apache License 2.0. Contributions to `ee/`
+or `apps/mobile/` require a contributor license agreement assigning or licensing
+rights to Daniel Pang before acceptance.

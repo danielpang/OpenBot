@@ -1,0 +1,18 @@
+OpenBots Mobile License
+
+Copyright (c) 2026 Daniel Pang. All rights reserved.
+
+The OpenBots mobile app source in this directory and its subdirectories is
+proprietary and source-visible. You may read it, including to audit encryption
+and the pairing protocol. No right to copy, modify, build, distribute, publish,
+or otherwise use the app or its source is granted without prior written
+permission from Daniel Pang. This includes publication to any app store.
+All rights not expressly granted are reserved.
+
+The app communicates with the Apache-licensed OpenBots core and shared packages.
+Those components remain under their own Apache License 2.0. Third-party
+components retain their own licenses.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. DANIEL PANG
+IS NOT LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE
+SOFTWARE OR ITS USE.
