@@ -1,6 +1,6 @@
 # OpenBots relay and tunnel protocol, version 1
 
-What a client (the iOS app, the Node test client, the Mac app as a thin client of another server) speaks to reach an OpenBots server through the private relay, and what the server speaks to the relay. Design background is in [MOBILE_AND_VM_PLAN.md](MOBILE_AND_VM_PLAN.md) sections 4 to 6; this document is the wire contract that `packages/tunnel`, `apps/relay` and `apps/server/src/relay` implement and test against.
+What a client (the iOS app, the Node test client, the Mac app as a thin client of another server) speaks to reach an OpenBots server through the private relay, and what the server speaks to the relay. Design background is in [MOBILE_AND_VM_PLAN.md](plans/MOBILE_AND_VM_PLAN.md) sections 4 to 6; this document is the wire contract that `packages/tunnel`, `apps/relay` and `apps/server/src/relay` implement and test against.
 
 Layers, outermost first:
 

@@ -25,7 +25,7 @@ import { botPairChat } from './chats.js';
 import { announceMessage, storeMessage, type ChatRow } from './messages.js';
 import type { RunState } from './runs.js';
 
-// Coding agent sign-ins (docs/TECHNICAL_PLAN.md 22.5; I4). `startLogin`
+// Coding agent sign-ins (docs/plans/TECHNICAL_PLAN.md 22.5; I4). `startLogin`
 // records the attempt (`coder_logins`), posts the `coder_login` widget when a
 // Bot asked (in the main Bot's transcript, like a site sign-in request, K8)
 // and enqueues the runner's `login` job, which runs the vendor's own login

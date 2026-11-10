@@ -1,5 +1,5 @@
 # OpenBots on one Fly Machine, from the standalone image (deploy/fly/README.md,
-# docs/MOBILE_AND_VM_PLAN.md 8.4). Server, Postgres, Redis and the Bots'
+# docs/plans/MOBILE_AND_VM_PLAN.md 8.4). Server, Postgres, Redis and the Bots'
 # computer run in one container, on one volume at /data.
 #
 #   fly launch --copy-config --no-deploy --name <your app>

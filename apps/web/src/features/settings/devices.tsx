@@ -20,7 +20,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { api } from '../../app/api.js';
 import { RealtimeStatusContext, useRealtime } from '../transcript/realtime.js';
 
-// Settings > Devices (docs/MOBILE_AND_VM_PLAN.md 4.3, docs/RELAY_PROTOCOL.md 6):
+// Settings > Devices (docs/plans/MOBILE_AND_VM_PLAN.md 4.3, docs/RELAY_PROTOCOL.md 6):
 // the owner's paired phones with Revoke, "Pair a phone" with the pairing link
 // as a QR code, and the relay's status. `device.paired`, `device.revoked` and
 // `device.updated` on the owner's socket refresh the list. `relay.status`

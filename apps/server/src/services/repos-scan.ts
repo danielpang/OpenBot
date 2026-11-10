@@ -8,7 +8,7 @@ import { enqueueCoderJob } from './coder-jobs.js';
 import { gitContextOn, runAsRunner, runGit, runningOn, SHORT_MS } from './repos-checkout.js';
 import { parseRepoUrl } from './repos.js';
 
-// The scan for clones nobody remembered (docs/TECHNICAL_PLAN.md 22.12; GH6),
+// The scan for clones nobody remembered (docs/plans/TECHNICAL_PLAN.md 22.12; GH6),
 // a `scan` job on the `coders` queue. It runs `find` and git as `runner`
 // through repos-checkout.ts, never starts the computer and never clones.
 

@@ -1,6 +1,6 @@
 # Running OpenBots on a VM
 
-Templates for running OpenBots around the clock on a machine you rent, so Bots and Routines keep working while your Mac sleeps. Your phone reaches the server through the private relay, so none of them needs a public address, DNS or a certificate. Background: [docs/MOBILE_AND_VM_PLAN.md](../docs/MOBILE_AND_VM_PLAN.md) section 8, and the [VM setup guide](../docs/VM_SETUP.md).
+Templates for running OpenBots around the clock on a machine you rent, so Bots and Routines keep working while your Mac sleeps. Your phone reaches the server through the private relay, so none of them needs a public address, DNS or a certificate. Background: [docs/plans/MOBILE_AND_VM_PLAN.md](../docs/plans/MOBILE_AND_VM_PLAN.md) section 8, and the [VM setup guide](../docs/VM_SETUP.md).
 
 ## Two shapes
 

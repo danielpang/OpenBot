@@ -22,8 +22,8 @@ import {
   type CoderSignInCheck,
 } from './types.js';
 
-// pi (docs/TECHNICAL_PLAN.md 22.13; I10, I11), checked against the pinned
-// 1.5.0 (docs/CODING_AGENT_VENDORS.md). The session runs `pi -p --mode json`, one JSON
+// pi (docs/plans/TECHNICAL_PLAN.md 22.13; I10, I11), checked against the pinned
+// 1.5.0 (docs/plans/CODING_AGENT_VENDORS.md). The session runs `pi -p --mode json`, one JSON
 // event per line: a `session` header with the session id, then agent, turn,
 // message and tool execution events. A finished assistant message arrives
 // whole in `message_end`; its `stopReason` says how the run ended, and pi

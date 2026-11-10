@@ -1112,7 +1112,7 @@ describe('coder runner over the fake agent', () => {
   });
 });
 
-// Across agents and accounts (docs/TECHNICAL_PLAN.md 22.13): Codex can commit through its sandbox, the runner
+// Across agents and accounts (docs/plans/TECHNICAL_PLAN.md 22.13): Codex can commit through its sandbox, the runner
 // commits what a session left, a refused API key is not a sign-in, the key
 // never reaches what is kept, and a continued session keeps one diff Artifact.
 describe('coder runner, across agents and accounts', () => {

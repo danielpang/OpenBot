@@ -29,7 +29,7 @@ import {
   type RunningComputer,
 } from './repos-checkout.js';
 
-// Rescue before loss (docs/TECHNICAL_PLAN.md 22.12; GH5): the `rescue` job
+// Rescue before loss (docs/plans/TECHNICAL_PLAN.md 22.12; GH5): the `rescue` job
 // saves what would be lost with the computer's home to rescue branches and
 // pushes them as `runner`; the route asks, the job answers, and the results
 // reach every process over the bus. Unlike the other repository jobs it

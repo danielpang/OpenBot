@@ -1,6 +1,6 @@
 import { positiveIntFromEnv } from './budget.js';
 
-// Draining a machine (docs/MOBILE_AND_VM_PLAN.md 5.8, "Each machine on its
+// Draining a machine (docs/plans/MOBILE_AND_VM_PLAN.md 5.8, "Each machine on its
 // own"). On SIGTERM, or at boot with `RELAY_DRAIN=true`, the machine stops
 // taking work and hands its hosts to the others before it goes:
 //

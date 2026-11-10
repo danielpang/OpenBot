@@ -29,7 +29,7 @@ import {
   type CoderSignInCheck,
 } from './types.js';
 
-// The Codex CLI (docs/TECHNICAL_PLAN.md 22.13; I10). A session runs
+// The Codex CLI (docs/plans/TECHNICAL_PLAN.md 22.13; I10). A session runs
 // `codex app-server`: JSON-RPC over stdio, one JSON object per line, with no
 // `jsonrpc` member on what the server writes. The runner keeps stdin open
 // (`transport: 'jsonrpc'`) and this adapter speaks the protocol:
@@ -47,7 +47,7 @@ import {
 // After `turn/completed` the session emits its result and the runner closes
 // stdin, on which app-server exits 0. The thread id (a UUIDv7) is the vendor
 // session id. The facts were checked against the pinned 0.166.0
-// (docs/CODING_AGENT_VENDORS.md).
+// (docs/plans/CODING_AGENT_VENDORS.md).
 //
 // Approvals: the policy is `on-request`. Codex runs commands and edits
 // inside its sandbox (`workspace-write`, or `read-only` to plan, the

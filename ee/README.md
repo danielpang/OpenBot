@@ -30,7 +30,7 @@ Rules for code here:
   core web app (`startWeb` from `@openbots/web/start`) with onboarding, the
   organization switcher and the organization's settings.
 
-See section 21 of [docs/TECHNICAL_PLAN.md](../docs/TECHNICAL_PLAN.md).
+See section 21 of [docs/plans/TECHNICAL_PLAN.md](../docs/plans/TECHNICAL_PLAN.md).
 
 ## Running it
 

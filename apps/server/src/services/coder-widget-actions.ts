@@ -24,7 +24,7 @@ import {
 import type { WidgetActionContext } from './hooks.js';
 import { postUserMessage } from './messages.js';
 
-// The `coding_session` widget's actions (docs/TECHNICAL_PLAN.md 22.2 step 8),
+// The `coding_session` widget's actions (docs/plans/TECHNICAL_PLAN.md 22.2 step 8),
 // which the widget action path calls (services/runs.ts): Stop publishes on
 // the coder control channel (a session nobody claimed yet is stopped here),
 // Continue posts the owner's prompt as an owner message in the session's

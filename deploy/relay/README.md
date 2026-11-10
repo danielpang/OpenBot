@@ -2,7 +2,7 @@
 
 This runs the shared relay as several Fly Machines behind one hostname, so it scales out and survives a Machine going away. It is how the project runs the relay that every install without its own uses. You only need it to run a relay for many servers; one server or a small group is served well by a single relay container (see [apps/relay/README.md](../../apps/relay/README.md)).
 
-The design is [docs/MOBILE_AND_VM_PLAN.md](../../docs/MOBILE_AND_VM_PLAN.md) section 5.8. In short: one Machine owns each host id at a time, recorded in Redis with a lease. Every link of that server and every phone stream for it end on that Machine, so stream bytes never cross Machines. A Machine that gets a connection for a host another Machine owns answers with `fly-replay`, and Fly's proxy replays the request on the owner.
+The design is [docs/plans/MOBILE_AND_VM_PLAN.md](../../docs/plans/MOBILE_AND_VM_PLAN.md) section 5.8. In short: one Machine owns each host id at a time, recorded in Redis with a lease. Every link of that server and every phone stream for it end on that Machine, so stream bytes never cross Machines. A Machine that gets a connection for a host another Machine owns answers with `fly-replay`, and Fly's proxy replays the request on the owner.
 
 You need [flyctl](https://fly.io/docs/flyctl/install/) and a Fly.io account.
 

@@ -16,7 +16,7 @@ import type { CoderAdapter } from './types.js';
 // substitution) counts as outside the worktree, which asks.
 //
 // This is a convenience layer, not the boundary. `other` stays `auto` for
-// owner-started runs (docs/TECHNICAL_PLAN.md 22.7), and a command the classifier
+// owner-started runs (docs/plans/TECHNICAL_PLAN.md 22.7), and a command the classifier
 // misreads still meets the hard controls that do not depend on it: the
 // process runs as the `coder` uid, whose filesystem permissions keep it out
 // of /home/bot outside the repositories and out of the state volume's other

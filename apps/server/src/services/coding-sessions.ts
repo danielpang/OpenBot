@@ -55,7 +55,7 @@ import { remoteHead } from './session-git.js';
 import { stageCodingAttachments } from './coding-attachments.js';
 import type { ComputerAgentClient } from '@openbots/computer';
 
-// Coding sessions for the API and the runtime (docs/TECHNICAL_PLAN.md 22.2,
+// Coding sessions for the API and the runtime (docs/plans/TECHNICAL_PLAN.md 22.2,
 // 22.10; I9, I14, I15). `code_task` reaches `startCodingSession` through
 // coder-tool.ts: it checks the Bot may code and has no session running,
 // inserts the `coding_sessions` row (or reopens an ended one to continue it),
