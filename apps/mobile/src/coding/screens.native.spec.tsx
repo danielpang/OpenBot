@@ -109,6 +109,36 @@ beforeEach(() => {
   }));
 });
 describe('coding conversations', () => {
+  it.each([0, 320])(
+    'keeps long approval cards inside the transcript scroll surface (keyboard: %s)',
+    async (height) => {
+      mockKeyboard.height.value = height;
+      const original = mockGet.getMockImplementation()!;
+      mockGet.mockImplementation(async (path, ...args) =>
+        path.endsWith('/approvals')
+          ? {
+              data: {
+                items: [1, 2, 3].map((n) => ({
+                  id: `a${n}`,
+                  botId: 'bot1',
+                  sessionId: 's1',
+                  status: 'pending',
+                  reason: `Approval ${n}: ${'long command '.repeat(100)}`,
+                  summary: 'Review the complete command',
+                  toolName: 'Bash',
+                })),
+              },
+              response: { ok: true },
+            }
+          : original(path, ...args),
+      );
+      mount(<CodingSessionScreen id="s1" />);
+      await screen.findByTestId('session-approvals');
+      const transcript = within(screen.getByTestId('coding-transcript'));
+      expect(transcript.getByTestId('session-approvals')).toBeTruthy();
+      expect(transcript.getAllByRole('button', { name: 'Approve' })).toHaveLength(3);
+    },
+  );
   it.each([true, false])('matches the bot header glass treatment (enabled: %s)', async (glass) => {
     mockGlass = glass;
     mount(<CodingSessionScreen id="s1" />);

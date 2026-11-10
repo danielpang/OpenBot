@@ -17,7 +17,7 @@ export function SessionApprovals({ sessionId }: { sessionId: string }) {
     [];
   if (!pending.length && !approvals.error) return null;
   return (
-    <View testID="session-approvals" style={{ paddingHorizontal: 16, gap: 10, flexShrink: 0 }}>
+    <View testID="session-approvals" style={{ gap: 10 }}>
       <ErrorNote error={approvals.error} onRetry={() => void approvals.refetch()} />
       {pending.map((approval) => (
         <SessionApproval key={approval.id} approval={approval} />

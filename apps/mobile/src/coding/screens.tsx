@@ -178,6 +178,7 @@ export function CodingSessionScreen({ id }: { id: string }) {
           <>
             <ErrorNote error={session.error} onRetry={() => void session.refetch()} />
             <FlatList
+              testID="coding-transcript"
               ref={log}
               contentInsetAdjustmentBehavior="automatic"
               data={entries}
@@ -217,6 +218,7 @@ export function CodingSessionScreen({ id }: { id: string }) {
                       }
                     />
                   )}
+                  <SessionApprovals sessionId={id} />
                   {current.status === 'waiting' && (
                     <Label muted>Waiting for approval or the agent to become available.</Label>
                   )}
@@ -224,7 +226,6 @@ export function CodingSessionScreen({ id }: { id: string }) {
               }
             />
             <View style={{ gap: 8 }}>
-              <SessionApprovals sessionId={id} />
               {inputFocused && (
                 <View style={{ paddingHorizontal: 22 }}>
                   <AcceptEdits botId={current.botId} composer />
