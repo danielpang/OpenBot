@@ -16,6 +16,18 @@ import { MessagePartView } from './parts';
 import type { Message } from './model';
 import type { Bot } from '../screens/data';
 
+// How often a hidden conversation is re-pinned and checked for movement.
+const SETTLE_TICK_MS = 50;
+// FlashList keeps re-applying its own initial scroll for 100ms after its first layout.
+const SETTLE_MIN_MS = 150;
+// Show the conversation anyway if it never holds still, e.g. while a reply streams in.
+const SETTLE_LIMIT_MS = 1000;
+// A hidden conversation shows a spinner after this long, and itself after the limit.
+const HIDDEN_SPINNER_MS = 300;
+const HIDDEN_LIMIT_MS = 3000;
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 type TranscriptProps = {
   chatId: string;
   bots: Bot[];
@@ -54,36 +66,65 @@ function ConversationTranscript({
   const messages = useMessages(chatId, threadRootId);
   const list = useRef<FlashListRef<Message>>(null);
   const jumped = useRef<string | undefined>(undefined);
-  // FlashList paints from the top and only then scrolls to its initial index once
-  // the bottom rows are measured. Keep a reopened conversation hidden until it has
-  // settled on the latest (or linked) message, so it appears in place instead of
-  // visibly scrolling down.
+  // FlashList first paints away from the latest message, keeps moving while it measures
+  // rows, and animates to the end when the server's messages arrive. Keep a reopened
+  // conversation hidden until it holds still on the latest (or linked) message, so it
+  // appears in place instead of visibly jumping and scrolling.
   const [revealed, setRevealed] = useState(false);
   // FlashList can't scroll to a row before its first layout.
   const [listReady, setListReady] = useState(false);
-  const revealFrame = useRef<number | undefined>(undefined);
-  const reveal = useCallback(() => {
-    if (revealFrame.current !== undefined) return;
-    // Wait two frames for FlashList's own deferred offset corrections to land.
-    revealFrame.current = requestAnimationFrame(() => {
-      revealFrame.current = requestAnimationFrame(() => setRevealed(true));
-    });
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
   }, []);
-  useEffect(
-    () => () => {
-      if (revealFrame.current !== undefined) cancelAnimationFrame(revealFrame.current);
-    },
-    [],
-  );
+  const settling = useRef(false);
+  // Re-pin the position until the content height and scroll offset stop changing, then
+  // show the conversation.
+  const settle = useCallback(async (pin?: () => unknown) => {
+    if (settling.current) return;
+    settling.current = true;
+    const started = Date.now();
+    let previous: string | undefined;
+    let still = 0;
+    for (;;) {
+      // FlashList's scrollToEnd can take 200ms+ when it has to render the last row first.
+      await Promise.race([pin?.(), wait(SETTLE_TICK_MS * 5)]);
+      await wait(SETTLE_TICK_MS);
+      const current = list.current;
+      if (!alive.current || !current) return;
+      let position: string;
+      try {
+        position = `${Math.round(current.getChildContainerDimensions().height)}:${Math.round(current.getAbsoluteLastScrollOffset())}`;
+      } catch {
+        // The list can't report its layout: show it rather than wait for the limit.
+        break;
+      }
+      still = position === previous ? still + 1 : 0;
+      previous = position;
+      const elapsed = Date.now() - started;
+      if ((still >= 2 && elapsed >= SETTLE_MIN_MS) || elapsed >= SETTLE_LIMIT_MS) break;
+    }
+    setRevealed(true);
+  }, []);
+  // Land on the true end, below a tall last message and the composer padding.
+  const pinToEnd = useCallback(() => list.current?.scrollToEnd({ animated: false }), []);
   const hasTarget = Boolean(targetMessageId || targetSeq);
   const hidden = !revealed && messages.messages.length > 0;
   // A conversation first shown empty is already settled; its first message must not blink.
   if (!revealed && !messages.loading && messages.messages.length === 0) setRevealed(true);
+  const [slow, setSlow] = useState(false);
   useEffect(() => {
     if (!hidden) return;
+    const spinner = setTimeout(() => setSlow(true), HIDDEN_SPINNER_MS);
     // Never leave the transcript blank if the list fails to report its first layout.
-    const fallback = setTimeout(() => setRevealed(true), 1000);
-    return () => clearTimeout(fallback);
+    const fallback = setTimeout(() => setRevealed(true), HIDDEN_LIMIT_MS);
+    return () => {
+      clearTimeout(spinner);
+      clearTimeout(fallback);
+    };
   }, [hidden]);
   // FlashList won't repeat onStartReached while the list stays in the start zone, so
   // page in history skipped while hidden once it is shown, if it settled near the top
@@ -138,19 +179,19 @@ function ConversationTranscript({
       // Not here yet: it may still arrive from the server, or be in older history.
       if (messages.loading) return;
       if (messages.hasMore) void messages.loadMore();
-      else if (!revealed) reveal();
+      else if (listReady) void settle(pinToEnd);
       return;
     }
     if (!listReady || jumped.current === target) return;
     jumped.current = target;
     void Promise.resolve(
       list.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false }),
-    ).then(reveal);
+    ).then(() => settle());
   }, [
     hasTarget,
     listReady,
-    revealed,
-    reveal,
+    settle,
+    pinToEnd,
     targetMessageId,
     targetSeq,
     messages.messages,
@@ -210,13 +251,13 @@ function ConversationTranscript({
             maintainVisibleContentPosition={{
               startRenderingFromBottom: true,
               autoscrollToBottomThreshold: 0.2,
+              // Animate only for messages that arrive while reading. While hidden it would
+              // fight the pin to the end, and messages synced on open should not scroll by.
+              animateAutoScrollToBottom: revealed && !messages.loading,
             }}
             onLoad={() => {
               setListReady(true);
-              if (hasTarget) return;
-              // Land on the true end, below a tall last message and the composer padding.
-              list.current?.scrollToEnd({ animated: false });
-              reveal();
+              if (!hasTarget) void settle(pinToEnd);
             }}
             onStartReached={() => {
               // The hidden list briefly sits at the top; don't page in history for that.
@@ -249,6 +290,12 @@ function ConversationTranscript({
             }
           />
         </View>
+        {hidden && slow ? (
+          <ActivityIndicator
+            testID="chat-transcript-loading"
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: composerHeight }}
+          />
+        ) : null}
         {awayFromBottom && !hidden ? (
           <View
             testID="chat-jump-control"

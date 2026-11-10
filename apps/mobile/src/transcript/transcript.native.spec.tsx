@@ -6,6 +6,7 @@ import { Transcript } from './transcript';
 
 let mockKeyboardHeight = 0;
 type ListProps = {
+  maintainVisibleContentPosition?: { animateAutoScrollToBottom?: boolean };
   onLoad?: () => void;
   onStartReached?: () => void;
   keyboardDismissMode?: string;
@@ -26,6 +27,7 @@ let mockListProps: ListProps;
 const mockScrollToEnd = jest.fn();
 const mockScrollToIndex = jest.fn(() => Promise.resolve());
 let mockScrollOffset = 0;
+let mockContentHeight = 6000;
 let mockLoading = false;
 let mockHasMore = true;
 const mockRefetch = jest.fn();
@@ -47,6 +49,7 @@ jest.mock('@shopify/flash-list', () => {
         scrollToEnd: mockScrollToEnd,
         scrollToIndex: mockScrollToIndex,
         getAbsoluteLastScrollOffset: () => mockScrollOffset,
+        getChildContainerDimensions: () => ({ width: 400, height: mockContentHeight }),
         getWindowSize: () => ({ width: 400, height: 800 }),
       }));
       return null;
@@ -75,9 +78,11 @@ beforeEach(() => {
   mockKeyboardHeight = 0;
   mockMessages = [];
   mockScrollOffset = 0;
+  mockContentHeight = 6000;
   mockLoading = false;
   mockHasMore = true;
   jest.clearAllMocks();
+  mockScrollToEnd.mockReset();
 });
 
 describe('chat keyboard and scrolling', () => {
@@ -168,13 +173,13 @@ describe('chat keyboard and scrolling', () => {
 describe('reopening a conversation', () => {
   const transcript = () => screen.getByTestId('chat-transcript', { includeHiddenElements: true });
   const opacity = () => StyleSheet.flatten(transcript().props.style).opacity;
-  const settle = () => act(() => jest.advanceTimersByTime(100));
-  // A jump to a linked message finishes asynchronously before the reveal frames.
+  const advance = (ms: number) => act(() => jest.advanceTimersByTimeAsync(ms));
+  // The list reports its first layout, then holds still long enough to be shown.
   const load = async () => {
     await act(async () => {
       mockListProps.onLoad?.();
     });
-    settle();
+    await advance(600);
   };
   const scrollUp = () =>
     act(() =>
@@ -198,7 +203,7 @@ describe('reopening a conversation', () => {
     jest.useRealTimers();
   });
 
-  it('stays hidden and untouchable until it has settled on the latest message', () => {
+  it('stays hidden and untouchable until it holds still on the latest message', async () => {
     mockScrollOffset = 5000;
     render(<Transcript chatId="chat" bots={[]} title="Bot" />);
     expect(opacity()).toBe(0);
@@ -208,11 +213,17 @@ describe('reopening a conversation', () => {
     // While hidden the list sits at the top; that must not page in older history.
     mockListProps.onStartReached?.();
     expect(mockLoadMore).not.toHaveBeenCalled();
-    act(() => mockListProps.onLoad?.());
+    await act(async () => {
+      mockListProps.onLoad?.();
+    });
     expect(mockScrollToEnd).toHaveBeenCalledWith({ animated: false });
+    // FlashList is still applying its own initial scroll: too early to show.
+    await advance(100);
     expect(opacity()).toBe(0);
-    settle();
+    expect(mockListProps.maintainVisibleContentPosition?.animateAutoScrollToBottom).toBe(false);
+    await advance(100);
     expect(opacity()).toBe(1);
+    expect(mockListProps.maintainVisibleContentPosition?.animateAutoScrollToBottom).toBe(true);
     expect(transcript().props.pointerEvents).toBe('auto');
     expect(transcript().props.accessibilityElementsHidden).toBe(false);
     // Settled at the bottom, so nothing is paged in until the reader scrolls up.
@@ -221,20 +232,66 @@ describe('reopening a conversation', () => {
     expect(mockLoadMore).toHaveBeenCalledTimes(1);
   });
 
-  it('pages in history skipped while hidden when it settles near the top', () => {
+  it('keeps pinning to the end while rows are still being measured', async () => {
+    // Each pin exposes rows whose real height differs, moving the content six times.
+    mockScrollToEnd.mockImplementation(() => {
+      if (mockScrollToEnd.mock.calls.length <= 6) mockContentHeight += 300;
+    });
+    render(<Transcript chatId="chat" bots={[]} title="Bot" />);
+    await act(async () => {
+      mockListProps.onLoad?.();
+    });
+    await advance(300);
+    expect(opacity()).toBe(0);
+    await advance(200);
+    expect(opacity()).toBe(1);
+    expect(mockScrollToEnd.mock.calls.length).toBeGreaterThan(6);
+    for (const call of mockScrollToEnd.mock.calls) expect(call).toEqual([{ animated: false }]);
+  });
+
+  it('shows the conversation anyway if it never holds still', async () => {
+    // A reply streaming in keeps growing the content.
+    mockScrollToEnd.mockImplementation(() => {
+      mockContentHeight += 20;
+    });
+    render(<Transcript chatId="chat" bots={[]} title="Bot" />);
+    await act(async () => {
+      mockListProps.onLoad?.();
+    });
+    await advance(900);
+    expect(opacity()).toBe(0);
+    await advance(200);
+    expect(opacity()).toBe(1);
+  });
+
+  it('pages in history skipped while hidden when it settles near the top', async () => {
     mockScrollOffset = 0;
     render(<Transcript chatId="chat" bots={[]} title="Bot" />);
     mockListProps.onStartReached?.();
-    act(() => mockListProps.onLoad?.());
-    settle();
+    await load();
     expect(mockLoadMore).toHaveBeenCalledTimes(1);
   });
 
-  it('never leaves the transcript blank if the list does not report its layout', () => {
-    render(<Transcript chatId="chat" bots={[]} title="Bot" />);
-    expect(opacity()).toBe(0);
-    act(() => jest.advanceTimersByTime(1000));
+  it('does not animate messages synced on open into view', async () => {
+    mockLoading = true;
+    const view = render(<Transcript chatId="chat" bots={[]} title="Bot" />);
+    await load();
     expect(opacity()).toBe(1);
+    expect(mockListProps.maintainVisibleContentPosition?.animateAutoScrollToBottom).toBe(false);
+    mockLoading = false;
+    view.rerender(<Transcript chatId="chat" bots={[]} title="Bot" />);
+    expect(mockListProps.maintainVisibleContentPosition?.animateAutoScrollToBottom).toBe(true);
+  });
+
+  it('shows a spinner, then the transcript, if the list is slow to lay out', async () => {
+    render(<Transcript chatId="chat" bots={[]} title="Bot" />);
+    expect(screen.queryByTestId('chat-transcript-loading')).toBeNull();
+    await advance(300);
+    expect(screen.getByTestId('chat-transcript-loading')).toBeTruthy();
+    expect(opacity()).toBe(0);
+    await advance(2700);
+    expect(opacity()).toBe(1);
+    expect(screen.queryByTestId('chat-transcript-loading')).toBeNull();
   });
 
   it('shows an empty conversation immediately and its first message without a blink', () => {
@@ -289,12 +346,13 @@ describe('reopening a conversation', () => {
     expect(opacity()).toBe(0);
   });
 
-  it('reveals the conversation when a linked message cannot be found', () => {
+  it('opens at the latest message when a linked message cannot be found', async () => {
     mockHasMore = false;
     render(<Transcript chatId="chat" bots={[]} title="Bot" targetMessageId="missing" />);
     expect(opacity()).toBe(0);
-    settle();
+    await load();
     expect(mockScrollToIndex).not.toHaveBeenCalled();
+    expect(mockScrollToEnd).toHaveBeenCalledWith({ animated: false });
     expect(opacity()).toBe(1);
   });
 
