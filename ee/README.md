@@ -11,7 +11,7 @@ source-visible under [apps/mobile/LICENSE](../apps/mobile/LICENSE).
 
 Rules for code here:
 
-- The core (`apps/` except `apps/mobile/`, and `packages/`) never imports from `ee/`. Enterprise code
+- Nothing in `apps/` or `packages/`, the mobile app included, imports from `ee/`. Enterprise code
   plugs into the core through its extension points, so self-hosted OpenBots
   builds and runs without this directory. `node scripts/check-licenses.mjs`
   checks both.

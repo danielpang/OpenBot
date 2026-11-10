@@ -1,6 +1,6 @@
 # OpenBots Product Requirements
 
-OpenBots is a source available, self-hosted Grok Bot. This PRD is anchored on xAI's "Designing Grok Bot" essay and the Grok Bot documentation. Where OpenBots deliberately differs (self-hosting, Docker sandboxes, an open connector model), the difference is called out.
+OpenBots is a self-hosted Grok Bot with an open source core under the Apache License 2.0. This PRD is anchored on xAI's "Designing Grok Bot" essay and the Grok Bot documentation. Where OpenBots deliberately differs (self-hosting, Docker sandboxes, an open connector model), the difference is called out.
 
 The test for every feature in this document is the one xAI used: **"Did this help someone delegate, or did it give them one more thing to manage?"**
 

@@ -20,3 +20,9 @@ backups/
 .worktrees/
 .pnpm-store/
 **/.DS_Store
+# The self-hosted images are labelled Apache-2.0, so code under another
+# license stays out of them: ee/ is proprietary (ee/LICENSE) and the mobile
+# app reserves all rights (apps/mobile/LICENSE). Nothing these images build
+# depends on either, and pnpm's frozen install accepts the missing projects.
+ee/
+apps/mobile/

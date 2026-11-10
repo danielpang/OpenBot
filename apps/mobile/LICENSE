@@ -6,7 +6,10 @@ The OpenBots mobile app source in this directory and its subdirectories is
 proprietary and source-visible. You may read it, including to audit encryption
 and the pairing protocol. No right to copy, modify, build, distribute, publish,
 or otherwise use the app or its source is granted without prior written
-permission from Daniel Pang. This includes publication to any app store.
+permission from Daniel Pang. This includes publication to any app store. The
+only exception is what GitHub's Terms of Service let GitHub users do with a
+public repository on GitHub, such as viewing it and forking it there; that
+grants no right to build, distribute or publish the app.
 All rights not expressly granted are reserved.
 
 The app communicates with the Apache-licensed OpenBots core and shared packages.
