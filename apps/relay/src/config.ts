@@ -46,7 +46,7 @@ export const RELAY_ENV_VARS = [
   'RELAY_REPLAY',
   'RELAY_PRESENCE_TOKEN',
   'RELAY_REDIS_COMMAND_TIMEOUT_MS',
-  'RELAY_POSTHOG_KEY',
+  'POSTHOG_API_KEY',
   'RELAY_POSTHOG_HOST',
 ] as const;
 
@@ -85,7 +85,7 @@ const EnvSchema = z.object({
     .default(0.125),
   RELAY_METRICS_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
   RELAY_PRESENCE_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
-  RELAY_POSTHOG_KEY: z.string().min(1).optional(),
+  POSTHOG_API_KEY: z.string().min(1).optional(),
   RELAY_POSTHOG_HOST: z.url().optional(),
   RELAY_REPLAY: z.enum(['fly', 'off']).optional(),
   RELAY_REDIS_COMMAND_TIMEOUT_MS: milliseconds(2_000),
@@ -178,9 +178,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayConfig {
   };
   if (e.RELAY_REDIS_URL) config.redisUrl = e.RELAY_REDIS_URL;
   if (e.RELAY_METRICS_TOKEN) config.metricsToken = e.RELAY_METRICS_TOKEN;
-  if (e.RELAY_POSTHOG_KEY) {
+  if (e.POSTHOG_API_KEY) {
     config.posthog = {
-      apiKey: e.RELAY_POSTHOG_KEY,
+      apiKey: e.POSTHOG_API_KEY,
       ...(e.RELAY_POSTHOG_HOST ? { host: e.RELAY_POSTHOG_HOST } : {}),
     };
   }

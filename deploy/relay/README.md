@@ -38,7 +38,7 @@ fly secrets set RELAY_METRICS_TOKEN="$(openssl rand -hex 32)"
 
 `RELAY_REDIS_URL` is required as soon as more than one Machine runs. Without it each Machine believes it is the only one, and a phone that lands on a Machine other than its server's gets 4404. `RELAY_METRICS_TOKEN` turns on `GET /metrics`; without it the route answers 404.
 
-To send the anonymous usage data the Terms describe to PostHog, set `fly secrets set RELAY_POSTHOG_KEY=<project key>` (and `RELAY_POSTHOG_HOST` for the EU cloud). Without it the relay sends nothing. See [Anonymous usage data](../../apps/relay/README.md#anonymous-usage-data).
+To send the anonymous usage data the Terms describe to PostHog, set `fly secrets set POSTHOG_API_KEY=<project key>` (and `RELAY_POSTHOG_HOST` for the EU cloud). Without it the relay sends nothing. See [Anonymous usage data](../../apps/relay/README.md#anonymous-usage-data).
 
 Push needs the project's APNs key, and only the project's own relay has one (it belongs to the App Store build). Set it as a secret that holds the `.p8` file in base64. The relay reads it once at start and deletes it from its environment, so no key file is needed:
 

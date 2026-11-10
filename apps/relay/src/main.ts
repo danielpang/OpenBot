@@ -47,7 +47,7 @@ const registry = config.redisUrl
 if (!registry) logger.info('no RELAY_REDIS_URL: the registry is in memory, for this machine alone');
 
 const telemetry = config.posthog ? new PostHogTelemetry({ ...config.posthog, logger }) : undefined;
-if (telemetry) logger.info('RELAY_POSTHOG_KEY set: sending anonymous usage data');
+if (telemetry) logger.info('POSTHOG_API_KEY set: sending anonymous usage data');
 
 const relay = await createRelay({
   port: config.port,

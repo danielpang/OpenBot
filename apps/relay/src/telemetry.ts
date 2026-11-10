@@ -1,7 +1,7 @@
 import type { Logger } from 'pino';
 
 // Anonymous usage data for the shared relay, sent to PostHog (docs/TERMS.md
-// section 4). It is off unless `RELAY_POSTHOG_KEY` is set, so a self-hosted
+// section 4). It is off unless `POSTHOG_API_KEY` is set, so a self-hosted
 // relay sends nothing.
 //
 // What it carries is counts and error kinds, never who or what:
