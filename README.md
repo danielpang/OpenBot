@@ -28,8 +28,8 @@ several into a group, and use Routines to start work on a schedule.
 
 1. Install and start [Docker Desktop](https://www.docker.com/products/docker-desktop/) or
    [OrbStack](https://orbstack.dev).
-2. Download `OpenBots-<version>-universal.dmg` from the
-   [latest release](https://github.com/danielpang/OpenBots/releases/latest), then drag OpenBots into
+2. Download the Mac app `OpenBots-<version>-universal.dmg` from the
+   [latest release](https://github.com/danielpang/OpenBots/releases/latest) or from our [download link](https://openbots.sh/download/mac) then drag OpenBots into
    Applications. It supports Apple Silicon and Intel Macs.
 3. Open OpenBots and choose **Run OpenBots on this Mac**. Let it download and start the local stack.
 4. Follow setup to create your account, add a model provider key and create your first Bot.
