@@ -72,7 +72,7 @@ xAI, run `pi` in the terminal, choose `/login`, then choose **Check** in Models.
 
 Self-hosting? Deploy the server and computer image together, and start agents through the
 supplied Claude/Codex launchers so credential refreshes stay coordinated. Credentials are readable
-by code running as the shared `coder` user; see [the security review](docs/SECURITY.md).
+by code running as the shared `coder` user.
 
 ## Coding tasks and pull requests
 
@@ -91,7 +91,7 @@ for retry behavior, cancellation, and existing unsafe Git-configuration recovery
 - [Architecture and the five Docker images](docs/ARCHITECTURE.md)
 - [Self-hosting reference: install, upgrade, backup and development](docs/SELF_HOSTING.md)
 - [Contributing](docs/CONTRIBUTING.md) · [Report a bug or suggest an idea](https://github.com/danielpang/OpenBots/issues)
-- [Security boundaries](docs/SECURITY.md) · [License](LICENSE) · [Terms and Conditions](docs/TERMS.md)
+- [License](LICENSE) · [Terms and Conditions](docs/TERMS.md)
 
 Bots can take real actions: review permissions and approvals before giving them access.
 The free shared relay has no availability guarantee; see the terms before using it.

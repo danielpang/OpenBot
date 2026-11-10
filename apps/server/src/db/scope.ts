@@ -3,8 +3,7 @@ import { sql } from 'drizzle-orm';
 import { PgDatabase, PgSession, type PgTransaction } from 'drizzle-orm/pg-core';
 import type { Db } from './client.js';
 
-// Row-level security, the second layer between organizations (plan 21.9;
-// docs/SECURITY.md lists every path below in one place).
+// Row-level security, the second layer between organizations (plan 21.9).
 //
 // Postgres keeps each organization's rows to itself (drizzle/0023): every
 // table with workspace_id answers only for the organization in

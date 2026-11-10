@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The license pass of the 1.0 gate (plan 18.9, docs/SECURITY.md): every
+// The license pass of the 1.0 gate (plan 18.9): every
 // core workspace package (apps/, packages/) is BUSL-1.1 like the LICENSE
 // file, every ee/ package is private and under ee/LICENSE ("SEE LICENSE IN
 // LICENSE", with a copy of it beside its package.json), every production

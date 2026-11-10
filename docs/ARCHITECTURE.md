@@ -124,8 +124,8 @@ isolation boundary** and is not equivalent to the sandboxed Compose stack. Cloud
 needs particular care: with `NET_ADMIN`, its init process blocks the documented metadata
 addresses for Bot users; otherwise apply the appropriate platform restrictions.
 
-See [deployment choices](../deploy/README.md), [standalone setup and settings](../docker/standalone/README.md)
-and [security boundaries and known differences](SECURITY.md#14-standalone-image-and-a-self-hosted-relay).
+See [deployment choices](../deploy/README.md) and
+[standalone setup and settings](../docker/standalone/README.md).
 
 ## Why the release builds all five
 

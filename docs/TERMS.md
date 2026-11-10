@@ -155,4 +155,4 @@ your use ends.
 
 Questions about these Terms can be raised as an issue on the
 [OpenBots GitHub repository](https://github.com/danielpang/OpenBots/issues). Report security
-issues privately as described in [SECURITY.md](SECURITY.md).
+issues privately by opening a private security advisory on that repository.

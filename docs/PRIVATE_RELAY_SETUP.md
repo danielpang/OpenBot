@@ -122,5 +122,4 @@ again. Pairing requires a compatible mobile build (the iOS and Android apps are 
 OpenBots first if you are upgrading its server alongside the relay.
 
 The relay stores no chat history. Restrict access to its metadata logs, monitor its health and
-keep it patched. See [relay operations](../apps/relay/README.md) and
-[security boundaries](SECURITY.md#13-private-relay-and-paired-devices).
+keep it patched. See [relay operations](../apps/relay/README.md).

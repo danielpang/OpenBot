@@ -177,7 +177,7 @@ its files.
 ## Known gaps
 
 - Another Mac: a paired Mac holds a device key, so the routes a phone may not use
-  (`DEVICE_KEY_NOT_ALLOWED`, docs/SECURITY.md 13) are refused there too, among them adding a
+  (`DEVICE_KEY_NOT_ALLOWED`) are refused there too, among them adding a
   connector, a connector's OAuth sign-in, Settings, and pairing a phone; do those on the other Mac.
   Pairing needs a relay; a server with only a direct address is added as a self-hosted server.
 

@@ -22,8 +22,7 @@ import type { CoderAdapter } from './types.js';
 // of /home/bot outside the repositories and out of the state volume's other
 // directories; the credential helper serves a push credential only for a
 // session the owner approved a push for; and the computer's sandbox
-// firewall (and egress proxy, when set) is the same as for every Bot
-// (SECURITY.md S-26).
+// firewall (and egress proxy, when set) is the same as for every Bot.
 
 /** Strictest first, as `strictest` compares them. */
 export const CLASS_RANK: Record<CoderActionClass, number> = {
