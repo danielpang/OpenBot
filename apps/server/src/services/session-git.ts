@@ -391,25 +391,91 @@ export async function diffArtifact(
  * their OAuth token when the connection acts as them; with no connection,
  * the owner's GitHub connector token. Returns the pull request's url.
  */
+interface PullRequestTarget {
+  owner: Owner;
+  repo: RepoRow;
+  session: Pick<CodingSessionRow, 'branch' | 'base'>;
+  githubApi?: string;
+  signal?: AbortSignal;
+}
+
+async function pullRequestApi(deps: AppDeps, input: PullRequestTarget) {
+  const { fullName } = remoteOf(input.repo);
+  const token = await pullRequestToken(deps, input.owner, fullName);
+  input.signal?.throwIfAborted();
+  if (!token) throw new Error('there is no GitHub token on the Connectors page');
+  const [owner, name] = fullName.split('/') as [string, string];
+  const base = (input.githubApi ?? GITHUB_API).replace(/\/+$/, '');
+  return {
+    owner,
+    url: `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls`,
+    headers: {
+      accept: 'application/vnd.github+json',
+      authorization: `Bearer ${token}`,
+      'x-github-api-version': '2022-11-28',
+      'user-agent': 'OpenBots',
+    },
+  };
+}
+
+function requestSignal(signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(30_000);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+async function lookupOpenPullRequest(
+  api: Awaited<ReturnType<typeof pullRequestApi>>,
+  input: PullRequestTarget,
+): Promise<{ url: string; sha?: string } | null> {
+  const query = new URLSearchParams({
+    state: 'open',
+    head: `${api.owner}:${input.session.branch}`,
+    base: input.session.base!,
+  });
+  const response = await fetch(`${api.url}?${query}`, {
+    headers: api.headers,
+    signal: requestSignal(input.signal),
+  });
+  const items: unknown = await response.json().catch(() => null);
+  if (!response.ok || !Array.isArray(items))
+    throw new Error(`GitHub pull request lookup answered ${response.status}`);
+  const match = items.find(
+    (
+      item: {
+        html_url?: unknown;
+        head?: { ref?: string; sha?: string };
+        base?: { ref?: string };
+      } | null,
+    ) =>
+      item?.head?.ref === input.session.branch &&
+      item?.base?.ref === input.session.base &&
+      typeof item?.html_url === 'string',
+  );
+  return match
+    ? {
+        url: match.html_url as string,
+        ...(typeof match.head?.sha === 'string' ? { sha: match.head.sha as string } : {}),
+      }
+    : null;
+}
+
+/** A saved URL is not proof that an open PR still carries the pushed commit. */
+export async function findOpenPullRequest(deps: AppDeps, input: PullRequestTarget) {
+  return lookupOpenPullRequest(await pullRequestApi(deps, input), input);
+}
+
 export async function openPullRequest(
   deps: AppDeps,
-  input: {
-    owner: Owner;
-    repo: RepoRow;
-    session: Pick<CodingSessionRow, 'branch' | 'base'>;
+  input: PullRequestTarget & {
     botName: string;
     summary: string;
     commits: CoderCommit[];
-    githubApi?: string;
     metadata?: CoderPublishInput;
     reuseExisting?: boolean;
   },
 ): Promise<string> {
   const { summary, commits, session } = input;
-  const { fullName } = remoteOf(input.repo);
-  const token = await pullRequestToken(deps, input.owner, fullName);
-  if (!token) throw new Error('there is no GitHub token on the Connectors page');
-  const [owner, name] = fullName.split('/') as [string, string];
+  const api = await pullRequestApi(deps, input);
   const firstLine = summary
     .split('\n')
     .find((line) => line.trim())
@@ -421,48 +487,14 @@ export async function openPullRequest(
       : firstLine.slice(0, 200));
   const body =
     `${(input.metadata?.body ?? summary).trim()}\n\nOpened by ${input.botName} with OpenBots`.trim();
-  const base = (input.githubApi ?? GITHUB_API).replace(/\/+$/, '');
-  const pullsUrl = `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls`;
-  const findExisting = async (): Promise<string | null> => {
-    const query = new URLSearchParams({
-      state: 'open',
-      head: `${owner}:${session.branch}`,
-      base: session.base!,
-    });
-    const response = await fetch(`${pullsUrl}?${query}`, {
-      headers: {
-        accept: 'application/vnd.github+json',
-        authorization: `Bearer ${token}`,
-        'x-github-api-version': '2022-11-28',
-        'user-agent': 'OpenBots',
-      },
-      signal: AbortSignal.timeout(30_000),
-    });
-    const items: unknown = await response.json().catch(() => null);
-    if (!response.ok || !Array.isArray(items))
-      throw new Error(`GitHub pull request lookup answered ${response.status}`);
-    const match = items.find(
-      (item: { html_url?: unknown; head?: { ref?: string }; base?: { ref?: string } } | null) =>
-        item?.head?.ref === session.branch &&
-        item?.base?.ref === session.base &&
-        typeof item?.html_url === 'string',
-    );
-    return match ? (match as { html_url: string }).html_url : null;
-  };
-  // Follow-ups reuse open PRs, but must not report a previously merged/closed one as updated.
   if (input.reuseExisting) {
-    const url = await findExisting();
-    if (url) return url;
+    const existing = await lookupOpenPullRequest(api, input);
+    if (existing) return existing.url;
   }
-  const res = await fetch(pullsUrl, {
+  input.signal?.throwIfAborted();
+  const res = await fetch(api.url, {
     method: 'POST',
-    headers: {
-      accept: 'application/vnd.github+json',
-      authorization: `Bearer ${token}`,
-      'x-github-api-version': '2022-11-28',
-      'user-agent': 'OpenBots',
-      'content-type': 'application/json',
-    },
+    headers: { ...api.headers, 'content-type': 'application/json' },
     body: JSON.stringify({
       title,
       head: session.branch,
@@ -470,19 +502,18 @@ export async function openPullRequest(
       body,
       ...(input.metadata?.draft !== undefined ? { draft: input.metadata.draft } : {}),
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: requestSignal(input.signal),
   });
   const data = (await res.json().catch(() => null)) as {
     html_url?: string;
     message?: string;
   } | null;
-  // A retry after a crash may have created the PR before its URL was saved.
+  // Recover a create that succeeded before the URL was saved, without duplicating it.
   if (res.status === 422) {
-    const url = await findExisting();
-    if (url) return url;
+    const existing = await lookupOpenPullRequest(api, input);
+    if (existing) return existing.url;
   }
-  if (!res.ok || !data?.html_url) {
+  if (!res.ok || !data?.html_url)
     throw new Error(`GitHub answered ${res.status}: ${data?.message ?? res.statusText}`);
-  }
   return data.html_url;
 }

@@ -27,6 +27,9 @@ describe('session-scoped publishing', () => {
   const posts: Record<string, unknown>[] = [];
   const lookups: string[] = [];
   let conflict = false;
+  let failures = 0;
+  let noOpenPr = false;
+  const options = { runWaitMs: 0, stopGraceMs: 20, sessionMinutes: 60, githubApi: '' };
   beforeAll(async () => {
     w = await coderWorld('publishing@example.com');
     github = createServer((req, res) => {
@@ -38,31 +41,46 @@ describe('session-scoped publishing', () => {
         if (req.method === 'GET') {
           lookups.push(req.url!);
           res.writeHead(200, { 'content-type': 'application/json' });
+          const ref = w.coder
+            .gitCalls()
+            .filter((args) => args.includes('push'))
+            .at(-1)
+            ?.find((arg) => arg.includes(':refs/heads/'));
           res.end(
-            JSON.stringify([
-              { html_url: PR, head: { ref: 'bot/fix-reconnect' }, base: { ref: 'main' } },
-            ]),
+            JSON.stringify(
+              noOpenPr
+                ? []
+                : [
+                    {
+                      html_url: PR,
+                      head: { ref: 'bot/fix-reconnect', sha: ref?.split(':')[0] ?? 'abc1234' },
+                      base: { ref: 'main' },
+                    },
+                  ],
+            ),
           );
           return;
         }
         posts.push(JSON.parse(body) as Record<string, unknown>);
-        res.writeHead(conflict ? 422 : 201, { 'content-type': 'application/json' });
+        const fail = failures-- > 0;
+        if (!fail && !conflict) noOpenPr = false;
+        res.writeHead(fail ? 500 : conflict ? 422 : 201, { 'content-type': 'application/json' });
         res.end(
           JSON.stringify(
-            conflict ? { message: 'A pull request already exists' } : { html_url: PR },
+            fail
+              ? { message: 'Temporary GitHub error' }
+              : conflict
+                ? { message: 'A pull request already exists' }
+                : { html_url: PR },
           ),
         );
       });
     });
     await new Promise<void>((resolve) => github.listen(0, '127.0.0.1', resolve));
-    await w.t.deps.infra.queue<CoderJob>(CODERS_QUEUE).process(
-      createCoderWorker(w.t.deps, {
-        runWaitMs: 0,
-        stopGraceMs: 20,
-        githubApi: `http://127.0.0.1:${(github.address() as AddressInfo).port}`,
-      }),
-      { concurrency: 4 },
-    );
+    options.githubApi = `http://127.0.0.1:${(github.address() as AddressInfo).port}`;
+    await w.t.deps.infra
+      .queue<CoderJob>(CODERS_QUEUE)
+      .process(createCoderWorker(w.t.deps, options), { concurrency: 4 });
     expect(
       (
         await w.call('POST', '/connectors', {
@@ -221,9 +239,10 @@ describe('session-scoped publishing', () => {
       };
       const { sessionId } = await w.newSession({ mode: kind === 'plan' ? 'plan' : 'edit' });
       await start(sessionId);
+      if (kind === 'invalid') await approve(sessionId);
       expect((await ended(sessionId)).status).toBe('settled');
       expect(answer?.decision).toBe('deny');
-      expect(await approvals(sessionId)).toEqual([]);
+      expect(await approvals(sessionId)).toHaveLength(kind === 'invalid' ? 1 : 0);
     },
   );
 
@@ -306,6 +325,7 @@ describe('session-scoped publishing', () => {
     };
     const { sessionId } = await w.newSession();
     await start(sessionId);
+    await approve(sessionId);
     await ended(sessionId);
     expect(replies).toHaveLength(2);
     for (const reply of replies)
@@ -313,7 +333,7 @@ describe('session-scoped publishing', () => {
         decision: 'deny',
         message: expect.stringContaining('publish_pull_request'),
       });
-    expect(await approvals(sessionId)).toEqual([]);
+    expect(await approvals(sessionId)).toHaveLength(1);
   });
 
   it('does not publish if stopped while the owner is deciding', async () => {
@@ -348,9 +368,9 @@ describe('session-scoped publishing', () => {
       await approve(sessionId);
       expect((await ended(sessionId)).prUrl).toBe(PR);
       expect(answer?.decision).toBe('allow');
-      expect(lookups.slice(before)).toEqual([
-        expect.stringContaining('head=acme%3Abot%2Ffix-reconnect'),
-      ]);
+      expect(lookups.length).toBeGreaterThan(before);
+      for (const lookup of lookups.slice(before))
+        expect(lookup).toContain('head=acme%3Abot%2Ffix-reconnect');
     } finally {
       conflict = false;
     }
@@ -405,6 +425,264 @@ describe('session-scoped publishing', () => {
       expect(await approvals(sessionId)).toEqual([]);
     } finally {
       w.coder.git = defaultGit;
+    }
+  });
+  it('automatically publishes edit sessions even when the agent never calls the tool', async () => {
+    const before = posts.length;
+    w.coder.agent = async (io) => {
+      io.stdout(jsonl(initLine()));
+      complete(io);
+    };
+    const { sessionId } = await w.newSession({ mode: 'edit' });
+    await start(sessionId);
+    await approve(sessionId);
+    expect(await ended(sessionId)).toMatchObject({
+      status: 'settled',
+      prUrl: PR,
+      pushedSha: 'abc1234',
+    });
+    expect(posts).toHaveLength(before + 1);
+  });
+
+  it('publishes the final commit after a live publish, with a fresh SHA approval', async () => {
+    const firstCall = w.coder.calls.length;
+    w.coder.agent = async (io) => {
+      io.stdout(jsonl(initLine()));
+      expect((await request(io)).decision).toBe('allow');
+      w.coder.git = (args) =>
+        args.includes('rev-parse') && args.includes('HEAD')
+          ? { code: 0, stdout: 'def5678\n' }
+          : args.includes('log')
+            ? { code: 0, stdout: 'def5678\tFix the final test\nabc1234\tInitial changes\n' }
+            : defaultGit(args);
+      complete(io);
+    };
+    try {
+      const { sessionId } = await w.newSession({ mode: 'pr' });
+      await start(sessionId);
+      await approve(sessionId);
+      await approve(sessionId);
+      const row = await ended(sessionId);
+      expect(row).toMatchObject({ status: 'settled', prUrl: PR, pushedSha: 'def5678' });
+      expect(row.commits).toEqual(
+        expect.arrayContaining([expect.objectContaining({ sha: 'def5678' })]),
+      );
+      // Count from recorded process calls, since preparation uses non-Git commands too.
+      expect(
+        w.coder.calls
+          .slice(firstCall)
+          .filter((c) => c.launch.command === 'git' && c.launch.args?.includes('push')),
+      ).toHaveLength(2);
+      expect((await approvals(sessionId)).map((a) => (a.args as { sha: string }).sha)).toEqual([
+        'abc1234',
+        'def5678',
+      ]);
+    } finally {
+      w.coder.git = defaultGit;
+    }
+  });
+
+  it('never reports an old closed PR as success after push succeeds and PR creation fails', async () => {
+    noOpenPr = true;
+    failures = 3;
+    const before = posts.length;
+    const replies: CoderPermissionAnswer[] = [];
+    w.coder.agent = async (io) => {
+      io.stdout(jsonl(initLine()));
+      replies.push(await request(io));
+      replies.push(await request(io, 'retry'));
+      complete(io);
+    };
+    try {
+      const { sessionId } = await w.newSession({ mode: 'pr', prUrl: PR, pushedSha: 'old1111' });
+      await start(sessionId);
+      await approve(sessionId);
+      const row = await ended(sessionId);
+      expect(replies.map((r) => r.decision)).toEqual(['deny', 'deny']);
+      expect(row.prUrl).toBeNull();
+      expect(row.error).toContain('Temporary GitHub error');
+      expect(row.summary).toContain('Temporary GitHub error');
+      expect(posts).toHaveLength(before + 3);
+      expect(await approvals(sessionId)).toHaveLength(1);
+    } finally {
+      noOpenPr = false;
+      failures = 0;
+    }
+  });
+
+  it('retries a temporary GitHub failure once at completion, reusing the exact approved metadata and SHA', async () => {
+    const before = posts.length;
+    failures = 1;
+    noOpenPr = true;
+    let answer: CoderPermissionAnswer | undefined;
+    w.coder.agent = async (io) => {
+      io.stdout(jsonl(initLine()));
+      answer = await request(io);
+      complete(io);
+    };
+    try {
+      const { sessionId } = await w.newSession({ mode: 'pr' });
+      await start(sessionId);
+      await approve(sessionId);
+      const row = await ended(sessionId);
+      expect(answer?.decision).toBe('deny');
+      expect(row).toMatchObject({ status: 'settled', prUrl: PR, error: null });
+      expect(row.summary).not.toContain('Temporary GitHub error');
+      expect(posts).toHaveLength(before + 2);
+      expect(posts.at(-1)).toMatchObject({
+        ...metadata,
+        body: expect.stringContaining(metadata.body),
+      });
+      expect(await approvals(sessionId)).toHaveLength(1);
+    } finally {
+      failures = 0;
+      noOpenPr = false;
+    }
+  });
+
+  it('expires pending publication on time limit, without pushing after the agent exits', async () => {
+    const before = posts.length;
+    options.sessionMinutes = 0.002;
+    let exited = false;
+    w.coder.agent = async (io) => {
+      io.stdout(jsonl(initLine()));
+      const publishing = request(io);
+      await io.signalled();
+      exited = true;
+      io.exit(null, 'SIGTERM');
+      await publishing;
+    };
+    try {
+      const { sessionId } = await w.newSession({ mode: 'pr' });
+      await start(sessionId);
+      const row = await ended(sessionId);
+      expect(exited).toBe(true);
+      expect(row.error).toContain('minute limit');
+      expect(row.prUrl).toBeNull();
+      expect(posts).toHaveLength(before);
+      expect(await approvals(sessionId)).toEqual([expect.objectContaining({ status: 'expired' })]);
+      const [approval] = await approvals(sessionId);
+      expect(
+        (await w.call('POST', `/approvals/${approval!.id}/decide`, { decision: 'approve' })).status,
+      ).not.toBe(200);
+    } finally {
+      options.sessionMinutes = 60;
+    }
+  });
+  it('does not publish a final commit when its fresh approval is declined', async () => {
+    const before = w.coder.calls.length;
+    w.coder.agent = async (io) => {
+      io.stdout(jsonl(initLine()));
+      await request(io);
+      w.coder.git = (args) =>
+        args.includes('rev-parse') && args.includes('HEAD')
+          ? { code: 0, stdout: 'def5678\n' }
+          : defaultGit(args);
+      complete(io);
+    };
+    try {
+      const { sessionId } = await w.newSession({ mode: 'edit' });
+      await start(sessionId);
+      await approve(sessionId);
+      await approve(sessionId, 'deny');
+      expect(await ended(sessionId)).toMatchObject({
+        status: 'settled',
+        pushedSha: 'abc1234',
+        prUrl: null,
+        summary: expect.stringContaining('not approved'),
+      });
+      expect(
+        w.coder.calls
+          .slice(before)
+          .filter((c) => c.launch.command === 'git' && c.launch.args?.includes('push')),
+      ).toHaveLength(1);
+      expect(await approvals(sessionId)).toHaveLength(2);
+    } finally {
+      w.coder.git = defaultGit;
+    }
+  });
+
+  it('reconciles a safety-net commit left after live publication', async () => {
+    let dirty = false;
+    let safetyNetCommitted = false;
+    w.coder.git = (args) => {
+      if (args.includes('commit')) {
+        dirty = false;
+        safetyNetCommitted = true;
+        return { code: 0 };
+      }
+      if (args.includes('status') && args.includes('--porcelain'))
+        return { code: 0, stdout: dirty ? ' M src/link.ts\0' : '' };
+      if (args.includes('rev-parse') && args.includes('HEAD') && safetyNetCommitted)
+        return { code: 0, stdout: 'def5678\n' };
+      return defaultGit(args);
+    };
+    w.coder.agent = async (io) => {
+      io.stdout(jsonl(initLine()));
+      await request(io);
+      dirty = true;
+      io.stdout(
+        jsonl({
+          type: 'assistant',
+          message: {
+            content: [
+              {
+                type: 'tool_use',
+                id: 'late-edit',
+                name: 'Edit',
+                input: {
+                  file_path: '/home/bot/repos/acme/relay/.worktrees/bot-fix-reconnect/src/link.ts',
+                },
+              },
+            ],
+          },
+        }),
+      );
+      complete(io);
+    };
+    try {
+      const { sessionId } = await w.newSession({ mode: 'edit' });
+      await start(sessionId);
+      await approve(sessionId);
+      await approve(sessionId);
+      expect(await ended(sessionId)).toMatchObject({
+        status: 'settled',
+        pushedSha: 'def5678',
+        prUrl: PR,
+      });
+      expect(safetyNetCommitted).toBe(true);
+      expect((await approvals(sessionId)).map((a) => (a.args as { sha: string }).sha)).toEqual([
+        'abc1234',
+        'def5678',
+      ]);
+    } finally {
+      w.coder.git = defaultGit;
+    }
+  });
+
+  it('requires fresh approval when a retry changes PR metadata for the same commit', async () => {
+    const before = posts.length;
+    failures = 1;
+    noOpenPr = true;
+    w.coder.agent = async (io) => {
+      io.stdout(jsonl(initLine()));
+      expect((await request(io)).decision).toBe('deny');
+      expect(
+        (await request(io, 'new-metadata', { ...metadata, title: 'A different title' })).decision,
+      ).toBe('allow');
+      complete(io);
+    };
+    try {
+      const { sessionId } = await w.newSession();
+      await start(sessionId);
+      await approve(sessionId);
+      await approve(sessionId);
+      expect(await ended(sessionId)).toMatchObject({ status: 'settled', prUrl: PR });
+      expect(await approvals(sessionId)).toHaveLength(2);
+      expect(posts).toHaveLength(before + 2);
+    } finally {
+      failures = 0;
+      noOpenPr = false;
     }
   });
 });

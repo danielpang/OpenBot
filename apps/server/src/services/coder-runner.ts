@@ -322,8 +322,11 @@ class SessionRunner {
   private pushAllowed: boolean;
   /** The runner pushed the branch itself this time, and recorded what. */
   private runnerPushed = false;
-  /** A tool attempt (including denial) must not be repeated automatically on exit. */
-  private publishAttempted = false;
+  /** Last outcome, not just an attempt: final HEAD may need a different approval. */
+  private publication: PublishResult | null = null;
+  private publicationMetadata?: CoderPublishInput;
+  private readonly publicationApprovals = new Set<string>();
+  private readonly publicationAbort = new AbortController();
   private stopped = false;
   private timedOut = false;
   /** Pending permission prompts by approval id: the agent's request id. */
@@ -660,6 +663,9 @@ class SessionRunner {
     const minutes = this.options.sessionMinutes ?? DEFAULT_SESSION_MINUTES;
     const limit = setTimeout(() => {
       this.timedOut = true;
+      this.publicationAbort.abort();
+      for (const resolve of this.waiters.values()) resolve('expired');
+      this.wake?.();
       this.stopProcess();
     }, minutes * 60_000);
     limit.unref?.();
@@ -816,7 +822,8 @@ class SessionRunner {
       try {
         const metadata = CoderPublishInputSchema.parse(request.input);
         if (this.session.mode === 'plan') throw new Error('Plan-only sessions cannot publish.');
-        if (this.stopped || this.ending) throw new Error('The session has stopped.');
+        if (this.stopped || this.timedOut || this.ending)
+          throw new Error('The session has stopped.');
         const refused = await this.refusal();
         if (refused) throw new Error(refused);
         const { commits } = await this.branchResult();
@@ -989,6 +996,7 @@ class SessionRunner {
     switch (msg.type) {
       case 'stop':
         this.stopped = true;
+        this.publicationAbort.abort();
         void this.note('text', 'Stopped by the owner');
         this.stopProcess();
         this.wake?.();
@@ -1101,7 +1109,7 @@ class SessionRunner {
       this.wake = resolve;
     });
     this.wake = null;
-    if (this.stopped) return false;
+    if (this.stopped || this.timedOut) return false;
     this.retried = true;
     this.result = null;
     this.errors = [];
@@ -1257,20 +1265,34 @@ class SessionRunner {
       commits.length && this.git ? await diffArtifact(deps, this.git, this.owner, session) : null;
     let summary = this.result?.summary ?? '';
     if (leftovers) summary = summary ? `${summary}\n\n${leftovers}` : leftovers;
-    let prUrl: string | undefined = this.session.prUrl ?? undefined;
+    // Both edit and PR work must reconcile their final HEAD, including safety-net commits.
+    // There is one completion-time attempt. Explicit denials/cancellation are never retried.
     if (
       status === 'settled' &&
-      session.mode === 'pr' &&
+      !error &&
+      session.mode !== 'plan' &&
       commits.length &&
       !this.timedOut &&
-      !this.publishAttempted
+      this.publication?.status !== 'denied' &&
+      this.publication?.status !== 'cancelled'
     ) {
-      const pr = await this.pullRequest(summary, commits);
+      const pr = await this.pullRequest(summary, commits, this.publicationMetadata);
       if (pr.refused) return this.refused(pr.refused);
-      prUrl = pr.url;
-      if (pr.note) summary = summary ? `${summary}\n\n${pr.note}` : pr.note;
       if (this.stopped) status = 'stopped';
     }
+    const publication = this.publication;
+    // Never carry a historical URL forward as proof that this turn was published.
+    const prUrl =
+      publication?.status === 'published'
+        ? publication.url
+        : session.mode === 'plan'
+          ? (this.session.prUrl ?? undefined)
+          : undefined;
+    if (publication?.note)
+      summary = summary ? `${summary}\n\n${publication.note}` : publication.note;
+    if (publication?.status === 'failed')
+      error = publication.note ?? 'Pull request publication failed.';
+    if (this.timedOut && !error) error = 'The session timed out before publication completed.';
     // A push the agent made with the owner's approval: Discard's guard (the runner's own is recorded above).
     if (this.pushAllowed && !this.runnerPushed && this.git) {
       await recordAgentPush(deps, this.git, this.session);
@@ -1365,13 +1387,17 @@ class SessionRunner {
       .select({ toolPolicy: schema.bots.toolPolicy })
       .from(schema.bots)
       .where(eq(schema.bots.id, session.botId));
-    if (!bot || this.stopped) return false;
+    if (!bot || this.stopped || this.timedOut) return false;
     this.policy = resolveToolPolicy(bot.toolPolicy);
     const actions = ['push', 'pr'].map((action) =>
       coderActionDecision(this.policy, this.source, action as 'push' | 'pr'),
     );
     if (actions.includes('deny')) return false;
-    if (!actions.every((decision) => decision === 'auto')) {
+    const approvalKey = JSON.stringify([sha, metadata ?? null]);
+    if (
+      !actions.every((decision) => decision === 'auto') &&
+      !this.publicationApprovals.has(approvalKey)
+    ) {
       let decide!: (decision: 'approved' | 'denied' | 'expired') => void;
       const decided = new Promise<'approved' | 'denied' | 'expired'>(
         (resolve) => (decide = resolve),
@@ -1394,7 +1420,8 @@ class SessionRunner {
         },
         (approvalId) => this.waiters.set(approvalId, decide),
       );
-      if (this.stopped) decide('denied');
+      if (this.timedOut) decide('expired');
+      else if (this.stopped) decide('denied');
       const timer = setTimeout(() => decide('expired'), approvalTtlMs(deps.config) + 60_000);
       timer.unref?.();
       this.timers.push(timer);
@@ -1402,11 +1429,13 @@ class SessionRunner {
       clearTimeout(timer);
       this.waiters.delete(approval.id);
       await setApprovalStatus(deps, this.id, approval.id, decision);
-      if (decision !== 'approved' || this.stopped) {
-        if (!this.stopped) await setSessionStatus(deps, this.id, 'running');
+      if (decision !== 'approved' || this.stopped || this.timedOut) {
+        if (!this.stopped && !this.timedOut) await setSessionStatus(deps, this.id, 'running');
         return false;
       }
+      this.publicationApprovals.add(approvalKey);
     }
+    if (this.stopped || this.timedOut) return false;
     this.pushAllowed = true;
     await setSessionStatus(deps, this.id, 'running', { pushAllowed: true });
     return true;
@@ -1417,7 +1446,8 @@ class SessionRunner {
     commits: CoderCommit[],
     metadata?: CoderPublishInput,
   ): Promise<PublishResult> {
-    this.publishAttempted = true;
+    if (metadata) this.publicationMetadata = metadata;
+    const previous = this.publication;
     const result = await publishSessionPullRequest(this.deps, {
       git: this.git!,
       session: this.session,
@@ -1430,15 +1460,22 @@ class SessionRunner {
       ...(this.options.githubApi ? { githubApi: this.options.githubApi } : {}),
       authorize: (sha) => this.authorizePublication(commits, sha, metadata),
       refusal: () => this.refusal(),
-      stopped: () => this.stopped,
+      stopped: () => this.stopped || this.timedOut,
+      signal: this.publicationAbort.signal,
     });
+    this.publication = { ...result, ...(result.note ? { note: this.scrub(result.note) } : {}) };
     if (result.url) {
       this.runnerPushed = true;
       this.session = { ...this.session, prUrl: result.url };
-      await this.note('text', `Published ${result.url}`);
+      if (
+        previous?.status !== 'published' ||
+        previous.sha !== result.sha ||
+        previous.url !== result.url
+      )
+        await this.note('text', `Published ${result.url}`);
     }
     if (result.note) appendFeed(this.deps, this.id, feedLine('text', result.note));
-    return result;
+    return this.publication;
   }
 
   /** The session's end: its pending approvals expire, then the row and the widget settle. */
