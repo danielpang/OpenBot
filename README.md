@@ -22,22 +22,7 @@ several into a group, and use Routines to start work on a schedule.
   across conversations.
 - **Built in the open, with the community:** inspect the source, suggest ideas and contribute fixes
   or Skills. Help shape what comes next.
-- **Free to self-host:** Always free to self-host. Model API usage are charged through providers.
-
-## License FAQ
-
-**What can I do with the core?** The core is under [Apache 2.0](LICENSE), free to
-use, modify, self-host, host for others, and sell setup or support for.
-
-**What about Enterprise?** The `ee/` code (organizations, billing and subscriptions)
-is proprietary under [ee/LICENSE](ee/LICENSE).
-
-**What about the mobile app?** Its source is visible for review, but all rights are
-reserved under [apps/mobile/LICENSE](apps/mobile/LICENSE). Copying, modifying,
-building, distributing or publishing it requires written permission.
-
-**Can I use the OpenBots branding?** The OpenBots name and logo are trademarks of
-Daniel Pang and may not be used for forks or hosted services without permission.
+- **Open sourced:** Apache 2.0 license, always free to self-host. Model API usage are charged through providers.
 
 ## Get started on your Mac
 
@@ -109,3 +94,18 @@ for retry behavior, cancellation, and existing unsafe Git-configuration recovery
 
 Bots can take real actions: review permissions and approvals before giving them access.
 The free shared relay has no availability guarantee; see the terms before using it.
+
+## License FAQ
+
+**What can I do with the core?** The core is under [Apache 2.0](LICENSE), free to
+use, modify, self-host, host for others, and sell setup or support for.
+
+**What about Enterprise?** The `ee/` code (organizations, billing and subscriptions)
+is proprietary under [ee/LICENSE](ee/LICENSE).
+
+**What about the mobile app?** Its source is visible for review, but all rights are
+reserved under [apps/mobile/LICENSE](apps/mobile/LICENSE). Copying, modifying,
+building, distributing or publishing it requires written permission.
+
+**Can I use the OpenBots branding?** The OpenBots (including Scout, Pixel, and Sage bot) name and logo are trademarks of
+Daniel Pang and may not be used for forks or hosted services without permission.
