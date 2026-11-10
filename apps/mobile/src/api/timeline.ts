@@ -7,7 +7,24 @@ import {
 } from '@openbots/shared';
 export type Message = components['schemas']['Message'];
 
-/** Stable references for unchanged rows let memoized native parts skip streaming updates. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every(
+    (key) =>
+      Object.hasOwn(b, key) &&
+      sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+  );
+}
+
+/**
+ * Stable references for unchanged rows let memoized native parts skip updates. Every open
+ * re-reads the saved transcript from the server, so a copy that changes nothing keeps the
+ * held row, and a merge that changes no row returns the held list itself.
+ */
 export function mergeMessages(held: readonly Message[], incoming: readonly Message[]): Message[] {
   const byId = new Map(held.map((message) => [message.id, message]));
   for (const message of incoming) {
@@ -20,9 +37,13 @@ export function mergeMessages(held: readonly Message[], incoming: readonly Messa
           message.status === 'streaming'))
     )
       continue;
-    byId.set(message.id, { ...previous, ...message });
+    const merged = { ...previous, ...message };
+    byId.set(message.id, previous && sameValue(previous, merged) ? previous : merged);
   }
-  return [...byId.values()].sort((a, b) => a.seq - b.seq);
+  const next = [...byId.values()].sort((a, b) => a.seq - b.seq);
+  return next.length === held.length && next.every((message, index) => message === held[index])
+    ? (held as Message[])
+    : next;
 }
 export function applyEvent(
   messages: readonly Message[],

@@ -22,8 +22,9 @@ const SETTLE_TICK_MS = 50;
 const SETTLE_MIN_MS = 150;
 // Show the conversation anyway if it never holds still, e.g. while a reply streams in.
 const SETTLE_LIMIT_MS = 1000;
-// A hidden conversation shows a spinner after this long, and itself after the limit.
-const HIDDEN_SPINNER_MS = 300;
+// A conversation still waiting after this long shows a spinner.
+const WAITING_SPINNER_MS = 300;
+// A hidden conversation is shown after this long even if its list never reports a layout.
 const HIDDEN_LIMIT_MS = 3000;
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -115,17 +116,24 @@ function ConversationTranscript({
   const hidden = !revealed && messages.messages.length > 0;
   // A conversation first shown empty is already settled; its first message must not blink.
   if (!revealed && !messages.loading && messages.messages.length === 0) setRevealed(true);
-  const [slow, setSlow] = useState(false);
   useEffect(() => {
     if (!hidden) return;
-    const spinner = setTimeout(() => setSlow(true), HIDDEN_SPINNER_MS);
     // Never leave the transcript blank if the list fails to report its first layout.
     const fallback = setTimeout(() => setRevealed(true), HIDDEN_LIMIT_MS);
+    return () => clearTimeout(fallback);
+  }, [hidden]);
+  // One spinner covers both waits, the first messages and the hidden list, and only
+  // when they are slow: a spinner that flashes on every open is its own flicker.
+  const waiting = hidden || (messages.loading && messages.messages.length === 0);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!waiting) return;
+    const spinner = setTimeout(() => setSlow(true), WAITING_SPINNER_MS);
     return () => {
       clearTimeout(spinner);
-      clearTimeout(fallback);
+      setSlow(false);
     };
-  }, [hidden]);
+  }, [waiting]);
   // FlashList won't repeat onStartReached while the list stays in the start zone, so
   // page in history skipped while hidden once it is shown, if it settled near the top
   // (a short conversation, or a link to an early message).
@@ -265,16 +273,19 @@ function ConversationTranscript({
             }}
             onStartReachedThreshold={0.5}
             ListHeaderComponent={
-              <View>
-                {messages.loading ? <ActivityIndicator style={{ marginTop: 40 }} /> : null}
-                {messages.hasMore ? (
-                  <Button
-                    title="Earlier messages"
-                    variant="ghost"
-                    onPress={() => void messages.loadMore()}
-                  />
-                ) : null}
-              </View>
+              // A fixed slot: the button arrives with the server's first page, after the
+              // conversation is shown, and a header that grows then would push it down.
+              messages.messages.length > 0 ? (
+                <View style={{ minHeight: 48 }}>
+                  {messages.hasMore ? (
+                    <Button
+                      title="Earlier messages"
+                      variant="ghost"
+                      onPress={() => void messages.loadMore()}
+                    />
+                  ) : null}
+                </View>
+              ) : null
             }
             ListEmptyComponent={
               !messages.loading ? (
@@ -290,7 +301,7 @@ function ConversationTranscript({
             }
           />
         </View>
-        {hidden && slow ? (
+        {waiting && slow ? (
           <ActivityIndicator
             testID="chat-transcript-loading"
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: composerHeight }}

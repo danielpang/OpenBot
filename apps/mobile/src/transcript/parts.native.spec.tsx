@@ -28,4 +28,23 @@ describe('message text parts', () => {
     const style = StyleSheet.flatten(node?.props.style);
     expect(style).toMatchObject({ flex: 0, flexGrow: 1, flexShrink: 1 });
   });
+
+  it("keeps a message's text mounted when the server sends an identical copy", () => {
+    const text = 'Here is the **plan**:\n\n- First step\n- Second step';
+    const copy = () => {
+      const part = { type: 'text', text } as Message['parts'][number];
+      return {
+        part,
+        message: { id: 'm1', authorType: 'bot', parts: [part] } as unknown as Message,
+      };
+    };
+    const first = copy();
+    const view = render(<MessagePartView part={first.part} message={first.message} index={0} />);
+    const before = screen.getByText('First step');
+    // The same message re-read from the server: equal content in new objects.
+    const second = copy();
+    view.rerender(<MessagePartView part={second.part} message={second.message} index={0} />);
+    // Remounting the text would flicker and re-measure the row on every refresh.
+    expect(screen.getByText('First step')).toBe(before);
+  });
 });

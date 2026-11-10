@@ -16,6 +16,11 @@ export function useMessages(chatId?: string, threadRootId?: string) {
   const actions = useRef({ refetch: async () => {}, loadMore: async () => {} });
   const generation = useRef(0);
   const cacheKey = `transcript:${chatId}:${threadRootId ?? ''}`;
+  // The connection, socket and cache are replaced on every reconnect, and several times
+  // while the app starts. Only a different conversation discards the messages on screen:
+  // emptying and refilling a visible transcript makes it jump back and scroll down again.
+  const scope = `${host?.id ?? ''}:${cacheKey}`;
+  const heldScope = useRef<string | undefined>(undefined);
   const replace = (next: Message[]) => {
     current.current = next;
     setMessages(next);
@@ -65,7 +70,8 @@ export function useMessages(chatId?: string, threadRootId?: string) {
               const removed = new Set(page.deleted.map((message) => message.id));
               update((held) =>
                 mergeMessages(
-                  held.filter((message) => !removed.has(message.id)),
+                  // Filtering copies the list, which would re-render an unchanged transcript.
+                  removed.size ? held.filter((message) => !removed.has(message.id)) : held,
                   page.messages.filter(inScope),
                 ),
               );
@@ -106,10 +112,13 @@ export function useMessages(chatId?: string, threadRootId?: string) {
         }
       },
     };
-    replace([]);
+    if (heldScope.current !== scope) {
+      heldScope.current = scope;
+      replace([]);
+      setHasMore(false);
+    }
     setLoading(true);
     setError(null);
-    setHasMore(false);
     setSending(false);
     setLoadingMore(false);
     setFocusedChat(chatId ?? null);
@@ -124,7 +133,8 @@ export function useMessages(chatId?: string, threadRootId?: string) {
       if (result.gap) void resync();
     });
     void (async () => {
-      if (host && chatId) {
+      // Messages kept across a reconnect are already newer than the saved copy.
+      if (host && chatId && current.current.length === 0) {
         try {
           const saved = await cache.get<Message[]>(host.id, cacheKey);
           if (valid() && saved) update((held) => mergeMessages(saved, held));

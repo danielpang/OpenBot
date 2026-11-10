@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
@@ -11,6 +11,42 @@ import { NativeWidget } from './widget';
 import { formatBytes, type Message } from './model';
 
 const listContent = { flex: 0, flexGrow: 1, flexShrink: 1 } as const;
+
+// The markdown library gives every node a fresh key each time it parses, so a re-render
+// that reaches it unmounts and rebuilds the whole message: a visible flicker, and a
+// re-measure that shifts the transcript. Its memo only holds for an unchanged text and
+// a stable style, so both are kept stable here.
+const MessageText = memo(function MessageText({ text }: { text: string }) {
+  const c = useTheme();
+  const style = useMemo(
+    () => ({
+      body: { color: c.foreground, fontSize: 16, lineHeight: 24 },
+      paragraph: { marginTop: 0, marginBottom: 10 },
+      link: { color: c.foreground, textDecorationLine: 'underline' as const },
+      // The library's `flex: 1` (a zero flex-basis) makes list text measure
+      // wrongly inside content-sized containers such as the user's message
+      // bubble, so long list items spill outside it. Styles are merged over
+      // the defaults, so `flex: 0` is needed to restore the auto basis.
+      bullet_list_content: listContent,
+      ordered_list_content: listContent,
+      code_inline: { backgroundColor: c.muted, color: c.foreground, fontFamily: 'Menlo' },
+      fence: {
+        backgroundColor: c.muted,
+        color: c.foreground,
+        borderColor: c.border,
+        borderRadius: 12,
+        padding: 12,
+      },
+      blockquote: { backgroundColor: c.muted, borderColor: c.border },
+      table: { borderColor: c.border },
+      tr: { borderColor: c.border },
+      th: { color: c.foreground },
+      td: { color: c.foreground },
+    }),
+    [c],
+  );
+  return <Markdown style={style}>{text}</Markdown>;
+});
 
 export const MessagePartView = memo(function MessagePartView({
   part,
@@ -29,36 +65,7 @@ export const MessagePartView = memo(function MessagePartView({
   const imageSource = useFileSource(part.type === 'image' ? part.file_id : undefined);
   switch (part.type) {
     case 'text':
-      return (
-        <Markdown
-          style={{
-            body: { color: c.foreground, fontSize: 16, lineHeight: 24 },
-            paragraph: { marginTop: 0, marginBottom: 10 },
-            link: { color: c.foreground, textDecorationLine: 'underline' },
-            // The library's `flex: 1` (a zero flex-basis) makes list text measure
-            // wrongly inside content-sized containers such as the user's message
-            // bubble, so long list items spill outside it. Styles are merged over
-            // the defaults, so `flex: 0` is needed to restore the auto basis.
-            bullet_list_content: listContent,
-            ordered_list_content: listContent,
-            code_inline: { backgroundColor: c.muted, color: c.foreground, fontFamily: 'Menlo' },
-            fence: {
-              backgroundColor: c.muted,
-              color: c.foreground,
-              borderColor: c.border,
-              borderRadius: 12,
-              padding: 12,
-            },
-            blockquote: { backgroundColor: c.muted, borderColor: c.border },
-            table: { borderColor: c.border },
-            tr: { borderColor: c.border },
-            th: { color: c.foreground },
-            td: { color: c.foreground },
-          }}
-        >
-          {part.text}
-        </Markdown>
-      );
+      return <MessageText text={part.text} />;
     case 'image':
       return (
         <Image
