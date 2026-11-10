@@ -1,39 +1,39 @@
 # OpenBots Product Requirements
 
-OpenBots is a self-hosted Grok Bot with an open source core under the Apache License 2.0. This PRD is anchored on xAI's "Designing Grok Bot" essay and the Grok Bot documentation. Where OpenBots deliberately differs (self-hosting, Docker sandboxes, an open connector model), the difference is called out.
+OpenBots is a self-hosted team of persistent AI Bots, with an open source core under the Apache License 2.0. Requirements that come from self-hosting (Docker sandboxes, an open connector model) are called out where they apply.
 
-The test for every feature in this document is the one xAI used: **"Did this help someone delegate, or did it give them one more thing to manage?"**
+The test for every feature in this document: **does it let someone hand off work, or does it give them something else to manage?**
 
 ---
 
 ## 1. Vision and principles
 
-Grok Bot's thesis: chat sessions are the wrong primary object for an agent that "persists beyond any one session and can carry responsibility on its own." The interface should be built around persistent agents, and "as agents take on more responsibility, the interface should ask less of the person."
+A chat session is the wrong primary object for an agent that outlives any one conversation and takes on responsibility by itself. OpenBots builds the interface around persistent Bots, and the more a Bot is trusted with, the less the interface asks of its owner.
 
-OpenBots adopts the following principles from the essay as product requirements:
+OpenBots holds to the following principles as product requirements:
 
-1. **Bots, not conversations, are the main objects.** "A Bot has a name. It has an avatar and a title. It remembers its conversations with you. It has its own computer and tools. When you come back tomorrow, you are coming back to the same Bot."
-2. **Only five concepts are visible.** Bots, Chats, Prompts, Tools, Artifacts. "Everything else could remain beneath the interface until the user had a reason to care about it." Runs, queues, models, sandboxes, and MCP sessions are implementation detail and stay out of the primary UI.
-3. **Identity carries state.** The avatar communicates what the Bot is doing; there are no separate status indicators or "three animated dots."
-4. **Transparency is tiered.** Passive assurance from the avatar, current action on hover, full activity log on demand. People asked for detail "mainly for reassurance that the Bot was still working and on the right track."
-5. **The computer is the Bot's workspace, not the user's.** "The more prominent we made the computer, the more the product encouraged users to supervise it." Status, then preview, then takeover.
+1. **Bots, not conversations, are the main objects.** Each Bot has a name, an avatar and a title, remembers its conversations with you, and has its own computer and tools. Coming back tomorrow means coming back to the same Bot.
+2. **Only five concepts are visible.** Bots, Chats, Prompts, Tools, Artifacts. Everything else stays beneath the interface until the user has a reason to care about it. Runs, queues, models, sandboxes, and MCP sessions are implementation detail and stay out of the primary UI.
+3. **Identity carries state.** The avatar communicates what the Bot is doing; there are no separate status indicators or animated typing dots.
+4. **Transparency is tiered.** Passive assurance from the avatar, current action on hover, full activity log on demand. Most people want detail only to be reassured that the Bot is still working and on track.
+5. **The computer is the Bot's workspace, not the user's.** A prominent computer view invites the user to supervise it, so the computer shows status first, then a preview, then takeover.
 6. **The form of a response is part of the answer.** Bots answer in prose when prose fits and in structured widgets when it does not. The transcript is heterogeneous: conversation, system events, interactive objects, and visualizations share one timeline.
-7. **Capabilities are shared, context is isolated.** "Tools and Skills live at the account level... Memory and Routines belong to the Bot."
-8. **Coordination is done by Bots, not by dashboards.** No assignment boards or explicit handoff controls. "Coordinating Bots handle routine routing and bring the user in when a decision requires judgment."
-9. **Work starts without the user.** "A prompt can start a session, but so can a schedule, an event, or another Bot."
-10. **Remove rather than add.** Grok Bot shipped after removing window and panel controls, computer-view options, and agent metadata. The OpenBots UI reviews use the same bar.
+7. **Capabilities are shared, context is isolated.** Tools and Skills live at the account level. Memory and Routines belong to the Bot.
+8. **Coordination is done by Bots, not by dashboards.** No assignment boards or explicit handoff controls. Coordinating Bots handle routine routing and bring the user in when a decision needs judgment.
+9. **Work starts without the user.** A session can start from a prompt, a schedule, an event, or another Bot.
+10. **Remove rather than add.** Window and panel controls, computer-view options, and agent metadata stay out of the UI unless they earn their place. Every OpenBots UI review applies this bar.
 
 ---
 
 ## 2. The five objects
 
-| Object | Grok Bot definition | OpenBots |
+| Object | Definition | OpenBots |
 | --- | --- | --- |
-| **Bot** | "persistent agents with their own identity, memory, runtime, and tools" | A named agent with an avatar, label, description (standing rules), model, memory, Routines, enabled Skills, tool permissions, and a screen on the owner's computer |
-| **Chat** | "the conversational interface for working with a Bot" | Each Bot has one persistent direct transcript with its owner. Group chats hold two to six Bots. Threads hang off a result or an approval. Bots also message each other directly |
-| **Prompt** | "give a Bot context or instructions. They can be used once, saved as Skills, or triggered automatically as Routines" | A message (used once), a Skill (saved in the account library, referenced with `/`), or a Routine (a prompt or Skill run by a schedule or an event, owned by a Bot) |
-| **Tool** | "let Bots access information and take action through software, APIs, connectors, the shell, or computer use" | Built-in tools, connectors (MCP servers and first-party integrations) at the account level, and the computer (shell, files, browser) |
-| **Artifact** | "documents, designs, code, data, and other durable outputs that Bots create or modify" | Versioned outputs stored by OpenBots, shown as cards in the transcript, openable in a viewer |
+| **Bot** | A persistent agent with its own identity, memory, runtime, and tools | A named agent with an avatar, label, description (standing rules), model, memory, Routines, enabled Skills, tool permissions, and a screen on the owner's computer |
+| **Chat** | The conversation in which a person works with a Bot | Each Bot has one persistent direct transcript with its owner. Group chats hold two to six Bots. Threads hang off a result or an approval. Bots also message each other directly |
+| **Prompt** | Context or instructions for a Bot: used once, saved as a Skill, or run automatically as a Routine | A message (used once), a Skill (saved in the account library, referenced with `/`), or a Routine (a prompt or Skill run by a schedule or an event, owned by a Bot) |
+| **Tool** | Access to information and actions through software, APIs, connectors, the shell, or computer use | Built-in tools, connectors (MCP servers and first-party integrations) at the account level, and the computer (shell, files, browser) |
+| **Artifact** | A durable output a Bot creates or changes, such as a document, design, code, or data | Versioned outputs stored by OpenBots, shown as cards in the transcript, openable in a viewer |
 
 ---
 
@@ -60,7 +60,7 @@ Each requirement has an ID for traceability into the technical plan. "Must" is v
 | B5 | Duplicate a Bot: carries profile, settings, enabled Skills, Routines, and avatar; excludes conversation history, learned memory, attachments, and the main Bot mark (K8); the copy is the main Bot only when the owner has none. | Must |
 | B6 | Removed: there are no Bot templates. A Bot starts from a name and an icon and learns its task by asking (B2). | n/a |
 | B7 | Delete removes profile, conversation, and Routines; the UI recommends hiding instead when unsure. | Must |
-| B8 | Limits: 50 Bots per account, six Bots per group chat. Limits are configurable by the self-host admin but default to Grok Bot's. | Must |
+| B8 | Limits: 50 Bots per account, six Bots per group chat, by default. The self-host admin can change them. | Must |
 
 ### 4.2 Identity and state
 
@@ -116,7 +116,7 @@ Each requirement has an ID for traceability into the technical plan. "Must" is v
 | K3 | Three levels of access from the chat: **Status** (title-bar icon lights up while active), **Preview** (a pinned side panel that follows the work without leaving the conversation), **Takeover** (open full screen, take control, hand it back). No other computer-view options. | Must |
 | K4 | Work continues when the app, laptop, or phone is closed. | Must |
 | K5 | The computer's wallpaper shifts through the day, lighter in the morning and darker at night, so it reads as the Bot's space rather than the user's desktop. | Must |
-| K6 | Self-host difference: the computer is a Docker sandbox by default (Grok Bot uses a Firecracker microVM). Stronger isolation providers are pluggable. | Must |
+| K6 | The computer is a Docker sandbox by default. Stronger isolation providers, such as a Firecracker microVM, are pluggable. | Must |
 | K7 | Persistent files survive restarts and upgrades; the user can browse, upload, and download them. | Must |
 | K8 | Main Bot for sign-ins. The owner can mark at most one of their Bots as the main Bot in Bot Settings. A member's first Bot becomes their main Bot, and so does a new Bot made while they have none (for example after deleting the main Bot). When a Bot needs a login it does not have, it asks for a sign-in with the site and a reason instead of asking for credentials. With a main Bot set, and the asking Bot not the main Bot, the request goes to the main Bot through their Bot to Bot chat (visible to the owner, C6), and one sign-in request appears in the main Bot's transcript without the main Bot starting any work. It asks the owner once: pending requests for the same site are merged into one. The owner opens Takeover on the main Bot's screen (K3), signs in, hands back, and clicks Done. The login carries over to every Bot (K1) and every waiting Bot resumes. With no main Bot set, or when the main Bot is the one asking, the request appears in the asking Bot's own transcript and the owner signs in on that Bot's screen. A waiting Bot shows the Waiting state with the action "Waiting for sign-in: <site>". | Must |
 
@@ -176,7 +176,7 @@ API keys by agent (CA2). An agent on an API key uses a provider the owner added 
 
 ### 4.8 Webhook endpoints
 
-Grok Bot exposes webhooks only as a Routine trigger. OpenBots keeps that and adds a direct endpoint per Bot because self-hosters integrate with scripts and services that just want to "message the Bot."
+A webhook can trigger a Routine, and each Bot also has a direct webhook endpoint, because self-hosters integrate with scripts and services that just want to message the Bot.
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
@@ -333,12 +333,12 @@ Key screens:
 
 | Limit | Default | Source |
 | --- | --- | --- |
-| Bots per account | 50 | Design essay |
-| Bots per group chat | 6 | Design essay and docs |
-| Routines per Bot | 50 | Docs |
-| Run records kept per Routine | 20 | Docs |
-| Computers per account | 1 | Docs |
-| Concurrent computer-use tasks per Bot | 1 | Docs |
+| Bots per account | 50 | OpenBots |
+| Bots per group chat | 6 | OpenBots |
+| Routines per Bot | 50 | OpenBots |
+| Run records kept per Routine | 20 | OpenBots |
+| Computers per account | 1 | OpenBots |
+| Concurrent computer-use tasks per Bot | 1 | OpenBots |
 | Webhook payload size | 1 MB | OpenBots |
 | Sync webhook wait | 60 s | OpenBots |
 | Concurrent coding sessions per account | 3 | Coding agents design |
@@ -359,14 +359,6 @@ Multi-human group chats, mobile apps, demonstration-recorded Skills, enterprise 
 
 ## 8. Open questions
 
-1. Should a Bot have exactly one transcript (Grok Bot) or allow archived transcripts for a fresh start? Recommendation: one transcript, with a "start fresh" action that archives the old one and keeps memory.
+1. Should a Bot have exactly one transcript, or allow archived transcripts for a fresh start? Recommendation: one transcript, with a "start fresh" action that archives the old one and keeps memory.
 2. How much of the avatar system to ship: generated SVG variations only, or also animated presets? Recommendation: generated SVG with six CSS motion states at 1.0.
 3. Does Claude Code's headless mode (`claude -p`) on a Claude plan sign-in bill the plan? Not yet checked: it needs a real Pro or Max account (docs/plans/CODING_AGENT_VENDORS.md).
-
----
-
-## Sources
-
-- xAI, "Designing Grok Bot": https://x.ai/news/designing-grok-bot
-- xAI, "Introducing Grok Bot": https://x.ai/news/introducing-grok-bot
-- Grok Bot docs: overview, bots, chat and collaboration, skills and routines, teams and enterprises, FAQ: https://docs.x.ai/grok-bot/overview
