@@ -26,6 +26,9 @@ const SETTLE_LIMIT_MS = 1000;
 // A hidden conversation is shown after this long even if its list never reports a layout.
 const HIDDEN_LIMIT_MS = 3000;
 
+// The composer's height before it has been measured.
+const COMPOSER_ESTIMATE = 70;
+
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 type TranscriptProps = {
@@ -62,7 +65,7 @@ function ConversationTranscript({
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   // Measure the complete dock, including growing drafts, attachments and menus.
   // Only scroll padding reserves space: the viewport continues behind the glass.
-  const [composerHeight, setComposerHeight] = useState(70);
+  const [composerHeight, setComposerHeight] = useState(COMPOSER_ESTIMATE);
   const messages = useMessages(chatId, threadRootId);
   const list = useRef<FlashListRef<Message>>(null);
   const jumped = useRef<string | undefined>(undefined);
@@ -301,7 +304,9 @@ function ConversationTranscript({
               top: 0,
               left: 0,
               right: 0,
-              bottom: composerHeight,
+              // Not the measured composer: its height arrives a frame late, and a
+              // loader centred on it would shift as soon as it does.
+              bottom: COMPOSER_ESTIMATE,
               alignItems: 'center',
               justifyContent: 'center',
             }}
