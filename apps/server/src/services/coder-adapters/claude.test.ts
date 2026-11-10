@@ -77,11 +77,11 @@ describe('claude adapter', () => {
     expect(valuesOf(args, '--permission-prompt-tool')).toEqual([
       'mcp__openbots__permission_prompt',
     ]);
-    // Nothing is pre-allowed: in-worktree edits are accepted by acceptEdits,
+    // Only the runner-backed publishing tool is pre-allowed. In-worktree edits use acceptEdits,
     // and every Bash command (`git diff --no-index /var/lib/openbots/...`,
     // `git log --output=/x`) and every edit or read outside the worktree
     // reaches the permission tool, where `classify` decides.
-    expect(args).not.toContain('--allowedTools');
+    expect(valuesOf(args, '--allowedTools')).toEqual(['mcp__openbots__publish_pull_request']);
     const denied = new Set(valuesOf(args, '--disallowedTools'));
     const rules = args.filter((a) => !denied.has(a));
     expect(rules.some((a) => /^(?:Bash|Edit|Write|MultiEdit|NotebookEdit)(?:\(|$)/.test(a))).toBe(
@@ -110,7 +110,7 @@ describe('claude adapter', () => {
     // The prompt comes last, after `--`, with the OpenBots preamble first.
     expect(args.at(-2)).toBe('--');
     expect(args.at(-1)).toBe(`${preamble(spec())}\n\nFix the reconnect loop`);
-    expect(args.at(-1)).toContain('Do not push');
+    expect(args.at(-1)).toContain('Do not run git push');
     expect(args.at(-1)).toContain(WORKTREE);
     expect(plan.env).toMatchObject({
       GIT_AUTHOR_NAME: 'Relay Bot',
@@ -142,7 +142,7 @@ describe('claude adapter', () => {
     expect(valuesOf(args, '--resume')).toEqual([VENDOR]);
     expect(valuesOf(args, '--model')).toEqual(['claude-opus-4-1']);
     // The policy answers `install` as auto at the permission tool, not by a prefix rule.
-    expect(args).not.toContain('--allowedTools');
+    expect(valuesOf(args, '--allowedTools')).toEqual(['mcp__openbots__publish_pull_request']);
     // A forged id never reaches argv.
     const forged = claudeAdapter.launch(spec({ resumeId: '--dangerously-skip-permissions' }));
     expect(forged.args).not.toContain('--resume');

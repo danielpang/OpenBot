@@ -14,19 +14,14 @@ import {
   DialogTitle,
   Input,
 } from '@openbots/ui';
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import type { CodingSessionProps, CodingSessionState } from '../kinds/coding_session.js';
-import {
-  approvalStatusWords,
-  sessionErrorWords,
-  sessionStatusWords,
-  usageWords,
-} from '../kinds/coder-words.js';
+import { sessionErrorWords, sessionStatusWords, usageWords } from '../kinds/coder-words.js';
 import type { WidgetRendererProps } from './types.js';
 
 // A coding session (CA5 to CA8): which agent works on which repository and
-// branch, for how long, a live feed of what it does, the approvals it asks
-// for inline, and when it ends the summary, changed files, commits, PR and
+// branch, for how long, the approvals it asks for inline, and when it
+// ends the summary, changed files, commits, PR and
 // cost. Stop, Continue and Discard branch are the widget's own actions;
 // approvals, Open terminal and View log go through the app (`coder`), and
 // View diff opens the Artifact the diff was saved as in the app's viewer.
@@ -204,7 +199,6 @@ export function CodingSessionWidget({
     a.status === 'pending' && decided[a.id] ? { ...a, status: decided[a.id]! } : a,
   );
   const pendingApprovals = approvals.filter((a) => a.status === 'pending');
-  const closedApprovals = approvals.filter((a) => a.status !== 'pending');
   const discarding = current.control === 'discard';
 
   return (
@@ -241,8 +235,6 @@ export function CodingSessionWidget({
       {props.prompt_excerpt && (
         <p className="line-clamp-2 text-xs text-muted-foreground">{props.prompt_excerpt}</p>
       )}
-
-      <Feed lines={current.feed} follow={!ended} />
 
       {pendingApprovals.map((a) => (
         <div
@@ -284,16 +276,6 @@ export function CodingSessionWidget({
           )}
         </div>
       ))}
-      {closedApprovals.length > 0 && (
-        <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-          {closedApprovals.map((a) => (
-            <li key={a.id} data-approval={a.id}>
-              {a.title}: {approvalStatusWords[a.status as keyof typeof approvalStatusWords]}
-            </li>
-          ))}
-        </ul>
-      )}
-
       {ended && result && (
         <div className="flex flex-col gap-2 border-t pt-2" data-result>
           {result.summary &&
@@ -515,44 +497,4 @@ function diffArtifact(result: CodingSessionState['result']): string | null {
 
 function sum(files: readonly { added: number; removed: number }[], key: 'added' | 'removed') {
   return files.reduce((n, f) => n + f[key], 0);
-}
-
-/** The last feed lines in a scrolling monospace block that follows new lines while live. */
-function Feed({ lines, follow }: { lines: CodingSessionState['feed']; follow: boolean }) {
-  const box = useRef<HTMLDivElement>(null);
-  const atBottom = useRef(true);
-
-  useLayoutEffect(() => {
-    const el = box.current;
-    if (el && follow && atBottom.current) el.scrollTop = el.scrollHeight;
-  }, [lines, follow]);
-
-  if (!lines.length) {
-    return <p className="text-xs text-muted-foreground">No activity yet.</p>;
-  }
-  return (
-    <div
-      ref={box}
-      data-feed
-      onScroll={(e) => {
-        const el = e.currentTarget;
-        atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-      }}
-      className="max-h-56 overflow-auto rounded-md bg-muted/60 p-2 font-mono text-xs leading-relaxed"
-    >
-      {lines.map((line, i) => (
-        <div
-          key={`${line.t}-${i}`}
-          data-type={line.type}
-          className={cn(
-            'whitespace-pre-wrap break-words',
-            line.type === 'error' && 'text-destructive',
-            line.type === 'approval_request' && 'text-amber-700 dark:text-amber-400',
-          )}
-        >
-          {line.text}
-        </div>
-      ))}
-    </div>
-  );
 }

@@ -74,14 +74,16 @@ beforeEach(() => {
 });
 
 describe('coding session widget', () => {
-  it('shows the header, the last eight feed lines and Stop while running', async () => {
+  it('shows status and controls without CLI output while running', async () => {
     session({ status: 'running', feed: feed(12), approvals: [] });
     expect(screen.getByText('Claude Code on danielpang/openbots-relay')).toBeTruthy();
     expect(screen.getByText('Branch openbots/fix-reconnect')).toBeTruthy();
     expect(screen.getByText('Working')).toBeTruthy();
     expect(screen.queryByText('line 4')).toBeNull();
-    expect(screen.getByText('line 5')).toBeTruthy();
-    expect(screen.getByText('line 12')).toBeTruthy();
+    expect(screen.queryByText('line 5')).toBeNull();
+    expect(screen.queryByText('line 12')).toBeNull();
+    expect(screen.queryByTestId('coding-session-feed')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open Code' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /terminal/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /continue/i })).toBeNull();
     fireEvent.press(screen.getByRole('button', { name: 'Stop' }));
@@ -161,7 +163,7 @@ describe('coding session widget', () => {
     expect(screen.getByText('Done')).toBeTruthy();
     expect(screen.getByText('Fixed the reconnect loop with a backoff.')).toBeTruthy();
     expect(screen.getByText('2 files changed (+50, -4), 1 commit')).toBeTruthy();
-    expect(screen.getByText('Push the branch: Approved')).toBeTruthy();
+    expect(screen.queryByText('Push the branch: Approved')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     fireEvent.press(screen.getByRole('button', { name: 'Open pull request' }));

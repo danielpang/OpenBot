@@ -396,9 +396,8 @@ describe('coder runner', () => {
       '-C',
       WORKTREE,
       'push',
-      '-u',
       'origin',
-      'bot/fix-reconnect',
+      'abc1234:refs/heads/bot/fix-reconnect',
     ]);
     expect(row).toMatchObject({
       pushAllowed: true,
@@ -663,9 +662,8 @@ describe('coder runner', () => {
         '-C',
         WORKTREE,
         'push',
-        '-u',
         'origin',
-        'bot/fix-reconnect',
+        'abc1234:refs/heads/bot/fix-reconnect',
       ]);
       expect(row).toMatchObject({
         runId: null,
@@ -1262,6 +1260,30 @@ describe('coder runner, across agents and accounts', () => {
         CODEX_POSTURE,
       );
     }));
+
+  it('logs resumed Codex startup details without repeating them in the conversation', async () => {
+    await setAccount('codex', { authKind: 'subscription', providerId: null, lastError: null });
+    codexSuccess();
+    const { sessionId } = await w.newSession({ agent: 'codex' });
+    expect((await run(sessionId)).status).toBe('settled');
+    const before = (await readEntries(w.t.db, sessionId, { limit: 500 })).entries;
+    await w.t.db
+      .update(schema.codingSessions)
+      .set({ status: 'queued' })
+      .where(eq(schema.codingSessions.id, sessionId));
+    const row = await run(sessionId);
+    expect(row.status).toBe('settled');
+    const feed = (await w.widget(sessionId)).feed.map((line) => line.text);
+    expect(feed.filter((text) => text === CODEX_POSTURE)).toHaveLength(1);
+    expect(feed.some((text) => text.startsWith('Continued Codex in '))).toBe(false);
+    const after = (await readEntries(w.t.db, sessionId, { limit: 500 })).entries;
+    const added = JSON.stringify(after.filter((entry) => entry.seq > before.at(-1)!.seq));
+    expect(added).not.toContain('Continued Codex in ');
+    expect(added).not.toContain(CODEX_POSTURE);
+    const log = readFileSync(row.logPath!, 'utf8');
+    expect(log).toContain(`Continued Codex in ${WORKTREE}`);
+    expect(log).toContain(CODEX_POSTURE);
+  });
 
   /** The session's one `approvals` row, once it is there. */
   const approvalOf = (sessionId: string) =>

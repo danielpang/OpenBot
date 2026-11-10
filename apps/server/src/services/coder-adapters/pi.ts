@@ -48,7 +48,7 @@ import {
 // opens it in its own working directory.
 
 /** pi's built in tools: the only ones a session may use. */
-const EDIT_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'];
+const EDIT_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls', 'publish_pull_request'];
 /** What a plan session may use; the extension also blocks the rest in plan mode. */
 const PLAN_TOOLS = ['read', 'grep', 'find', 'ls'];
 

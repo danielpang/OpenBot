@@ -46,6 +46,7 @@ async function fakeRelay(answer: (request: Record<string, unknown>) => string | 
 function fakePi() {
   let handler: ((event: PiToolCallEvent, ctx: unknown) => Promise<unknown>) | undefined;
   const pi: PiExtensionApi = {
+    registerTool: vi.fn(),
     on: (event, h) => {
       expect(event).toBe('tool_call');
       handler = h;
@@ -67,6 +68,34 @@ const bash: PiToolCallEvent = {
 };
 
 describe('the pi extension', () => {
+  it('registers a native publishing tool with the same runner operation', async () => {
+    const published = { branch: 'bot/fix', prUrl: 'https://github.com/acme/app/pull/1' };
+    const relay = await fakeRelay(
+      () => JSON.stringify({ decision: 'allow', message: JSON.stringify(published) }) + '\n',
+    );
+    const { pi, call } = fakePi();
+    piExtension({ socket: relay.socket, mode: 'edit' })(pi);
+    expect(pi.registerTool).toHaveBeenCalledOnce();
+    const tool = vi.mocked(pi.registerTool).mock.calls[0]![0];
+    expect(tool.name).toBe('publish_pull_request');
+    await expect(
+      call({ toolName: tool.name, input: { title: 'Fix', body: '' } }),
+    ).resolves.toBeUndefined();
+    expect(relay.requests).toEqual([]);
+    expect(await tool.execute('p1', { title: 'Fix', body: '' })).toMatchObject({
+      content: [{ text: JSON.stringify(published) }],
+    });
+    expect(relay.requests).toEqual([
+      { tool_name: 'openbots.publish_pull_request', input: { title: 'Fix', body: '' } },
+    ]);
+  });
+
+  it('does not register a publishing tool in plan mode', () => {
+    const { pi } = fakePi();
+    piExtension({ mode: 'plan' })(pi);
+    expect(pi.registerTool).not.toHaveBeenCalled();
+  });
+
   it('asks over the socket and lets an allowed call run', async () => {
     const relay = await fakeRelay(() => '{"decision":"allow"}\n');
     const { pi, call } = fakePi();

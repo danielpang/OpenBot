@@ -69,9 +69,11 @@ Run here with empty `HOME` and `CODEX_HOME`, driven over stdin and stdout, never
   `cancel`, and amendments for commands). DOCUMENTED (schema): no request was raised without a
   sign-in. Codex Apps PR creation uses `mcpServer/elicitation/request` with `mode: form`,
   `_meta.codex_approval_kind: mcp_tool_call`, `tool_title: create_pull_request` and an empty
-  object schema (observed in a live session). OpenBots routes that confirmation to its ordinary
-  `pr` approval and replies with `{action: accept, content: {}}` or `{action: decline, content: null}`;
-  it never enables session-wide or permanent approval. Other elicitation forms and server requests
+  object schema (observed in a live session). OpenBots declines that alternate publication
+  path and instructs the agent to use its session-scoped `publish_pull_request` tool instead
+  (see [Coding-session publishing](./CODING_SESSION_PUBLISHING.md)). The runner applies
+  both push and PR policy and performs the authenticated operations; the agent never receives
+  session-wide or permanent push approval. Other elicitation forms and server requests
   (`item/tool/requestUserInput`, `item/permissions/requestApproval`, `item/tool/call`, token refresh,
   attestation) still get a JSON-RPC error (-32601).
 - **Approval policy.** `on-request`: Codex works inside its sandbox and asks before it leaves it.

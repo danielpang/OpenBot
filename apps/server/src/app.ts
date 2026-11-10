@@ -69,7 +69,6 @@ export function createApp(deps: AppDeps, { webDist = WEB_DIST }: AppOptions = {}
 
   const index = webDist && join(webDist, 'index.html');
   if (index && existsSync(index)) {
-    const html = readFileSync(index, 'utf8');
     // The page is checked on every load, so a new build's assets show up
     // without a cache clear; the assets are named by their hash.
     app.use(
@@ -81,7 +80,9 @@ export function createApp(deps: AppDeps, { webDist = WEB_DIST }: AppOptions = {}
       }),
     );
     app.get('*', (c, next) =>
-      isServerPath(c.req.path) ? next() : c.html(html, 200, { 'Cache-Control': 'no-cache' }),
+      isServerPath(c.req.path)
+        ? next()
+        : c.html(readFileSync(index, 'utf8'), 200, { 'Cache-Control': 'no-cache' }),
     );
   }
 
@@ -174,7 +175,7 @@ export function redactPath(path: string): string {
 
 /** Paths the SPA fallback must never answer. */
 function isServerPath(path: string): boolean {
-  return /^\/(api|hooks|ws)(\/|$)|^\/(healthz|readyz|metrics)$/.test(path);
+  return /^\/(api|hooks|ws|assets)(\/|$)|^\/(healthz|readyz|metrics)$/.test(path);
 }
 
 function toProblem(error: unknown): Problem {

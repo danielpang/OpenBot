@@ -1,5 +1,5 @@
 import { posix } from 'node:path';
-import type { CoderChangedFile, CoderCommit } from '@openbots/shared';
+import type { CoderChangedFile, CoderCommit, CoderPublishInput } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
@@ -401,6 +401,8 @@ export async function openPullRequest(
     summary: string;
     commits: CoderCommit[];
     githubApi?: string;
+    metadata?: CoderPublishInput;
+    reuseExisting?: boolean;
   },
 ): Promise<string> {
   const { summary, commits, session } = input;
@@ -413,30 +415,72 @@ export async function openPullRequest(
     .find((line) => line.trim())
     ?.trim();
   const title =
-    commits.length === 1 || !firstLine
+    input.metadata?.title ??
+    (commits.length === 1 || !firstLine
       ? commits[commits.length - 1]!.title
-      : firstLine.slice(0, 200);
-  const body = `${summary.trim()}\n\nOpened by ${input.botName} with OpenBots`.trim();
+      : firstLine.slice(0, 200));
+  const body =
+    `${(input.metadata?.body ?? summary).trim()}\n\nOpened by ${input.botName} with OpenBots`.trim();
   const base = (input.githubApi ?? GITHUB_API).replace(/\/+$/, '');
-  const res = await fetch(
-    `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls`,
-    {
-      method: 'POST',
+  const pullsUrl = `${base}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls`;
+  const findExisting = async (): Promise<string | null> => {
+    const query = new URLSearchParams({
+      state: 'open',
+      head: `${owner}:${session.branch}`,
+      base: session.base!,
+    });
+    const response = await fetch(`${pullsUrl}?${query}`, {
       headers: {
         accept: 'application/vnd.github+json',
         authorization: `Bearer ${token}`,
         'x-github-api-version': '2022-11-28',
         'user-agent': 'OpenBots',
-        'content-type': 'application/json',
       },
-      body: JSON.stringify({ title, head: session.branch, base: session.base, body }),
       signal: AbortSignal.timeout(30_000),
+    });
+    const items: unknown = await response.json().catch(() => null);
+    if (!response.ok || !Array.isArray(items))
+      throw new Error(`GitHub pull request lookup answered ${response.status}`);
+    const match = items.find(
+      (item: { html_url?: unknown; head?: { ref?: string }; base?: { ref?: string } } | null) =>
+        item?.head?.ref === session.branch &&
+        item?.base?.ref === session.base &&
+        typeof item?.html_url === 'string',
+    );
+    return match ? (match as { html_url: string }).html_url : null;
+  };
+  // Follow-ups reuse open PRs, but must not report a previously merged/closed one as updated.
+  if (input.reuseExisting) {
+    const url = await findExisting();
+    if (url) return url;
+  }
+  const res = await fetch(pullsUrl, {
+    method: 'POST',
+    headers: {
+      accept: 'application/vnd.github+json',
+      authorization: `Bearer ${token}`,
+      'x-github-api-version': '2022-11-28',
+      'user-agent': 'OpenBots',
+      'content-type': 'application/json',
     },
-  );
+    body: JSON.stringify({
+      title,
+      head: session.branch,
+      base: session.base,
+      body,
+      ...(input.metadata?.draft !== undefined ? { draft: input.metadata.draft } : {}),
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
   const data = (await res.json().catch(() => null)) as {
     html_url?: string;
     message?: string;
   } | null;
+  // A retry after a crash may have created the PR before its URL was saved.
+  if (res.status === 422) {
+    const url = await findExisting();
+    if (url) return url;
+  }
   if (!res.ok || !data?.html_url) {
     throw new Error(`GitHub answered ${res.status}: ${data?.message ?? res.statusText}`);
   }

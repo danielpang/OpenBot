@@ -62,6 +62,8 @@ export interface CoderSessionSpec {
   /** Explicit edit acceptance; absent preserves the vendor defaults. */
   acceptEdits?: boolean;
   maxTurns: number;
+  /** Match publishing-tool timeouts to the owner's approval window. */
+  approvalTtlMs?: number;
   /**
    * The policy's answer per action class. No adapter pre-allows anything
    * from it today: every prompt meets `classify` and `coderActionDecision`.

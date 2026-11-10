@@ -107,6 +107,8 @@ function launch(spec: CoderSessionSpec): CoderLaunchPlan {
     spec.mode === 'plan' ? 'plan' : spec.acceptEdits === false ? 'default' : 'acceptEdits',
     '--disallowedTools',
     ...disallowed,
+    // The publishing tool gates itself in the runner; avoid a second tool-use approval.
+    ...(spec.mode === 'plan' ? [] : ['--allowedTools', 'mcp__openbots__publish_pull_request']),
     '--permission-prompt-tool',
     PERMISSION_TOOL,
     '--mcp-config',

@@ -4,6 +4,9 @@ import type { CoderExit, CoderPermissionRequest, CoderProcess } from '@openbots/
 import {
   CODER_AGENT_LABELS,
   CODER_APPROVAL_TTL_ENV,
+  CODER_PUBLISH_OPERATION,
+  CoderPublishInputSchema,
+  type CoderPublishInput,
   CoderActionClassSchema,
   coderActionDecision,
   DEFAULT_MAX_CONCURRENT_SESSIONS,
@@ -40,6 +43,7 @@ import {
   expireSessionApprovals,
   type ApprovalRow,
 } from './approvals.js';
+import { publishSessionPullRequest, type PublishResult } from './coder-publish.js';
 import { rateLimitResetMs } from './coder-adapters/common.js';
 import {
   adapterFor,
@@ -79,7 +83,6 @@ import {
   ensureCheckout,
   ensureWorktree,
   remoteOf,
-  runGit,
   sessionBranch,
   type GitContext,
   type RepoRow,
@@ -91,9 +94,7 @@ import {
   branchResult,
   commitLeftovers,
   diffArtifact,
-  openPullRequest,
   recordAgentPush,
-  recordPushedSha,
   remoteHead,
   sessionIdentity,
   type SessionIdentity,
@@ -321,6 +322,8 @@ class SessionRunner {
   private pushAllowed: boolean;
   /** The runner pushed the branch itself this time, and recorded what. */
   private runnerPushed = false;
+  /** A tool attempt (including denial) must not be repeated automatically on exit. */
+  private publishAttempted = false;
   private stopped = false;
   private timedOut = false;
   /** Pending permission prompts by approval id: the agent's request id. */
@@ -493,9 +496,16 @@ class SessionRunner {
     });
     this.session = { ...session, worktreePath: worktree, branch, base, startedAt, branchExisted };
     const label = CODER_AGENT_LABELS[session.agent as CoderAgent] ?? session.agent;
-    await this.note('text', `${continuing ? 'Continued' : 'Started'} ${label} in ${worktree}`);
+    const startup = `${continuing ? 'Continued' : 'Started'} ${label} in ${worktree}`;
     const posture = this.adapter?.posture;
-    if (posture) await this.note('text', posture);
+    if (continuing) {
+      // Follow-ups keep the operational details in the log, not the conversation.
+      this.log(startup);
+      if (posture) this.log(posture);
+    } else {
+      await this.note('text', startup);
+      if (posture) await this.note('text', posture);
+    }
   }
 
   /** The runner's own words, in the feed and the transcript (the chat in the drawer). */
@@ -534,6 +544,7 @@ class SessionRunner {
       ...(this.keyProvider?.baseUrl ? { apiKeyBaseUrl: this.keyProvider.baseUrl } : {}),
       acceptEdits: this.policy.tools.coding_edits === 'auto',
       maxTurns: DEFAULT_MAX_TURNS,
+      approvalTtlMs: approvalTtlMs(deps.config),
       actions: decisions(this.policy, this.source),
       ...this.identity,
     };
@@ -607,7 +618,8 @@ class SessionRunner {
             path: request.path,
             username: request.username,
             sessionId: session.id,
-            session: { pushAllowed: this.pushAllowed, repoFullName: remoteOf(this.repo!).fullName },
+            // Only runner-owned operations may receive push credentials, even after approval.
+            session: { pushAllowed: false, repoFullName: remoteOf(this.repo!).fullName },
           })
             .then((answer) => this.proc?.credential({ request_id: request.request_id, ...answer }))
             .catch((error: unknown) => {
@@ -800,6 +812,34 @@ class SessionRunner {
   }
 
   private async onPermission(request: CoderPermissionRequest) {
+    if (request.tool_name === CODER_PUBLISH_OPERATION) {
+      try {
+        const metadata = CoderPublishInputSchema.parse(request.input);
+        if (this.session.mode === 'plan') throw new Error('Plan-only sessions cannot publish.');
+        if (this.stopped || this.ending) throw new Error('The session has stopped.');
+        const refused = await this.refusal();
+        if (refused) throw new Error(refused);
+        const { commits } = await this.branchResult();
+        const result = await this.pullRequest(metadata.body, commits, metadata);
+        if (!result.url) throw new Error(result.refused ?? result.note ?? 'Publishing failed');
+        this.safely(() =>
+          this.proc?.answer({
+            request_id: request.request_id,
+            decision: 'allow',
+            message: JSON.stringify({ branch: this.session.branch, prUrl: result.url }),
+          }),
+        );
+      } catch (error) {
+        this.safely(() =>
+          this.proc?.answer({
+            request_id: request.request_id,
+            decision: 'deny',
+            message: this.scrub(errorText(error)),
+          }),
+        );
+      }
+      return;
+    }
     const classed = this.adapter!.classify(request.tool_name, request.input, {
       worktreePath: this.session.worktreePath!,
     });
@@ -813,6 +853,14 @@ class SessionRunner {
    */
   private async onApproval(request: CoderSessionApproval) {
     const { deps } = this;
+    if (request.action === 'push' || request.action === 'pr') {
+      this.answer(
+        request.request_id,
+        'deny',
+        'Use the OpenBots publish_pull_request tool instead. Only the trusted runner may push branches or create PRs.',
+      );
+      return;
+    }
     // Read fresh settings so an approval-card toggle affects subsequent prompts.
     const [bot] = await deps.db
       .select({ toolPolicy: schema.bots.toolPolicy })
@@ -1209,8 +1257,14 @@ class SessionRunner {
       commits.length && this.git ? await diffArtifact(deps, this.git, this.owner, session) : null;
     let summary = this.result?.summary ?? '';
     if (leftovers) summary = summary ? `${summary}\n\n${leftovers}` : leftovers;
-    let prUrl: string | undefined;
-    if (status === 'settled' && session.mode === 'pr' && commits.length && !this.timedOut) {
+    let prUrl: string | undefined = this.session.prUrl ?? undefined;
+    if (
+      status === 'settled' &&
+      session.mode === 'pr' &&
+      commits.length &&
+      !this.timedOut &&
+      !this.publishAttempted
+    ) {
       const pr = await this.pullRequest(summary, commits);
       if (pr.refused) return this.refused(pr.refused);
       prUrl = pr.url;
@@ -1300,84 +1354,91 @@ class SessionRunner {
     }
   }
 
-  /**
-   * `pr` mode (I12): one approval to push and open the pull request, then
-   * both, by the runner. Returns the pull request's url, or a note on why
-   * there is none.
-   */
+  /** Policy gate shared by live publishing and the end-of-session fallback. */
+  private async authorizePublication(
+    commits: CoderCommit[],
+    sha: string,
+    metadata?: CoderPublishInput,
+  ): Promise<boolean> {
+    const { deps, session } = this;
+    const [bot] = await deps.db
+      .select({ toolPolicy: schema.bots.toolPolicy })
+      .from(schema.bots)
+      .where(eq(schema.bots.id, session.botId));
+    if (!bot || this.stopped) return false;
+    this.policy = resolveToolPolicy(bot.toolPolicy);
+    const actions = ['push', 'pr'].map((action) =>
+      coderActionDecision(this.policy, this.source, action as 'push' | 'pr'),
+    );
+    if (actions.includes('deny')) return false;
+    if (!actions.every((decision) => decision === 'auto')) {
+      let decide!: (decision: 'approved' | 'denied' | 'expired') => void;
+      const decided = new Promise<'approved' | 'denied' | 'expired'>(
+        (resolve) => (decide = resolve),
+      );
+      const approval = await this.askOwner(
+        {
+          action: 'pr',
+          title: `Push and open a PR for ${session.branch}`,
+          detail: `${commits.length} commit${commits.length === 1 ? '' : 's'} on ${session.branch}, against ${session.base}`,
+          toolName: PR_TOOL,
+          input: {
+            branch: session.branch,
+            base: session.base,
+            commits: commits.length,
+            sha,
+            ...(metadata
+              ? { title: metadata.title, body: metadata.body, draft: metadata.draft ?? false }
+              : {}),
+          },
+        },
+        (approvalId) => this.waiters.set(approvalId, decide),
+      );
+      if (this.stopped) decide('denied');
+      const timer = setTimeout(() => decide('expired'), approvalTtlMs(deps.config) + 60_000);
+      timer.unref?.();
+      this.timers.push(timer);
+      const decision = await decided;
+      clearTimeout(timer);
+      this.waiters.delete(approval.id);
+      await setApprovalStatus(deps, this.id, approval.id, decision);
+      if (decision !== 'approved' || this.stopped) {
+        if (!this.stopped) await setSessionStatus(deps, this.id, 'running');
+        return false;
+      }
+    }
+    this.pushAllowed = true;
+    await setSessionStatus(deps, this.id, 'running', { pushAllowed: true });
+    return true;
+  }
+
   private async pullRequest(
     summary: string,
     commits: CoderCommit[],
-  ): Promise<{ url?: string; note?: string; refused?: string }> {
-    const { deps, session } = this;
-    const branch = session.branch!;
-    let decide!: (decision: 'approved' | 'denied' | 'expired') => void;
-    const decided = new Promise<'approved' | 'denied' | 'expired'>((resolve) => (decide = resolve));
-    const approval = await this.askOwner(
-      {
-        action: 'pr',
-        title: `Push and open a PR for ${branch}`,
-        detail: `${commits.length} commit${commits.length === 1 ? '' : 's'} on ${branch}, against ${session.base}`,
-        toolName: PR_TOOL,
-        input: { branch, base: session.base, commits: commits.length },
-      },
-      (approvalId) => this.waiters.set(approvalId, decide),
-    );
-    // Stopped while it asked: Stop answered the waiters it found then.
-    if (this.stopped) decide('denied');
-    const ttl = approvalTtlMs(deps.config);
-    // The expiry job answers `denied` when the time is up; this is the backstop.
-    const timer = setTimeout(() => decide('expired'), ttl + 60_000);
-    timer.unref?.();
-    this.timers.push(timer);
-    const decision = await decided;
-    this.waiters.delete(approval.id);
-    await setApprovalStatus(deps, this.id, approval.id, decision);
-    if (decision !== 'approved') {
-      return {
-        note: `The owner did not approve the push, so ${branch} is only on the computer.`,
-      };
-    }
-    // The approval took a while: the checkout is checked again right before the push.
-    const refused = await this.refusal();
-    if (refused) return { refused };
-    this.pushAllowed = true;
-    await setSessionStatus(deps, this.id, 'running', { pushAllowed: true });
-    appendFeed(deps, this.id, feedLine('command', `$ git push -u origin ${branch}`));
-    // What the push sends: the worktree's HEAD, read before it.
-    const head = await runGit(this.git!, ['-C', session.worktreePath!, 'rev-parse', 'HEAD']);
-    const pushed = await runGit(
-      this.git!,
-      ['-C', session.worktreePath!, 'push', '-u', 'origin', branch],
-      { push: true },
-    );
-    if (pushed.code !== 0) {
-      const why = (pushed.error ?? pushed.stderr).trim().split('\n').filter(Boolean).pop();
-      appendFeed(deps, this.id, feedLine('error', `Push failed: ${why ?? `exit ${pushed.code}`}`));
-      return { note: `The push of ${branch} failed: ${why ?? `exit ${pushed.code}`}` };
-    }
-    const sha = head.code === 0 ? head.stdout.trim() : '';
-    if (/^[0-9a-f]{7,64}$/.test(sha)) {
-      await recordPushedSha(deps, this.id, sha);
+    metadata?: CoderPublishInput,
+  ): Promise<PublishResult> {
+    this.publishAttempted = true;
+    const result = await publishSessionPullRequest(this.deps, {
+      git: this.git!,
+      session: this.session,
+      repo: this.repo!,
+      repoPath: this.repoPath!,
+      botName: this.bot!.name,
+      summary,
+      commits,
+      ...(metadata ? { metadata } : {}),
+      ...(this.options.githubApi ? { githubApi: this.options.githubApi } : {}),
+      authorize: (sha) => this.authorizePublication(commits, sha, metadata),
+      refusal: () => this.refusal(),
+      stopped: () => this.stopped,
+    });
+    if (result.url) {
       this.runnerPushed = true;
+      this.session = { ...this.session, prUrl: result.url };
+      await this.note('text', `Published ${result.url}`);
     }
-    try {
-      const url = await openPullRequest(deps, {
-        owner: this.owner,
-        repo: this.repo!,
-        session,
-        botName: this.bot!.name,
-        summary,
-        commits,
-        ...(this.options.githubApi ? { githubApi: this.options.githubApi } : {}),
-      });
-      await this.note('text', `Opened ${url}`);
-      return { url };
-    } catch (error) {
-      const message = errorText(error);
-      appendFeed(deps, this.id, feedLine('error', `The pull request was not opened: ${message}`));
-      return { note: `Pushed ${branch}, but the pull request was not opened: ${message}` };
-    }
+    if (result.note) appendFeed(this.deps, this.id, feedLine('text', result.note));
+    return result;
   }
 
   /** The session's end: its pending approvals expire, then the row and the widget settle. */

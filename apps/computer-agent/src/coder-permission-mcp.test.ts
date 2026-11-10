@@ -79,7 +79,7 @@ const text = (reply: Record<string, unknown>) =>
   ) as unknown;
 
 describe('the permission MCP server (I11)', () => {
-  it('does the MCP handshake and lists its one tool', async () => {
+  it('does the MCP handshake and lists permission and publishing tools', async () => {
     const server = mcp(undefined);
     server.call({
       jsonrpc: '2.0',
@@ -112,6 +112,10 @@ describe('the permission MCP server (I11)', () => {
             },
             required: ['tool_name', 'input'],
           },
+        },
+        {
+          name: 'publish_pull_request',
+          inputSchema: { required: ['title', 'body'], additionalProperties: false },
         },
       ],
     });
@@ -195,6 +199,66 @@ describe('the permission MCP server (I11)', () => {
       behavior: 'deny',
       message: 'Nobody answered the approval in time',
     });
+  });
+
+  it('publishes through the session relay and returns the runner result', async () => {
+    const published = { branch: 'bot/fix', prUrl: 'https://github.com/acme/app/pull/1' };
+    const relay = await fakeRelay(
+      () => JSON.stringify({ decision: 'allow', message: JSON.stringify(published) }) + '\n',
+    );
+    const server = mcp(relay.socket);
+    const input = { title: 'Fix reconnect', body: 'Tests pass', draft: true };
+    server.call({
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'publish_pull_request', arguments: input },
+    });
+    expect(text(await server.reply(1))).toEqual(published);
+    expect(relay.requests).toEqual([{ tool_name: 'openbots.publish_pull_request', input }]);
+  });
+
+  it.each(['{"decision":"allow"}\n', '{"decision":"allow","message":"not a result"}\n'])(
+    'fails closed when an old or broken runner allows without a publishing result: %s',
+    async (answer) => {
+      const relay = await fakeRelay(() => answer);
+      const server = mcp(relay.socket);
+      server.call({
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'publish_pull_request', arguments: { title: 'Fix', body: '' } },
+      });
+      expect((await server.reply(1)).result).toHaveProperty('isError', true);
+    },
+  );
+
+  it('reports publishing denial as a failed MCP tool result', async () => {
+    const relay = await fakeRelay(() => '{"decision":"deny","message":"The owner declined"}\n');
+    const server = mcp(relay.socket);
+    server.call({
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'publish_pull_request', arguments: { title: 'Fix', body: '' } },
+    });
+    expect((await server.reply(1)).result).toMatchObject({
+      isError: true,
+      content: [{ text: 'The owner declined' }],
+    });
+  });
+
+  it.each([
+    { title: '', body: '' },
+    { title: 'Fix', body: '', branch: 'main' },
+    { title: 'Fix', body: '', repo: 'other/repo' },
+  ])('rejects invalid publishing arguments before contacting the relay: %j', async (input) => {
+    const relay = await fakeRelay(() => '{"decision":"allow"}\n');
+    const server = mcp(relay.socket);
+    server.call({
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'publish_pull_request', arguments: input },
+    });
+    expect((await server.reply(1)).error).toMatchObject({ code: -32602 });
+    expect(relay.requests).toEqual([]);
   });
 
   it('refuses another tool and a call without tool_name', async () => {

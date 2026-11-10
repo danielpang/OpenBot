@@ -74,7 +74,7 @@ describe('pi adapter', () => {
     expect(valueOf(args, '-e')).toBe(CODER_PI_EXTENSION);
     expect(args).toContain('--no-mcp');
     expect(args).toContain('--no-approve');
-    expect(valueOf(args, '--tools')).toBe('read,bash,edit,write,grep,find,ls');
+    expect(valueOf(args, '--tools')).toBe('read,bash,edit,write,grep,find,ls,publish_pull_request');
     expect(valueOf(args, '--model')).toBe('anthropic/claude-sonnet-4-5');
     // The prompt is last, after `--`, so the agent fills no placeholder in it.
     expect(args.at(-2)).toBe('--');
