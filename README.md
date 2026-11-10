@@ -87,6 +87,18 @@ cannot restore a removed connection. Invoking vendor binaries directly bypasses 
 Credentials remain accessible to code running as the shared `coder` user, an existing isolation
 limitation described in [the security review](docs/SECURITY.md).
 
+## Coding tasks and pull requests
+
+After a successful edit or PR task finishes, OpenBots reconciles the final committed changes and requests
+publication automatically, even if the coding agent forgot to call its publishing tool. Both push
+and PR permissions still apply. By default the owner must approve, and **Accept edits** does not
+approve publishing. Further changes after a live publish require authorization for the new commit.
+
+A declined request is not retried automatically. Publication failures remain in the final session
+summary and error, rather than being hidden in the activity log. Plan-only tasks never publish.
+Deploy the server and computer image together. See [coding-session publishing](docs/CODING_SESSION_PUBLISHING.md)
+for retry behavior, cancellation, and existing unsafe Git-configuration recovery.
+
 ## Go further
 
 - [Architecture and the five Docker images](docs/ARCHITECTURE.md)

@@ -31,18 +31,22 @@ There is no public publishing HTTP endpoint and no new database migration. The c
 
 ## Runner behavior
 
-`apps/server/src/services/coder-publish.ts` implements publishing for both the live tool and the existing end-of-session PR-mode fallback:
+`apps/server/src/services/coder-publish.ts` implements publishing for both the live tool and completion-time reconciliation in edit and PR sessions:
 
 - Validate trusted checkout configuration and require a clean worktree and commits.
 - Capture the commit SHA before requesting approval.
 - Revalidate the checkout and check cancellation after approval.
 - Push that exact SHA to the session's branch, without force or `-u`.
 - Record the pushed SHA and PR URL in the existing session row.
-- Return the existing result when the same SHA has already been published.
+- Return an existing result only after GitHub confirms an open matching head/base PR whose head SHA equals this commit. A saved URL and pushed SHA alone are not proof.
 - Push follow-up commits to the existing session PR without creating another PR.
 - On GitHub's duplicate-PR response, look up the matching open head/base PR to recover a create that succeeded before its URL was persisted.
 
-A live tool attempt, including an owner denial, suppresses the exit-time fallback for that turn. This avoids a second approval after an explicit decision. PR-mode sessions retain their fallback if the agent never called the tool.
+The runner reconciles final HEAD even if the agent never called the tool, or made more changes after publishing. This includes the safety-net commit of eligible leftover edits. A different SHA requires authorization again; an explicit approval can be reused during the same turn only for the identical SHA and PR metadata, after checking current policy. Auto permission is not cached as an explicit approval.
+
+Explicit denials and cancellations suppress further automatic publication for that turn. Other failures permit one completion-time attempt, not an unbounded retry loop. If that attempt still fails, the final summary and session error retain the publication failure independently of successful coding completion. A historical PR URL is not presented as this turn's publication result.
+
+Stop and the session time limit abort publication, expire or deny pending waiters, and cancel in-flight runner Git and GitHub requests. Cancellation cannot undo a push or a GitHub create that already reached the remote. A later turn checks GitHub and can recover such a PR without creating a duplicate.
 
 ## Git configuration ownership
 
