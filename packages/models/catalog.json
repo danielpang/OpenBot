@@ -95,6 +95,21 @@
             "input": 10,
             "output": 50
           }
+        },
+        {
+          "id": "claude-fable-5-2",
+          "name": "Claude Fable 5.2",
+          "capabilities": {
+            "tools": true,
+            "vision": true,
+            "reasoning": true,
+            "context_window": 1000000,
+            "max_output": 128000
+          },
+          "pricing": {
+            "input": 10,
+            "output": 50
+          }
         }
       ]
     },
