@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/mobile/assets/openbots-logo.svg" width="88" height="88" alt="OpenBots logo">
+  <img src="docs/openbots-team.svg" width="440" alt="OpenBots logo: five Bots, with Scout in the centre">
 </p>
 
 <h1 align="center">OpenBots</h1>
