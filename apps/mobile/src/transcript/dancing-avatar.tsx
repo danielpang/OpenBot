@@ -8,25 +8,38 @@ import type { Bot } from '../screens/data';
 const LOOP_MS = 1100;
 const BEATS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1];
 
+// Asked once when the app loads, so a loader knows the setting on its first frame
+// instead of standing still until the answer arrives.
+let reduceMotion: boolean | undefined;
+void AccessibilityInfo.isReduceMotionEnabled()
+  .then((value) => {
+    reduceMotion = value;
+  })
+  .catch(() => {});
+
 /** The Bot dancing in place while its conversation loads. Motion is decorative. */
 export function DancingBotAvatar({ bot, size = 72 }: { bot: Bot; size?: number }) {
   const c = useTheme();
   const phase = useRef(new Animated.Value(0)).current;
-  // Still until the setting is known, so Reduce Motion never sees a first hop.
-  const [reduced, setReduced] = useState(true);
+  // Unknown only if a chat opens before the app has its answer: still, without a spinner.
+  const [reduced, setReduced] = useState(reduceMotion);
   useEffect(() => {
     let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
+    const update = (value: boolean) => {
+      reduceMotion = value;
       if (mounted) setReduced(value);
-    });
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
+    };
+    void AccessibilityInfo.isReduceMotionEnabled()
+      .then(update)
+      .catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', update);
     return () => {
       mounted = false;
       subscription.remove();
     };
   }, []);
   useEffect(() => {
-    if (reduced) {
+    if (reduced !== false) {
       phase.setValue(0);
       return;
     }
@@ -117,7 +130,7 @@ export function DancingBotAvatar({ bot, size = 72 }: { bot: Bot; size?: number }
           transform: [{ scaleX: beat([1, 0.75, 0.6, 0.75, 1, 0.75, 0.6, 0.75, 1]) }],
         }}
       />
-      {reduced ? <ActivityIndicator /> : null}
+      {reduced === true ? <ActivityIndicator /> : null}
     </View>
   );
 }

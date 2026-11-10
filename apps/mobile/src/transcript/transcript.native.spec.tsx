@@ -284,21 +284,25 @@ describe('reopening a conversation', () => {
     expect(mockListProps.maintainVisibleContentPosition?.animateAutoScrollToBottom).toBe(true);
   });
 
-  it('shows a spinner, then the transcript, if the list is slow to lay out', async () => {
+  it('shows a loader from the first frame, then the transcript, if the list never lays out', async () => {
     render(<Transcript chatId="chat" bots={[]} title="Bot" />);
-    expect(screen.queryByTestId('chat-transcript-loading')).toBeNull();
-    await advance(300);
     expect(screen.getByTestId('chat-transcript-loading')).toBeTruthy();
     expect(opacity()).toBe(0);
-    await advance(2700);
+    await advance(3000);
     expect(opacity()).toBe(1);
     expect(screen.queryByTestId('chat-transcript-loading')).toBeNull();
   });
 
-  it('shows the Bot dancing while its own conversation is slow to open', async () => {
+  it('shows the Bot dancing from the first frame while its own conversation opens', async () => {
     const bot = { id: 'bot', name: 'Atlas', chatId: 'chat' } as unknown as Bot;
-    render(<Transcript chatId="chat" bots={[bot]} title="Atlas" />);
-    await advance(300);
+    // Before any message is on the phone, and while the loaded list is still hidden.
+    mockMessages = [];
+    mockLoading = true;
+    const view = render(<Transcript chatId="chat" bots={[bot]} title="Atlas" />);
+    expect(screen.getByTestId('chat-loading-avatar')).toBeTruthy();
+    mockMessages = [{ id: 'a', seq: 1 }];
+    view.rerender(<Transcript chatId="chat" bots={[bot]} title="Atlas" />);
+    expect(opacity()).toBe(0);
     expect(
       within(screen.getByTestId('chat-transcript-loading')).getByLabelText(
         'Loading your conversation with Atlas',
@@ -307,7 +311,6 @@ describe('reopening a conversation', () => {
     // A group has no single Bot, so it keeps the plain spinner.
     screen.unmount();
     render(<Transcript chatId="group" bots={[bot]} title="Team" />);
-    await advance(300);
     expect(screen.getByTestId('chat-transcript-loading')).toBeTruthy();
     expect(screen.queryByTestId('chat-loading-avatar')).toBeNull();
   });

@@ -23,8 +23,6 @@ const SETTLE_TICK_MS = 50;
 const SETTLE_MIN_MS = 150;
 // Show the conversation anyway if it never holds still, e.g. while a reply streams in.
 const SETTLE_LIMIT_MS = 1000;
-// A conversation still waiting after this long shows a spinner.
-const WAITING_SPINNER_MS = 300;
 // A hidden conversation is shown after this long even if its list never reports a layout.
 const HIDDEN_LIMIT_MS = 3000;
 
@@ -123,19 +121,10 @@ function ConversationTranscript({
     const fallback = setTimeout(() => setRevealed(true), HIDDEN_LIMIT_MS);
     return () => clearTimeout(fallback);
   }, [hidden]);
-  // One spinner covers both waits, the first messages and the hidden list, and only
-  // when they are slow: a spinner that flashes on every open is its own flicker.
+  // One loader covers both waits, the first messages and the hidden list, from the
+  // first frame: any delay before it is a moment of empty screen.
   const waiting = hidden || (messages.loading && messages.messages.length === 0);
-  const [slow, setSlow] = useState(false);
   const chatBot = bots.find((bot) => bot.chatId === chatId);
-  useEffect(() => {
-    if (!waiting) return;
-    const spinner = setTimeout(() => setSlow(true), WAITING_SPINNER_MS);
-    return () => {
-      clearTimeout(spinner);
-      setSlow(false);
-    };
-  }, [waiting]);
   // FlashList won't repeat onStartReached while the list stays in the start zone, so
   // page in history skipped while hidden once it is shown, if it settled near the top
   // (a short conversation, or a link to an early message).
@@ -303,7 +292,7 @@ function ConversationTranscript({
             }
           />
         </View>
-        {waiting && slow ? (
+        {waiting ? (
           <View
             testID="chat-transcript-loading"
             pointerEvents="none"
