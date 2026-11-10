@@ -1,6 +1,6 @@
 # Self-hosting and development reference
 
-Installation, operations, security checks and development. See also the
+Installation, operations and development. See also the
 [project README](../README.md) (quick start), [VM setup](VM_SETUP.md) (relay-only VM) and
 [private relay setup](PRIVATE_RELAY_SETUP.md) (a relay you operate yourself).
 
@@ -386,81 +386,8 @@ value: aggregate it with `max`, not `sum`. For a ready-made overview, import
 [docs/grafana-dashboard.json](grafana-dashboard.json) into Grafana (Dashboards > New > Import) and
 pick your Prometheus data source.
 
-## Checking the container hardening
-
-The automated tests check the docker guard's rules, the compose files and the metrics token without
-Docker. The checks below need Docker (Linux, and Docker Desktop on a Mac). Run them from the
-checkout after `docker compose up -d`:
-
-1. `docker compose ps`: `docker-guard` and `sandbox-firewall` are healthy and `openbots` started.
-   `docker compose logs sandbox-firewall` names the iptables backend it used.
-2. Start a Bot's computer from the web UI; it starts and its screen shows.
-   `docker compose logs docker-guard` has no `refused` lines.
-3. The guard refuses an unsafe container. This must print `403` and a `docker guard:` message:
-   ```sh
-   docker compose exec openbots node -e "fetch('http://docker-guard:2375/containers/create?name=openbots-computer-x',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({Image:'alpine',HostConfig:{Privileged:true}})}).then(async r=>console.log(r.status,await r.text()))"
-   ```
-   The same with `http://docker-socket-proxy:2375/_ping` fails: the server cannot reach the socket
-   proxy.
-4. The guard acts only on computers: the same command with
-   `http://docker-guard:2375/containers/openbots-postgres-1/stop` (method `POST`, no body) prints
-   `403` and Postgres keeps running.
-5. `docker network inspect openbots-sbx` (or your `OPENBOTS_SANDBOX_NETWORK`) shows
-   `com.docker.network.bridge.enable_icc: false`, the subnet from `.env` and `openbots` at
-   `OPENBOTS_SANDBOX_SERVER_IP`.
-6. From inside a computer (its terminal in the web UI), each of these must fail or time out:
-   `curl -m 5 http://<OPENBOTS_SANDBOX_SERVER_IP>:3000/healthz` (the server),
-   `curl -m 5 http://169.254.169.254/` (metadata), `curl -m 5 http://<your router's LAN IP>/`,
-   `curl -m 5 http://172.30.255.1/` (the host), and, with a second account's computer running,
-   `curl -m 5 http://<its address>:7070/healthz`. `curl -m 10 https://example.com` and
-   `getent hosts example.com` must work.
-7. `curl -i http://localhost:3000/metrics` answers 404 without `OPENBOTS_METRICS_TOKEN`, 401 with it
-   set and no token sent, and 200 with `-H "Authorization: Bearer <token>"`.
-8. Restart Docker (or reboot): the computer still starts afterwards, and the rules are back
-   (`sudo iptables -S OPENBOTS-SANDBOX`, or `iptables-legacy` / `iptables-nft`; `OB-<BRIDGE>` for
-   another bridge).
-9. With a second stack on its own `OPENBOTS_SANDBOX_NETWORK` and subnet running beside this one,
-   both start, each `sandbox-firewall` log names its own bridge and chains, both chain pairs are in
-   `iptables -S`, and from a computer of either stack the other stack's server address and
-   computers time out like step 6.
-10. `docker compose pull` resolves `tecnativa/docker-socket-proxy` by its pinned digest on both
-    amd64 and arm64.
-11. The catalog's stdio MCP servers are in the image and start without downloading anything
-    (S-20):
-    - `docker buildx build --platform linux/amd64,linux/arm64 -f docker/server.Dockerfile .`
-      succeeds.
-    - In the running server,
-      `docker compose exec openbots ls -l /opt/openbots/mcp/node_modules/.bin` lists
-      `mcp-server-filesystem` and `mcp-server-postgres`, owned by root.
-    - Add the Filesystem connector and a Postgres connector (a public, read-only database) on the
-      Connectors page and press Test on each: both list their tools, and
-      `docker compose exec openbots ps -o user,cmd -e` shows them running from
-      `/opt/openbots/mcp`, with no `npx` or `npm` process.
-12. Stdio MCP servers run as `nobody` with no capabilities and cannot read the server (S-1). With
-    the Filesystem connector added (press Test so it runs), list the processes:
-    ```sh
-    docker compose exec openbots sh -c 'for d in /proc/[0-9]*; do printf "%s " "${d#/proc/}"; grep -E "^(Name|Uid|CapEff)" "$d/status" | tr -s "\t\n" "  "; echo; done'
-    ```
-    - `node` shows Uid `1000` and CapEff `00000000000000c0` (SETUID and SETGID only), and the MCP
-      server shows Uid `65534` and CapEff `0000000000000000`.
-    - As the stdio servers' user, the server's environment is out of reach:
-      `docker compose exec --user 65534 openbots cat /proc/<node pid>/environ` fails with
-      "Permission denied".
-    - `docker compose exec --user 1000 openbots ls -l /run/openbots` lists the secrets, each
-      `-rw-------`.
-    - Remove the connector: the MCP server's process is gone from the list within a few seconds.
-    - Then `docker compose run --rm openbots rotate-key` reports every secret under the current
-      key, and `bash scripts/backup.sh` followed by `bash scripts/restore.sh` brings the
-      connector's files back with their owners.
-13. The egress proxy (plan 9.5). With the `.env` lines from
-    [Egress proxy for the computers](#egress-proxy-for-the-computers) and
-    `docker compose --profile egress up -d`, start a computer and in its terminal:
-    - `env | grep -i proxy` lists the proxy.
-    - `curl -m 10 https://en.wikipedia.org` works.
-    - `curl -m 10 https://example.com` gets a 403 from tinyproxy.
-    - `curl -m 10 --noproxy '*' https://example.com` times out (proxy only).
-    - The proxy's log (`docker compose logs egress-proxy`) shows both requests, and the firewall's
-      names the proxy.
+Maintainers check the container hardening by hand before a release: see
+[release checks](plans/RELEASE_CHECKS.md#checking-the-container-hardening).
 
 ## Exposing your OpenBots server to the internet
 
@@ -528,14 +455,17 @@ When you start the stack with a profile, keep passing it (`docker compose --prof
 
 ## Reaching your server from your phone
 
-The OpenBots app for iOS is in development ([docs/plans/IOS_APP_PLAN.md](plans/IOS_APP_PLAN.md));
-the server side is in place. A phone pairs with a server by scanning a QR code, then reaches it
-directly (a public URL from the section above) or through the private relay, which needs no public
-address, port, DNS or certificate. Wire protocol: [docs/RELAY_PROTOCOL.md](RELAY_PROTOCOL.md).
-Design: [docs/plans/MOBILE_AND_VM_PLAN.md](plans/MOBILE_AND_VM_PLAN.md).
+A phone pairs with a server by scanning a QR code. It then reaches the server directly (a public
+URL from the section above, or the same network) or through a relay, which needs no public
+address, port, DNS or certificate. The iOS app is in development
+([docs/plans/IOS_APP_PLAN.md](plans/IOS_APP_PLAN.md)). Wire protocol:
+[docs/RELAY_PROTOCOL.md](RELAY_PROTOCOL.md). Design:
+[docs/plans/MOBILE_AND_VM_PLAN.md](plans/MOBILE_AND_VM_PLAN.md).
 
-**Pairing.** Settings > Devices in the web app (and "Pair your phone…" in the Mac app) shows a QR
-code that is good for 5 minutes and works once. On a VM with no browser, print it in the terminal:
+**Pairing.** Settings > Devices in the web app (and "Pair your phone…" in the Mac app) shows the QR
+code. A code works once, for 5 minutes. On a fresh install with no owner yet, the first phone to
+pair becomes the owner. A paired device holds a key with the owner's access. Revoke a lost phone in
+Settings > Devices, which stops its key at once. On a VM with no browser, use the terminal:
 
 ```sh
 docker compose run --rm openbots pair          # add --link to print the link too
@@ -543,104 +473,32 @@ docker compose run --rm openbots devices       # list paired devices, or `device
 docker compose run --rm openbots relay         # the server's host id and whether the relay sees it
 ```
 
-On a fresh install with no owner yet, the code creates the owner when the phone pairs. A paired
-device holds a key with the owner's access: revoke a lost phone in Settings > Devices, which stops
-its key at once.
-
 **The relay.** Set `OPENBOTS_RELAY_URL` in `.env` to a relay's `wss://` address and run
-`docker compose up -d`.
-
-- The server dials out to the relay, and only once a device is paired or a pairing is open. The
-  phone uses the relay when no direct address answers.
-- Traffic between phone and server is end-to-end encrypted with keys the relay never holds. The
-  relay sees your server's id, when it is connected, and how many streams and bytes, but nothing of
-  what they carry.
-- With the setting empty, the phone needs a direct address (`OPENBOTS_PUBLIC_URL` over https, or
-  the same network).
-- The Mac app's This Mac stack uses the OpenBots relay by default. To use your own, open "Relay…"
-  in the OpenBots menu and enter its `wss://` address: the app sets `OPENBOTS_RELAY_URL` and
-  restarts the stack, and every paired phone is signed out and has to pair again.
-
-**Your own relay.** Start the compose stack's `relay` profile (see
-[Run OpenBots 24/7 on a VM](#run-openbots-247-on-a-vm)), or run `docker/relay.Dockerfile`'s image
-on its own behind a TLS terminator. It listens on port 3200 and needs no state;
-`apps/relay/README.md` has its settings. Only a relay holding the app's APNs key can send push
-notifications, so a self-hosted relay carries the tunnel and no push: the phone gets notices only
-while the app is open.
+`docker compose up -d`. The server dials out only once a device is paired or a pairing is open. The
+phone uses the relay when no direct address answers. Traffic is end-to-end encrypted; see
+[what the relay sees](../apps/relay/README.md#what-the-relay-sees-and-what-it-does-not). The
+[VM setup guide](VM_SETUP.md) uses the shared relay. To run your own, follow the
+[private relay guide](PRIVATE_RELAY_SETUP.md). A self-hosted relay sends no push notifications, so
+the phone gets notices only while the app is open.
 
 ## Run OpenBots 24/7 on a VM
 
-The Mac app's This Mac stack is free, but it pauses while the Mac sleeps: Routines wait, and Bots
-stop mid-task until the lid opens. For round-the-clock work, run OpenBots on a machine that stays
-on, such as a cloud VM or a home server. The phone reaches it through the relay, so the VM needs no
-public address, open port, DNS or certificate. Templates and step-by-step guides are in
-[deploy/](../deploy/README.md).
+The Mac app's This Mac stack pauses while the Mac sleeps: Routines wait, and Bots stop mid-task
+until the lid opens. For round-the-clock work, run OpenBots on a machine that stays on, such as a
+cloud VM or a home server. The phone reaches it through the relay, so the VM needs no public
+address, open port, DNS or certificate.
 
-Two shapes:
+- [VM setup guide](VM_SETUP.md): the compose stack with the shared relay, step by step. This is the
+  hardened path. Use it wherever Docker runs.
+- [Deployment templates](../deploy/README.md): EC2, Fly, Sprites and other platforms, and how the
+  compose stack and the standalone image differ.
+- [Standalone image](../docker/standalone/README.md): one container for platforms without Docker
+  inside, its flags, and the isolation it gives up.
 
-- **The compose stack**, on any VM that runs Docker (EC2, Hetzner, DigitalOcean, a home server).
-  This is the install described above, with every Bot's computer in its own container behind the
-  Docker guard and the sandbox firewall. **This is the hardened path; use it wherever Docker is
-  available.** On a new Ubuntu VM, [deploy/ec2/cloud-init.yaml](../deploy/ec2/cloud-init.yaml)
-  installs Docker and runs the installer; elsewhere, run `bash install.sh --pair`.
-- **The standalone image**, `ghcr.io/danielpang/openbots/standalone`, for platforms that run one
-  container and no Docker inside it (Fly Machines, Sprites, Railway, Render), or for one person on
-  one VM.
-  - The server, Postgres, Redis and the Bots' computer share one container and one volume at
-    `/data`. Give it about 2 GB of memory and 2 CPUs.
-  - Steps: [deploy/fly](../deploy/fly/README.md) and [deploy/sprites](../deploy/sprites/README.md).
-    The `docker run` line and its flags (`--stop-timeout 60`, `--pids-limit`,
-    `--cap-add NET_ADMIN`, log rotation): [docker/standalone/README.md](../docker/standalone/README.md).
-  - Stop it with `docker stop -t 60`, not `docker rm -f`.
-  - Everything shares one disk, so a Bot that fills its home fills the disk under the database. The
-    image warns below 10 percent free.
-  - Modal can run the image with a Volume at `/data`, but Modal Sandboxes are built for shorter
-    work; the other platforms suit an always-on server better.
-
-**Set the relay, and pair first.** With the recommended setup (no inbound rule, no public address)
-the relay is the phone's only way in: without `OPENBOTS_RELAY_URL` the phone cannot reach the
-server. `install.sh --pair`, the EC2 template and the standalone image warn when it is empty and no
-https `OPENBOTS_PUBLIC_URL` is set. On a platform that publishes the port as soon as the service
-runs (Railway, Render), the first visitor to the web app can create the owner while none exists:
-run `openbots pair` in the service's shell and pair your phone before you give it a public address.
-
-**Pairing from the terminal.** `bash install.sh --pair` starts the stack and prints a QR code once
-it is ready. With no terminal attached (cloud-init, for instance) it writes the code to
-`openbots-pair.txt` beside `.env`, readable by you only, and prints nothing a log could keep. For a
-new code, run `docker compose run --rm openbots pair` (compose stack),
-`docker exec <container> openbots pair` (standalone image) or
-`fly ssh console -C "openbots pair"` (Fly).
-
-**Your own relay.** On a VM with a public address, run `docker compose --profile relay up -d`
-beside the compose stack. The relay listens on `OPENBOTS_RELAY_PORT` (3200), on loopback unless
-`OPENBOTS_RELAY_BIND` says otherwise, and needs TLS in front of it: a Cloudflare Tunnel hostname
-whose service is `http://relay:3200` (the `cloudflare` profile), or a reverse proxy on the host.
-Set `OPENBOTS_RELAY_URL` to that `wss://` address. It sends no push notifications (see the section
-above).
-
-**Cost.** You pay the platform for a machine that runs all month, plus your model provider's usage
-(shown in each Bot's usage rows). Check current prices for a machine with 2 CPUs and 4 GB of memory
-and a 10 to 30 GB disk: [Fly.io](https://fly.io/docs/about/pricing/),
-[Amazon EC2](https://aws.amazon.com/ec2/pricing/on-demand/),
-[Railway](https://railway.com/pricing), [Render](https://render.com/pricing). A Sprite costs
-nothing while paused, but it pauses when idle and OpenBots pauses with it, so it does not suit
-Routines around the clock.
-
-**What the standalone image gives up.** In the compose stack a Bot's shell runs in its own
-container, which cannot reach the server, the database or the server's network. The standalone
-image is one container and one kernel: the Bots' shells run beside the server, as another user.
-
-- They cannot read the server's secrets: the computer agent's token is kept out of every program it
-  starts, and the server's routes all need a key the Bots do not have.
-- They can reach the server's port on loopback, the VM's own network (on Fly, the organization's
-  private network and other apps on it) and, on a cloud VM, the metadata address that hands out the
-  machine's credentials. Run the container with `--cap-add NET_ADMIN` and the image drops that
-  address for the Bots' users, or block it in the platform's firewall (on EC2, require IMDSv2 with
-  a hop limit of 1).
-- `OPENBOTS_SANDBOX_EGRESS_PROXY` is advisory in this image: programs that honour `HTTP_PROXY` use
-  it, and nothing stops one that does not.
-
-The image is meant for one person's own server. For anything more, use the compose stack.
+**Cost.** You pay for a machine that runs all month, plus your model provider's usage. Check
+current prices: [Fly.io](https://fly.io/docs/about/pricing/),
+[Amazon EC2](https://aws.amazon.com/ec2/pricing/on-demand/), [Railway](https://railway.com/pricing),
+[Render](https://render.com/pricing).
 
 ## Development
 
@@ -709,43 +567,8 @@ docker compose --project-directory . -f docker/docker-compose.yml \
   -f docker/docker-compose.dev.yml up -d --build
 ```
 
-### Docker verification checklist
-
-Some behaviour cannot run in a sandbox without Docker or an X stack, so the unit tests cover it with
-fakes. Check these by hand on a Docker host before a release:
-
-- **The computer's screen lock (S-7).** Build the computer image (`docker/computer.Dockerfile`).
-  Inside it, run `pnpm --filter @openbots/computer-agent test` with `DISPLAY` set, so
-  `display.test.ts` runs against real Xvfb, x11vnc and Chromium. Then, with a Bot's screen
-  running:
-  - In the Bot's terminal or through `bash`, `env` shows no `OPENBOTS_AGENT_TOKEN`, and neither
-    do `tr '\0' '\n' < /proc/1/environ` nor `docker inspect` on the computer's container.
-    `/var/lib/openbots/token` does not exist once the agent is up.
-  - `curl http://127.0.0.1:9222/json/version` fails: Chromium has no DevTools port.
-  - Nothing listens on `127.0.0.1:5910` or `[::1]:5900`: x11vnc is on
-    `/tmp/openbots/screens/screen-0/vnc.sock`, and `ls -l` on it as root shows it is
-    `screen-0`'s, mode 0755.
-  - **Downloads (K1).** Have Bot A download a file in its browser. It shows up in
-    `/home/bot/Downloads` in the file browser, `read_file` returns it, and `ls -l` shows it as
-    `screen-0`'s, group `bot`, mode 0664; `ls -ld /home/bot/Downloads` shows `drwxrwsrwt`.
-    `/home/bot/.config/openbots/chromium` is gone after the first start on an upgraded computer.
-  - **Nothing to take first (S-7).** With Bot B's screen stopped, have Bot A run
-    `touch /tmp/.X11-unix/X11 /tmp/.X11-lock` and `python3 -m http.server 5911 &`, then start
-    Bot B's screen: it comes up, and the preview shows its desktop.
-  - `ps -o uid,gid,cmd -C Xvfb,x11vnc,chrome` shows each screen's processes as uid and gid
-    2000+n, and the agent (`ps -o ruid,euid -C node`) as real uid 0, effective uid 1000.
-  - **Cross-screen access is refused (S-7).** `display.test.ts` "another screen (S-7)" must pass
-    as root with `/usr/local/libexec/openbots/runas` installed, so its "as root" case runs too.
-    Then, with two Bots' screens running, have Bot A run, through `bash`:
-    `xdotool getmouselocation` works; `DISPLAY=:11 xdotool getmouselocation` (Bot B's display)
-    fails with "Can't open display"; `cat /tmp/openbots/screens/screen-1/Xauthority` and
-    `ls /var/lib/openbots/screens/screen-1` fail with "Permission denied". The terminal can reach
-    no display at all.
-  - Each Bot keeps its logins across a computer restart, and a new Bot that gets a deleted Bot's
-    screen number starts logged out.
-  - The web preview still shows the screen, and the browser tools still drive Chromium.
-  - Take the screen over and ask the Bot to run a command. It waits, then answers that the owner
-    has the screen.
+Before a release, also run the
+[Docker verification checklist](plans/RELEASE_CHECKS.md#docker-verification-checklist).
 
 ## License
 

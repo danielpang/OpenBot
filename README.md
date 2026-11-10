@@ -93,5 +93,7 @@ for retry behavior, cancellation, and existing unsafe Git-configuration recovery
 - [Contributing](docs/CONTRIBUTING.md) · [Report a bug or suggest an idea](https://github.com/danielpang/OpenBots/issues)
 - [License](LICENSE) · [Terms and Conditions](docs/TERMS.md)
 
+<a href="https://buymeacoffee.com/dpang"><img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=dpang&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" height="40"></a>
+
 Bots can take real actions: review permissions and approvals before giving them access.
 The free shared relay has no availability guarantee; see the terms before using it.

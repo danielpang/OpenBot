@@ -59,15 +59,13 @@ The release profiles explicitly disable `developmentClient`. Store builds still 
 
 ### EAS dependency-install failures
 
-All EAS build profiles inherit Node 22.23.4 and pnpm 12.11.2 from the `base` profile in `eas.json`. Keep these aligned with the root Node requirement and `packageManager` when upgrading the workspace. Do not rely on the build image's preinstalled versions: the Xcode 26.2 image defaults to Node 20 and pnpm 10, which can fail before installation while switching to pnpm 12 (`Failed to switch pnpm`, `Unknown system error -8`).
-
-After changing the build toolchain, retry from `apps/mobile`, for example:
+- **Symptom:** an EAS build fails before installing dependencies with `Failed to switch pnpm` or `Unknown system error -8`.
+- **Cause:** the build image defaults to older Node and pnpm. Every profile pins Node 22.23.4 and pnpm 12.11.2 in the `base` profile of `eas.json`; keep them in line with the root Node requirement and `packageManager`.
+- **Fix:** start a new build from `apps/mobile` so the updated configuration is uploaded. Signing credentials need no change.
 
 ```sh
 eas build --platform ios --profile preview --clear-cache
 ```
-
-This creates a new cloud build; retrying the old build without uploading the updated configuration will not apply the fix. Signing credentials do not need to be recreated for this dependency-install error.
 
 ### Open the workspace when building in Xcode
 
@@ -83,7 +81,9 @@ App icon changes require regenerating the native assets with `pnpm exec expo pre
 
 ### Xcode cannot find the simulator destination (exit 70)
 
-The build SDK and simulator OS are separate. The installed iOS 26.4 SDK can be selected for a build targeting an existing iOS 26.2 simulator; do not change the app's minimum deployment target to select a simulator. First list available devices with `xcrun simctl list devices available`, then explicitly select the simulator SDK and the desired device from the repository root:
+- **Symptom:** Xcode lists only an ineligible destination, such as `iOS 26.4 is not installed`, and the build exits with 70.
+- **Cause:** the iOS runtime matching Xcode's SDK is missing. The SDK and the simulator OS are separate, so do not change the deployment target or signing team.
+- **Fix:** list devices with `xcrun simctl list devices available`, then build against one explicitly from the repository root. Keep simulator signing on, or secure storage breaks.
 
 ```sh
 xcodebuild -workspace apps/mobile/ios/OpenBots.xcworkspace \
@@ -92,21 +92,13 @@ xcodebuild -workspace apps/mobile/ios/OpenBots.xcworkspace \
   build
 ```
 
-Keep simulator signing enabled (Xcode uses local ad-hoc signing); disabling it can remove simulated Keychain entitlements and break secure storage. This is a diagnostic build command, not a workaround for every exit-70 failure. If Xcode still lists only an ineligible destination with `iOS 26.4 is not installed`, inspect **Xcode → Settings → Components** and the scheme's available destinations. The original Expo failure already named an iOS 26.2 device, so selecting that UUID again alone does not fix the underlying platform eligibility problem.
-
-If installing an additional runtime is wanted, the command for an iOS 26.4 runtime on Apple silicon is:
+If that still fails, install the runtime (Apple silicon shown; use `-architectureVariant universal` on Intel), then pick a simulator. Without an explicit architecture variant Xcode 26.x can report `not available for download` ([developer report](https://developer.apple.com/forums/thread/812146)). If the download fails, use **Xcode → Settings → Components**. Verified with Xcode 26.4: installing the 26.4 runtime restored the existing iOS 26.2 simulator.
 
 ```sh
 xcodebuild -downloadPlatform iOS -buildVersion 26.4 -architectureVariant arm64
 xcrun simctl list devices available
 pnpm --filter @openbots/mobile ios --device
 ```
-
-The command above targets Apple silicon. For an Intel Mac, use `-architectureVariant universal`. A reported Xcode 26.x issue can return `not available for download` when a version is specified without an explicit architecture variant ([developer report and workaround](https://developer.apple.com/forums/thread/812146)). If the specific version still cannot be found, use Xcode's Components settings to inspect the available downloads, or omit `-buildVersion` to let Xcode select its default iOS runtime.
-
-Verified locally with Xcode 26.4: installing its matching iOS 26.4 runtime restored destination discovery, including the existing iPhone 17 Pro on iOS 26.2. OpenBots then built, installed and rendered its welcome screen on that existing simulator.
-
-Wait for installation to finish, then choose an available simulator in Expo's device picker. If the download command itself reports `Unable to connect to simulator`, use Xcode's Components settings. This destination error happens before compilation; changing the app's deployment target or Apple signing team does not install the missing component.
 
 ## iPad workspace
 
@@ -126,17 +118,6 @@ pnpm --filter @openbots/mobile dev
 For an existing Metro session, the iPhone and iPad development clients can use the same server. Release/EAS builds use the same profiles described above. Regenerate native configuration with `pnpm --filter @openbots/mobile prebuild` when updating an older installed build.
 
 Automated tests cover the width boundary, iPhone fallback, sidebar routing/selection, offline and onboarding gates, and keeping conversation content mounted during resizing. An Xcode Debug simulator build and installation were also verified for iPad Pro 11-inch (M5), iOS 26.4. Authenticated iPad flows, keyboard behavior and physical-device acceptance still require the checks in [DEVICE-VALIDATION.md](DEVICE-VALIDATION.md).
-
-## Liquid Glass
-
-On iOS 26+, OpenBots uses UIKit's native floating tab bar with SF Symbols and the existing Inbox badge. Chat headers let messages scroll beneath native glass navigation controls, with a soft system scroll-edge effect protecting the title. Bot details use the native `info.circle` button; group membership uses `person.2`. The composer, attachment menu, create control and jump-to-latest control use `expo-glass-effect`'s **regular** native material. The composer floats over the transcript rather than occupying an opaque strip below it; measured scroll padding keeps the final message and scroll indicator clear of multiline drafts and attachment menus. Message cards, approval content, search fields and settings stay opaque; glass is reserved for navigation and controls, following [Apple's adoption guidance](https://developer.apple.com/documentation/technologyoverviews/liquid-glass).
-
-- Build with **Xcode 26 or later** to see Liquid Glass. iOS 17 remains the deployment target: earlier systems retain their native tab bar and opaque custom controls.
-- `src/components/glass.tsx` centralizes capability checks and live accessibility preferences. Reduce Transparency or Increase Contrast selects opaque custom surfaces. Material layers do not intercept touches or appear in VoiceOver, and changing preferences does not remount the composer input. Custom glass adds no morphing/scale animations; system tab animations follow iOS accessibility settings.
-- The native tabs own scroll-view safe-area adjustments. Do not wrap the tab navigator in another safe-area inset or give its bar an opaque background. Scrollable pages use automatic content inset adjustment so the final row remains reachable above the floating bar.
-- Rebuild the development client after installing dependencies: `pnpm --filter @openbots/mobile prebuild`, then `pnpm --filter @openbots/mobile ios`. A JavaScript reload alone is not a native rebuild. For an OTA release, bump the native app version/runtime before publishing a bundle requiring changed native dependencies.
-
-See the Liquid Glass checks in [DEVICE-VALIDATION.md](DEVICE-VALIDATION.md) for the device acceptance matrix.
 
 ## Appearance
 
@@ -175,13 +156,4 @@ See `.github/workflows/release-mobile.yml` and `eas.json`. Configure an EAS proj
 
 Tagged CI releases derive their version from the Git tag and stamp the root, desktop and mobile packages in the build checkout before Expo export and EAS upload. No version-bump commit is required. The iOS release workflow runs only on version-tag pushes, not PRs, branch pushes or manual dispatch. With signing configured, a tag builds through EAS and submits to TestFlight. Local builds use the committed package version; for a versioned local build, run `node scripts/release-version.mjs stamp vX.Y.Z` from the repository root in a disposable checkout first. Release build numbers come from the workflow run and attempt. Missing release credentials produce only a JavaScript export; a partially configured signing environment fails rather than implying a signed build. No upload or submission happens during local development.
 
-## Remaining release work
-
-- Complete the physical M0 gate, VoiceOver/Dynamic Type review and Maestro server-backed flows. Native Debug build, installation and welcome-screen launch have been verified on the iPhone 17 Pro iOS 26.2 simulator with Xcode 26.4. Physical camera scanning, APNs delivery and authenticated server-backed flows still require device/server validation.
-- Provision EAS/Apple credentials, register export compliance for the custom tunnel crypto, configure universal links, supply App Store screenshots/support URL and a working reviewer demo server, then run TestFlight and App Review.
-- Maintain the Expo tooling security overrides: patched Zod 4, Glob and esbuild versions, plus the local deepmerge prototype-poisoning fix until upstream publishes a patched release. Installed-package regression tests cover Expo schema compatibility and deepmerge; `pnpm-workspace.yaml` records the scoped audit exception for the local patch. Markdown, linkifier and URL-decoder dependencies also use patched versions. Recheck all overrides on Expo upgrades.
-- A fresh ownerless server can be paired with an owner name; provider/model credentials and first-run setup still finish on the desktop. The mobile app can create Bots once the server is configured.
-- Per-kind push preference controls, device rename and account revocation UI beyond forgetting the local host remain follow-up work. Revocation is available in the server's Devices settings.
-- Share extension, App Intents, WidgetKit, Live Activities, Android shipping, and the separate responsive web redesign are not part of this first native implementation.
-
-The minimum server version is currently `0.0.0`, matching the repository's development release. New optional routes (notably approvals) tolerate 404; capabilities without a version remain usable. Raise `OLDEST_SERVER_VERSION` with an explicit server compatibility decision when releases become versioned.
+Liquid Glass details and remaining release work are in [iOS app notes](../../docs/plans/IOS_APP_NOTES.md).

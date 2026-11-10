@@ -54,7 +54,7 @@ Paired phone <--> shared relay <--> OpenBots server
 - `sandbox-firewall` applies rules in the **Linux Docker host's network namespace**, not the
   macOS application firewall. It requires Docker-managed iptables. Rootless Docker and Docker's
   nftables firewall backend need equivalent rules applied separately. See the [stack networking
-  and hardening details](SELF_HOSTING.md#checking-the-container-hardening).
+  and hardening details](SELF_HOSTING.md#from-the-repository).
 - Postgres (`pgvector/pgvector`), Redis (`redis`) and the Docker socket proxy
   (`tecnativa/docker-socket-proxy`) are third-party images.
 

@@ -50,7 +50,7 @@ If you already run the OpenBots Compose stack, use its optional profile **instea
 docker compose --profile relay up -d
 ```
 
-The profile also binds port 3200 to loopback by default. Keep passing `--profile relay` to
+The profile listens on `OPENBOTS_RELAY_PORT` (3200) and binds to loopback unless `OPENBOTS_RELAY_BIND` says otherwise. Keep passing `--profile relay` to
 operations that should include the relay service. Configuration:
 [`docker-compose.relay.yml`](../docker/docker-compose.relay.yml).
 
@@ -75,7 +75,8 @@ curl -fsS http://127.0.0.1:3200/healthz
 curl -fsS https://relay.example.com/healthz
 ```
 
-A Cloudflare Tunnel or another WebSocket-capable TLS proxy can replace Caddy. Keep its backend
+A Cloudflare Tunnel (with the Compose profile, its service is `http://relay:3200`) or another
+WebSocket-capable TLS proxy can replace Caddy. Keep its backend
 private and configure trusted client-address forwarding. For a managed multi-machine relay, use
 the [Fly deployment guide](../deploy/relay/README.md) instead.
 

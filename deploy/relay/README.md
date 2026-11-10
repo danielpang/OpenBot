@@ -2,7 +2,7 @@
 
 This runs the shared relay as several Fly Machines behind one hostname, so it scales out and survives a Machine going away. It is how the project runs the relay that every install without its own uses. You only need it to run a relay for many servers; one server or a small group is served well by a single relay container (see [apps/relay/README.md](../../apps/relay/README.md)).
 
-The design is [docs/plans/MOBILE_AND_VM_PLAN.md](../../docs/plans/MOBILE_AND_VM_PLAN.md) section 5.8. In short: one Machine owns each host id at a time, recorded in Redis with a lease. Every link of that server and every phone stream for it end on that Machine, so stream bytes never cross Machines. A Machine that gets a connection for a host another Machine owns answers with `fly-replay`, and Fly's proxy replays the request on the owner.
+How the Machines share the work (ownership, leases, replays, failover) is in [Several machines](../../apps/relay/README.md#several-machines). This page covers what you run and set.
 
 You need [flyctl](https://fly.io/docs/flyctl/install/) and a Fly.io account.
 
@@ -36,9 +36,9 @@ fly secrets set RELAY_REDIS_URL='redis://default:<password>@<host>:6379'
 fly secrets set RELAY_METRICS_TOKEN="$(openssl rand -hex 32)"
 ```
 
-`RELAY_REDIS_URL` is required as soon as more than one Machine runs: without it each Machine believes it is the only one, and a phone that lands on a Machine other than its server's gets 4404. `RELAY_METRICS_TOKEN` turns on `GET /metrics`; without it the route answers 404.
+`RELAY_REDIS_URL` is required as soon as more than one Machine runs. Without it each Machine believes it is the only one, and a phone that lands on a Machine other than its server's gets 4404. `RELAY_METRICS_TOKEN` turns on `GET /metrics`; without it the route answers 404.
 
-Push needs the project's APNs key, and only the project's own relay has one (it belongs to the App Store build). The key is a secret that holds the `.p8` file in base64. The relay reads it from its environment once at start and then deletes it there, so it writes no key file (none has to be readable by the relay's unprivileged user) and the raw key does not stay in the process environment:
+Push needs the project's APNs key, and only the project's own relay has one (it belongs to the App Store build). Set it as a secret that holds the `.p8` file in base64. The relay reads it once at start and deletes it from its environment, so no key file is needed:
 
 ```sh
 fly secrets set RELAY_APNS_KEY="$(base64 < AuthKey_XXXXXXXXXX.p8 | tr -d '\n')" \
@@ -47,9 +47,9 @@ fly secrets set RELAY_APNS_KEY="$(base64 < AuthKey_XXXXXXXXXX.p8 | tr -d '\n')" 
   RELAY_APNS_TOPIC=dev.openbots.app
 ```
 
-A relay without push (it carries the tunnel only, and answers every push `unavailable`): set none of these. Each push names its APNs environment (`production` or `sandbox`, as the device registered its token), and the relay sends it to that environment's gateway, so one relay serves App Store, TestFlight and development builds alike.
+For a relay without push (tunnel only, every push answered `unavailable`), set none of these. Each push names its APNs environment (`production` or `sandbox`), so one relay serves App Store, TestFlight and development builds alike.
 
-Presence (`GET /v1/hosts/{id}`) tells anyone who has a host id whether that server is online. To keep that to yourself, set `RELAY_PRESENCE_TOKEN` (at least 16 characters): the route then wants it as a bearer token. The iOS app does not use presence, so nothing breaks.
+Presence (`GET /v1/hosts/{id}`) tells anyone who has a host id whether that server is online. To keep that to yourself, set `RELAY_PRESENCE_TOKEN` (at least 16 characters). The iOS app does not use presence, so nothing breaks.
 
 ```sh
 fly secrets set RELAY_PRESENCE_TOKEN="$(openssl rand -hex 32)"
@@ -76,9 +76,9 @@ fly tokens create deploy -a <your app>    # then: gh secret set FLY_API_TOKEN
 
 Run it by hand to redeploy `main`. Do not also connect the repository in Fly's dashboard, or every push deploys twice. Self-hosted relays are unaffected: they run the GHCR image each release publishes.
 
-Fly's proxy keeps at least one Machine running (`min_machines_running = 1`) and starts the others as load needs them (`auto_stop_machines = "stop"`, `auto_start_machines = true`): it starts a stopped Machine when the running ones pass the soft limit below, and stops one, which drains first, when the rest have room. It never creates Machines, so `fly scale count` sets the most there can be. Spread them over the regions your users are in: a phone and its server both connect to the hostname, Fly's proxy takes each to a nearby Machine, and the one that does not own the host replays to the one that does. The replay is one hop inside Fly's network, and only on connect.
+Fly's proxy keeps at least one Machine running (`min_machines_running = 1`) and starts the others as load needs them (`auto_stop_machines = "stop"`, `auto_start_machines = true`). It starts a stopped Machine when the running ones pass the soft limit below, and stops one, which drains first, when the rest have room. It never creates Machines, so `fly scale count` sets the most there can be. Spread them over the regions your users are in. A replay between regions is one hop inside Fly's network, and only on connect.
 
-Each Machine takes up to 20,000 sockets (host links and phone streams together, `RELAY_MAX_SOCKETS`). `[http_service.concurrency]` matches it: past the soft limit of 16,000 the proxy prefers other Machines, and at 20,000 it sends no more. A Machine that is full answers `/ready` with 503 and refuses upgrades for hosts it does not serve with 503, so the proxy picks another; it still admits links and phones of the hosts it owns (a replay can bring those past the proxy's limit), up to a hard ceiling 10 percent above, where it refuses everything. Scale out before Machines stay near the soft limit. Each also holds at most 512 MiB of bytes in flight (`RELAY_BUDGET_BYTES`), which is why the Machine has 2 GB of memory; raise both together.
+Each Machine takes up to 20,000 sockets (host links and phone streams together, `RELAY_MAX_SOCKETS`). `[http_service.concurrency]` matches it: past the soft limit of 16,000 the proxy prefers other Machines, and at 20,000 it sends no more. A full Machine still admits the hosts it owns, which a replay can bring past the proxy's limit, up to a hard ceiling 10 percent above ([Each machine on its own](../../apps/relay/README.md#each-machine-on-its-own)). Scale out before Machines stay near the soft limit. Each also holds at most 512 MiB of bytes in flight (`RELAY_BUDGET_BYTES`), which is why the Machine has 2 GB of memory; raise both together.
 
 ## A custom hostname
 
@@ -108,19 +108,25 @@ To take one Machine out of service by hand without a deploy, set `RELAY_DRAIN=tr
 
 ## When Redis goes away
 
-The relay keeps serving. Links and streams already open go on. A server that links while Redis cannot be reached is served on the Machine it reaches, without a lease (each Machine on its own, logged as `serving this host on this machine alone`); once Redis answers, that Machine takes the lease, or closes the link 1012 if another Machine took the host meanwhile, and the server relinks to it. A Machine that cannot refresh its liveness key for 15 seconds gives up its leases itself (1012), since the others may already count it as gone. Every Redis call gives up after 2 seconds (`RELAY_REDIS_COMMAND_TIMEOUT_MS`). `/ready` stays 200, with `"degraded":["registry_unreachable"]` in its body, so Fly does not take every Machine out at once; `registry_degraded` and `hosts_alone` show it in the metrics. While Redis is away, a phone that lands on a Machine other than its server's gets 4404 until Redis is back, and the per host limits are counted per Machine.
+The relay keeps serving, and links and streams already open go on. How each Machine copes is in [Several machines](../../apps/relay/README.md#several-machines). What you see:
+
+- A server served without a lease is logged as `serving this host on this machine alone`.
+- A Machine that cannot refresh its liveness key for 15 seconds gives up its leases (1012).
+- Every Redis call gives up after 2 seconds (`RELAY_REDIS_COMMAND_TIMEOUT_MS`).
+- `/ready` stays 200, with `"degraded":["registry_unreachable"]` in its body, so Fly does not take every Machine out at once. `registry_degraded` and `hosts_alone` show it in the metrics.
+- A phone that lands on a Machine other than its server's gets 4404 until Redis is back, and the per host limits are counted per Machine.
 
 ## When a replay finds its Machine gone
 
-A replay names the Machine that owned the host when Redis was last asked. If that Machine has just gone (it crashed, or a deploy replaced it), Fly's proxy cannot deliver the replay: the server or phone sees the proxy's error (a 502, or a failed handshake), and reconnects through the hostname with its usual backoff. The gone Machine drops out of Redis's node set within 15 seconds, after which no Machine replays to it and the next link of the host takes the lease elsewhere.
+If the Machine a replay names has just gone (it crashed, or a deploy replaced it), the server or phone sees the proxy's error (a 502, or a failed handshake) and reconnects. It clears within 15 seconds; see [Several machines](../../apps/relay/README.md#several-machines).
 
 ## Running several Machines anywhere else
 
-A relay replays only on Fly (where `FLY_MACHINE_ID` is set, or with `RELAY_REPLAY=fly`), since no other proxy acts on `fly-replay`. Behind any other proxy each Machine serves what reaches it. A self-hosted relay of several machines therefore needs sticky routing by host id: every request for one host id (the `hostId` query parameter of `/v1/host`, and the last path segment of `/v1/connect/{hostId}`) must reach the same machine, for example with a consistent hash on it in your load balancer. Without that, a phone that lands on another machine than its server's gets 4404.
+Replays work only on Fly. Behind any other proxy, a relay of several machines needs sticky routing by host id in your load balancer, as [Several machines](../../apps/relay/README.md#several-machines) describes.
 
 ## Metrics
 
-`GET /metrics` serves Prometheus text with `Authorization: Bearer <RELAY_METRICS_TOKEN>`. From your machine:
+`GET /metrics` wants `Authorization: Bearer <RELAY_METRICS_TOKEN>`:
 
 ```sh
 curl -H "Authorization: Bearer $RELAY_METRICS_TOKEN" https://relay.example.com/metrics
@@ -152,6 +158,4 @@ Plus Node's process metrics (CPU, memory, event loop lag) under the same prefix.
 
 ## What the relay sees and stores
 
-It sees host ids, when a host links and from which address, how many streams each host has open, how many bytes they carry, and push counts. It sees APNs device tokens in transit, only long enough to send each notice. It never sees request paths, message text, keys or pairing codes: those are inside the Noise session between the phone and the server, and push notices arrive already encrypted for the device.
-
-Redis holds, per host id, which Machine owns it and a fencing counter (kept 7 days after the host last linked), each Machine's liveness key and its entry in the node set, the per host rate counters (stream opens an hour, bytes a minute, pushes an hour), and per client address the stream open counters of the minute, under a hash of the address. Every key expires on its own (a lease within 30 seconds of its owner going), and nothing in Redis names a person, an address or a device. The Machines write nothing to disk. Logs carry host ids, addresses and counts, never device tokens or payloads. Metrics carry no host ids or addresses at all.
+What the relay sees, what it keeps in Redis, and what its logs and metrics carry is in [What the relay sees, and what it does not](../../apps/relay/README.md#what-the-relay-sees-and-what-it-does-not). The Machines write nothing to disk, and every Redis key expires on its own.
