@@ -272,7 +272,7 @@ export function sessionTitle(prompt: string, repoFullName?: string | null): stri
   return flat.length > SESSION_TITLE_MAX ? `${flat.slice(0, SESSION_TITLE_MAX - 1)}…` : flat;
 }
 
-// Limits (docs/TECHNICAL_PLAN.md 22.11): constants for now, per account in
+// Limits (docs/plans/TECHNICAL_PLAN.md 22.11): constants for now, per account in
 // `limits` later.
 
 /** A session's own time limit, in minutes, unless the account sets another. */

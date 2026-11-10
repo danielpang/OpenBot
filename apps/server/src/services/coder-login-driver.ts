@@ -19,7 +19,7 @@ import {
 } from './coder-login.js';
 import { agentFor, startComputer } from './computer.js';
 
-// The sign-in driver (docs/TECHNICAL_PLAN.md 22.5): the runner's `login` job.
+// The sign-in driver (docs/plans/TECHNICAL_PLAN.md 22.5): the runner's `login` job.
 // It runs the adapter's login in a PTY on the computer as `coder` with the
 // agent's config directory, so the credentials land on the root-only state
 // volume and never pass through the server. It reads the link and device

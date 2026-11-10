@@ -16,14 +16,13 @@ import type { CoderAdapter } from './types.js';
 // substitution) counts as outside the worktree, which asks.
 //
 // This is a convenience layer, not the boundary. `other` stays `auto` for
-// owner-started runs (docs/TECHNICAL_PLAN.md 22.7), and a command the classifier
+// owner-started runs (docs/plans/TECHNICAL_PLAN.md 22.7), and a command the classifier
 // misreads still meets the hard controls that do not depend on it: the
 // process runs as the `coder` uid, whose filesystem permissions keep it out
 // of /home/bot outside the repositories and out of the state volume's other
 // directories; the credential helper serves a push credential only for a
 // session the owner approved a push for; and the computer's sandbox
-// firewall (and egress proxy, when set) is the same as for every Bot
-// (SECURITY.md S-26).
+// firewall (and egress proxy, when set) is the same as for every Bot.
 
 /** Strictest first, as `strictest` compares them. */
 export const CLASS_RANK: Record<CoderActionClass, number> = {

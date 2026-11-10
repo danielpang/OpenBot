@@ -433,7 +433,7 @@ export function allowedRepos<T extends { full_name: string }>(
 }
 
 // The picker, found clones, the per-repository toggles, rescue and scan
-// (docs/TECHNICAL_PLAN.md 22.12).
+// (docs/plans/TECHNICAL_PLAN.md 22.12).
 
 export interface RememberInput {
   /** `owner/name` on GitHub, as the picker lists them. */

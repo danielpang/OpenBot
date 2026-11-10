@@ -30,7 +30,7 @@ import {
 } from './repos-checkout.js';
 import { runningComputerIds } from './repos-scan.js';
 
-// Keeping the remembered repositories current (docs/TECHNICAL_PLAN.md 22.12;
+// Keeping the remembered repositories current (docs/plans/TECHNICAL_PLAN.md 22.12;
 // GH3, GH4): the periodic fetch that records each checkout's state, and the
 // reconcile after every computer start that clones again what a new home
 // volume lost. Both run git as `runner` through repos-checkout.ts, check a

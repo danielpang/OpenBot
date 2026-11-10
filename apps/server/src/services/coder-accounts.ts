@@ -22,7 +22,7 @@ import { coderVersion, runAsCoder } from './coder-commands.js';
 import { completeTerminalLogins } from './coder-login.js';
 import { agentFor, computerAvailable, getComputer, startComputer } from './computer.js';
 
-// The owner's coding agent accounts (docs/TECHNICAL_PLAN.md 22.5, 22.13).
+// The owner's coding agent accounts (docs/plans/TECHNICAL_PLAN.md 22.5, 22.13).
 // Settings > Coding agents reads one card per agent from `coder_accounts`
 // (no row reads as not signed in): its sign-in, an API key from Settings >
 // Models instead, Sign out (the agent's config directory on the computer

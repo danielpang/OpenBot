@@ -50,42 +50,29 @@ is end-to-end encrypted.
 | **On a VM or home server**         | Bots and Routines that keep working when your Mac sleeps. | [VM setup with the shared relay](docs/VM_SETUP.md).                                   |
 | **On a single-container platform** | Personal hosting on Fly Machines or Sprites.              | [Deployment options](deploy/README.md). Standalone has weaker isolation than Compose. |
 
-The Mac app can also connect to an existing self-hosted server instead of running one locally,
-or work as a thin client of OpenBots running on another Mac: on that Mac choose **Pair your phone**,
-copy the link, and on this one choose **Connect to another Mac** and paste it. The two connect
-through the relay, end to end encrypted, so neither needs a public address.
-Prefer to operate the relay yourself? Follow the optional [private relay setup](docs/PRIVATE_RELAY_SETUP.md).
-A private relay replaces the shared connection service that allows the OpenBots mobile app to pair with Openbots running on your machine; it does not run your Bots.
+The Mac app can also connect to an existing self-hosted server, or to OpenBots running on another
+Mac: choose **Pair your phone** there, copy the link, then choose **Connect to another Mac** here
+and paste it. To operate the relay yourself, see the optional
+[private relay setup](docs/PRIVATE_RELAY_SETUP.md). The relay only connects your devices; it does
+not run your Bots.
 
 ## Connect models and subscriptions
 
 Open **Settings → Models** to connect a Claude, ChatGPT/Codex or xAI subscription, or save a
-provider API key. One subscription sign-in is shared by bot conversations and the compatible
-coding agent. Existing coding-agent sign-ins appear here too. xAI sign-in uses pi's terminal
-flow: open the terminal, run `pi`, choose `/login`, then return to Models and choose **Check**.
-A computer must be configured for subscription connections.
+provider API key. One sign-in covers both bot conversations and the matching coding agent. For
+xAI, run `pi` in the terminal, choose `/login`, then choose **Check** in Models.
 
-A connected subscription takes priority over an API key for that provider. If the sign-in expires
-or the plan reaches a limit, requests fail rather than silently switching to API billing.
-Disconnect the subscription to use a saved key. Under a saved key, **Use key** also
-connects it to a compatible coding agent. **Settings → Coding agents** shows agent status and
-links back to Models for connection setup.
+- **Subscriptions take priority over API keys.** If a sign-in expires or the plan hits a limit,
+  requests fail instead of switching to API billing. Disconnect the subscription to use a saved key.
+- **Credentials stay on your computer.** Tokens are not copied into the server database, and
+  subscription requests only go to the vendor's own endpoints.
+- **Access depends on your plan.** Models and billing follow the vendor's terms, and Claude access
+  outside Claude Code may be restricted or cost extra. **Connected** means a saved connection, so
+  use **Test** on a model to verify access.
 
-Credentials stay on your computer. Bot requests use the same credential files as the coding
-agent, including token refreshes; tokens are not copied into the server database. Subscription
-requests use vendor-native endpoints only, never custom endpoints. Available models and billing
-remain subject to the vendor's plan and terms. In particular, Claude access outside Claude Code
-may require extra usage or be restricted by Anthropic. API list prices are not shown as a cost
-estimate for subscription bot runs. A **Connected** label means a saved connection, not verified
-plan access. Use **Test** on a model to verify access.
-
-Deploy the updated server and computer image together. The supported Claude/Codex launchers
-coordinate credential writes with the bot bridge. A refresh may wait for an active native CLI
-session to finish; ordinary bot requests with a valid token do not take that lock. Cancellation
-allows an in-flight token rotation to commit, and disconnect uses the same locks so a refresh
-cannot restore a removed connection. Invoking vendor binaries directly bypasses this coordination.
-Credentials remain accessible to code running as the shared `coder` user, an existing isolation
-limitation described in [the security review](docs/SECURITY.md).
+Self-hosting? Deploy the server and computer image together, and start agents through the
+supplied Claude/Codex launchers so credential refreshes stay coordinated. Credentials are readable
+by code running as the shared `coder` user.
 
 ## Coding tasks and pull requests
 
@@ -104,7 +91,9 @@ for retry behavior, cancellation, and existing unsafe Git-configuration recovery
 - [Architecture and the five Docker images](docs/ARCHITECTURE.md)
 - [Self-hosting reference: install, upgrade, backup and development](docs/SELF_HOSTING.md)
 - [Contributing](docs/CONTRIBUTING.md) · [Report a bug or suggest an idea](https://github.com/danielpang/OpenBots/issues)
-- [Security boundaries](docs/SECURITY.md) · [License](LICENSE) · [Terms and Conditions](docs/TERMS.md)
+- [License](LICENSE) · [Terms and Conditions](docs/TERMS.md)
+
+<a href="https://buymeacoffee.com/dpang"><img src="https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=dpang&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" height="40"></a>
 
 Bots can take real actions: review permissions and approvals before giving them access.
 The free shared relay has no availability guarantee; see the terms before using it.

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { schema } from '../db/client.js';
 import { createTestApp, type TestApp } from '../test-app.js';
 
-// The coding Routine templates on the Routines API (CA11; docs/TECHNICAL_PLAN.md
+// The coding Routine templates on the Routines API (CA11; docs/plans/TECHNICAL_PLAN.md
 // 22.12, "Templates"): listed, and made with `template` on POST
 // /bots/{id}/routines (`routineFromTemplate`, services/routines.ts), pinned to
 // the repository and, through an App connection, to its installation.

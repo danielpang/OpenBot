@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { positiveIntFromEnv } from './budget.js';
 
-// `GET /ready` (docs/MOBILE_AND_VM_PLAN.md 5.8). `/healthz` says the process
+// `GET /ready` (docs/plans/MOBILE_AND_VM_PLAN.md 5.8). `/healthz` says the process
 // is up; `/ready` says this machine should get new connections. Fly's proxy
 // routes only to machines whose checks pass, so a machine that is draining,
 // sees fewer machines than the minimum, or is at its socket ceiling answers

@@ -44,7 +44,7 @@ import { githubInstallationUrl } from '../services/github-device.js';
 import { clearGithubApp, loadGithubApp } from '../services/github-app-store.js';
 import { getGitIdentity, putGitIdentity } from '../services/git-identity.js';
 
-// Git connections and the GitHub App (docs/TECHNICAL_PLAN.md 22.12; GH1 to
+// Git connections and the GitHub App (docs/plans/TECHNICAL_PLAN.md 22.12; GH1 to
 // GH8, I17 to I19). Every path is under /api/v1 and needs a signed-in user
 // unless its route says otherwise; another owner's connection is 404. The
 // OpenAPI document generated from these routes is the contract.

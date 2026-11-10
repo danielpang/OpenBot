@@ -4,7 +4,7 @@ import { apikeys, users } from './auth.js';
 import { bytea, createdAt, id, timestamptz } from './columns.js';
 import { workspaceId } from './workspace.js';
 
-// Devices and pairing (docs/MOBILE_AND_VM_PLAN.md section 4.1,
+// Devices and pairing (docs/plans/MOBILE_AND_VM_PLAN.md section 4.1,
 // docs/RELAY_PROTOCOL.md sections 2 and 6).
 
 export const DEVICE_PLATFORMS = ['ios', 'android', 'desktop'] as const;

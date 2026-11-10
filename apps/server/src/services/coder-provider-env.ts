@@ -9,7 +9,7 @@ import type { schema } from '../db/client.js';
 import type { ProviderRow } from './providers.js';
 
 // An `api_key` account's provider key on its way to the CLI
-// (docs/TECHNICAL_PLAN.md 22.13, "Provider keys"): which variables carry it,
+// (docs/plans/TECHNICAL_PLAN.md 22.13, "Provider keys"): which variables carry it,
 // how the session is billed, and the mask it reads as wherever the session's
 // output is kept or shown.
 

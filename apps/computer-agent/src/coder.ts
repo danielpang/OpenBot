@@ -68,7 +68,7 @@ import {
 // close: processes of the same uid can read each other's environment
 // (/proc/<pid>/environ), so a process of one coder session can take the
 // secret of another session running at the same time as the same user.
-// Per-session uids would close that (docs/SECURITY.md S-24, TECHNICAL_PLAN
+// Per-session uids would close that (TECHNICAL_PLAN
 // 22.13).
 //
 // The server's own git operations (clone, fetch, scan, reconcile, rescue

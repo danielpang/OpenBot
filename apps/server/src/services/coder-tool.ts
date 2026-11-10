@@ -6,7 +6,7 @@ import { startCodingSession, type CoderRun } from './coding-sessions.js';
 import type { BotRow } from './bots.js';
 import { allowedRepos, reposForContext } from './repos.js';
 
-// What `code_task` and context assembly see of coding (docs/TECHNICAL_PLAN.md
+// What `code_task` and context assembly see of coding (docs/plans/TECHNICAL_PLAN.md
 // 22.2, 22.7): the Bot's repositories, the signed-in agents, and `start`.
 
 type Owner = Pick<CurrentUser, 'id' | 'workspaceId'>;

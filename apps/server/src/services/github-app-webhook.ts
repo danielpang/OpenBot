@@ -9,7 +9,7 @@ import { matchesRule, parseTriggerRule, type IncomingEvent } from '../hooks/matc
 import { ownerActive } from '../membership.js';
 import { allowsOn } from './git-connections.js';
 
-// What the GitHub App's webhook does with a verified delivery (I19; docs/TECHNICAL_PLAN.md 22.12).
+// What the GitHub App's webhook does with a verified delivery (I19; docs/plans/TECHNICAL_PLAN.md 22.12).
 // The route (routes/github-app-webhook.ts) checks the size and the HMAC; this
 // file finds who the delivery belongs to and acts on it:
 //

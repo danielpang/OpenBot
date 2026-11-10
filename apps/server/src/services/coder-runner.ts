@@ -100,7 +100,7 @@ import {
   type SessionIdentity,
 } from './session-git.js';
 
-// The coding session runner (docs/TECHNICAL_PLAN.md 22.2; I12): the
+// The coding session runner (docs/plans/TECHNICAL_PLAN.md 22.2; I12): the
 // `coders` queue's one handler. A
 // `session` job is one coding session, start to end, like a run job is one
 // run: it claims the row (queued to starting), makes the checkout current

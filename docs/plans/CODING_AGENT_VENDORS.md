@@ -71,7 +71,7 @@ Run here with empty `HOME` and `CODEX_HOME`, driven over stdin and stdout, never
   `_meta.codex_approval_kind: mcp_tool_call`, `tool_title: create_pull_request` and an empty
   object schema (observed in a live session). OpenBots declines that alternate publication
   path and instructs the agent to use its session-scoped `publish_pull_request` tool instead
-  (see [Coding-session publishing](./CODING_SESSION_PUBLISHING.md)). The runner applies
+  (see [Coding-session publishing](../CODING_SESSION_PUBLISHING.md)). The runner applies
   both push and PR policy and performs the authenticated operations; the agent never receives
   session-wide or permanent push approval. Other elicitation forms and server requests
   (`item/tool/requestUserInput`, `item/permissions/requestApproval`, `item/tool/call`, token refresh,

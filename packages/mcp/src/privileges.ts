@@ -7,7 +7,7 @@ import { chmodSync, chownSync, existsSync, readFileSync } from 'node:fs';
 // cannot read its /proc/<pid>/environ or memory. The compose service starts the
 // image as root with only those two capabilities, and docker/entrypoint.sh
 // hands them to uid 1000 as ambient capabilities, so the default install runs
-// this way; see docs/SECURITY.md S-1. No relative imports, so a test can load
+// this way. No relative imports, so a test can load
 // this file alone.
 
 const CAP_SETGID = 6n;

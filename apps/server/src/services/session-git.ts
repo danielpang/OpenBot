@@ -11,7 +11,7 @@ import { pullRequestToken } from './git-credentials.js';
 import { remoteOf, runGit, type GitContext, type RepoRow } from './repos-checkout.js';
 
 // The runner's own git around a session, once the CLI has ended
-// (docs/TECHNICAL_PLAN.md 22.2 step 7 and 22.13): the Bot's git identity, the
+// (docs/plans/TECHNICAL_PLAN.md 22.2 step 7 and 22.13): the Bot's git identity, the
 // branch's commits and files against its base, the safety-net commit, the
 // diff Artifact and the pull request. Every call here runs after
 // `assertRunnable` passed on the checkout.
