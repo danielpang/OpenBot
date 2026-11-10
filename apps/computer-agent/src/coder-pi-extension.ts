@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { CODER_MODE_ENV } from '@openbots/shared';
+import {
+  CODER_MODE_ENV,
+  CODER_PUBLISH_TOOL,
+  CODER_PUBLISH_DESCRIPTION,
+  CODER_PUBLISH_PARAMETERS,
+} from '@openbots/shared';
 import { CODER_SOCKET_ENV, type PermissionRelayReply } from './coder-paths.js';
-import { askOwner, permissionTimeoutMs } from './coder-permission-mcp.js';
+import { askOwner, permissionTimeoutMs, publishPullRequest } from './coder-permission-mcp.js';
 
 // The OpenBots extension for pi (I11), at CODER_PI_EXTENSION
 // (/app/apps/computer-agent/dist/coder-pi-extension.js) in the image. The
@@ -46,6 +51,16 @@ export interface PiBlock {
 
 /** The part of pi's `ExtensionAPI` this uses. */
 export interface PiExtensionApi {
+  registerTool(tool: {
+    name: string;
+    label: string;
+    description: string;
+    parameters: typeof CODER_PUBLISH_PARAMETERS;
+    execute(
+      id: string,
+      input: unknown,
+    ): Promise<{ content: { type: 'text'; text: string }[]; details: undefined }>;
+  }): void;
   on(
     event: 'tool_call',
     handler: (event: PiToolCallEvent, ctx: unknown) => Promise<PiBlock | undefined>,
@@ -69,6 +84,8 @@ export async function gateToolCall(
       reason: 'This session only plans: it may read the code but not change it or run commands.',
     };
   }
+  // Our publishing tool enforces its own policy in the runner, once, in execute().
+  if (event.toolName === CODER_PUBLISH_TOOL) return undefined;
   const answer: PermissionRelayReply = await askOwner(
     socket,
     { request_id: randomUUID(), tool_name: event.toolName, input: event.input ?? {} },
@@ -80,7 +97,20 @@ export async function gateToolCall(
 
 /** An extension that gates every tool call with `options`. */
 export function piExtension(options: PiGateOptions): (pi: PiExtensionApi) => void {
-  return (pi) => pi.on('tool_call', (event) => gateToolCall(event, options));
+  return (pi) => {
+    pi.on('tool_call', (event) => gateToolCall(event, options));
+    if (options.mode === 'plan') return;
+    pi.registerTool({
+      name: CODER_PUBLISH_TOOL,
+      label: 'Publish pull request',
+      description: CODER_PUBLISH_DESCRIPTION,
+      parameters: CODER_PUBLISH_PARAMETERS,
+      async execute(_id, input) {
+        const result = await publishPullRequest(options.socket, input, options.timeoutMs);
+        return { content: [{ type: 'text', text: JSON.stringify(result) }], details: undefined };
+      },
+    });
+  };
 }
 
 /**

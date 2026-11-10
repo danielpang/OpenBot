@@ -1,5 +1,17 @@
 import type { PolicyDecision, TriggerOverride, WebhookSignaturePreset } from '@openbots/shared';
-import { Button, cn, Input } from '@openbots/ui';
+import {
+  Button,
+  cn,
+  IconButton,
+  Input,
+  RotateIcon,
+  Select,
+  SlidersIcon,
+  Switch,
+  Textarea,
+  TrashIcon,
+  XIcon,
+} from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { Routine } from '../routines/api.js';
@@ -22,8 +34,6 @@ import { DeliveryLog } from './delivery-log.js';
 // generates one.
 // The signing secret field is write-only (P3): it starts empty, says whether
 // a secret is stored, and is sent only when the owner types a new one.
-
-const selectClass = 'h-9 rounded-md border bg-transparent px-2 text-sm';
 
 export const PRESETS: { preset: WebhookSignaturePreset | ''; label: string }[] = [
   { preset: '', label: 'Token only' },
@@ -224,12 +234,11 @@ export function EndpointCard({
               : 'Generate a token to accept deliveries.'}
           </span>
         </div>
-        <div className="flex shrink-0 flex-wrap justify-end gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
           {endpoint.hasToken ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={actions.rotate.isPending}
+            <IconButton
+              label="Rotate token"
+              busy={actions.rotate.isPending}
               onClick={() => {
                 if (
                   globalThis.confirm?.('Issue a new token? The current one stops working at once.')
@@ -238,8 +247,8 @@ export function EndpointCard({
                 }
               }}
             >
-              Rotate token
-            </Button>
+              <RotateIcon />
+            </IconButton>
           ) : (
             <Button
               variant="outline"
@@ -250,22 +259,25 @@ export function EndpointCard({
               Generate token
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => setEditing((e) => !e)}>
-            {editing ? 'Close' : 'Settings'}
-          </Button>
+          <IconButton
+            label={editing ? 'Close' : 'Settings'}
+            aria-pressed={editing}
+            onClick={() => setEditing((e) => !e)}
+          >
+            {editing ? <XIcon /> : <SlidersIcon />}
+          </IconButton>
           {!isInbox(endpoint) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={actions.remove.isPending}
+            <IconButton
+              label="Delete"
+              busy={actions.remove.isPending}
               onClick={() => {
                 if (globalThis.confirm?.(`Delete the endpoint “${title}” and its delivery log?`)) {
                   actions.remove.mutate(endpoint.id);
                 }
               }}
             >
-              Delete
-            </Button>
+              <TrashIcon />
+            </IconButton>
           )}
         </div>
       </div>
@@ -508,18 +520,18 @@ export function EndpointSettings({
     >
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Verification">
-          <select
+          <Select
+            className="w-auto"
             aria-label="Verification"
             value={form.preset}
             onChange={(e) => set({ preset: e.target.value as EndpointForm['preset'] })}
-            className={selectClass}
           >
             {PRESETS.map((p) => (
               <option key={p.preset} value={p.preset}>
                 {p.label}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
         {form.preset === 'generic' && (
           <Field label="Signature header">
@@ -553,15 +565,15 @@ export function EndpointSettings({
       </div>
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Response">
-          <select
+          <Select
+            className="w-auto"
             aria-label="Response"
             value={form.responseMode}
             onChange={(e) => set({ responseMode: e.target.value as EndpointForm['responseMode'] })}
-            className={selectClass}
           >
             <option value="async">Answer at once (202 with the run id)</option>
             <option value="sync">Wait for the Bot’s reply</option>
-          </select>
+          </Select>
         </Field>
         {form.responseMode === 'sync' && (
           <Field label="Wait up to (seconds)">
@@ -588,23 +600,23 @@ export function EndpointSettings({
         </Field>
       </div>
       <Field label="Allowed IP addresses or ranges" note="one per line; blank allows any">
-        <textarea
+        <Textarea
           aria-label="Allowed IP addresses or ranges"
           value={form.allowedIps}
           onChange={(e) => set({ allowedIps: e.target.value })}
           rows={2}
           placeholder="192.30.252.0/22"
-          className="w-full rounded-md border bg-transparent px-3 py-2 font-mono text-sm"
+          className="w-full font-mono"
         />
       </Field>
       <Field label="Template" note="how the payload reads in the prompt; blank for the default">
-        <textarea
+        <Textarea
           aria-label="Template"
           value={form.template}
           onChange={(e) => set({ template: e.target.value })}
           rows={2}
           placeholder="New order {{data.object.id}} for {{data.object.amount}}"
-          className="w-full rounded-md border bg-transparent px-3 py-2 font-mono text-sm"
+          className="w-full font-mono"
         />
       </Field>
       <fieldset className="flex flex-col gap-1.5 text-xs text-muted-foreground">
@@ -628,8 +640,7 @@ export function EndpointSettings({
         ))}
       </fieldset>
       <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
+        <Switch
           aria-label="Endpoint enabled"
           checked={form.enabled}
           onChange={(e) => set({ enabled: e.target.checked })}
@@ -664,11 +675,12 @@ function OverrideRow({
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="min-w-0 flex-1 text-foreground">{label}</span>
-      <select
+      <Select
+        className="w-auto"
+        size="sm"
         aria-label={label}
         value={value}
         onChange={(e) => onChange(e.target.value as OverrideDecision)}
-        className="h-8 rounded-md border bg-transparent px-2 text-xs text-foreground"
       >
         <option value="">Default: the Bot&apos;s settings</option>
         {OVERRIDE_DECISIONS.map((d) => (
@@ -676,7 +688,7 @@ function OverrideRow({
             {DECISION_LABELS[d]}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }

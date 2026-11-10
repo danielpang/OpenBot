@@ -113,9 +113,9 @@ export function useBotPanel(botId: string) {
 
   useEffect(() => {
     const remembered = readPanel(botId);
-    if (remembered && openId() !== CODING_SESSIONS_PANEL) show(remembered);
+    if (remembered && !openId()?.startsWith(CODING_SESSIONS_PANEL)) show(remembered);
     return () => {
-      if (openId() !== CODING_SESSIONS_PANEL) close();
+      if (!openId()?.startsWith(CODING_SESSIONS_PANEL)) close();
     };
   }, [botId, show, close, openId]);
 

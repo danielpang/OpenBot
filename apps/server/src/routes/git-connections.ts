@@ -42,8 +42,9 @@ import {
 import { defaultDeviceClient, pollGitDevice, startGitDevice } from '../services/git-device.js';
 import { githubInstallationUrl } from '../services/github-device.js';
 import { clearGithubApp, loadGithubApp } from '../services/github-app-store.js';
+import { getGitIdentity, putGitIdentity } from '../services/git-identity.js';
 
-// Git connections and the GitHub App (docs/TECHNICAL_PLAN.md 22.12; GH1 to
+// Git connections and the GitHub App (docs/plans/TECHNICAL_PLAN.md 22.12; GH1 to
 // GH8, I17 to I19). Every path is under /api/v1 and needs a signed-in user
 // unless its route says otherwise; another owner's connection is 404. The
 // OpenAPI document generated from these routes is the contract.
@@ -252,6 +253,43 @@ function isHttps(url: string) {
   }
 }
 
+const CommitAsSchema = z.enum(['bot', 'owner']).openapi({
+  description:
+    '`bot`: the Bot is author and committer, the owner co-author. `owner`: the owner is author and committer',
+});
+
+const GitIdentitySchema = z
+  .object({
+    commitAs: CommitAsSchema,
+    name: z
+      .string()
+      .nullable()
+      .openapi({ description: 'The saved name; null uses the account name' }),
+    email: z
+      .string()
+      .nullable()
+      .openapi({ description: 'The saved email; null uses the account email' }),
+    account: z
+      .object({ name: z.string(), email: z.string() })
+      .openapi({ description: "The signed-in account's name and email, the fallback" }),
+  })
+  .openapi('GitIdentity');
+
+const GitIdentitySavedSchema = GitIdentitySchema.extend({
+  computer: z.enum(['applied', 'off', 'failed']).openapi({
+    description:
+      "Whether git's global config on the owner's computer took the identity: `off` when it was not running",
+  }),
+}).openapi('GitIdentitySaved');
+
+const GitIdentityInputSchema = z
+  .strictObject({
+    commitAs: CommitAsSchema,
+    name: z.string().max(200).nullable(),
+    email: z.string().max(300).nullable(),
+  })
+  .openapi('GitIdentityInput');
+
 const problemText = (error: unknown) =>
   error instanceof DomainError ? error.message : 'Something went wrong';
 const problemStatus = (error: unknown): 400 | 403 | 409 | 502 =>
@@ -261,6 +299,47 @@ const problemStatus = (error: unknown): 400 | 403 | 409 | 502 =>
     : 502;
 
 export const gitConnectionRoutes = createRouter()
+  .openapi(
+    createRoute({
+      method: 'get',
+      path: '/git-identity',
+      tags: ['git-connections'],
+      summary: "Who the owner's coding sessions commit as",
+      middleware: [requireUser] as const,
+      security: authenticated,
+      responses: {
+        200: json(GitIdentitySchema, 'The saved identity, with the account fallback'),
+        ...authProblems,
+      },
+    }),
+    async (c) => c.json(await getGitIdentity(c.var.deps, c.var.user), 200),
+  )
+  .openapi(
+    createRoute({
+      method: 'put',
+      path: '/git-identity',
+      tags: ['git-connections'],
+      summary: "Sets who the owner's coding sessions commit as",
+      description:
+        "Also writes the name and email into git's global config on the owner's computer when it runs, for commits made by hand there.",
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: {
+        body: {
+          content: { 'application/json': { schema: GitIdentityInputSchema } },
+          required: true,
+        },
+      },
+      responses: {
+        200: json(GitIdentitySavedSchema, 'The saved identity'),
+        400: problemResponse(
+          'A name or email that is not valid (`GIT_IDENTITY_NAME_INVALID`, `GIT_IDENTITY_EMAIL_INVALID`), or committing as the owner with no email (`GIT_IDENTITY_EMAIL_REQUIRED`)',
+        ),
+        ...authProblems,
+      },
+    }),
+    async (c) => c.json(await putGitIdentity(c.var.deps, c.var.user, c.req.valid('json')), 200),
+  )
   .openapi(
     createRoute({
       method: 'get',

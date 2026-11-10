@@ -7,5 +7,10 @@ export const Route = createFileRoute('/_app/settings/coding-agents')({
 
 function CodingAgentsRoute() {
   const router = useRouter();
-  return <CodingAgentsSettings onNavigate={(href) => void router.navigate({ href })} />;
+  return (
+    <CodingAgentsSettings
+      connectionsOnModels
+      onNavigate={(href) => void router.navigate({ href })}
+    />
+  );
 }

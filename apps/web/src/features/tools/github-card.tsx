@@ -1,5 +1,16 @@
 import { ApiError } from '@openbots/api-client';
-import { Button, cn, Input } from '@openbots/ui';
+import {
+  Button,
+  ChevronDownIcon,
+  cn,
+  ExternalIcon,
+  IconButton,
+  Input,
+  RefreshIcon,
+  Select,
+  TrashIcon,
+  UnlinkIcon,
+} from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { GitActAs } from '@openbots/shared';
@@ -24,6 +35,7 @@ import {
 import { connectorsQuery } from './api.js';
 import { RepoPicker } from '../repos/picker.js';
 import { GitDeviceConnect, useGitDeviceConnection } from '../repos/github-device.js';
+import { CommitIdentity } from './commit-identity.js';
 import { ErrorText } from './fields.js';
 import { ConnectorIcon } from './icons.js';
 
@@ -63,8 +75,6 @@ const KIND: Record<GitConnectionView['kind'], string> = {
   token: 'Token',
 };
 
-const selectClass = 'h-8 rounded-md border bg-transparent px-2 text-sm';
-
 const repoCount = (n: number) => (n === 1 ? '1 repository' : `${n} repositories`);
 
 /** Sends the browser to GitHub's install page for this install's App. */
@@ -94,9 +104,7 @@ export function GithubCard({
   const queryClient = useQueryClient();
   const [pasting, setPasting] = useState(false);
   const [picking, setPicking] = useState<GitConnectionView | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const device = useGitDeviceConnection((connection) => {
-    setNotice('GitHub is connected. Pick the repositories to keep on the computer.');
     setPicking(connection);
   });
 
@@ -107,11 +115,9 @@ export function GithubCard({
     if (handled.current || (!arrival?.githubApp && !arrival?.connection)) return;
     handled.current = true;
     if (arrival.connection) {
-      setNotice('GitHub is connected. Pick the repositories to keep on the computer.');
       pendingPick.current = arrival.connection;
       void queryClient.invalidateQueries({ queryKey: gitConnectionsQuery.queryKey });
     } else {
-      setNotice('Your GitHub App is ready. Install it to pick repositories.');
       void queryClient.invalidateQueries({ queryKey: githubAppQuery.queryKey });
     }
     onArrivalHandled?.();
@@ -133,13 +139,16 @@ export function GithubCard({
       : single
         ? { ...STATUS[single.status], state: single.status }
         : undefined;
+  const anyConnected = !!list?.some((connection) => connection.status === 'connected');
+  const serverAppFolded =
+    !!status?.deviceFlowAvailable && (status.configured || status.manifestAvailable);
   return (
     <section
-      className="flex flex-col gap-3 rounded-lg border p-3 text-sm"
+      className="flex flex-col rounded-lg border bg-card text-sm"
       aria-labelledby="github-repos-title"
       data-github-card
     >
-      <div className="flex items-start gap-3">
+      <header className="flex items-start gap-3 px-4 py-3">
         <ConnectorIcon icon="github" name="GitHub" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="flex flex-wrap items-center gap-2">
@@ -159,74 +168,99 @@ export function GithubCard({
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Connect GitHub so coding agents can clone your repositories, push branches and open pull
-            requests.
+            Lets coding agents clone your repositories, push branches and open pull requests.
           </p>
         </div>
-      </div>
-      {notice && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {notice}
-        </p>
-      )}
-      <ErrorText error={app.error} />
-      <ErrorText error={connections.error} />
-      {!!list?.length && (
-        <ul className="divide-y" aria-label="GitHub connections">
-          {list.map((connection) => (
-            <ConnectionRow
-              key={connection.id}
-              connection={connection}
-              inline={list.length === 1}
-              onPick={() => setPicking(connection)}
-              onReconnect={() => device.begin({ connectionId: connection.id })}
-              connecting={device.working || device.flow !== null}
-            />
-          ))}
-        </ul>
-      )}
-      {status?.deviceFlowAvailable && (
-        <GitDeviceConnect state={device} showConnect={!list?.length} />
-      )}
-      {status?.deviceFlowAvailable && (status.configured || status.manifestAvailable) && (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Advanced: server-managed GitHub App</summary>
-          <div className="mt-2">
-            <ServerAppSetup status={status} admin={admin} managed={managed} />
-          </div>
-        </details>
-      )}
-      {status && (
-        <div className="flex flex-wrap items-center gap-2">
-          {!status.deviceFlowAvailable && (
-            <ServerAppSetup status={status} admin={admin} managed={managed} />
-          )}
-          {!pasting && (
-            <button
-              type="button"
-              className="text-xs font-medium underline-offset-2 hover:underline"
-              onClick={() => setPasting(true)}
-            >
-              Paste a token instead
-            </button>
-          )}
-          {admin && !managed && status.source === 'instance' && <RemoveApp />}
+      </header>
+      {(app.error || connections.error) && (
+        <div className="flex flex-col gap-1 px-4 pb-3">
+          <ErrorText error={app.error} />
+          <ErrorText error={connections.error} />
         </div>
       )}
-      {pasting && (
-        <TokenForm
-          onDone={(connection) => {
-            setPasting(false);
-            if (connection) setPicking(connection);
-          }}
-        />
-      )}
-      {list?.some((connection) => connection.status === 'connected') && (
-        <p className="text-xs text-muted-foreground" data-reach-note>
-          The repositories listed are the ones the GitHub account that connected can reach, and a
-          coding agent can push a branch only where that account has push access.
-        </p>
-      )}
+      <div className="divide-y border-t">
+        {!!list?.length && (
+          <div className="flex flex-col gap-1 px-4 py-3">
+            <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Account
+            </h3>
+            <ul className="divide-y" aria-label="GitHub connections">
+              {list.map((connection) => (
+                <ConnectionRow
+                  key={connection.id}
+                  connection={connection}
+                  inline={list.length === 1}
+                  onPick={() => setPicking(connection)}
+                  onReconnect={() => device.begin({ connectionId: connection.id })}
+                  connecting={device.working || device.flow !== null}
+                />
+              ))}
+            </ul>
+            {anyConnected && (
+              <p className="text-xs text-muted-foreground" data-reach-note>
+                Agents see the repositories this GitHub account can reach, and push only where it
+                has push access.
+              </p>
+            )}
+          </div>
+        )}
+        {status?.deviceFlowAvailable && (
+          <div className="px-4 py-3 empty:hidden">
+            <GitDeviceConnect state={device} showConnect={!list?.length} />
+          </div>
+        )}
+        {status && !status.deviceFlowAvailable && (
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+            <ServerAppSetup status={status} admin={admin} managed={managed} />
+          </div>
+        )}
+        {anyConnected && (
+          <div className="flex flex-col gap-1 px-4 py-3">
+            <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Commit identity
+            </h3>
+            <CommitIdentity />
+          </div>
+        )}
+        {status && (
+          <details className="group px-4 py-3" open={pasting || undefined}>
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronDownIcon className="size-4 -rotate-90 transition-transform group-open:rotate-0" />
+              Other ways to connect
+            </summary>
+            <div className="mt-3 flex flex-col gap-3">
+              {!pasting ? (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    A fine grained personal access token, for one account or organization.
+                  </span>
+                  <Button size="sm" variant="outline" onClick={() => setPasting(true)}>
+                    Paste a token instead
+                  </Button>
+                </div>
+              ) : (
+                <TokenForm
+                  onDone={(connection) => {
+                    setPasting(false);
+                    if (connection) setPicking(connection);
+                  }}
+                />
+              )}
+              {serverAppFolded && (
+                <div className="flex flex-col gap-2 border-t pt-3 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Server managed GitHub App</span>
+                  <ServerAppSetup status={status} admin={admin} managed={managed} />
+                </div>
+              )}
+              {admin && !managed && status.source === 'instance' && (
+                <div className="flex justify-end">
+                  <RemoveApp />
+                </div>
+              )}
+            </div>
+          </details>
+        )}
+      </div>
       <RepoPicker connection={picking} onClose={() => setPicking(null)} />
     </section>
   );
@@ -341,9 +375,13 @@ function RemoveApp() {
   });
   if (!confirm) {
     return (
-      <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setConfirm(true)}>
-        Remove the GitHub App
-      </Button>
+      <IconButton
+        label="Remove the GitHub App"
+        className="ml-auto"
+        onClick={() => setConfirm(true)}
+      >
+        <TrashIcon />
+      </IconButton>
     );
   }
   return (
@@ -352,6 +390,9 @@ function RemoveApp() {
         Remove this install&apos;s GitHub App? Its connections stop working until you create a new
         one.
       </span>
+      <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
+        Cancel
+      </Button>
       <Button
         size="sm"
         variant="destructive"
@@ -359,9 +400,6 @@ function RemoveApp() {
         onClick={() => remove.mutate()}
       >
         Remove
-      </Button>
-      <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
-        Cancel
       </Button>
       <ErrorText error={remove.error} />
     </div>
@@ -468,12 +506,12 @@ function ConnectionRow({
   if (inline && pending && connecting) return null;
 
   return (
-    <li className="flex flex-col gap-2 py-2" data-connection={connection.id}>
+    <li className="flex flex-col gap-2.5 py-2" data-connection={connection.id}>
       {!(inline && awaitingIdentity) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex items-center gap-3">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex flex-wrap items-center gap-2">
-              <span className="font-medium">{connection.accountLogin}</span>
+              <span className="truncate font-medium">{connection.accountLogin}</span>
               {!inline && (
                 <span
                   data-status={connection.status}
@@ -494,89 +532,104 @@ function ConnectionRow({
               {synced && ` · synced ${synced}`}
             </span>
           </div>
-          {connection.kind === 'app' && (
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              Act as
-              <select
-                aria-label={`Act as for ${connection.accountLogin}`}
-                className={selectClass}
-                value={connection.actAs}
-                disabled={actAs.isPending}
-                onChange={(e) => actAs.mutate(e.target.value as GitActAs)}
+          <div className="flex shrink-0 items-center gap-0.5">
+            {connection.kind === 'device' && connection.appSlug && !pending && (
+              <Button asChild size="icon-sm" variant="ghost" className="text-muted-foreground">
+                <a
+                  href={`https://github.com/apps/${encodeURIComponent(connection.appSlug)}/installations/new`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Manage repositories on GitHub"
+                  title="Manage repositories on GitHub"
+                >
+                  <ExternalIcon />
+                </a>
+              </Button>
+            )}
+            {!pending && (
+              <IconButton
+                label={sync.isPending ? 'Syncing…' : 'Sync'}
+                busy={sync.isPending}
+                onClick={() => sync.mutate()}
               >
-                <option value="bot">The Bot (OpenBots app)</option>
-                <option value="owner">Me</option>
-              </select>
-            </label>
-          )}
+                <RefreshIcon />
+              </IconButton>
+            )}
+            {!confirm && (
+              <IconButton
+                label={`Disconnect ${connection.accountLogin}`}
+                onClick={() => setConfirm(true)}
+              >
+                <UnlinkIcon />
+              </IconButton>
+            )}
+          </div>
         </div>
       )}
       {connection.error && (
         <p className="break-words text-xs text-destructive">{connection.error}</p>
       )}
+      {(usable ||
+        reauthorize ||
+        (connection.kind === 'device' && !usable) ||
+        (connection.kind === 'app' && connection.status === 'needs_reinstall')) && (
+        <div className="flex flex-wrap gap-1.5">
+          {connection.kind === 'device' && !usable && (
+            <Button size="sm" variant="outline" disabled={connecting} onClick={onReconnect}>
+              {connection.status === 'pending' ? 'Finish connecting' : 'Reconnect GitHub'}
+            </Button>
+          )}
+          {usable && (
+            <Button size="sm" onClick={onPick}>
+              Choose repositories
+            </Button>
+          )}
+          {connection.kind === 'app' && connection.status === 'needs_reinstall' && (
+            <Button size="sm" onClick={goToInstall}>
+              Reinstall the app
+            </Button>
+          )}
+          {reauthorize && (
+            <Button size="sm" onClick={() => goToReauthorize(connection.id)}>
+              Re-check access
+            </Button>
+          )}
+        </div>
+      )}
+      {connection.kind === 'app' && (
+        <label className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
+          <span className="flex flex-col gap-0.5">
+            <span className="font-medium">Pull requests open as</span>
+            <span className="text-xs text-muted-foreground">Act as the Bot, or as you.</span>
+          </span>
+          <Select
+            size="sm"
+            aria-label={`Act as for ${connection.accountLogin}`}
+            className="w-auto"
+            value={connection.actAs}
+            disabled={actAs.isPending}
+            onChange={(e) => actAs.mutate(e.target.value as GitActAs)}
+          >
+            <option value="bot">The Bot (OpenBots app)</option>
+            <option value="owner">Me</option>
+          </Select>
+        </label>
+      )}
       {connection.kind === 'device' && connection.status !== 'pending' && (
         <p className="text-xs text-muted-foreground">
-          Pull requests are opened as {connection.accountLogin}. Access is limited to the App’s
-          selected repositories and your GitHub permissions.
+          Pull requests open as {connection.accountLogin}, limited to the repositories the App can
+          reach and your GitHub permissions.
         </p>
       )}
-      <div className="flex flex-wrap gap-1.5">
-        {connection.kind === 'device' && (
-          <>
-            {!usable && (
-              <Button size="sm" variant="outline" disabled={connecting} onClick={onReconnect}>
-                {connection.status === 'pending' ? 'Finish connecting' : 'Reconnect GitHub'}
-              </Button>
-            )}
-            {connection.appSlug && !pending && (
-              <a
-                className="self-center px-2 text-xs font-medium underline underline-offset-2"
-                href={`https://github.com/apps/${encodeURIComponent(connection.appSlug)}/installations/new`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Manage repositories
-              </a>
-            )}
-          </>
-        )}
-        {usable && (
-          <Button size="sm" onClick={onPick}>
-            Choose repositories
-          </Button>
-        )}
-        {connection.kind === 'app' && connection.status === 'needs_reinstall' && (
-          <Button size="sm" onClick={goToInstall}>
-            Reinstall the app
-          </Button>
-        )}
-        {!pending && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={sync.isPending}
-            onClick={() => sync.mutate()}
-          >
-            {sync.isPending ? 'Syncing…' : 'Sync'}
-          </Button>
-        )}
-        {reauthorize && (
-          <Button size="sm" onClick={() => goToReauthorize(connection.id)}>
-            Re-check access
-          </Button>
-        )}
-        {!confirm && (
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setConfirm(true)}>
-            Disconnect
-          </Button>
-        )}
-      </div>
       {confirm && (
         <div className="flex flex-wrap items-center gap-2 border-t pt-2">
           <span className="min-w-0 flex-1 text-muted-foreground">
             Disconnect {connection.accountLogin}? Its repositories stay on the computer, but coding
             agents can no longer push to them through this connection.
           </span>
+          <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
+            Cancel
+          </Button>
           <Button
             size="sm"
             variant="destructive"
@@ -584,9 +637,6 @@ function ConnectionRow({
             onClick={() => remove.mutate()}
           >
             Disconnect
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
-            Cancel
           </Button>
         </div>
       )}

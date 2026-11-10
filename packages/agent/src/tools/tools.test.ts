@@ -1,5 +1,6 @@
 import type { MessagePart } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { WaitFor } from '../gated.js';
 import { createPolicy, defaultPolicy } from '../policy/index.js';
 import { executeRun, type StepRecord } from '../run/execute.js';
@@ -177,6 +178,7 @@ describe('built-in tools', () => {
     const decide = (tool: string, args: unknown = {}) =>
       (policy.evaluate(run, tool, args) as { decision: string }).decision;
     expect(decide('web_search')).toBe('auto');
+    expect(decide('news_search')).toBe('auto');
     expect(decide('web_fetch')).toBe('auto');
     expect(decide('http_request', { method: 'GET', url: 'https://x.io' })).toBe('auto');
     expect(decide('http_request', { method: 'POST', url: 'https://x.io' })).toBe('ask');
@@ -202,6 +204,71 @@ describe('built-in tools', () => {
     ).toEqual({
       results: [{ title: 'cats', url: 'https://r.io', snippet: '' }],
     });
+    await expect(
+      tools.news_search!.execute({ query: 'x', limit: 3 } as never, ctx({ builtins: services() })),
+    ).rejects.toThrow(WEB_SEARCH_NOT_CONFIGURED);
+  });
+
+  it('hands web_search and news_search their filters, news defaulting to the last week', async () => {
+    const calls: unknown[][] = [];
+    const record = async (...args: unknown[]) => {
+      calls.push(args);
+      return [];
+    };
+    const b = services({ webSearch: record, newsSearch: record });
+    const c = ctx({ builtins: b });
+    const tools = toolsFor(c);
+    const parse = (name: string, args: object) => tools[name]!.inputSchema.parse(args) as never;
+
+    await tools.web_search!.execute(parse('web_search', { query: 'otters' }), c);
+    await tools.web_search!.execute(
+      parse('web_search', {
+        query: 'otters',
+        limit: 5,
+        freshness: 'month',
+        domains: ['Nature.com', 'nature.com', 'arxiv.org'],
+      }),
+      c,
+    );
+    await tools.news_search!.execute(parse('news_search', { query: 'eclipse' }), c);
+    await tools.news_search!.execute(
+      parse('news_search', { query: 'eclipse', freshness: 'day', domains: ['bbc.co.uk'] }),
+      c,
+    );
+    expect(calls).toEqual([
+      ['otters', 8, {}],
+      ['otters', 5, { freshness: 'month', domains: ['nature.com', 'arxiv.org'] }],
+      ['eclipse', 8, { freshness: 'week' }],
+      ['eclipse', 8, { freshness: 'day', domains: ['bbc.co.uk'] }],
+    ]);
+
+    // Domains are bare hosts: no scheme, path, operator or empty list.
+    for (const domains of [
+      ['https://nature.com'],
+      ['nature.com/news'],
+      ['x OR y'],
+      ['nature'],
+      ['foo-.com'],
+      ['foo.-bar.com'],
+      ['-foo.com'],
+      ['a..b'],
+      [],
+    ])
+      expect(
+        tools.web_search!.inputSchema.safeParse({ query: 'x', domains }).success,
+        String(domains),
+      ).toBe(false);
+    expect(
+      tools.web_search!.inputSchema.safeParse({ query: 'x', domains: ['bbc.co.uk', 'x1-y.io'] })
+        .success,
+    ).toBe(true);
+    // The schema the provider sees carries no lookarounds, which RE2-based validators refuse.
+    const schema = JSON.stringify(z.toJSONSchema(tools.web_search!.inputSchema));
+    expect(schema).toContain('"pattern"');
+    expect(schema).not.toMatch(/\(\?<?[=!]/);
+    expect(
+      tools.news_search!.inputSchema.safeParse({ query: 'x', freshness: 'hour' }).success,
+    ).toBe(false);
   });
 
   it('frames fetched pages as data the page cannot escape', () => {

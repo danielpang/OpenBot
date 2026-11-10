@@ -1,20 +1,26 @@
 import { ApiError, unwrap, type components } from '@openbots/api-client';
 import {
   Button,
+  CheckIcon,
+  CopyIcon,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  IconButton,
+  PlusIcon,
+  TrashIcon,
 } from '@openbots/ui';
 import { QrCode } from '@openbots/widgets/react';
+import { SettingsSection } from '../../app/settings-layout.js';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { api } from '../../app/api.js';
 import { RealtimeStatusContext, useRealtime } from '../transcript/realtime.js';
 
-// Settings > Devices (docs/MOBILE_AND_VM_PLAN.md 4.3, docs/RELAY_PROTOCOL.md 6):
+// Settings > Devices (docs/plans/MOBILE_AND_VM_PLAN.md 4.3, docs/RELAY_PROTOCOL.md 6):
 // the owner's paired phones with Revoke, "Pair a phone" with the pairing link
 // as a QR code, and the relay's status. `device.paired`, `device.revoked` and
 // `device.updated` on the owner's socket refresh the list. `relay.status`
@@ -122,29 +128,30 @@ export function DevicesSettings() {
   const items = devices.data?.items;
   return (
     <div className="flex flex-col gap-8">
-      <section className="flex flex-col gap-3" aria-labelledby="devices-title">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-1">
-            <h2 id="devices-title" className="font-medium">
-              Devices
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              A paired device is the OpenBots app on your phone. Each one holds a key with your
-              access, so revoke a phone you lose.
-            </p>
-          </div>
-          <Button onClick={() => setPairing(true)}>Pair a phone</Button>
-        </div>
+      <SettingsSection
+        title="Devices"
+        description="A paired device is the OpenBots app on your phone. Each one holds a key with your access, so revoke a phone you lose."
+        action={
+          <IconButton label="Pair a phone" onClick={() => setPairing(true)}>
+            <PlusIcon />
+          </IconButton>
+        }
+      >
         {devices.error && <p className="text-sm text-destructive">{devices.error.message}</p>}
-        <ul className="divide-y rounded-md border">
+        <ul className="divide-y rounded-lg border bg-card">
           {items?.map((device) => (
             <DeviceRow key={device.id} device={device} onRevoke={() => setRevoking(device)} />
           ))}
           {items && !items.length && (
-            <li className="px-3 py-2 text-sm text-muted-foreground">No devices paired yet.</li>
+            <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 text-sm text-muted-foreground">
+              No devices paired yet.
+              <Button size="sm" variant="outline" onClick={() => setPairing(true)}>
+                Pair your first phone
+              </Button>
+            </li>
           )}
         </ul>
-      </section>
+      </SettingsSection>
       <RelayStatus />
       {pairing && <PairDialog onClose={() => setPairing(false)} />}
       <RevokeDialog device={revoking} onClose={() => setRevoking(null)} />
@@ -155,7 +162,7 @@ export function DevicesSettings() {
 function DeviceRow({ device, onRevoke }: { device: Device; onRevoke(): void }) {
   return (
     <li
-      className="flex items-center justify-between gap-4 px-3 py-2 text-sm"
+      className="flex items-center justify-between gap-4 py-2 pr-2 pl-4 text-sm text-foreground"
       data-device={device.id}
     >
       <div className="flex min-w-0 flex-col gap-0.5">
@@ -171,9 +178,9 @@ function DeviceRow({ device, onRevoke }: { device: Device; onRevoke(): void }) {
           {device.pushRegistered ? 'Push registered.' : 'Push not registered.'}
         </span>
       </div>
-      <Button variant="ghost" size="sm" onClick={onRevoke}>
-        Revoke
-      </Button>
+      <IconButton label="Revoke" onClick={onRevoke}>
+        <TrashIcon />
+      </IconButton>
     </li>
   );
 }
@@ -356,7 +363,8 @@ function PairingCode({
           );
         }}
       >
-        {copied ? 'Copied' : 'Copy link'}
+        {copied ? <CheckIcon /> : <CopyIcon />}
+        Copy link
       </Button>
       <p className="text-center text-xs text-muted-foreground">
         The code works once and expires in 5 minutes. Copy the link to send it to your phone by
@@ -397,7 +405,7 @@ function RelayStatus() {
 
   return (
     <section className="flex flex-col gap-1.5" aria-labelledby="relay-title">
-      <h2 id="relay-title" className="font-medium">
+      <h2 id="relay-title" className="text-base font-semibold">
         Relay
       </h2>
       {relay.error && <p className="text-sm text-destructive">{relay.error.message}</p>}

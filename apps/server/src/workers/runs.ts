@@ -13,11 +13,14 @@ import {
   resumeFromCheckpoint,
   trimContext,
   runToolCall,
+  providerToolNames,
   toModelMessages,
   toolCallMessages,
   toolFacts,
   TOOL_GROUPS,
   toolsFor,
+  transcriptResult,
+  type AnyAgentTool,
   type AssembledContext,
   type CheckpointCall,
   type Embedder,
@@ -106,7 +109,8 @@ import {
 } from '../services/messages.js';
 import { loadRunPolicy, runSource } from '../services/policy.js';
 import { routineInstructions } from '../services/routines.js';
-import { smallModelFor, providerRegistry } from '../services/providers.js';
+import { smallModelFor } from '../services/providers.js';
+import { resolveConnectedModel } from '../services/model-connections.js';
 import { botMessenger, routeBotReply, type RouterOptions } from '../services/router.js';
 import { referencedSkills, skillIndex, skillServices } from '../services/skills.js';
 import {
@@ -295,7 +299,9 @@ async function processRun(
         run,
         bot,
         smallModel: () =>
-          options.smallModel ? options.smallModel(config, bot) : defaultSmallModel(deps, config),
+          options.smallModel
+            ? options.smallModel(config, bot)
+            : defaultSmallModel(deps, config, bot),
       }),
       artifacts: artifactServices(deps, { id: run.id, chatId: chat.id }, bot),
       attachments: attachmentServices(deps, chat, vision),
@@ -346,6 +352,10 @@ async function processRun(
     }
     const policy = options.policy ?? (await loadRunPolicy(deps, run, bot, facts));
     const toolNames = resolved.toolNames?.(Object.keys(tools));
+    // The transcript stores OpenBots names; the request offers the provider's.
+    const spelled = (c: typeof context) =>
+      toolNames ? { ...c, messages: providerToolNames(c.messages, toolNames.toProvider) } : c;
+    context = spelled(context);
     const labelsOf = (name: string) => tools[name]?.label;
     const startInput = state?.input;
     /** The send an email draft asked for (W2) settles the draft widget. */
@@ -397,6 +407,7 @@ async function processRun(
       call: { toolCallId: string; toolName: string; args: unknown },
       gate: boolean,
       messages: ModelMessage[],
+      announce = gate,
     ) =>
       runToolCall({
         run: toolContext.run,
@@ -404,7 +415,7 @@ async function processRun(
         tools,
         toolContext,
         policy: gate ? policy : null,
-        announce: gate,
+        announce,
         sink,
         setState: async (s, action, tool) => {
           if (s === 'working') {
@@ -450,6 +461,7 @@ async function processRun(
       seenSeq = resuming.seenSeq!;
       contextLength = resuming.contextLength;
       let output = resuming.resume!.output;
+      let posted = false;
       const extra = await resumeContext(deps, bot, chat, pending, output, vision);
       if (pending.reason === 'approval') {
         await steps.record({
@@ -461,8 +473,10 @@ async function processRun(
           await settleDraft(pending.toolCallId, pending.toolName, output, true);
         } else {
           // The gate threw before the tool ran; run it now, exactly once (this
-          // run was claimed queued -> running, and is never re-run).
-          const call = await callOutside(pending, false, [...resuming.messages!, ...extra]);
+          // run was claimed queued -> running, and is never re-run). The call
+          // goes in this message too, beside its result.
+          const call = await callOutside(pending, false, [...resuming.messages!, ...extra], true);
+          posted = true;
           if (call.status === 'waiting') {
             await pauseEarly({ ...call.wait, toolCallId: pending.toolCallId }, resuming.messages!);
             return;
@@ -471,6 +485,9 @@ async function processRun(
           await settleDraft(pending.toolCallId, pending.toolName, output);
         }
       }
+      // Any other answer (a denial, a question's answer, a sign-in) goes in the
+      // transcript as the call's result too, so later runs read it.
+      if (!posted) await postAnswer(sink, pending, output, tools, labelsOf(pending.toolName));
       messages = [
         ...injectToolResult(
           resuming.messages!,
@@ -558,7 +575,7 @@ async function processRun(
           type: 'error',
           label: `Context too long; retrying with the last ${window} messages`,
         });
-        context = await buildContext(deps, run, bot, chat, embedder, window, vision);
+        context = spelled(await buildContext(deps, run, bot, chat, embedder, window, vision));
         messages = [...context.messages, ...madeCalls];
         contextLength = context.messages.length;
         seenSeq = context.seenSeq;
@@ -785,6 +802,10 @@ function runCheckpointer(
       if (call) call.output = output;
       return write();
     },
+    reply: (content) => {
+      if (current) current.reply = content;
+      return write();
+    },
     outside: (messages, call) => begin(messages, [{ ...call, inMessages: true }], NO_USAGE),
     flushed: () => chain,
   };
@@ -842,7 +863,10 @@ async function resolveRunModel(
   try {
     resolved = options.resolveModel
       ? await options.resolveModel(config, bot)
-      : await providerRegistry(deps).resolve(config);
+      : await resolveConnectedModel(deps, config, {
+          id: bot.ownerId,
+          workspaceId: bot.workspaceId,
+        });
   } catch (error) {
     if (error instanceof ProviderNotFoundError) {
       return {
@@ -1239,6 +1263,32 @@ function decisionLabel(output: unknown): string {
   return error.includes('expired') ? 'Approval expired' : 'Denied';
 }
 
+/** A waiting call and the answer it resumed with, as the call's parts in the resumed message. */
+async function postAnswer(
+  sink: RunSink,
+  pending: PendingWait,
+  output: unknown,
+  tools: Record<string, AnyAgentTool>,
+  labels?: LabelContext,
+) {
+  const name = pending.toolName;
+  const answer = pending.reason === 'approval' ? output : transcriptResult(tools[name], output);
+  await sink.part({
+    type: 'tool_call',
+    tool_call_id: pending.toolCallId,
+    tool_name: name,
+    args: pending.args,
+    label: labelFor(name, pending.args, undefined, labels),
+  });
+  await sink.part({
+    type: 'tool_result',
+    tool_call_id: pending.toolCallId,
+    tool_name: name,
+    result: answer,
+    label: labelFor(name, pending.args, answer, labels),
+  });
+}
+
 /**
  * What a resumed run reads besides the answer (C7): the owner's note on an
  * approval and the replies in the waiting widget's thread, in one turn.
@@ -1419,7 +1469,7 @@ async function afterRun(
   try {
     model = options.smallModel
       ? await options.smallModel(config, bot)
-      : await defaultSmallModel(deps, config);
+      : await defaultSmallModel(deps, config, bot);
   } catch (error) {
     deps.logger.warn({ err: error, runId: run.id }, 'no small model after the run');
     return;
@@ -1493,13 +1543,17 @@ async function extractAfterRun(
   }
 }
 
-async function defaultSmallModel(deps: AppDeps, config: ModelConfig) {
+async function defaultSmallModel(deps: AppDeps, config: ModelConfig, bot: BotRow) {
   const small = await smallModelFor(deps, config.provider_id);
   if (!small) return null;
-  const resolved = await providerRegistry(deps).resolve({
-    provider_id: config.provider_id,
-    model_id: small.modelId,
-  });
+  const resolved = await resolveConnectedModel(
+    deps,
+    {
+      provider_id: config.provider_id,
+      model_id: small.modelId,
+    },
+    { id: bot.ownerId, workspaceId: bot.workspaceId },
+  );
   return resolved.model;
 }
 

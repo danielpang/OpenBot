@@ -18,7 +18,7 @@ const { desktopBuildVersion } = (await import(versionScript)) as {
 const buildVersion = desktopBuildVersion(fileURLToPath(new URL('../..', import.meta.url)));
 
 const sourceConditions = ['@openbots/source'];
-const bundled = ['@openbots/api-client', '@openbots/shared'];
+const bundled = ['@openbots/api-client', '@openbots/shared', '@openbots/tunnel'];
 
 export default defineConfig({
   main: {

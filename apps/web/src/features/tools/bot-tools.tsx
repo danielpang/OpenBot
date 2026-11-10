@@ -1,5 +1,8 @@
 import { unwrap } from '@openbots/api-client';
 import {
+  acceptsEdits,
+  withAcceptEdits,
+  ACCEPT_EDITS_HELP,
   CODER_AGENT_LABELS,
   CODER_AGENTS,
   DEFAULT_CODER_ACTIONS,
@@ -8,7 +11,7 @@ import {
   type ToolGroupName,
   type ToolPolicy,
 } from '@openbots/shared';
-import { Button } from '@openbots/ui';
+import { Button, Input, Select, Switch, Textarea } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -145,6 +148,25 @@ export function BotToolsForm({
 
   return (
     <form className="flex flex-col gap-3" onSubmit={submit} aria-label="Tools and permissions">
+      <SettingsPanel>
+        <SettingsRow
+          title="Accept edits"
+          description={ACCEPT_EDITS_HELP}
+          control={
+            <Select
+              className="w-auto"
+              aria-label="Accept edits"
+              value={acceptsEdits(policy) ? 'on' : 'off'}
+              onChange={(event) =>
+                setPolicy((current) => withAcceptEdits(current, event.target.value === 'on'))
+              }
+            >
+              <option value="off">Ask before edits</option>
+              <option value="on">Accept edits</option>
+            </Select>
+          }
+        />
+      </SettingsPanel>
       <SettingsSubheading>Tool groups</SettingsSubheading>
       <SettingsPanel>
         {EDITED_GROUPS.filter((g) => g !== 'computer' && g !== 'connector').map((group) => (
@@ -196,13 +218,13 @@ export function BotToolsForm({
           </label>
           {mode === 'list' && (
             <div className="flex flex-col gap-1.5 pl-6">
-              <textarea
+              <Textarea
                 aria-label="Allowed hosts"
                 value={hostsText}
                 onChange={(e) => setHostsText(e.target.value)}
                 rows={3}
                 placeholder={'api.example.com\n*.example.org'}
-                className="w-full rounded-md border bg-transparent px-3 py-2 font-mono text-xs text-foreground"
+                className="w-full font-mono text-xs"
               />
               <span className="text-xs">One per line: a host, or *.domain for its subdomains.</span>
               {hosts.errors.length > 0 && (
@@ -218,15 +240,13 @@ export function BotToolsForm({
         {computer ? (
           <>
             <SettingsRow
-              title={
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={computerOn}
-                    onChange={(e) => setPolicy((p) => setComputerEnabled(p, e.target.checked))}
-                  />
-                  Use its computer
-                </label>
+              title="Use its computer"
+              control={
+                <Switch
+                  aria-label="Use its computer"
+                  checked={computerOn}
+                  onChange={(e) => setPolicy((p) => setComputerEnabled(p, e.target.checked))}
+                />
               }
               description={
                 computerOn
@@ -298,13 +318,17 @@ export function BotToolsForm({
         <Button type="submit" disabled={save.isPending}>
           Save
         </Button>
-        {save.isSuccess && <span className="text-xs">Saved</span>}
       </div>
     </form>
   );
 }
 
-/** The Bot's coding agent settings (CA9): default agent, allowed repositories, action decisions. */
+/**
+ * The Bot's coding agent settings (CA9): its own agent and model, which
+ * override the owner's defaults (Settings > Coding agents), allowed
+ * repositories and action decisions. An empty agent or model shows the
+ * owner's default it falls back to.
+ */
 function CoderSettings({
   policy,
   onChange,
@@ -328,6 +352,10 @@ function CoderSettings({
   const modelAgents = CODER_AGENTS.filter(
     (agent) => runnable.includes(agent) || coder.models?.[agent] !== undefined,
   );
+  // The owner's own defaults (Settings > Coding agents), shown as what an empty field falls back to.
+  const ownerAgent = coders.data?.agents.find((a) => a.isDefault)?.agent;
+  const ownerModel = (agent: CoderAgent) =>
+    coders.data?.agents.find((a) => a.agent === agent)?.model ?? null;
   const allowed = coder.allowedRepos ?? [];
   const known = (repos.data?.repos ?? []).map((r) => r.fullName);
   // A stored repository the owner has since forgotten stays listed, so it can be unticked.
@@ -352,10 +380,22 @@ function CoderSettings({
 
   return (
     <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3" data-coder-settings>
+      <p className="text-xs" data-coder-override-note>
+        The agent and model below apply to this Bot only. Left on &ldquo;Use my default&rdquo;, it
+        follows your defaults in{' '}
+        <a
+          href="/settings/coding-agents"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Settings &gt; Coding agents
+        </a>
+        .
+      </p>
       <label className="flex flex-wrap items-center gap-2">
-        <span className="min-w-0 flex-1 text-foreground">Default agent</span>
-        <select
-          aria-label="Default coding agent"
+        <span className="min-w-0 flex-1 text-foreground">Agent for this Bot</span>
+        <Select
+          size="sm"
+          aria-label="Agent for this Bot"
           value={coder.defaultAgent ?? ''}
           onChange={(e) =>
             onChange((p) =>
@@ -364,41 +404,46 @@ function CoderSettings({
               }),
             )
           }
-          className="h-8 max-w-64 rounded-md border bg-background px-2.5 text-xs text-foreground"
+          className="max-w-64"
         >
-          <option value="">Not set</option>
+          <option value="">
+            Use my default ({ownerAgent ? CODER_AGENT_LABELS[ownerAgent] : 'ask each time'})
+          </option>
           {agentChoices.map((agent) => (
             <option key={agent} value={agent}>
               {CODER_AGENT_LABELS[agent]}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-foreground">Model</legend>
-        <span className="text-xs">Leave a field empty to use the agent&apos;s own default.</span>
+        <legend className="mb-1 text-foreground">Model for this Bot</legend>
+        <span className="text-xs">
+          Leave a field empty to use your default model; with none set, the Bot asks you to choose.
+        </span>
         <ul className="flex flex-col gap-2">
           {modelAgents.map((agent) => {
             const value = coder.models?.[agent] ?? '';
             const problem = coderModelError(value);
+            const fallback = ownerModel(agent);
             return (
               <li key={agent} className="flex flex-col gap-1" data-coder-model={agent}>
                 <label className="flex flex-wrap items-center gap-2">
                   <span className="min-w-0 flex-1 text-xs text-foreground">
                     {CODER_AGENT_LABELS[agent]}
                   </span>
-                  <input
+                  <Input
                     type="text"
-                    aria-label={`${CODER_AGENT_LABELS[agent]} model`}
+                    aria-label={`${CODER_AGENT_LABELS[agent]} model for this Bot`}
                     aria-invalid={problem ? true : undefined}
-                    placeholder="the agent's default"
+                    placeholder={`${fallback ?? 'ask each time'} (my default)`}
                     value={value}
                     maxLength={100}
                     autoComplete="off"
                     spellCheck={false}
                     onChange={(e) => onChange((p) => setCoderModel(p, agent, e.target.value))}
-                    className="h-8 w-64 max-w-full rounded-md border bg-background px-2.5 font-mono text-xs text-foreground placeholder:font-sans"
+                    className="h-8 w-64 max-w-full font-mono text-xs placeholder:font-sans"
                   />
                 </label>
                 {problem && (
@@ -464,7 +509,7 @@ function CoderSettings({
 
 /** Under the action classes: which agents ask, and that a push always does. */
 export const CODER_ACTIONS_NOTE =
-  'Codex works inside its own sandbox and does not ask for approvals; these settings apply to Claude Code and pi. Pushes always need your approval.';
+  'Codex asks before leaving its sandbox. Accept edits applies to file edits; protected actions keep their own approval rules. Pushes always need your approval.';
 
 /** A collapsed list under a row, one tool per line. */
 function ToolDetails({ summary, children }: { summary: ReactNode; children: ReactNode }) {
@@ -547,8 +592,7 @@ function ConnectorPermissions({
       <div className="flex flex-wrap items-center gap-3">
         <ConnectorIcon icon={iconOf(connector)} name={connector.name} />
         <label className="flex min-w-0 flex-1 items-center gap-2 font-medium text-foreground">
-          <input
-            type="checkbox"
+          <Switch
             checked={enabled}
             onChange={(e) => onPermission(setConnectorEnabled(permission, e.target.checked))}
           />
@@ -614,11 +658,12 @@ export function DecisionSelect({
   onChange(value: PolicyDecision | undefined): void;
 }) {
   return (
-    <select
+    <Select
+      size="sm"
       aria-label={label}
       value={value ?? ''}
       onChange={(e) => onChange((e.target.value || undefined) as PolicyDecision | undefined)}
-      className="h-8 max-w-64 rounded-md border bg-background px-2.5 text-xs text-foreground"
+      className="max-w-64"
     >
       <option value="">{`Default: ${inherited}`}</option>
       {choices.map((d) => (
@@ -626,6 +671,6 @@ export function DecisionSelect({
           {DECISION_LABELS[d]}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }

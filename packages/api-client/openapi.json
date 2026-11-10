@@ -3199,7 +3199,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["anthropic", "openai", "google", "xai", "custom"]
+            "enum": ["anthropic", "openai", "google", "xai", "ollama", "custom"]
           },
           "protocol": {
             "type": "string",
@@ -3325,7 +3325,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["anthropic", "openai", "google", "xai", "custom"]
+            "enum": ["anthropic", "openai", "google", "xai", "ollama", "custom"]
           },
           "protocol": {
             "type": "string",
@@ -3442,7 +3442,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["anthropic", "openai", "google", "xai", "custom"]
+            "enum": ["anthropic", "openai", "google", "xai", "ollama", "custom"]
           },
           "protocol": {
             "type": "string",
@@ -3672,7 +3672,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["anthropic", "openai", "google", "xai", "custom"]
+            "enum": ["anthropic", "openai", "google", "xai", "ollama", "custom"]
           },
           "protocol": {
             "type": "string",
@@ -4772,14 +4772,6 @@
       "ConnectorPolicy": {
         "type": "object",
         "properties": {
-          "catalogIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 200,
-            "description": "Blocked catalog entries"
-          },
           "urlPatterns": {
             "type": "array",
             "items": {
@@ -4790,29 +4782,13 @@
             "maxItems": 200,
             "description": "Blocked globs (`*` matches anything) tested against HTTP URLs and hosts and stdio command lines",
             "example": ["https://*.example.com/*"]
-          },
-          "allowedCatalogIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 200,
-            "description": "The allow list (U3): when non-empty, only these catalog entries can be added or used, and custom servers cannot"
           }
         },
-        "required": ["catalogIds", "urlPatterns", "allowedCatalogIds"]
+        "required": ["urlPatterns"]
       },
       "ConnectorPolicyInput": {
         "type": "object",
         "properties": {
-          "catalogIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 200,
-            "description": "Blocked catalog entries"
-          },
           "urlPatterns": {
             "type": "array",
             "items": {
@@ -4823,17 +4799,9 @@
             "maxItems": 200,
             "description": "Blocked globs (`*` matches anything) tested against HTTP URLs and hosts and stdio command lines",
             "example": ["https://*.example.com/*"]
-          },
-          "allowedCatalogIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 200,
-            "description": "The allow list (U3); left out, it stays as it is"
           }
         },
-        "required": ["catalogIds", "urlPatterns"],
+        "required": ["urlPatterns"],
         "additionalProperties": false
       },
       "BotConnector": {
@@ -5404,6 +5372,14 @@
             "type": "string",
             "enum": ["link", "device", "terminal"],
             "description": "How the agent signs in: a link to open, a link and a code to enter there (`device`), or in the computer's terminal"
+          },
+          "model": {
+            "type": ["string", "null"],
+            "description": "The owner's default model for this agent, as its CLI names it; null when not chosen, so a coding task asks"
+          },
+          "isDefault": {
+            "type": "boolean",
+            "description": "The owner's default agent for coding tasks; at most one is"
           }
         },
         "required": [
@@ -5420,7 +5396,9 @@
           "lastErrorKind",
           "planProvider",
           "checkAvailable",
-          "signIn"
+          "signIn",
+          "model",
+          "isDefault"
         ]
       },
       "CoderLogin": {
@@ -5520,6 +5498,74 @@
           }
         },
         "required": ["providerId"],
+        "additionalProperties": false
+      },
+      "CoderDefaults": {
+        "type": "object",
+        "properties": {
+          "defaultAgent": {
+            "type": ["string", "null"],
+            "enum": ["claude", "codex", "pi", null],
+            "description": "The default agent; null clears it, so a coding task asks. Absent keeps it"
+          },
+          "models": {
+            "type": "object",
+            "properties": {
+              "claude": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                  },
+                  {
+                    "type": "string",
+                    "enum": [""]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "codex": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                  },
+                  {
+                    "type": "string",
+                    "enum": [""]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pi": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+                  },
+                  {
+                    "type": "string",
+                    "enum": [""]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "description": "A default model per agent; null or an empty string clears it. Agents left out keep theirs"
+          }
+        },
         "additionalProperties": false
       },
       "CodingSession": {
@@ -5987,6 +6033,14 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 4000
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 10
           }
         },
         "required": ["prompt"],
@@ -6206,6 +6260,76 @@
             "type": "boolean"
           }
         },
+        "additionalProperties": false
+      },
+      "GitIdentity": {
+        "type": "object",
+        "properties": {
+          "commitAs": {
+            "type": "string",
+            "enum": ["bot", "owner"],
+            "description": "`bot`: the Bot is author and committer, the owner co-author. `owner`: the owner is author and committer"
+          },
+          "name": {
+            "type": ["string", "null"],
+            "description": "The saved name; null uses the account name"
+          },
+          "email": {
+            "type": ["string", "null"],
+            "description": "The saved email; null uses the account email"
+          },
+          "account": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              }
+            },
+            "required": ["name", "email"],
+            "description": "The signed-in account's name and email, the fallback"
+          }
+        },
+        "required": ["commitAs", "name", "email", "account"]
+      },
+      "GitIdentitySaved": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GitIdentity"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "computer": {
+                "type": "string",
+                "enum": ["applied", "off", "failed"],
+                "description": "Whether git's global config on the owner's computer took the identity: `off` when it was not running"
+              }
+            },
+            "required": ["computer"]
+          }
+        ]
+      },
+      "GitIdentityInput": {
+        "type": "object",
+        "properties": {
+          "commitAs": {
+            "type": "string",
+            "enum": ["bot", "owner"],
+            "description": "`bot`: the Bot is author and committer, the owner co-author. `owner`: the owner is author and committer"
+          },
+          "name": {
+            "type": ["string", "null"],
+            "maxLength": 200
+          },
+          "email": {
+            "type": ["string", "null"],
+            "maxLength": 300
+          }
+        },
+        "required": ["commitAs", "name", "email"],
         "additionalProperties": false
       },
       "GitConnection": {
@@ -13392,7 +13516,7 @@
     "/api/v1/connector-policy": {
       "get": {
         "tags": ["connectors"],
-        "summary": "The admin block and allow lists (T3, U3)",
+        "summary": "The admin block list (T3)",
         "security": [
           {
             "session": []
@@ -13403,7 +13527,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Blocked catalog ids and URL patterns, and allowed catalog ids",
+            "description": "Blocked URL and command patterns",
             "content": {
               "application/json": {
                 "schema": {
@@ -13436,8 +13560,8 @@
       },
       "put": {
         "tags": ["connectors"],
-        "summary": "Replace the admin block and allow lists (T3, U3)",
-        "description": "Running sessions of connectors the new lists block are stopped.",
+        "summary": "Replace the admin block list (T3)",
+        "description": "Running sessions of connectors the new list blocks are stopped.",
         "security": [
           {
             "session": []
@@ -13458,7 +13582,7 @@
         },
         "responses": {
           "200": {
-            "description": "The lists after the change",
+            "description": "The list after the change",
             "content": {
               "application/json": {
                 "schema": {
@@ -13468,7 +13592,7 @@
             }
           },
           "400": {
-            "description": "Unknown catalog id, or one both blocked and allowed (`POLICY_CONFLICT`)",
+            "description": "An invalid pattern",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15553,6 +15677,62 @@
         }
       }
     },
+    "/api/v1/coders/defaults": {
+      "put": {
+        "tags": ["coders"],
+        "summary": "Set the default coding agent and models",
+        "description": "The agent and model a coding task uses when neither the task nor the Bot names one. Without them the task asks the owner to choose.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoderDefaults"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One per agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "agents": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CoderAccount"
+                      }
+                    }
+                  },
+                  "required": ["agents"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/coding-sessions": {
       "get": {
         "tags": ["coders"],
@@ -16998,6 +17178,97 @@
           },
           "409": {
             "description": "The account has no computer yet (`NO_COMPUTER`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/git-identity": {
+      "get": {
+        "tags": ["git-connections"],
+        "summary": "Who the owner's coding sessions commit as",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The saved identity, with the account fallback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitIdentity"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["git-connections"],
+        "summary": "Sets who the owner's coding sessions commit as",
+        "description": "Also writes the name and email into git's global config on the owner's computer when it runs, for commits made by hand there.",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitIdentityInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitIdentitySaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A name or email that is not valid (`GIT_IDENTITY_NAME_INVALID`, `GIT_IDENTITY_EMAIL_INVALID`), or committing as the owner with no email (`GIT_IDENTITY_EMAIL_REQUIRED`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
             "content": {
               "application/problem+json": {
                 "schema": {

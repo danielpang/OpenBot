@@ -2,7 +2,17 @@ import { realpathSync } from 'node:fs';
 import { connect } from 'node:net';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
-import { coderApprovalTtlMs, DEFAULT_CODER_APPROVAL_TTL_MS } from '@openbots/shared';
+import {
+  coderApprovalTtlMs,
+  DEFAULT_CODER_APPROVAL_TTL_MS,
+  CODER_PUBLISH_TOOL,
+  CODER_PUBLISH_OPERATION,
+  CODER_PUBLISH_PARAMETERS,
+  CODER_PUBLISH_DESCRIPTION,
+  CoderPublishInputSchema,
+  CoderPublishResultSchema,
+  type CoderPublishResult,
+} from '@openbots/shared';
 import {
   CODER_SOCKET_ENV,
   type PermissionRelayReply,
@@ -18,8 +28,9 @@ import {
 //   --permission-prompt-tool mcp__openbots__permission_prompt
 //
 // (or the same config as a file under `{{session_dir}}`), so Claude Code
-// starts this server inside the session, as the coder user, and calls its one
-// tool whenever a tool use needs the owner's say. Each call goes to the
+// starts this server inside the session, as the coder user, and calls its
+// permission tool whenever a tool use needs the owner's say. Codex also uses
+// this server's publishing tool. Each call goes to the
 // control agent over the session's own unix socket, `$OPENBOTS_CODER_SOCKET`
 // (coder.ts): one JSON line `{request_id, tool_name, input}` there, one JSON
 // line `{decision, message?}` back, which the agent relays from the server's
@@ -101,7 +112,10 @@ export function askOwner(
         const answer = JSON.parse(buffer.slice(0, nl)) as PermissionRelayReply;
         settle(
           answer.decision === 'allow'
-            ? { decision: 'allow' }
+            ? {
+                decision: 'allow',
+                ...(typeof answer.message === 'string' ? { message: answer.message } : {}),
+              }
             : {
                 decision: 'deny',
                 message: typeof answer.message === 'string' ? answer.message : 'The owner said no',
@@ -116,6 +130,23 @@ export function askOwner(
     );
     conn.on('close', () => settle({ decision: 'deny', message: 'OpenBots gave no answer' }));
   });
+}
+
+/** The native pi tool and the stdio MCP tool share this fail-closed client. */
+export async function publishPullRequest(
+  socket: string | undefined,
+  input: unknown,
+  timeoutMs?: number,
+): Promise<CoderPublishResult> {
+  const args = CoderPublishInputSchema.parse(input);
+  const answer = await askOwner(
+    socket,
+    { tool_name: CODER_PUBLISH_OPERATION, input: args },
+    timeoutMs,
+  );
+  if (answer.decision !== 'allow') throw new Error(answer.message ?? 'Publishing failed');
+  if (!answer.message) throw new Error('Publishing failed: no result from OpenBots');
+  return CoderPublishResultSchema.parse(JSON.parse(answer.message));
 }
 
 export interface PermissionServerOptions {
@@ -150,10 +181,36 @@ export async function handleMessage(
       if (isRequest) respond(id, {});
       return;
     case 'tools/list':
-      if (isRequest) respond(id, { tools: [TOOL] });
+      if (isRequest)
+        respond(id, {
+          tools: [
+            TOOL,
+            {
+              name: CODER_PUBLISH_TOOL,
+              description: CODER_PUBLISH_DESCRIPTION,
+              inputSchema: CODER_PUBLISH_PARAMETERS,
+            },
+          ],
+        });
       return;
     case 'tools/call': {
       if (!isRequest) return;
+      if (params?.name === CODER_PUBLISH_TOOL) {
+        const parsed = CoderPublishInputSchema.safeParse(params.arguments);
+        if (!parsed.success)
+          return error(
+            id,
+            -32602,
+            'publish_pull_request needs title, body and optional draft; no repository or branch overrides',
+          );
+        try {
+          const result = await publishPullRequest(socket, parsed.data, timeoutMs);
+          return respond(id, { content: [{ type: 'text', text: JSON.stringify(result) }] });
+        } catch (failure) {
+          const message = failure instanceof Error ? failure.message : 'Publishing failed';
+          return respond(id, { isError: true, content: [{ type: 'text', text: message }] });
+        }
+      }
       if (params?.name !== TOOL_NAME) return error(id, -32602, `No tool ${String(params?.name)}`);
       const args = (params.arguments ?? {}) as {
         tool_name?: unknown;

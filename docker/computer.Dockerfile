@@ -131,7 +131,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       xvfb openbox x11vnc xdotool feh imagemagick tini tzdata \
       fonts-dejavu-core fonts-liberation fonts-noto-color-emoji \
-      ca-certificates curl git less nano procps python3 unzip xz-utils \
+      ca-certificates curl git less nano procps python3 unzip xz-utils util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
@@ -140,6 +140,9 @@ COPY --from=mcp-catalog /opt/openbots/mcp /opt/openbots/mcp
 # Root's too: the coder user runs the coding agents and cannot change them.
 COPY --from=coders /opt/openbots/coders /opt/openbots/coders
 
+# Native launchers hold openbots-auth.lock for credential-owning sessions, so
+# the bridge cannot rotate/write the same token concurrently. Read-only version
+# and status commands skip it. Keep the lock inode across disconnects.
 # The coding agents on PATH for the coder user and the terminal (I1), and git's
 # credential helper (I5, apps/computer-agent/src/git-credential-helper.ts),
 # which every git call in the computer asks: it answers only for a running
@@ -149,9 +152,9 @@ COPY --from=coders /opt/openbots/coders /opt/openbots/coders
 # itself (the server's checkout), so the coder user and the bot user share it.
 # hadolint ignore=SC2016
 RUN agents=/opt/openbots/coders/node_modules \
-    && printf '#!/bin/sh\nexec %s "$@"\n' "$agents/@anthropic-ai/claude-code/bin/claude.exe" \
+    && printf '#!/bin/sh\ncli=%s\ncase "$1:$2" in --version:*|auth:status) exec "$cli" "$@";; esac\ndir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}\nmkdir -p "$dir"\nexec flock -x "$dir/openbots-auth.lock" "$cli" "$@"\n' "$agents/@anthropic-ai/claude-code/bin/claude.exe" \
          > /usr/local/bin/claude \
-    && printf '#!/bin/sh\nexec node %s "$@"\n' "$agents/@openai/codex/bin/codex.js" \
+    && printf '#!/bin/sh\ncli=%s\ncase "$1:$2" in --version:*|login:status) exec node "$cli" "$@";; esac\ndir=${CODEX_HOME:-$HOME/.codex}\nmkdir -p "$dir"\nexec flock -x "$dir/openbots-auth.lock" node "$cli" "$@"\n' "$agents/@openai/codex/bin/codex.js" \
          > /usr/local/bin/codex \
     && printf '#!/bin/sh\nexec node %s "$@"\n' "$agents/@earendil-works/pi-coding-agent/dist/bundle/cli.js" \
          > /usr/local/bin/pi \

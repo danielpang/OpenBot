@@ -3,6 +3,7 @@ import { validateWidgetProps } from '../registry.js';
 import { ApprovalWidget } from './approval.js';
 import { ArtifactWidget } from './artifact.js';
 import { ChartWidget } from './chart.js';
+import { CoderChoiceWidget } from './coder_choice.js';
 import { CoderLoginWidget } from './coder_login.js';
 import { CodingSessionWidget } from './coding_session.js';
 import { EmailDraftWidget } from './email_draft.js';
@@ -43,6 +44,7 @@ export const WIDGET_RENDERERS: Record<WidgetKindName, WidgetRenderer | null> = {
   login_request: LoginRequestWidget as WidgetRenderer,
   coding_session: CodingSessionWidget as WidgetRenderer,
   coder_login: CoderLoginWidget as WidgetRenderer,
+  coder_choice: CoderChoiceWidget as WidgetRenderer,
 };
 
 export function widgetRenderer(kind: string): WidgetRenderer | null {

@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import type { ProfileKind, ProfilesView, ServerProfile } from '../ipc.js';
+import { isHostId } from '@openbots/tunnel';
+import type { PairedServer, ProfileKind, ProfilesView, ServerProfile } from '../ipc.js';
 import { parseServerAddress } from '../server-url.js';
+import { parseRelayUrl } from './pairing.js';
 import { FIRST_PORT } from '../stack/port.js';
 import { envPort } from '../stack/manager.js';
 
 // Server profiles (plan 14.4): the local stack, the hosted OpenBots server
-// when the build names one, and any self-hosted server, tunnel or remote URL.
+// when the build names one, any self-hosted server, tunnel or remote URL, and
+// the servers this Mac paired with through their relay (./paired.ts), whose
+// URL is the loopback address of the app's proxy into the tunnel.
 // Kept as JSON in the app's userData directory with whether the owner has
 // chosen a connection yet; the session token of each profile lives apart from
 // it, in ./tokens.ts.
@@ -71,8 +75,39 @@ function isProfile(value: unknown): value is ServerProfile {
     typeof p?.id === 'string' &&
     typeof p.name === 'string' &&
     typeof p.url === 'string' &&
-    (p.kind === 'local' || p.kind === 'remote')
+    (p.kind === 'local' || p.kind === 'remote' || p.kind === 'paired')
   );
+}
+
+/** The loopback origin of a paired server's proxy: `http://127.0.0.1:<port>`. */
+export function pairedProxyUrl(port: number): string {
+  return `http://127.0.0.1:${port}`;
+}
+
+/** A paired profile's port, or null when its URL is not a proxy's. */
+export function pairedPort(url: string): number | null {
+  const match = /^http:\/\/127\.0\.0\.1:(\d{1,5})$/.exec(url);
+  const port = match ? Number(match[1]) : NaN;
+  return port >= 1 && port <= 65535 ? port : null;
+}
+
+/** What a paired profile keeps from its pairing link, checked again when read from disk. */
+function readPaired(value: unknown): PairedServer | null {
+  const p = value as Partial<PairedServer> | null;
+  if (
+    typeof p?.hostId !== 'string' ||
+    !isHostId(p.hostId) ||
+    typeof p.serverKey !== 'string' ||
+    !/^[A-Za-z0-9_-]{43}$/.test(p.serverKey) ||
+    typeof p.deviceId !== 'string' ||
+    p.deviceId === ''
+  ) {
+    return null;
+  }
+  const relayUrl = parseRelayUrl(p.relayUrl);
+  return relayUrl
+    ? { hostId: p.hostId, relayUrl, serverKey: p.serverKey, deviceId: p.deviceId }
+    : null;
 }
 
 /**
@@ -97,10 +132,18 @@ export function parseProfiles(
   }
   const remotes: ServerProfile[] = [];
   for (const entry of Array.isArray(stored.profiles) ? stored.profiles : []) {
-    if (!isProfile(entry) || entry.kind !== 'remote') continue;
+    if (!isProfile(entry) || entry.kind === 'local') continue;
     if (remotes.some((p) => p.id === entry.id)) continue;
+    if (entry.kind === 'paired') {
+      const paired = readPaired(entry.paired);
+      if (paired && pairedPort(entry.url) != null) {
+        remotes.push({ id: entry.id, name: entry.name, url: entry.url, kind: 'paired', paired });
+      }
+      continue;
+    }
     try {
-      remotes.push({ ...entry, url: normalizeServerUrl(entry.url) });
+      const url = normalizeServerUrl(entry.url);
+      remotes.push({ id: entry.id, name: entry.name, url, kind: entry.kind });
     } catch {
       // A hand-edited, unusable URL: drop the entry.
     }
@@ -122,6 +165,13 @@ export interface ProfileStore {
   list(): Promise<ProfilesView>;
   active(): Promise<ServerProfile>;
   add(input: { name?: string; url: string }): Promise<ServerProfile>;
+  /**
+   * Saves a server this Mac paired with. Pairing the same server again
+   * (the same host id) updates its profile, keeping its id and address.
+   */
+  addPaired(input: { name: string; url: string; paired: PairedServer }): Promise<ServerProfile>;
+  /** A paired profile's proxy moved to another port. */
+  setUrl(id: string, url: string): Promise<ServerProfile>;
   /** The local and cloud profiles cannot be removed; removing the active one activates local. */
   remove(id: string): Promise<ProfilesView>;
   /** Makes the profile active, which is also the owner's choice of connection. */
@@ -170,7 +220,7 @@ export function createProfileStore(options: ProfileStoreOptions): ProfileStore {
 
   async function write(view: ProfilesView): Promise<void> {
     // The local and cloud profiles' URLs come from the stack and the build; store only the rest.
-    const remotes = view.profiles.filter((p) => p.kind === 'remote');
+    const remotes = view.profiles.filter((p) => p.kind === 'remote' || p.kind === 'paired');
     await files.writeFile(
       path,
       `${JSON.stringify({ activeId: view.activeId, chosen: view.chosen, profiles: remotes }, null, 2)}\n`,
@@ -205,7 +255,7 @@ export function createProfileStore(options: ProfileStoreOptions): ProfileStore {
         throw new ProfileError(error instanceof Error ? error.message : String(error));
       }
       return update((view) => {
-        const existing = view.profiles.find((p) => p.url === normalized);
+        const existing = view.profiles.find((p) => p.kind !== 'paired' && p.url === normalized);
         if (existing) return { result: existing };
         const kind: ProfileKind = 'remote';
         const profile = {
@@ -215,6 +265,40 @@ export function createProfileStore(options: ProfileStoreOptions): ProfileStore {
           kind,
         };
         return { view: { ...view, profiles: [...view.profiles, profile] }, result: profile };
+      });
+    },
+
+    async addPaired({ name, url, paired }) {
+      if (pairedPort(url) == null)
+        throw new ProfileError('A paired server needs its proxy address.');
+      return update((view) => {
+        const existing = view.profiles.find(
+          (p) => p.kind === 'paired' && p.paired?.hostId === paired.hostId,
+        );
+        const profile: ServerProfile = {
+          id: existing?.id ?? newId(),
+          name: name.trim() || 'OpenBots',
+          url: existing?.url ?? url,
+          kind: 'paired',
+          paired,
+        };
+        const profiles = existing
+          ? view.profiles.map((p) => (p.id === existing.id ? profile : p))
+          : [...view.profiles, profile];
+        return { view: { ...view, profiles }, result: profile };
+      });
+    },
+
+    setUrl(id, url) {
+      return update((view) => {
+        const profile = find(view, id);
+        if (profile?.kind !== 'paired' || pairedPort(url) == null) {
+          throw new ProfileError('Only a paired server moves to another address.');
+        }
+        if (profile.url === url) return { result: profile };
+        const moved = { ...profile, url };
+        const profiles = view.profiles.map((p) => (p.id === id ? moved : p));
+        return { view: { ...view, profiles }, result: moved };
       });
     },
 

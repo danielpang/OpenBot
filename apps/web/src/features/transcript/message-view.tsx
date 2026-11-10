@@ -3,6 +3,7 @@ import { cn } from '@openbots/ui';
 import { EventRow, FileCard, Widget } from '@openbots/widgets/react';
 import { memo, type ReactNode } from 'react';
 import { ArtifactPart } from '../artifacts/card.js';
+import { AcceptEdits } from '../bots/accept-edits.js';
 import { codingSessionHost } from '../coders/session-host.js';
 import type { Bot } from '../bots/queries.js';
 import { useToolConnector } from '../tools/hooks.js';
@@ -249,26 +250,34 @@ function BlockView({
       return <FileCard file={block.part} fileUrl={fileUrl} />;
     case 'widget':
       return (
-        <Widget
-          kind={block.part.kind}
-          props={block.part.props}
-          state={block.part.state}
-          fileUrl={fileUrl}
-          onReply={onReply}
-          onOpenActivity={onOpenActivity}
-          onOpenArtifact={onOpenArtifact}
-          onNavigate={onNavigate}
-          {...(onTakeover ? { onTakeover } : {})}
-          {...(block.part.kind === 'coding_session'
-            ? {
-                renderMarkdown,
-                ...(onNavigate ? { coder: codingSessionHost(onNavigate) } : {}),
-              }
-            : {})}
-          onAction={
-            onWidgetAction ? (action) => onWidgetAction(message, block.index, action) : undefined
-          }
-        />
+        <>
+          <Widget
+            kind={block.part.kind}
+            props={block.part.props}
+            state={block.part.state}
+            fileUrl={fileUrl}
+            onReply={onReply}
+            onOpenActivity={onOpenActivity}
+            onOpenArtifact={onOpenArtifact}
+            onNavigate={onNavigate}
+            {...(onTakeover ? { onTakeover } : {})}
+            {...(block.part.kind === 'coding_session'
+              ? {
+                  renderMarkdown,
+                  ...(onNavigate ? { coder: codingSessionHost(onNavigate) } : {}),
+                }
+              : {})}
+            onAction={
+              onWidgetAction ? (action) => onWidgetAction(message, block.index, action) : undefined
+            }
+          />
+          {block.part.kind === 'approval' &&
+            message.authorType === 'bot' &&
+            message.authorId &&
+            (block.part.state as { status?: string } | undefined)?.status === 'pending' && (
+              <AcceptEdits botId={message.authorId} />
+            )}
+        </>
       );
     case 'event': {
       const data = block.part.data as { fix?: unknown; link?: unknown } | undefined;

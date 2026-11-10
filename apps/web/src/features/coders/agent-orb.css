@@ -1,0 +1,30 @@
+.coding-agent-orb {
+  flex-shrink: 0;
+  animation: coding-orb-turn 3.6s linear infinite;
+}
+.coding-agent-orb[data-state='searching'] {
+  animation-duration: 2.2s;
+}
+.coding-agent-orb[data-state='composing'] {
+  animation-direction: reverse;
+}
+.coding-agent-orb[data-state='paused'] {
+  animation: none;
+  opacity: 0.65;
+}
+@keyframes coding-orb-turn {
+  0% {
+    transform: rotate(0deg) scale(0.9);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.08);
+  }
+  100% {
+    transform: rotate(360deg) scale(0.9);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coding-agent-orb {
+    animation: none;
+  }
+}

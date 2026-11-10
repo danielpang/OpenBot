@@ -8,7 +8,10 @@ import { Button, Card, Empty, ErrorNote, Icon, Label, Page, Section, row } from 
 import { BotAvatar } from '../components/bot-avatar';
 import { useTheme } from '../theme';
 import { useBots, type Bot } from './data';
+import { AcceptEdits } from '../components/accept-edits';
 import { BotAppearance } from './bot-appearance';
+import { BotModel } from './bot-model';
+import { BotSkills } from '../skills/bot-skills';
 
 type Tab = 'Activity' | 'Artifacts' | 'Routines' | 'About';
 export function BotDetailsScreen() {
@@ -88,6 +91,12 @@ export function BotDetailsScreen() {
             variant="secondary"
             icon="desktop-outline"
             onPress={() => router.push(`/bot/${bot.id}/preview`)}
+          />
+          <Button
+            title="Code"
+            variant="secondary"
+            icon="code-slash-outline"
+            onPress={() => router.push(`/bot/${bot.id}/coding`)}
           />
         </>
       ) : (
@@ -266,15 +275,6 @@ function Routines({ bot }: { bot: Bot }) {
 function About({ bot }: { bot: Bot }) {
   const api = useApi();
   const cache = useQueryClient();
-  const library = useQuery({
-    queryKey: ['skills'],
-    queryFn: () => unwrap(api.GET('/api/v1/skills')),
-  });
-  const skills = useQuery({
-    queryKey: ['bot-skills', bot.id],
-    queryFn: () =>
-      unwrap(api.GET('/api/v1/bots/{id}/skills', { params: { path: { id: bot.id } } })),
-  });
   async function pin() {
     try {
       if (bot.pinned)
@@ -296,7 +296,10 @@ function About({ bot }: { bot: Bot }) {
         </Card>
       </Section>
       <Section title="Model">
-        <Label>{bot.modelConfig?.model_id ?? 'No model selected'}</Label>
+        <BotModel key={bot.id} bot={bot} />
+      </Section>
+      <Section title="Approvals">
+        <AcceptEdits botId={bot.id} />
       </Section>
       <Section title="Tools">
         <Label muted size={14}>
@@ -306,12 +309,7 @@ function About({ bot }: { bot: Bot }) {
         </Label>
       </Section>
       <Section title="Skills">
-        <Label muted size={14}>
-          {library.data?.items
-            .filter((skill) => skills.data?.skillIds.includes(skill.id))
-            .map((skill) => skill.name)
-            .join(', ') || 'No Skills assigned'}
-        </Label>
+        <BotSkills botId={bot.id} />
       </Section>
       <Button
         title={bot.pinned ? 'Unpin Bot' : 'Pin Bot'}
@@ -320,7 +318,7 @@ function About({ bot }: { bot: Bot }) {
         onPress={() => void pin()}
       />
       <Label muted size={13}>
-        Edit models, tools and Skills on your computer.
+        Configure model providers and tools on your computer.
       </Label>
     </>
   );

@@ -79,10 +79,9 @@ import { connectorWorkspace, currentWorkspace, inWorkspace, outsideScope } from 
 // `connectors.secrets` and only opened here, to start a session or refresh a
 // token; responses say which secrets are set and nothing more. Env and header
 // values of custom servers are secrets too, so responses carry their names
-// only (S-9). Admins block catalog entries or URL patterns in
-// `connector_policy`, or allow only listed catalog entries (U3); a blocked
-// connector cannot be created, started or called and reads as "Disabled by
-// admin" (T3).
+// only (S-9). Admins block URL and command patterns in `connector_policy`; a
+// blocked connector cannot be created, started or called and reads as
+// "Disabled by admin" (T3).
 //
 // A custom stdio server runs any command on the server, so only admins may
 // add one, and only once an admin turns `customStdioEnabled` on (S-1).
@@ -407,89 +406,53 @@ export async function sealPlaintextConnectorValues(
   });
 }
 
-// --- Block and allow lists (T3, U3) ---------------------------------------------
+// --- Block list (T3) ---------------------------------------------------------
 
-/** The block list and the allow list (`blocked = false` rows) as rules for `blockedBy`. */
+/** The admin's blocked URL and command patterns as rules for `blockedBy`. */
 export async function blockRules(db: Db, workspaceId: string): Promise<BlockRule[]> {
   const rows = await db
-    .select({
-      catalogId: schema.connectorPolicy.catalogId,
-      urlPattern: schema.connectorPolicy.urlPattern,
-      blocked: schema.connectorPolicy.blocked,
-    })
+    .select({ urlPattern: schema.connectorPolicy.urlPattern })
     .from(schema.connectorPolicy)
     .where(eq(schema.connectorPolicy.workspaceId, workspaceId))
     .orderBy(asc(schema.connectorPolicy.createdAt));
-  return rows.map((r) => ({
-    catalogId: r.catalogId,
-    urlPattern: r.urlPattern,
-    ...(r.blocked ? {} : { allow: true }),
-  }));
+  return rows.map((r) => ({ urlPattern: r.urlPattern }));
 }
 
-export const isBlocked = (row: Pick<ConnectorRow, 'catalogId' | 'config'>, rules: BlockRule[]) => {
+export const isBlocked = (row: Pick<ConnectorRow, 'config'>, rules: BlockRule[]) => {
   let config: TransportConfig | null = null;
   try {
     config = readConfig(row).transport;
   } catch {
-    // An unreadable config still matches by catalog id.
+    // An unreadable config matches no pattern.
   }
-  return blockedBy({ catalogId: row.catalogId, config }, rules) !== null;
+  return blockedBy({ config }, rules) !== null;
 };
 
 export interface ConnectorPolicy {
-  catalogIds: string[];
   urlPatterns: string[];
-  /** When non-empty, only these catalog entries may be used (U3). */
-  allowedCatalogIds: string[];
-}
-
-export interface ConnectorPolicyInput {
-  catalogIds: string[];
-  urlPatterns: string[];
-  /** Left out, the allow list stays as it is. */
-  allowedCatalogIds?: string[];
 }
 
 export async function getConnectorPolicy(db: Db, viewer: Viewer): Promise<ConnectorPolicy> {
   const rules = await blockRules(db, viewer.workspaceId);
-  const blocks = rules.filter((r) => !r.allow);
-  return {
-    catalogIds: blocks.flatMap((r) => (r.catalogId ? [r.catalogId] : [])),
-    urlPatterns: blocks.flatMap((r) => (r.urlPattern ? [r.urlPattern] : [])),
-    allowedCatalogIds: rules.flatMap((r) => (r.allow && r.catalogId ? [r.catalogId] : [])),
-  };
+  return { urlPatterns: rules.map((r) => r.urlPattern) };
 }
 
-/** Replaces the block list (and the allow list when given) and stops every running session they now block. */
+/** Replaces the block list and stops every running session it now blocks. */
 export async function putConnectorPolicy(
   deps: ConnectorsDeps,
   admin: Viewer,
-  input: ConnectorPolicyInput,
+  input: ConnectorPolicy,
 ): Promise<ConnectorPolicy> {
-  const catalogIds = [...new Set(input.catalogIds)];
   const urlPatterns = [...new Set(input.urlPatterns.map((p) => p.trim()).filter(Boolean))];
-  const allowedCatalogIds = [
-    ...new Set(
-      input.allowedCatalogIds ?? (await getConnectorPolicy(deps.db, admin)).allowedCatalogIds,
-    ),
-  ];
-  for (const id of [...catalogIds, ...allowedCatalogIds]) {
-    if (!catalogEntry(id)) throw invalid('UNKNOWN_CATALOG_ID', `No catalog entry "${id}".`);
-  }
-  const both = catalogIds.filter((id) => allowedCatalogIds.includes(id));
-  if (both.length) {
-    throw invalid('POLICY_CONFLICT', `"${both[0]}" cannot be both blocked and allowed.`);
-  }
   await deps.db.transaction(async (tx) => {
     await tx
       .delete(schema.connectorPolicy)
       .where(eq(schema.connectorPolicy.workspaceId, admin.workspaceId));
-    const rows = [
-      ...catalogIds.map((catalogId) => ({ catalogId, urlPattern: null, blocked: true })),
-      ...urlPatterns.map((urlPattern) => ({ catalogId: null, urlPattern, blocked: true })),
-      ...allowedCatalogIds.map((catalogId) => ({ catalogId, urlPattern: null, blocked: false })),
-    ].map((r) => ({ ...r, workspaceId: admin.workspaceId, setBy: admin.id }));
+    const rows = urlPatterns.map((urlPattern) => ({
+      urlPattern,
+      workspaceId: admin.workspaceId,
+      setBy: admin.id,
+    }));
     if (rows.length) await tx.insert(schema.connectorPolicy).values(rows);
     await tx.insert(schema.auditLog).values({
       workspaceId: admin.workspaceId,
@@ -498,7 +461,7 @@ export async function putConnectorPolicy(
       action: 'connector_policy.update',
       targetType: 'workspace',
       targetId: admin.workspaceId,
-      metadata: { catalogIds, urlPatterns, allowedCatalogIds },
+      metadata: { urlPatterns },
     });
   });
   const rules = await blockRules(deps.db, admin.workspaceId);
@@ -683,7 +646,7 @@ export async function catalogWithPolicy(db: Db, viewer: Viewer) {
   return loadCatalog().entries.map((entry) => {
     const config =
       entry.kind === 'builtin' ? null : configFromCatalog(entry, { auth: entry.http?.auth[0] });
-    return { entry, disabledByAdmin: blockedBy({ catalogId: entry.id, config }, rules) !== null };
+    return { entry, disabledByAdmin: blockedBy({ config }, rules) !== null };
   });
 }
 
@@ -889,7 +852,7 @@ export async function createConnector(
     if (refusal) throw refusal;
   }
   const rules = await blockRules(deps.db, viewer.workspaceId);
-  if (blockedBy({ catalogId, config: transport }, rules)) throw connectorBlocked();
+  if (blockedBy({ config: transport }, rules)) throw connectorBlocked();
   await checkConfined(entry ?? (catalogId ? catalogEntry(catalogId) : undefined), params, secrets);
 
   const name =
@@ -1035,7 +998,7 @@ export async function updateConnector(
     if (refusal) throw refusal;
   }
   const rules = await blockRules(deps.db, viewer.workspaceId);
-  if (blockedBy({ catalogId, config: transport }, rules)) throw connectorBlocked();
+  if (blockedBy({ config: transport }, rules)) throw connectorBlocked();
   await checkConfined(entry ?? (catalogId ? catalogEntry(catalogId) : undefined), params, secrets);
 
   const discovered = (row.config as { discovered?: unknown }).discovered;
@@ -2465,7 +2428,7 @@ export async function discoverConnectorUrl(
 ): Promise<UrlDiscovery> {
   const config: TransportConfig = { transport: 'http', url, auth: 'none', headers: {} };
   const rules = await blockRules(deps.db, viewer.workspaceId);
-  if (blockedBy({ catalogId: matchCatalog(config), config }, rules)) throw connectorBlocked();
+  if (blockedBy({ config }, rules)) throw connectorBlocked();
   try {
     const found = await discoverServer(url, { fetch: connectorFetch(deps, { local: false }) });
     return {

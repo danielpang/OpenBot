@@ -4353,7 +4353,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** The admin block and allow lists (T3, U3) */
+    /** The admin block list (T3) */
     get: {
       parameters: {
         query?: never;
@@ -4363,7 +4363,7 @@ export interface paths {
       };
       requestBody?: never;
       responses: {
-        /** @description Blocked catalog ids and URL patterns, and allowed catalog ids */
+        /** @description Blocked URL and command patterns */
         200: {
           headers: {
             [name: string]: unknown;
@@ -4393,8 +4393,8 @@ export interface paths {
       };
     };
     /**
-     * Replace the admin block and allow lists (T3, U3)
-     * @description Running sessions of connectors the new lists block are stopped.
+     * Replace the admin block list (T3)
+     * @description Running sessions of connectors the new list blocks are stopped.
      */
     put: {
       parameters: {
@@ -4409,7 +4409,7 @@ export interface paths {
         };
       };
       responses: {
-        /** @description The lists after the change */
+        /** @description The list after the change */
         200: {
           headers: {
             [name: string]: unknown;
@@ -4418,7 +4418,7 @@ export interface paths {
             'application/json': components['schemas']['ConnectorPolicy'];
           };
         };
-        /** @description Unknown catalog id, or one both blocked and allowed (`POLICY_CONFLICT`) */
+        /** @description An invalid pattern */
         400: {
           headers: {
             [name: string]: unknown;
@@ -6335,6 +6335,60 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/coders/defaults': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Set the default coding agent and models
+     * @description The agent and model a coding task uses when neither the task nor the Bot names one. Without them the task asks the owner to choose.
+     */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['CoderDefaults'];
+        };
+      };
+      responses: {
+        /** @description One per agent */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              agents: components['schemas']['CoderAccount'][];
+            };
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/coding-sessions': {
     parameters: {
       query?: never;
@@ -7638,6 +7692,96 @@ export interface paths {
         };
       };
     };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/git-identity': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Who the owner's coding sessions commit as */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The saved identity, with the account fallback */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['GitIdentity'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    /**
+     * Sets who the owner's coding sessions commit as
+     * @description Also writes the name and email into git's global config on the owner's computer when it runs, for commits made by hand there.
+     */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['GitIdentityInput'];
+        };
+      };
+      responses: {
+        /** @description The saved identity */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['GitIdentitySaved'];
+          };
+        };
+        /** @description A name or email that is not valid (`GIT_IDENTITY_NAME_INVALID`, `GIT_IDENTITY_EMAIL_INVALID`), or committing as the owner with no email (`GIT_IDENTITY_EMAIL_REQUIRED`) */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -12348,7 +12492,7 @@ export interface components {
       name: string;
       slug: string;
       /** @enum {string} */
-      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'custom';
+      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'ollama' | 'custom';
       /** @enum {string} */
       protocol: 'native' | 'openai_compatible' | 'anthropic_compatible';
       /** @description Null for built-ins on their SDK's default endpoint */
@@ -12397,7 +12541,7 @@ export interface components {
       id: string;
       name: string;
       /** @enum {string} */
-      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'custom';
+      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'ollama' | 'custom';
       /** @enum {string} */
       protocol: 'native' | 'openai_compatible' | 'anthropic_compatible';
       baseUrl: string | null;
@@ -12432,7 +12576,7 @@ export interface components {
       name?: string;
       slug?: string;
       /** @enum {string} */
-      kind?: 'anthropic' | 'openai' | 'google' | 'xai' | 'custom';
+      kind?: 'anthropic' | 'openai' | 'google' | 'xai' | 'ollama' | 'custom';
       /** @enum {string} */
       protocol?: 'native' | 'openai_compatible' | 'anthropic_compatible';
       /** Format: uri */
@@ -12514,7 +12658,7 @@ export interface components {
       name: string;
       slug: string;
       /** @enum {string} */
-      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'custom';
+      kind: 'anthropic' | 'openai' | 'google' | 'xai' | 'ollama' | 'custom';
       /** @enum {string} */
       protocol?: 'native' | 'openai_compatible' | 'anthropic_compatible';
       /** @enum {string} */
@@ -12934,8 +13078,6 @@ export interface components {
           message: string;
         };
     ConnectorPolicy: {
-      /** @description Blocked catalog entries */
-      catalogIds: string[];
       /**
        * @description Blocked globs (`*` matches anything) tested against HTTP URLs and hosts and stdio command lines
        * @example [
@@ -12943,12 +13085,8 @@ export interface components {
        *     ]
        */
       urlPatterns: string[];
-      /** @description The allow list (U3): when non-empty, only these catalog entries can be added or used, and custom servers cannot */
-      allowedCatalogIds: string[];
     };
     ConnectorPolicyInput: {
-      /** @description Blocked catalog entries */
-      catalogIds: string[];
       /**
        * @description Blocked globs (`*` matches anything) tested against HTTP URLs and hosts and stdio command lines
        * @example [
@@ -12956,8 +13094,6 @@ export interface components {
        *     ]
        */
       urlPatterns: string[];
-      /** @description The allow list (U3); left out, it stays as it is */
-      allowedCatalogIds?: string[];
     };
     BotConnector: {
       connector: components['schemas']['Connector'];
@@ -13197,6 +13333,10 @@ export interface components {
        * @enum {string}
        */
       signIn: 'link' | 'device' | 'terminal';
+      /** @description The owner's default model for this agent, as its CLI names it; null when not chosen, so a coding task asks */
+      model: string | null;
+      /** @description The owner's default agent for coding tasks; at most one is */
+      isDefault: boolean;
     };
     CoderLogin: {
       /** Format: uuid */
@@ -13233,6 +13373,19 @@ export interface components {
     CoderApiKey: {
       /** Format: uuid */
       providerId: string;
+    };
+    CoderDefaults: {
+      /**
+       * @description The default agent; null clears it, so a coding task asks. Absent keeps it
+       * @enum {string|null}
+       */
+      defaultAgent?: 'claude' | 'codex' | 'pi' | null;
+      /** @description A default model per agent; null or an empty string clears it. Agents left out keep theirs */
+      models?: {
+        claude?: string | '' | null;
+        codex?: string | '' | null;
+        pi?: string | '' | null;
+      };
     };
     CodingSession: {
       /** Format: uuid */
@@ -13397,6 +13550,7 @@ export interface components {
     };
     CodingSessionTurn: {
       prompt: string;
+      attachments?: string[];
     };
     Repo: {
       /** Format: uuid */
@@ -13469,6 +13623,38 @@ export interface components {
     RepoPatch: {
       keepCloned?: boolean;
       pinned?: boolean;
+    };
+    GitIdentity: {
+      /**
+       * @description `bot`: the Bot is author and committer, the owner co-author. `owner`: the owner is author and committer
+       * @enum {string}
+       */
+      commitAs: 'bot' | 'owner';
+      /** @description The saved name; null uses the account name */
+      name: string | null;
+      /** @description The saved email; null uses the account email */
+      email: string | null;
+      /** @description The signed-in account's name and email, the fallback */
+      account: {
+        name: string;
+        email: string;
+      };
+    };
+    GitIdentitySaved: components['schemas']['GitIdentity'] & {
+      /**
+       * @description Whether git's global config on the owner's computer took the identity: `off` when it was not running
+       * @enum {string}
+       */
+      computer: 'applied' | 'off' | 'failed';
+    };
+    GitIdentityInput: {
+      /**
+       * @description `bot`: the Bot is author and committer, the owner co-author. `owner`: the owner is author and committer
+       * @enum {string}
+       */
+      commitAs: 'bot' | 'owner';
+      name: string | null;
+      email: string | null;
     };
     GitConnection: {
       /** Format: uuid */

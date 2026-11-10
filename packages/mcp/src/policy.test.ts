@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NOT_ON_ALLOW_LIST, blockedBy, matchCatalog, toolPermitted } from './policy.js';
+import { blockedBy, matchCatalog, toolPermitted } from './policy.js';
 import type { TransportConfig } from './types.js';
 
 const http = (url: string): TransportConfig => ({
@@ -16,20 +16,8 @@ const stdio = (command: string, args: string[]): TransportConfig => ({
 });
 
 describe('block list', () => {
-  it('blocks by catalog id, including typed-in copies of a catalog server', () => {
-    const rules = [{ catalogId: 'postgres', urlPattern: null }];
-    expect(blockedBy({ catalogId: 'postgres' }, rules)).toEqual(rules[0]);
-    expect(
-      blockedBy(
-        { config: stdio('npx', ['-y', '@modelcontextprotocol/server-postgres', 'pg://x']) },
-        rules,
-      ),
-    ).toEqual(rules[0]);
-    expect(blockedBy({ catalogId: 'filesystem' }, rules)).toBeNull();
-  });
-
   it('blocks by URL pattern against the URL, the host or the command line', () => {
-    const rule = (urlPattern: string) => [{ catalogId: null, urlPattern }];
+    const rule = (urlPattern: string) => [{ urlPattern }];
     const slack = { config: http('https://mcp.slack.com/mcp') };
     expect(blockedBy(slack, rule('https://*.slack.com/*'))).not.toBeNull();
     expect(blockedBy(slack, rule('*.SLACK.com'))).not.toBeNull();
@@ -38,6 +26,11 @@ describe('block list', () => {
     expect(
       blockedBy({ config: stdio('uvx', ['mcp-server-fetch']) }, rule('*mcp-server-fetch*')),
     ).not.toBeNull();
+    // Built-ins have no URL or command, so nothing blocks them.
+    expect(
+      blockedBy({ config: { transport: 'builtin', builtin: 'web_fetch' } }, rule('*')),
+    ).toBeNull();
+    expect(blockedBy({}, rule('*'))).toBeNull();
     // Regex metacharacters in patterns are literal.
     expect(blockedBy({ config: http('https://axb.com/') }, rule('https://a.b.com/'))).toBeNull();
   });
@@ -51,32 +44,6 @@ describe('block list', () => {
       matchCatalog(stdio('npx', ['@modelcontextprotocol/server-filesystem@1.0.0', '/x'])),
     ).toBe('filesystem');
     expect(matchCatalog(stdio('node', ['server.js']))).toBeNull();
-  });
-});
-
-describe('allow list (U3)', () => {
-  const allow = (...ids: string[]) =>
-    ids.map((catalogId) => ({ catalogId, urlPattern: null, allow: true }));
-
-  it('allows everything while empty', () => {
-    expect(blockedBy({ catalogId: 'postgres' }, [])).toBeNull();
-    expect(blockedBy({ config: http('https://example.com/mcp') }, [])).toBeNull();
-  });
-
-  it('lets only listed catalog entries through once it has one', () => {
-    const rules = allow('github', 'filesystem');
-    expect(blockedBy({ catalogId: 'github' }, rules)).toBeNull();
-    expect(blockedBy({ catalogId: 'postgres' }, rules)).toBe(NOT_ON_ALLOW_LIST);
-    // Custom servers are not on it, but typed-in copies of a listed entry are.
-    expect(blockedBy({ config: http('https://example.com/mcp') }, rules)).toBe(NOT_ON_ALLOW_LIST);
-    expect(blockedBy({ config: http('https://api.githubcopilot.com/mcp/') }, rules)).toBeNull();
-  });
-
-  it('still applies the block list on top', () => {
-    const rules = [...allow('github'), { catalogId: null, urlPattern: '*githubcopilot*' }];
-    expect(
-      blockedBy({ catalogId: 'github', config: http('https://api.githubcopilot.com/mcp/') }, rules),
-    ).toEqual(rules[1]);
   });
 });
 

@@ -119,6 +119,8 @@ describe('codex adapter', () => {
       '-c',
       `sandbox_workspace_write.writable_roots=["${REPO}/.git"]`,
       '-c',
+      'mcp_servers.openbots={command="node",args=["/app/apps/computer-agent/dist/coder-permission-mcp.js"],enabled_tools=["publish_pull_request"],tool_timeout_sec=86460,env={OPENBOTS_CODER_SOCKET="{{session_dir}}/permission.sock",OPENBOTS_APPROVAL_TTL_MS="86400000"}}',
+      '-c',
       'model_provider="openai"',
     ]);
     // app-server has no --ignore-user-config, and the prompt goes over stdin.
@@ -433,6 +435,85 @@ describe('codex adapter', () => {
       { type: 'command', command: 'rm -rf /', summary: 'Declined' },
       { type: 'result', ok: false, summary: 'Codex did not finish', error: 'Codex did not finish' },
     ]);
+  });
+
+  it('relays Codex Apps PR approval to the owner and returns a one-call MCP decision', () => {
+    for (const decision of ['allow', 'deny'] as const) {
+      const s = session(spec());
+      s.feed(
+        line({
+          id: 42,
+          method: 'mcpServer/elicitation/request',
+          params: {
+            mode: 'form',
+            serverName: 'codex_apps',
+            message: 'Allow GitHub to create a pull request?',
+            _meta: {
+              codex_approval_kind: 'mcp_tool_call',
+              tool_title: 'create_pull_request',
+              persist: ['always'],
+              tool_params: {
+                repository_full_name: 'acme/relay',
+                title: 'Fix reconnect',
+                head: 'fix',
+                base: 'main',
+                draft: true,
+              },
+            },
+            requestedSchema: { type: 'object', properties: {} },
+          },
+        }),
+      );
+      expect(s.approvals).toHaveLength(1);
+      expect(s.approvals[0]).toMatchObject({
+        request_id: 'codex-42',
+        action: 'pr',
+        title: 'Create pull request',
+        input: { draft: true },
+      });
+      expect(s.frames()).toHaveLength(1); // initialize only; still waiting for the owner
+      s.session.answer('codex-42', decision);
+      expect(s.frames().slice(1)).toEqual([
+        {
+          id: 42,
+          result: {
+            action: decision === 'allow' ? 'accept' : 'decline',
+            content: decision === 'allow' ? {} : null,
+          },
+        },
+      ]);
+      s.session.answer('codex-42', decision);
+      expect(s.frames()).toHaveLength(2);
+    }
+  });
+
+  it('does not invent answers to non-empty MCP forms', () => {
+    const s = session(spec());
+    s.feed(
+      line({
+        id: 42,
+        method: 'mcpServer/elicitation/request',
+        params: {
+          mode: 'form',
+          _meta: { codex_approval_kind: 'mcp_tool_call', tool_title: 'create_pull_request' },
+          requestedSchema: { type: 'object', properties: { password: { type: 'string' } } },
+        },
+      }),
+    );
+    expect(s.approvals).toHaveLength(0);
+    expect(s.frames().at(-1)).toMatchObject({ error: { code: -32601 } });
+  });
+
+  it('uses a read-only sandbox when edit acceptance is disabled', () => {
+    expect(codexAdapter.launch(spec({ acceptEdits: false })).args).toContain(
+      'sandbox_mode="read-only"',
+    );
+    expect(codexAdapter.launch(spec({ acceptEdits: true })).args).toContain(
+      'sandbox_mode="workspace-write"',
+    );
+    expect(codexAdapter.launch(spec({ acceptEdits: true, mode: 'plan' })).args).toContain(
+      'sandbox_mode="read-only"',
+    );
   });
 
   it('raises a command approval classified, and answers it with accept or decline', () => {

@@ -1,16 +1,20 @@
 import { useState } from 'react';
-import { Linking, Text, View } from 'react-native';
+import { Linking, Switch, View } from 'react-native';
 import { router } from 'expo-router';
 import {
   CODER_AGENT_LABELS,
+  CODER_MODEL_SUGGESTIONS,
   CODING_SESSION_ENDED,
+  CoderModelNameSchema,
+  type CoderAgent,
   type CodingSessionStatus,
 } from '@openbots/shared';
 import {
-  approvalStatusWords,
   sessionErrorWords,
   sessionStatusWords,
   usageWords,
+  type CoderChoiceProps,
+  type CoderChoiceState,
   type CoderLoginProps,
   type CoderLoginWidgetState,
   type CodingSessionProps,
@@ -19,19 +23,12 @@ import {
 import { Button, Field, Icon, Label, row } from '../components/ui';
 import { useTheme, type Theme } from '../theme';
 
-// The coding agent widgets on the phone (CA3, CA5, CA6). The phone shows a
-// session read only (PRD M10): no terminal and no full log, only the last few
-// feed lines. What the phone is for is answering: approvals, Stop, and the
-// sign-in link and code. To continue an ended session the owner replies in
-// its thread, and the Bot passes the reply on to the agent. The words come
-// from `@openbots/widgets`, so the phone says what the web widget says.
+// Compact session previews link to the full interactive coding conversation.
+// Approvals, Stop and sign-in remain available directly in the Bot's chat.
 
 /** Sends a widget action; resolves false when it failed. */
 type Act = (action: Record<string, unknown>) => Promise<boolean | void>;
 type Decide = (approvalId: string, decision: 'approve' | 'deny') => Promise<boolean | void>;
-
-/** How many feed lines the phone shows. */
-export const PHONE_FEED_LINES = 8;
 
 function statusColor(status: CodingSessionStatus, c: Theme) {
   if (status === 'running' || status === 'starting' || status === 'settled') return c.success;
@@ -65,8 +62,7 @@ export function CodingSessionBody({
   const state = raw as Partial<CodingSessionState>;
   const status: CodingSessionStatus = state.status ?? 'queued';
   const ended = CODING_SESSION_ENDED.includes(status);
-  const feed = (state.feed ?? []).slice(-PHONE_FEED_LINES);
-  const approvals = state.approvals ?? [];
+  const approvals = (state.approvals ?? []).filter((approval) => approval.status === 'pending');
   const result = state.result;
   const added = result?.changed_files.reduce((sum, file) => sum + file.added, 0) ?? 0;
   const removed = result?.changed_files.reduce((sum, file) => sum + file.removed, 0) ?? 0;
@@ -100,27 +96,12 @@ export function CodingSessionBody({
         />
         <Label size={14}>{sessionStatusWords[status]}</Label>
       </View>
-      {feed.length ? (
-        <View
-          testID="coding-session-feed"
-          style={{ backgroundColor: c.muted, borderRadius: 12, padding: 10, gap: 2 }}
-        >
-          {feed.map((line, i) => (
-            <Text
-              key={`${line.t}-${i}`}
-              numberOfLines={2}
-              style={{
-                color: c.mutedForeground,
-                fontFamily: 'Menlo',
-                fontSize: 12,
-                lineHeight: 17,
-              }}
-            >
-              {line.text}
-            </Text>
-          ))}
-        </View>
-      ) : null}
+      <Button
+        title="Open Code"
+        variant="secondary"
+        icon="code-slash-outline"
+        onPress={() => router.push(`/coding-session/${props.session_id}`)}
+      />
       {approvals.map((approval) =>
         approval.status === 'pending' ? (
           <View
@@ -154,11 +135,7 @@ export function CodingSessionBody({
               </View>
             </View>
           </View>
-        ) : (
-          <Label key={approval.id} muted size={14}>
-            {approval.title}: {approvalStatusWords[approval.status]}
-          </Label>
-        ),
+        ) : null,
       )}
       {result ? (
         <View style={{ gap: 6 }}>
@@ -167,9 +144,9 @@ export function CodingSessionBody({
             {plural(result.changed_files.length, 'file changed', 'files changed')} (+{added}, -
             {removed}), {plural(result.commits.length, 'commit', 'commits')}
           </Label>
-          {result.usage ? (
+          {result.usage && usageWords(result.usage) ? (
             <Label muted size={14}>
-              {usageWords(result.usage, props.agent)}
+              {usageWords(result.usage)}
             </Label>
           ) : null}
           {typeof diffId === 'string' && diffId ? (
@@ -205,7 +182,7 @@ export function CodingSessionBody({
         />
       ) : (
         <Label muted size={14}>
-          Reply in this thread to continue the session.
+          Open Code to message the agent directly, or reply in this thread.
         </Label>
       )}
     </>
@@ -332,4 +309,112 @@ function loginStatusText(state: Partial<CoderLoginWidgetState>, label: string) {
     default:
       return 'Sign-in did not finish.';
   }
+}
+
+/**
+ * The owner picks the coding agent and model for a task (CA9): one button
+ * per agent, the model with the agent's suggestions as buttons, and "Use as
+ * my default" so later tasks do not ask.
+ */
+export function CoderChoiceBody({
+  props,
+  state: raw,
+  busy,
+  act,
+}: {
+  props: CoderChoiceProps;
+  state: Record<string, unknown>;
+  busy: boolean;
+  act: Act;
+}) {
+  const state = raw as Partial<CoderChoiceState>;
+  const initial =
+    props.agent && props.agents.some((a) => a.agent === props.agent)
+      ? props.agent
+      : (props.agents.find((a) => a.signed_in)?.agent ?? props.agents[0]!.agent);
+  const [agent, setAgent] = useState<CoderAgent>(initial);
+  const modelFor = (next: CoderAgent) =>
+    props.agents.find((a) => a.agent === next)?.model ?? CODER_MODEL_SUGGESTIONS[next][0] ?? '';
+  const [model, setModel] = useState(() => modelFor(initial));
+  const [remember, setRemember] = useState(true);
+  const status = state.status ?? 'pending';
+  const valid = CoderModelNameSchema.safeParse(model).success;
+  return (
+    <>
+      <View style={row.base}>
+        <Icon name="code-slash-outline" />
+        <Label weight="600">Choose a coding agent</Label>
+      </View>
+      {props.repo ? <Label muted>For {props.repo}</Label> : null}
+      {props.prompt_excerpt ? (
+        <Label muted size={14}>
+          {props.prompt_excerpt}
+        </Label>
+      ) : null}
+      {status === 'pending' ? (
+        <>
+          {props.agents.map((a) => (
+            <Button
+              key={a.agent}
+              title={`${CODER_AGENT_LABELS[a.agent]}${a.signed_in ? '' : ' (sign in)'}`}
+              variant={agent === a.agent ? 'primary' : 'secondary'}
+              disabled={busy}
+              onPress={() => {
+                setAgent(a.agent);
+                setModel(modelFor(a.agent));
+              }}
+            />
+          ))}
+          <Label muted size={14}>
+            Model
+          </Label>
+          <View style={[row.base, { flexWrap: 'wrap' }]}>
+            {CODER_MODEL_SUGGESTIONS[agent].map((name) => (
+              <Button
+                key={name}
+                title={name}
+                variant={model === name ? 'primary' : 'ghost'}
+                disabled={busy}
+                onPress={() => setModel(name)}
+              />
+            ))}
+          </View>
+          <Field
+            accessibilityLabel="Model"
+            placeholder="A model name"
+            value={model}
+            onChangeText={setModel}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <View style={row.base}>
+            <Switch value={remember} onValueChange={setRemember} disabled={busy} />
+            <Label size={14} style={{ flex: 1 }}>
+              Use as my default for later tasks
+            </Label>
+          </View>
+          <Button
+            title="Start"
+            loading={busy}
+            disabled={!valid}
+            onPress={() => void act({ type: 'choose', agent, model: model.trim(), remember })}
+          />
+          <Button
+            title="Cancel"
+            variant="ghost"
+            disabled={busy}
+            onPress={() => void act({ type: 'cancel' })}
+          />
+        </>
+      ) : (
+        <Label muted>
+          {status === 'chosen' && state.agent
+            ? `Chose ${CODER_AGENT_LABELS[state.agent]} with ${state.model ?? 'its model'}${
+                state.remember ? ', saved as your default' : ''
+              }.`
+            : 'Not started.'}
+        </Label>
+      )}
+    </>
+  );
 }

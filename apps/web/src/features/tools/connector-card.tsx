@@ -1,4 +1,13 @@
-import { Button, cn, Input } from '@openbots/ui';
+import {
+  Button,
+  cn,
+  IconButton,
+  Input,
+  RefreshIcon,
+  SlidersIcon,
+  TrashIcon,
+  WrenchIcon,
+} from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import {
@@ -70,10 +79,10 @@ export function ConnectorCard({
         highlighted && 'ring-2 ring-ring',
       )}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <ConnectorIcon icon={entry?.icon} name={connector.name} />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="font-medium">{connector.name}</span>
+        <div className="flex min-w-32 flex-1 flex-col gap-0.5">
+          <span className="truncate font-medium">{connector.name}</span>
           <span
             className={cn(
               'text-xs',
@@ -88,53 +97,57 @@ export function ConnectorCard({
             {connector.local && <span className="text-muted-foreground"> · on my network</span>}
           </span>
         </div>
+        {!blocked && action && (
+          <Button
+            size="sm"
+            disabled={signIn.phase === 'working' || signIn.phase === 'device'}
+            onClick={() => {
+              setPanel(null);
+              connect(async () => connector);
+            }}
+          >
+            {action}
+          </Button>
+        )}
+        <div className="flex shrink-0 items-center gap-0.5">
+          {!blocked && isMcp(connector) && (
+            <IconButton
+              label={test.isPending ? 'Testing…' : 'Test'}
+              busy={test.isPending}
+              onClick={() => test.mutate(connector.id)}
+            >
+              <RefreshIcon />
+            </IconButton>
+          )}
+          {!blocked && isMcp(connector) && (
+            <IconButton
+              label="Tools"
+              aria-pressed={panel === 'tools'}
+              onClick={() => toggle('tools')}
+            >
+              <WrenchIcon />
+            </IconButton>
+          )}
+          {!blocked && (
+            <IconButton
+              label="Settings"
+              aria-pressed={panel === 'settings'}
+              onClick={() => toggle('settings')}
+            >
+              <SlidersIcon />
+            </IconButton>
+          )}
+          <IconButton
+            label={`Delete ${connector.name}`}
+            aria-pressed={panel === 'delete'}
+            onClick={() => toggle('delete')}
+          >
+            <TrashIcon />
+          </IconButton>
+        </div>
       </div>
       {connector.lastError && !blocked && (
         <p className="break-words text-xs text-destructive">{connector.lastError}</p>
-      )}
-      {!blocked && (
-        <div className="flex flex-wrap gap-1.5">
-          {isMcp(connector) && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={test.isPending}
-              onClick={() => test.mutate(connector.id)}
-            >
-              {test.isPending ? 'Testing…' : 'Test'}
-            </Button>
-          )}
-          {action && (
-            <Button
-              size="sm"
-              disabled={signIn.phase === 'working' || signIn.phase === 'device'}
-              onClick={() => {
-                setPanel(null);
-                connect(async () => connector);
-              }}
-            >
-              {action}
-            </Button>
-          )}
-          {isMcp(connector) && (
-            <Button size="sm" variant="ghost" onClick={() => toggle('tools')}>
-              Tools
-            </Button>
-          )}
-          <Button size="sm" variant="ghost" onClick={() => toggle('settings')}>
-            Settings
-          </Button>
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => toggle('delete')}>
-            Delete
-          </Button>
-        </div>
-      )}
-      {blocked && (
-        <div>
-          <Button size="sm" variant="ghost" onClick={() => toggle('delete')}>
-            Delete
-          </Button>
-        </div>
       )}
       {admin && !blocked && connector.kind === 'mcp_http' && (
         <LocalNetworkSetting connector={connector} />
@@ -173,21 +186,20 @@ export function ConnectorCard({
         />
       )}
       {panel === 'delete' && (
-        <div className="flex items-center gap-2 border-t pt-2">
+        <div className="flex flex-wrap items-center gap-2 border-t pt-2">
           <span className="text-muted-foreground">
             Delete {connector.name}, its login and its per-Bot settings?
           </span>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setPanel(null)}>
+            Cancel
+          </Button>
           <Button
             size="sm"
             variant="destructive"
-            className="ml-auto"
             disabled={remove.isPending}
             onClick={() => remove.mutate()}
           >
             Delete
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setPanel(null)}>
-            Cancel
           </Button>
         </div>
       )}

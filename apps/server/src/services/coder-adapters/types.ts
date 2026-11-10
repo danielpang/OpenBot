@@ -6,7 +6,7 @@ import type {
   PolicyDecision,
 } from '@openbots/shared';
 
-// One adapter per coding agent (docs/TECHNICAL_PLAN.md 22.2 and 22.13; I10).
+// One adapter per coding agent (docs/plans/TECHNICAL_PLAN.md 22.2 and 22.13; I10).
 // An adapter knows how to launch its CLI headless in a worktree, how to read
 // the CLI's structured output into the shared `CoderEvent` form, how to resume
 // a session, how the vendor's own sign-in runs and how to ask the CLI whether
@@ -59,7 +59,11 @@ export interface CoderSessionSpec {
    * names it in the CLI's own config.
    */
   apiKeyBaseUrl?: string;
+  /** Explicit edit acceptance; absent preserves the vendor defaults. */
+  acceptEdits?: boolean;
   maxTurns: number;
+  /** Match publishing-tool timeouts to the owner's approval window. */
+  approvalTtlMs?: number;
   /**
    * The policy's answer per action class. No adapter pre-allows anything
    * from it today: every prompt meets `classify` and `coderActionDecision`.

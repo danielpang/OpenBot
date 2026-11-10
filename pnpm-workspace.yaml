@@ -12,6 +12,7 @@ allowBuilds:
   cpu-features: false
   electron-winstaller: false
   protobufjs: false
+  '@google/genai': false # pi test runtime; the image also skips this no-op script.
   ssh2: false
 
 catalog:
@@ -97,8 +98,7 @@ minimumReleaseAgeExclude:
   - turbo@2.11.8
   - bullmq@6.3.15
 
-# Patched transitive versions for `pnpm audit` (plan 18.9 dependency audit,
-# docs/SECURITY.md). Drop an entry once its parent ships the fix itself.
+# Patched transitive versions for `pnpm audit` (plan 18.9 dependency audit). Drop an entry once its parent ships the fix itself.
 overrides:
   '@esbuild-kit/core-utils>esbuild': ^0.25.12
   'body-parser@>=2.0.0 <2.4.0': ^2.4.0
@@ -114,7 +114,7 @@ overrides:
   'glob@>=9.0.0 <14.0.2': ^14.0.2
   'esbuild@>=0.27.3 <0.28.1': ^0.28.1
 
-# Advisories `pnpm audit` may ignore, each with the reason (docs/SECURITY.md).
+# Advisories `pnpm audit` may ignore, each with the reason.
 # GHSA-g3hv-75wg-m249 (minimatch < 11.0.1, glob pattern denial of service):
 # only development and packaging tools reach minimatch (ESLint, electron-builder,
 # Redocly); `pnpm audit --prod` is clean. Their callers need the 3.x, 5.x and

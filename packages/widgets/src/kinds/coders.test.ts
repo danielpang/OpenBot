@@ -252,3 +252,86 @@ describe('coder_login widget', () => {
     }
   });
 });
+
+describe('coder_choice widget (CA9)', () => {
+  const props = {
+    agents: [
+      { agent: 'claude', signed_in: true, model: 'sonnet' },
+      { agent: 'codex', signed_in: false },
+    ],
+    agent: 'claude',
+    repo: 'openbots/relay',
+    prompt_excerpt: 'Fix the reconnect loop',
+  };
+
+  it('validates its props and actions, and only the system posts it', () => {
+    expect(validateWidgetProps('coder_choice', props).ok).toBe(true);
+    expect(validateWidgetProps('coder_choice', { ...props, agents: [] }).ok).toBe(false);
+    expect(
+      validateWidgetProps('coder_choice', {
+        ...props,
+        agents: [{ agent: 'claude', signed_in: true, model: '--yolo' }],
+      }).ok,
+    ).toBe(false);
+    expect(validateBotWidget('coder_choice', props).ok).toBe(false);
+    expect(
+      validateWidgetAction('coder_choice', {
+        type: 'choose',
+        agent: 'codex',
+        model: 'gpt-5.3-codex',
+      }).ok,
+    ).toBe(true);
+    expect(validateWidgetAction('coder_choice', { type: 'cancel' }).ok).toBe(true);
+    expect(validateWidgetAction('coder_choice', { type: 'choose', agent: 'codex' }).ok).toBe(false);
+    expect(
+      validateWidgetAction('coder_choice', { type: 'choose', agent: 'codex', model: 'a b' }).ok,
+    ).toBe(false);
+  });
+
+  it('records the choice once, only for an agent it offers', () => {
+    const chosen = reduceWidget(
+      'coder_choice',
+      undefined,
+      { type: 'choose', agent: 'codex', model: 'gpt-5.3-codex', remember: true },
+      props,
+    );
+    expect(chosen).toEqual({
+      ok: true,
+      value: { status: 'chosen', agent: 'codex', model: 'gpt-5.3-codex', remember: true },
+    });
+    const again = reduceWidget(
+      'coder_choice',
+      chosen.ok ? chosen.value : undefined,
+      { type: 'cancel' },
+      props,
+    );
+    expect(again.ok).toBe(false);
+    const notOffered = reduceWidget(
+      'coder_choice',
+      undefined,
+      { type: 'choose', agent: 'pi', model: 'sonnet' },
+      props,
+    );
+    expect(notOffered).toMatchObject({ ok: false, invalid: true });
+  });
+
+  it('tells the waiting run what was chosen, or that nothing was', () => {
+    expect(
+      widgetToolResult('coder_choice', {
+        status: 'chosen',
+        agent: 'codex',
+        model: 'gpt-5.3-codex',
+        remember: false,
+      }),
+    ).toMatchObject({
+      chosen: true,
+      agent: 'codex',
+      model: 'gpt-5.3-codex',
+      saved_as_default: false,
+      note: expect.stringContaining('agent "codex" and model "gpt-5.3-codex"'),
+    });
+    expect(widgetToolResult('coder_choice', { status: 'cancelled' })).toMatchObject({
+      chosen: false,
+    });
+  });
+});

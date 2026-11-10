@@ -3,7 +3,7 @@ import type { Context } from 'hono';
 import { collectDefaultMetrics, Counter, Gauge, Registry } from 'prom-client';
 import { SOCKET_KINDS, type BudgetSnapshot, type SocketKind } from './budget.js';
 
-// The relay's Prometheus metrics (docs/MOBILE_AND_VM_PLAN.md 5.8), served at
+// The relay's Prometheus metrics (docs/plans/MOBILE_AND_VM_PLAN.md 5.8), served at
 // `GET /metrics` behind `RELAY_METRICS_TOKEN` as the API server serves its
 // own. Counters are bumped where things happen; gauges read the live state
 // at scrape time from the sources the relay hands to `observe`, so nothing

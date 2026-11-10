@@ -22,6 +22,8 @@ export const DESKTOP_CHANNELS = {
   connectCheck: 'openbots:connect:check',
   connectServer: 'openbots:connect:server',
   connectLocal: 'openbots:connect:local',
+  /** Pairs this Mac with another OpenBots server, or another Mac's, from its pairing link. */
+  connectPair: 'openbots:connect:pair',
   /** How the app is connected, for the web app's indicator (the active server's page too). */
   connectionInfo: 'openbots:connection:info',
   connectionChange: 'openbots:connection:change',
@@ -67,17 +69,38 @@ export interface PlatformInfo {
 /**
  * How the app reaches its server: `local` runs the bundled stack on this Mac
  * in Docker; `cloud` is the hosted OpenBots server and `remote` a self-hosted
- * one. Both of those are thin clients that never touch Docker.
+ * one; `paired` is another OpenBots server, often another Mac's This Mac,
+ * that this Mac paired with as a device and reaches through its relay
+ * (docs/RELAY_PROTOCOL.md). All but `local` are thin clients that never touch
+ * Docker.
  */
-export type ProfileKind = 'local' | 'remote' | 'cloud';
+export type ProfileKind = 'local' | 'remote' | 'cloud' | 'paired';
+
+/** What a paired profile pins from the pairing link; the device's keys are kept apart, sealed. */
+export interface PairedServer {
+  /** The server's host id at the relay. */
+  hostId: string;
+  /** The relay's wss:// URL. */
+  relayUrl: string;
+  /** The server's tunnel key (X25519 public key, base64url), pinned for the Noise handshake. */
+  serverKey: string;
+  /** This Mac's device id on that server. */
+  deviceId: string;
+}
 
 /** A server the app can open: the local stack, the hosted server, or any tunnel or remote URL. */
 export interface ServerProfile {
   id: string;
   name: string;
-  /** The server's origin, e.g. `http://localhost:3000` or `https://openbots.example.com`. */
+  /**
+   * The server's origin, e.g. `http://localhost:3000` or
+   * `https://openbots.example.com`. A paired server's is the loopback address
+   * of the app's own proxy into its tunnel, e.g. `http://127.0.0.1:41234`.
+   */
   url: string;
   kind: ProfileKind;
+  /** A paired server's relay and keys; set for `paired` only. */
+  paired?: PairedServer;
 }
 
 export interface ProfilesView {
@@ -120,10 +143,14 @@ export interface LocalStackHealth {
   text: string;
 }
 
-/** How the app is connected, for the web app's indicator and the tray. */
+/**
+ * How the app is connected, for the web app's indicator and the tray. A
+ * paired server reports `remote`, which a web app of any version knows, with
+ * its own label and the server's name as the host.
+ */
 export interface ConnectionInfo {
-  kind: ProfileKind;
-  /** "This Mac", "Self-hosted" or "OpenBots account". */
+  kind: Exclude<ProfileKind, 'paired'>;
+  /** "This Mac", "Self-hosted", "Paired" or "OpenBots account". */
   label: string;
   /** The server's host, e.g. `openbots.example.com` or `localhost:3000`. */
   host: string;

@@ -45,12 +45,13 @@ const click = (selector: string) =>
   });
 
 describe('the welcome screen', () => {
-  it('shows the three choices, the account one plainly unavailable', async () => {
+  it('shows the choices, the account one plainly unavailable', async () => {
     await show(fakeBridge(), 'welcome=1');
     const titles = [...container.querySelectorAll('h2')].map((h) => h.textContent);
     expect(titles).toEqual([
       'Sign in to an OpenBots account',
       'Connect to a self-hosted server',
+      'Connect to another Mac',
       'Run OpenBots on this Mac',
     ]);
     expect($('#cloud-go')).toBeNull();
@@ -58,6 +59,14 @@ describe('the welcome screen', () => {
     expect(text()).toContain('OpenBots accounts are not available yet.');
     // The owner's copy rule: no em or en dashes.
     expect(text()).not.toMatch(/[–—]/);
+  });
+
+  it('pairs with another Mac from the link opened on this one', async () => {
+    const bridge = fakeBridge();
+    await show(bridge, `welcome=1&pair=${encodeURIComponent('openbots://pair#v=1')}`);
+    expect(($('#pair-link') as HTMLInputElement).value).toBe('openbots://pair#v=1');
+    await click('#pair-go');
+    expect(bridge.connect.pair).toHaveBeenCalledWith('openbots://pair#v=1');
   });
 
   it('offers sign in when the build names a hosted server', async () => {
@@ -137,6 +146,31 @@ describe('the status page', () => {
     expect($('#stack-start')).toBeNull();
     expect($('[aria-current="true"]')?.dataset.profile).toBe('local');
     expect(container.querySelectorAll('#profiles li')).toHaveLength(2);
+  });
+
+  it('lists a paired Mac by its relay, with Remove, and never asks Docker for it', async () => {
+    const paired = {
+      id: 'm',
+      name: "Ada's MacBook",
+      url: 'http://127.0.0.1:41234',
+      kind: 'paired' as const,
+      paired: {
+        hostId: 'abcdefghijklmnopqrstuvwxyz',
+        relayUrl: 'wss://openbots-relay.fly.dev',
+        serverKey: 'A'.repeat(43),
+        deviceId: 'device-1',
+      },
+    };
+    const bridge = fakeBridge({
+      profiles: { activeId: 'm', chosen: true, profiles: [local, paired] },
+    });
+    await show(bridge, 'profile=m&error=offline');
+    const row = $('[data-profile="m"]')!;
+    expect(row.textContent).toContain('Paired · via openbots-relay.fly.dev');
+    expect(row.querySelector('[data-kind="paired"]')).not.toBeNull();
+    await click('[data-profile="m"] button[aria-label="Remove Ada\'s MacBook"]');
+    expect(bridge.profiles.remove).toHaveBeenCalledWith('m');
+    expect(bridge.stack.status).not.toHaveBeenCalled();
   });
 
   it('says why the server did not open, with Try again', async () => {

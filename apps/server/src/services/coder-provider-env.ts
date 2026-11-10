@@ -9,7 +9,7 @@ import type { schema } from '../db/client.js';
 import type { ProviderRow } from './providers.js';
 
 // An `api_key` account's provider key on its way to the CLI
-// (docs/TECHNICAL_PLAN.md 22.13, "Provider keys"): which variables carry it,
+// (docs/plans/TECHNICAL_PLAN.md 22.13, "Provider keys"): which variables carry it,
 // how the session is billed, and the mask it reads as wherever the session's
 // output is kept or shown.
 
@@ -42,7 +42,7 @@ const notUsable = (label: string, provider: Pick<CoderProvider, 'name'>, why: st
   new DomainError(
     400,
     'CODER_PROVIDER_UNSUPPORTED',
-    `${label} cannot use the ${provider.name} key: ${why}. Pick another provider under Settings > Coding agents, or sign in with a plan.`,
+    `${label} cannot use the ${provider.name} key: ${why}. Pick another provider under Settings > Models, or sign in with a plan.`,
   );
 
 /** pi's variable per native provider kind (CODER_PROVIDER_KINDS.pi lists the same kinds). */

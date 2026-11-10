@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COMPUTER_HOME } from '@openbots/computer';
-import { CODERS_QUEUE } from '@openbots/shared';
+import { CODERS_QUEUE, ToolPolicySchema } from '@openbots/shared';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { schema } from '../db/client.js';
@@ -80,7 +80,24 @@ describe('coding agent accounts and their sessions', () => {
     await w.close();
   });
 
-  const run = (sessionId: string) => w.runToEnd(sessionId);
+  const run = async (sessionId: string) => {
+    // Account tests do not authorize publishing. Completion must respect this denial.
+    const [bot] = await w.t.db.select().from(schema.bots).where(eq(schema.bots.id, w.bot.id));
+    const policy = ToolPolicySchema.parse(bot!.toolPolicy ?? {});
+    await w.t.db
+      .update(schema.bots)
+      .set({
+        toolPolicy: {
+          ...policy,
+          coder: {
+            ...policy.coder,
+            actions: { ...policy.coder?.actions, push: 'deny', pr: 'deny' },
+          },
+        },
+      })
+      .where(eq(schema.bots.id, w.bot.id));
+    return w.runToEnd(sessionId);
+  };
   const setAccount: CoderWorld['setAccount'] = (agent, set) => w.setAccount(agent, set);
   const claudeSuccess = () => {
     w.coder.agent = (io) => {
@@ -364,12 +381,44 @@ describe('coding agent accounts and their sessions', () => {
     expect(stored).toMatchObject({ authKind: 'subscription', lastError: null });
   });
 
+  it('marks a negative subscription check as requiring reconnect without enabling API billing', async () => {
+    await setAccount('codex', { authKind: 'subscription', lastError: null });
+    w.coder.agent = (io) => {
+      io.stdout('Not logged in\n');
+      io.exit(1);
+    };
+    const response = await w.call('POST', '/coders/codex/check');
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { account: unknown }).account).toMatchObject({
+      authKind: 'subscription',
+      needsSignIn: true,
+      lastErrorKind: 'sign_in',
+    });
+  });
+
+  it('does not switch a selected subscription to API billing when Check finds an API login instead', async () => {
+    await setAccount('codex', { authKind: 'subscription', lastError: null });
+    w.coder.agent = (io) => {
+      io.stdout('Logged in using an API key');
+      io.exit(0);
+    };
+    const response = await w.call('POST', '/coders/codex/check');
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { account: unknown }).account).toMatchObject({
+      authKind: 'subscription',
+      needsSignIn: true,
+    });
+  });
+
   it("signs each agent out of its own config directory and resumes with the adapter's command", async () => {
     w.coder.agent = (io) => io.exit(0);
     const before = w.coder.calls.length;
     expect((await w.call('POST', '/coders/codex/sign-out')).status).toBe(200);
-    const signOut = w.coder.calls.slice(before).find((c) => c.launch.command === 'sh')!;
-    expect(signOut.launch.args?.at(-1)).toMatch(/\/coders\/codex$/);
+    const signOut = w.coder.calls.slice(before).find((c) => c.launch.command === 'node')!;
+    expect(signOut.launch.args).toEqual([
+      expect.stringMatching(/subscription-sign-out\.js$/),
+      'codex',
+    ]);
     const { sessionId } = await w.newSession({
       agent: 'codex',
       worktreePath: '/home/bot/repos/acme/relay/.worktrees/x',
@@ -455,7 +504,7 @@ describe('coding agent accounts and their sessions', () => {
       login_id: login!.id,
       agent: 'pi',
       instructions:
-        'pi signs in from its own terminal. Open the Computer page, run pi, type /login and choose a provider. Then press Check under Settings > Coding agents.',
+        'pi signs in from its own terminal. Open the Computer page, run pi, type /login and choose a provider. Then press Check under Settings > Models.',
     });
     expect(await widgetState(message!.id)).toMatchObject({
       status: 'pending',

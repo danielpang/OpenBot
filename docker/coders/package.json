@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The coding agents the computer image carries, installed under /opt/openbots/coders from package-lock.json (I1, S-20). Pinned exactly; an image upgrade brings new versions.",
-  "license": "BUSL-1.1",
+  "license": "Apache-2.0",
   "dependencies": {
     "@anthropic-ai/claude-code": "2.1.318",
     "@earendil-works/pi-coding-agent": "1.5.0",

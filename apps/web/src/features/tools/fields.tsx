@@ -1,4 +1,4 @@
-import { Input } from '@openbots/ui';
+import { IconButton, Input, RotateIcon, TrashIcon } from '@openbots/ui';
 import type { ReactNode } from 'react';
 
 // Small form pieces the Connectors page shares. Secret inputs are write-only (P3):
@@ -57,13 +57,13 @@ export function SecretInputs({
             disabled={removing}
           />
           {secret.set && !secret.required && onToggleRemove && (
-            <button
-              type="button"
-              className="shrink-0 text-xs text-muted-foreground hover:underline"
+            <IconButton
+              label={removing ? 'Keep' : 'Remove'}
+              aria-pressed={removing}
               onClick={() => onToggleRemove(secret.name)}
             >
-              {removing ? 'Keep' : 'Remove'}
-            </button>
+              {removing ? <RotateIcon /> : <TrashIcon />}
+            </IconButton>
           )}
         </div>
       </Labelled>

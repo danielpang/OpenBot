@@ -1,4 +1,8 @@
-import type { CoderEvent } from '@openbots/shared';
+import {
+  CODER_PERMISSION_MCP,
+  DEFAULT_CODER_APPROVAL_TTL_MS,
+  type CoderEvent,
+} from '@openbots/shared';
 import { CLASS_RANK, classifyCommandLine, classifyPathAccess, strictest } from './classify.js';
 import {
   gitIdentityEnv,
@@ -25,7 +29,7 @@ import {
   type CoderSignInCheck,
 } from './types.js';
 
-// The Codex CLI (docs/TECHNICAL_PLAN.md 22.13; I10). A session runs
+// The Codex CLI (docs/plans/TECHNICAL_PLAN.md 22.13; I10). A session runs
 // `codex app-server`: JSON-RPC over stdio, one JSON object per line, with no
 // `jsonrpc` member on what the server writes. The runner keeps stdin open
 // (`transport: 'jsonrpc'`) and this adapter speaks the protocol:
@@ -43,7 +47,7 @@ import {
 // After `turn/completed` the session emits its result and the runner closes
 // stdin, on which app-server exits 0. The thread id (a UUIDv7) is the vendor
 // session id. The facts were checked against the pinned 0.166.0
-// (docs/CODING_AGENT_VENDORS.md).
+// (docs/plans/CODING_AGENT_VENDORS.md).
 //
 // Approvals: the policy is `on-request`. Codex runs commands and edits
 // inside its sandbox (`workspace-write`, or `read-only` to plan, the
@@ -64,7 +68,7 @@ import {
 type Sandbox = 'read-only' | 'workspace-write';
 
 const sandboxFor = (spec: CoderSessionSpec): Sandbox =>
-  spec.mode === 'plan' ? 'read-only' : 'workspace-write';
+  spec.mode === 'plan' || spec.acceptEdits === false ? 'read-only' : 'workspace-write';
 
 /** Codex asks before it leaves its sandbox. */
 const APPROVAL_POLICY = 'on-request';
@@ -93,6 +97,7 @@ const toml = (value: string) => JSON.stringify(value);
 function launch(spec: CoderSessionSpec): CoderLaunchPlan {
   const sandbox = sandboxFor(spec);
   const gitDir = gitDirOf(spec);
+  const approvalTtl = spec.approvalTtlMs ?? DEFAULT_CODER_APPROVAL_TTL_MS;
   // A plan sign-in uses the built-in provider and the sign-in in CODEX_HOME.
   // An API key comes in the environment (OPENAI_API_KEY), which app-server's
   // built-in provider does not read, so the session names a provider that
@@ -120,6 +125,9 @@ function launch(spec: CoderSessionSpec): CoderLaunchPlan {
     '-c',
     'sandbox_workspace_write.network_access=false',
     ...(gitDir ? ['-c', `sandbox_workspace_write.writable_roots=[${toml(gitDir)}]`] : []),
+    // Explicit session-local server; it needs no network or server credentials.
+    '-c',
+    `mcp_servers.openbots={command="node",args=[${toml(CODER_PERMISSION_MCP)}],enabled_tools=["publish_pull_request"],tool_timeout_sec=${Math.ceil(approvalTtl / 1000) + 60},env={OPENBOTS_CODER_SOCKET="{{session_dir}}/permission.sock",OPENBOTS_APPROVAL_TTL_MS=${toml(String(approvalTtl))}}}`,
     ...provider,
   ];
   // CODEX_HOME (the sign-in) is set by the computer agent; the prompt goes over stdin.
@@ -222,6 +230,7 @@ function codexProtocol(
   const sent = new Map<number, string>();
   /** The server's approval requests in flight, by our request id: its JSON-RPC id. */
   const prompts = new Map<string, string | number>();
+  const mcpPrompts = new Set<string>();
   const items = new Map<string, Started>();
   let threadId: string | undefined;
   /** The thread id when it is a UUID, the only kind reported. */
@@ -531,6 +540,42 @@ function codexProtocol(
       });
       return;
     }
+    // Codex Apps uses MCP elicitation for tool approval, not command approval.
+    // Only handle the known, empty confirmation form: never fabricate form answers.
+    const meta = isObject(params._meta) ? params._meta : {};
+    const schema = isObject(params.requestedSchema) ? params.requestedSchema : {};
+    if (
+      method === 'mcpServer/elicitation/request' &&
+      params.mode === 'form' &&
+      meta.codex_approval_kind === 'mcp_tool_call' &&
+      meta.tool_title === 'create_pull_request' &&
+      schema.type === 'object' &&
+      isObject(schema.properties) &&
+      Object.keys(schema.properties).length === 0 &&
+      (!Array.isArray(schema.required) || schema.required.length === 0)
+    ) {
+      const args = isObject(meta.tool_params) ? meta.tool_params : {};
+      prompts.set(requestId, id);
+      mcpPrompts.add(requestId);
+      io.approval({
+        request_id: requestId,
+        tool_name: `${str(params.serverName) ?? 'mcp'}.create_pull_request`,
+        input: args,
+        action: 'pr',
+        title: 'Create pull request',
+        detail: oneLine(
+          [
+            str(args.repository_full_name),
+            str(args.title),
+            str(args.head) && str(args.base) ? `${str(args.head)} → ${str(args.base)}` : '',
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          1000,
+        ),
+      });
+      return;
+    }
     // Anything else (a question for the user, an MCP elicitation, a tool the
     // client would run, a token refresh): not served, so Codex carries on
     // without it rather than waiting.
@@ -621,6 +666,16 @@ function codexProtocol(
       const id = prompts.get(requestId);
       if (id === undefined) return;
       prompts.delete(requestId);
+      if (mcpPrompts.delete(requestId)) {
+        send({
+          id,
+          result: {
+            action: decision === 'allow' ? 'accept' : 'decline',
+            content: decision === 'allow' ? {} : null,
+          },
+        });
+        return;
+      }
       // Codex takes a decision only; the owner's words stay in OpenBots.
       send({ id, result: { decision: decision === 'allow' ? 'accept' : 'decline' } });
     },
@@ -749,7 +804,7 @@ export const CODEX_POSTURE =
 
 /** What the owner sees when Codex's sign-in is refused by OpenAI (a 401); the raw text is logged. */
 export const CODEX_SIGN_IN_REFUSED =
-  'Codex could not sign in to OpenAI. Sign in again under Settings > Coding agents.';
+  'Codex could not sign in to OpenAI. Sign in again under Settings > Models.';
 
 /** OpenAI's 429, in Codex's words or the API's (`rate_limit_exceeded`). */
 const RATE_LIMITED = /\b429\b|rate[ _-]?limit|too many requests/i;

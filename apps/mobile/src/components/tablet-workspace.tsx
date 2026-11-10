@@ -14,9 +14,15 @@ export function TabletWorkspace({ children }: PropsWithChildren) {
   const wide = useTabletLayout();
   const mobile = useMobile();
   const segments = useSegments();
-  const workspaceRoute = ['(tabs)', 'bot', 'chat', 'artifact', 'licenses'].includes(
-    segments[0] ?? '',
-  );
+  const workspaceRoute = [
+    '(tabs)',
+    'bot',
+    'chat',
+    'artifact',
+    'licenses',
+    'coding-session',
+    'skills',
+  ].includes(segments[0] ?? '');
   const sidebar = wide && mobile.ready && !!mobile.host && workspaceRoute;
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
@@ -53,6 +59,7 @@ function TabletSidebar() {
           [
             ['bots', 'Bots', 'chatbubbles-outline'],
             ['inbox', 'Inbox', 'file-tray-outline'],
+            ['coding', 'Code', 'code-slash-outline'],
             ['settings', 'Settings', 'settings-outline'],
           ] as const
         ).map(([route, label, icon]) => {

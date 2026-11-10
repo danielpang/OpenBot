@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "MCP client manager, catalog, OAuth, McpHost implementations",
-  "license": "BUSL-1.1",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {

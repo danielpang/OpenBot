@@ -6,7 +6,9 @@ import {
   CODE_TASK_PROMPT_MAX,
   CODER_UNAVAILABLE,
   CodeTaskInputSchema,
+  coderChoiceProps,
   defaultCoderAgent,
+  resolveCoderChoice,
   type CoderAccountView,
   type CoderServices,
   type CoderStartInput,
@@ -37,12 +39,13 @@ const relay: RepoRef = {
 
 function coder(
   more: { accounts?: CoderAccountView[]; started?: Partial<CoderStarted> } & Partial<
-    Pick<CoderServices, 'defaultAgent' | 'start'>
+    Pick<CoderServices, 'defaultAgent' | 'models' | 'start'>
   > = {},
 ) {
   const started: CoderStartInput[] = [];
   const services: CoderServices = {
     ...(more.defaultAgent ? { defaultAgent: more.defaultAgent } : {}),
+    ...(more.models ? { models: more.models } : {}),
     repos: async () => [relay],
     accounts: async () => more.accounts ?? [],
     start:
@@ -140,16 +143,92 @@ describe('code_task', () => {
     ]);
   });
 
-  it('defaults to edit mode and the default agent, and finds a repository by id', async () => {
-    const { services, started } = coder({ defaultAgent: 'pi' });
+  it("defaults to edit mode and the Bot's agent and model, and finds a repository by id", async () => {
+    const { services, started } = coder({ defaultAgent: 'pi', models: { pi: 'sonnet' } });
     await call({ repo: 'repo-1', prompt: 'Add a test' }, ctx(services));
     expect(started).toEqual([
-      { agent: 'pi', repo: 'danielpang/openbots-relay', prompt: 'Add a test', mode: 'edit' },
+      {
+        agent: 'pi',
+        model: 'sonnet',
+        repo: 'danielpang/openbots-relay',
+        prompt: 'Add a test',
+        mode: 'edit',
+      },
+    ]);
+  });
+
+  it("falls back to the owner's default agent and model (CA9)", async () => {
+    const { services, started } = coder({
+      accounts: [
+        { agent: 'claude', authKind: 'subscription', model: 'opus' },
+        { agent: 'codex', authKind: 'subscription', isDefault: true, model: 'gpt-5.3-codex' },
+      ],
+    });
+    await call({ repo: relay.full_name, prompt: 'x' }, ctx(services));
+    await call({ agent: 'claude', repo: relay.full_name, prompt: 'y' }, ctx(services));
+    expect(started.map((s) => [s.agent, s.model])).toEqual([
+      ['codex', 'gpt-5.3-codex'],
+      ['claude', 'opus'],
+    ]);
+  });
+
+  it('asks the owner to choose when no agent or model is set, and starts nothing (CA9)', async () => {
+    const { services, started } = coder({
+      accounts: [
+        { agent: 'claude', authKind: 'subscription' },
+        { agent: 'codex', authKind: 'none', model: 'gpt-5.3-codex' },
+        { agent: 'pi', authKind: 'none', available: false },
+      ],
+    });
+    const thrown = await call(
+      { repo: relay.full_name, prompt: 'Fix   the\nreconnect loop' },
+      ctx(services),
+    );
+    expect(thrown).toBeInstanceOf(WaitFor);
+    expect((thrown as WaitFor).request).toEqual({
+      reason: 'widget',
+      widget: {
+        kind: 'coder_choice',
+        props: {
+          agents: [
+            { agent: 'claude', signed_in: true },
+            { agent: 'codex', signed_in: false, model: 'gpt-5.3-codex' },
+          ],
+          repo: relay.full_name,
+          prompt_excerpt: 'Fix the reconnect loop',
+        },
+      },
+      label: 'Waiting for you to choose a coding agent',
+    });
+    // An agent named without a model: still asked, with that agent first.
+    const named = await call(
+      { agent: 'claude', repo: relay.full_name, prompt: 'x' },
+      ctx(services),
+    );
+    expect((named as WaitFor).request.widget.props).toMatchObject({ agent: 'claude' });
+    expect(started).toEqual([]);
+  });
+
+  it('continues a session without asking: it keeps its own agent and model', async () => {
+    const { services, started } = coder();
+    await call({ repo: relay.full_name, prompt: 'More', session_id: SESSION }, ctx(services));
+    expect(started).toEqual([
+      {
+        agent: 'claude',
+        repo: relay.full_name,
+        prompt: 'More',
+        mode: 'edit',
+        session_id: SESSION,
+      },
     ]);
   });
 
   it('waits on a sign-in widget when the server returns one', async () => {
-    const { services } = coder({ started: { kind: 'coder_login', label: 'Waiting for sign-in' } });
+    const { services } = coder({
+      defaultAgent: 'claude',
+      models: { claude: 'sonnet' },
+      started: { kind: 'coder_login', label: 'Waiting for sign-in' },
+    });
     const thrown = await call({ repo: relay.full_name, prompt: 'x' }, ctx(services));
     expect((thrown as WaitFor).request).toMatchObject({
       widget: { kind: 'coder_login' },
@@ -176,6 +255,8 @@ describe('code_task', () => {
 
   it("passes the server's refusal on as the tool's error", async () => {
     const { services } = coder({
+      defaultAgent: 'claude',
+      models: { claude: 'sonnet' },
       start: async () => {
         throw new Error('Coding agents are turned off for this Bot');
       },
@@ -186,8 +267,54 @@ describe('code_task', () => {
   });
 });
 
+describe('resolveCoderChoice and coderChoiceProps (CA9)', () => {
+  const accounts: CoderAccountView[] = [
+    { agent: 'claude', authKind: 'subscription', model: 'opus' },
+    { agent: 'codex', authKind: 'api_key', isDefault: true },
+  ];
+
+  it("takes the call's, then the Bot's, then the owner's agent and model", () => {
+    expect(resolveCoderChoice({}, accounts)).toEqual({ agent: 'codex' });
+    expect(resolveCoderChoice({ models: { codex: 'gpt-5.3-codex' } }, accounts)).toEqual({
+      agent: 'codex',
+      model: 'gpt-5.3-codex',
+    });
+    expect(resolveCoderChoice({ defaultAgent: 'claude' }, accounts)).toEqual({
+      agent: 'claude',
+      model: 'opus',
+    });
+    expect(
+      resolveCoderChoice({ defaultAgent: 'claude', models: { claude: 'sonnet' } }, accounts, {
+        model: 'haiku',
+      }),
+    ).toEqual({ agent: 'claude', model: 'haiku' });
+    expect(resolveCoderChoice({}, [])).toEqual({});
+  });
+
+  it("offers the Bot's model over the owner's, and clips the task", () => {
+    const props = coderChoiceProps(
+      { models: { claude: 'sonnet' } },
+      accounts,
+      {},
+      { repo: 'a/b', prompt: 'x'.repeat(400) },
+    ) as { agents: unknown[]; prompt_excerpt: string };
+    expect(props.agents).toEqual([
+      { agent: 'claude', signed_in: true, model: 'sonnet' },
+      { agent: 'codex', signed_in: true },
+      { agent: 'pi', signed_in: false },
+    ]);
+    expect(props.prompt_excerpt).toHaveLength(300);
+    expect(props.prompt_excerpt.endsWith('…')).toBe(true);
+  });
+});
+
 describe('defaultCoderAgent', () => {
-  it("takes the Bot's default, else the first agent signed in, else Claude Code", async () => {
+  it("takes the Bot's default, else the owner's, else the first agent signed in, else Claude Code", async () => {
+    expect(
+      await defaultCoderAgent(
+        coder({ accounts: [{ agent: 'pi', authKind: 'none', isDefault: true }] }).services,
+      ),
+    ).toBe('pi');
     const accounts: CoderAccountView[] = [
       { agent: 'claude', authKind: 'none' },
       { agent: 'pi', authKind: 'api_key' },

@@ -3,10 +3,12 @@ import {
   CODER_AGENTS,
   CoderAgentSchema,
   CoderModeSchema,
+  CoderModelNameSchema,
   type CoderAgent,
   type CoderAuthKind,
   type CoderMode,
 } from '@openbots/shared';
+import { validateWidgetProps } from '@openbots/widgets';
 import { z } from 'zod';
 import { WaitFor } from '../gated.js';
 import { defineTool, type AnyAgentTool, type ToolGroup } from './types.js';
@@ -38,6 +40,12 @@ export interface CoderAccountView {
   authKind: CoderAuthKind;
   /** The account as the agent names it: an email, or the plan. */
   label?: string;
+  /** The owner's default agent (Settings > Coding agents). */
+  isDefault?: boolean;
+  /** The owner's default model for this agent (Settings > Coding agents). */
+  model?: string;
+  /** False when this build cannot run the agent; absent means it can. */
+  available?: boolean;
 }
 
 export interface CoderStartInput {
@@ -50,6 +58,11 @@ export interface CoderStartInput {
   /** What the branch starts from; the repository's default branch when absent. */
   base?: string;
   mode: CoderMode;
+  /**
+   * The model the session runs with, as the agent's CLI names it; kept on
+   * the session, so a continued session keeps its own and ignores this.
+   */
+  model?: string;
   /** A session to continue instead of starting a new one. */
   session_id?: string;
 }
@@ -72,6 +85,8 @@ export interface CoderStarted {
 export interface CoderServices {
   /** The Bot's `coder.defaultAgent` (CA9), when the owner set one. */
   defaultAgent?: CoderAgent;
+  /** The Bot's `coder.models` (CA9): a model per agent, where the owner set one. */
+  models?: Partial<Record<CoderAgent, string>>;
   /** The repositories this Bot may use: the owner's, narrowed by `coder.allowedRepos`. */
   repos(): Promise<RepoRef[]>;
   accounts(): Promise<CoderAccountView[]>;
@@ -84,8 +99,12 @@ export const CODE_TASK_PROMPT_MAX = 8_000;
 
 export const CodeTaskInputSchema = z.object({
   agent: CoderAgentSchema.optional().describe(
-    'The coding agent: claude (Claude Code), codex (Codex) or pi. Omit to use the default: ' +
-      "the Bot's default agent, else the first one signed in",
+    'The coding agent: claude (Claude Code), codex (Codex) or pi. Only when the owner named ' +
+      'one; omit to use their default. With no default set, the owner is asked to choose',
+  ),
+  model: CoderModelNameSchema.optional().describe(
+    "The model, as the agent's CLI names it. Only one the owner named or chose; omit to use " +
+      'their default. With no default set, the owner is asked to choose',
   ),
   repo: z
     .string()
@@ -133,17 +152,72 @@ export type CodeTaskInput = z.infer<typeof CodeTaskInputSchema>;
 export const CODER_UNAVAILABLE = 'Coding agents are not available on this server';
 
 /**
- * The agent a task runs with when the call names none: the Bot's default,
- * else the first agent signed in on the computer, else Claude Code, whose
- * sign-in the server then asks for.
+ * The agent and model a new task runs with (CA9): what the call names,
+ * else the Bot's settings, else the owner's defaults from Settings > Coding
+ * agents. Either can be missing, and then `code_task` asks the owner.
  */
+export function resolveCoderChoice(
+  services: Pick<CoderServices, 'defaultAgent' | 'models'>,
+  accounts: readonly CoderAccountView[],
+  call: { agent?: CoderAgent; model?: string } = {},
+): { agent?: CoderAgent; model?: string } {
+  const agent =
+    call.agent ?? services.defaultAgent ?? accounts.find((a) => a.isDefault)?.agent ?? undefined;
+  if (!agent) return {};
+  const model =
+    call.model ?? services.models?.[agent] ?? accounts.find((a) => a.agent === agent)?.model;
+  return model ? { agent, model } : { agent };
+}
+
+/** The agent a continued session's call is sent with; the server keeps the session's own. */
 export async function defaultCoderAgent(services: CoderServices): Promise<CoderAgent> {
   if (services.defaultAgent) return services.defaultAgent;
   const accounts = await services.accounts();
-  const signedIn = CODER_AGENTS.find((agent) =>
-    accounts.some((a) => a.agent === agent && a.authKind !== 'none'),
+  return (
+    accounts.find((a) => a.isDefault)?.agent ??
+    CODER_AGENTS.find((agent) =>
+      accounts.some((a) => a.agent === agent && a.authKind !== 'none'),
+    ) ??
+    'claude'
   );
-  return signedIn ?? 'claude';
+}
+
+/** The longest task excerpt the `coder_choice` card shows. */
+const EXCERPT_MAX = 300;
+
+/**
+ * The `coder_choice` card (CA9) for a task with no agent or model set: every
+ * agent this build runs, with whether it is signed in and the model already
+ * set for it, the one already named offered first.
+ */
+export function coderChoiceProps(
+  services: Pick<CoderServices, 'models'>,
+  accounts: readonly CoderAccountView[],
+  chosen: { agent?: CoderAgent },
+  task: { repo: string; prompt: string },
+): unknown {
+  const agents = CODER_AGENTS.flatMap((agent) => {
+    const account = accounts.find((a) => a.agent === agent);
+    if (account?.available === false) return [];
+    const model = services.models?.[agent] ?? account?.model;
+    return [
+      { agent, signed_in: !!account && account.authKind !== 'none', ...(model ? { model } : {}) },
+    ];
+  });
+  const excerpt = task.prompt.replace(/\s+/g, ' ').trim();
+  return {
+    agents,
+    ...(chosen.agent && agents.some((a) => a.agent === chosen.agent)
+      ? { agent: chosen.agent }
+      : {}),
+    repo: task.repo,
+    ...(excerpt
+      ? {
+          prompt_excerpt:
+            excerpt.length > EXCERPT_MAX ? `${excerpt.slice(0, EXCERPT_MAX - 1)}…` : excerpt,
+        }
+      : {}),
+  };
 }
 
 /** The Bot's repository a call names, by id or full name (any case). */
@@ -179,8 +253,33 @@ export const codeTask = defineTool({
     const repos = await coder.repos();
     const repo = findRepo(repos, args.repo);
     if (!repo) throw new Error(unknownRepo(args.repo, repos));
+    let agent: CoderAgent;
+    let model: string | undefined;
+    if (args.session_id) {
+      // A continued session keeps its own agent and model (the server's).
+      agent = args.agent ?? (await defaultCoderAgent(coder));
+    } else {
+      const accounts = await coder.accounts();
+      const chosen = resolveCoderChoice(coder, accounts, args);
+      if (!chosen.agent || !chosen.model) {
+        const props = coderChoiceProps(coder, accounts, chosen, {
+          repo: repo.full_name,
+          prompt: args.prompt,
+        });
+        const checked = validateWidgetProps('coder_choice', props);
+        if (!checked.ok) throw new Error(checked.error);
+        throw new WaitFor({
+          reason: 'widget',
+          widget: { kind: 'coder_choice', props: checked.value },
+          label: 'Waiting for you to choose a coding agent',
+        });
+      }
+      agent = chosen.agent;
+      model = chosen.model;
+    }
     const input: CoderStartInput = {
-      agent: args.agent ?? (await defaultCoderAgent(coder)),
+      agent,
+      ...(model ? { model } : {}),
       repo: repo.full_name,
       prompt: args.prompt,
       mode: args.mode ?? 'edit',

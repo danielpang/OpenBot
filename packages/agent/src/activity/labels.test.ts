@@ -50,6 +50,15 @@ describe('activity labels', () => {
     expect(labelFor('web_search', { query: 'toFixed' })).toBe("Searching web 'toFixed'");
   });
 
+  it('news_search', () => {
+    expect(labelFor('news_search', { query: 'rate decision' }, { results: [] })).toBe(
+      "Searched news 'rate decision'",
+    );
+    expect(labelFor('news_search', { query: 'rate decision' })).toBe(
+      "Searching news 'rate decision'",
+    );
+  });
+
   it('MCP tool: connector name plus tool title', () => {
     expect(
       labelFor('github__create_issue', {}, undefined, {

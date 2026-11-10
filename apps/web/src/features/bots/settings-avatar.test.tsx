@@ -31,6 +31,7 @@ const server = vi.hoisted(() => {
     realFetch: globalThis.fetch,
     bots: [] as Record<string, unknown>[],
     patches: [] as Record<string, unknown>[],
+    patchGate: undefined as Promise<void> | undefined,
   };
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
@@ -38,6 +39,7 @@ const server = vi.hoisted(() => {
     if (request.method === 'PATCH' && path.startsWith('/api/v1/bots/')) {
       const body = (await request.json()) as Record<string, unknown>;
       state.patches.push(body);
+      await state.patchGate;
       state.bots = state.bots.map((b) => ({ ...b, ...body }));
       return Response.json(state.bots[0]);
     }
@@ -81,6 +83,7 @@ let host: HTMLElement;
 beforeEach(async () => {
   server.bots = [bot];
   server.patches = [];
+  server.patchGate = undefined;
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
@@ -137,6 +140,29 @@ describe('Settings avatar', () => {
     expect(server.patches[0]).toMatchObject({
       avatar: { kind: 'generated', seed: 'scout', shape: 'rounded' },
     });
+  });
+
+  it('distinguishes an in-flight save from a persisted profile', async () => {
+    let finish!: () => void;
+    server.patchGate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    act(() => button('Box').click());
+    const save = button('Save');
+    act(() => save.click());
+    try {
+      await until(() => save.getAttribute('aria-busy') === 'true', 'pending save');
+      expect(save.disabled).toBe(true);
+      expect(save.textContent).toBe('Saving…');
+      expect(server.bots[0]?.avatar).toMatchObject({ shape: 'bean' });
+    } finally {
+      await act(async () => finish());
+    }
+    await until(() => save.getAttribute('aria-busy') === 'false', 'persisted save');
+    expect(save.textContent).toBe('Save');
+    expect(save.disabled).toBe(true);
+    expect(server.bots[0]?.avatar).toMatchObject({ shape: 'rounded' });
+    expect(button('Box').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('keeps the shape when the rest is shuffled', () => {

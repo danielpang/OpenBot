@@ -10,7 +10,7 @@ import {
   TOKEN_USERNAME,
 } from './git-connections.js';
 
-// Git credentials for the computer (I5, GH7; docs/TECHNICAL_PLAN.md 22.4
+// Git credentials for the computer (I5, GH7; docs/plans/TECHNICAL_PLAN.md 22.4
 // and 22.12). git on the computer asks openbots-git-credential, which asks
 // the agent, which sends a `credential_request` over the session's socket;
 // the runner answers it from here. The token never touches the computer's

@@ -20,3 +20,6 @@ backups/
 **/.env
 **/.env.*
 !**/.env.example
+# The mobile app reserves all rights (apps/mobile/LICENSE) and the managed
+# server does not depend on it.
+apps/mobile/

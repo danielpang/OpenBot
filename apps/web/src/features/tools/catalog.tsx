@@ -1,4 +1,4 @@
-import { Button, Input } from '@openbots/ui';
+import { Button, CheckIcon, CopyIcon, IconButton, Input } from '@openbots/ui';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRef, useState, type FormEvent } from 'react';
 import { blockedText, useManaged } from '../../app/deployment.js';
@@ -487,9 +487,8 @@ function CallbackUrl({ url }: { url: string }) {
           className="font-mono text-xs"
           onFocus={(e) => e.currentTarget.select()}
         />
-        <Button
-          type="button"
-          size="sm"
+        <IconButton
+          label="Copy"
           variant="outline"
           onClick={() => {
             void navigator.clipboard?.writeText(url).then(
@@ -498,8 +497,8 @@ function CallbackUrl({ url }: { url: string }) {
             );
           }}
         >
-          {copied ? 'Copied' : 'Copy'}
-        </Button>
+          {copied ? <CheckIcon /> : <CopyIcon />}
+        </IconButton>
       </div>
     </div>
   );

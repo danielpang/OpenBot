@@ -238,10 +238,10 @@ describe('Bot view', () => {
     expect(html).toContain('>Main Bot</span>');
     expect(html).toContain(MAIN_BOT_HELP);
     expect(html).toContain('Replaces @lead as your main Bot.');
-    expect(html).not.toMatch(/type="checkbox"[^>]*checked/);
+    expect(html).not.toMatch(/type="checkbox"[^>]*checked=""/);
 
     const own = await renderPath(`/bots/${lead.id}/settings`, seeded([ada, lead]));
-    expect(own).toMatch(/type="checkbox"[^>]*checked/);
+    expect(own).toMatch(/type="checkbox"[^>]*checked=""/);
     expect(own).not.toContain('as your main Bot.');
 
     const roster = await renderPath(`/bots/${ada.id}`, seeded([ada, lead]));

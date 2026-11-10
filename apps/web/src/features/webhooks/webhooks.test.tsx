@@ -190,7 +190,9 @@ async function until(check: () => boolean, what: string) {
 }
 
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
+  [...host.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === label || b.getAttribute('aria-label') === label,
+  );
 const click = (el: Element | null | undefined) => act(() => (el as HTMLElement).click());
 const input = <T extends Element = HTMLInputElement>(label: string) =>
   host.querySelector<T & Element>(`[aria-label="${label}"]`)!;

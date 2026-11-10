@@ -41,6 +41,7 @@ import { uploadAttachment, openFile, type Attachment } from './files';
 import { signInAndPair } from './sign-in';
 import { cacheBotNotificationAvatars, forgetNotificationAvatars } from '../push/avatars';
 import { withSubscriptionCounts } from './subscriptions';
+import { ConnectionErrorsContext, OfflineError, RECONNECT_NOTICE_AFTER } from './connection-state';
 import { MobileNotices } from '../notices';
 import { ownerHandles, type Notice } from '@openbots/shared';
 
@@ -55,6 +56,7 @@ export interface MobileContextValue {
   ready: boolean;
   connected: boolean;
   connecting: boolean;
+  connectionFailed: boolean;
   error: string | null;
   client: Client | null;
   transport: MobileTransport | null;
@@ -118,8 +120,10 @@ export function MobileProvider({ children }: { children: ReactNode }) {
   const transport = connectionHostId === host?.id ? savedTransport : null;
   const ws = connectionHostId === host?.id ? savedWs : null;
   const [connecting, setConnecting] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
   const [savedConnected, setConnected] = useState(false);
   const connected = savedConnected && connectionHostId === host?.id;
+  const connectionFailed = !!host && !connected && failedAttempts >= RECONNECT_NOTICE_AFTER;
   const [bannerEntry, setBannerEntry] = useState<{ hostId: string | null; notice: Notice } | null>(
     null,
   );
@@ -145,7 +149,7 @@ export function MobileProvider({ children }: { children: ReactNode }) {
             transport?.baseUrl ?? host.directUrls[0] ?? 'https://openbots.tunnel',
             transport?.fetch ??
               ((async () => {
-                throw new Error('You’re offline. Reconnect to refresh this conversation.');
+                throw new OfflineError();
               }) as typeof fetch),
           )
         : null,
@@ -240,6 +244,8 @@ export function MobileProvider({ children }: { children: ReactNode }) {
     let socket: WsClient | null = null;
     let stopped = false;
     let connectionEpoch = 0;
+    let failures = 0;
+    setFailedAttempts(0);
     let unsubscribeRoster: (() => void) | undefined;
     const lifecycle = new TransportLifecycle({
       connect: async (signal) => {
@@ -261,7 +267,17 @@ export function MobileProvider({ children }: { children: ReactNode }) {
             onStatus(status) {
               if (!valid()) return;
               setConnected(status === 'open');
-              if (status === 'closed' && socket) lifecycle.reconnect();
+              if (status === 'open') {
+                failures = 0;
+                setFailedAttempts(0);
+                setError(null);
+                setConnecting(false);
+              }
+              if (status === 'closed' && socket) {
+                setFailedAttempts(++failures);
+                setConnecting(true);
+                lifecycle.reconnect();
+              }
             },
             onResync(chatId) {
               for (const listener of listeners.current.get(chatId) ?? []) listener();
@@ -392,8 +408,9 @@ export function MobileProvider({ children }: { children: ReactNode }) {
       },
       onError(cause) {
         if (!stopped) {
-          setError(errorText(cause));
-          setConnecting(false);
+          setFailedAttempts(++failures);
+          if (failures >= RECONNECT_NOTICE_AFTER) setError(errorText(cause));
+          setConnecting(true);
         }
       },
     });
@@ -511,6 +528,7 @@ export function MobileProvider({ children }: { children: ReactNode }) {
     ready,
     connected,
     connecting,
+    connectionFailed,
     error,
     client,
     transport,
@@ -614,61 +632,80 @@ export function MobileProvider({ children }: { children: ReactNode }) {
   return (
     <MobileContext.Provider value={value}>
       <QueryClientProvider client={queryClient}>
-        {ready && host && lockEnabled && locked ? (
-          <View style={styles.lock}>
-            <Text style={styles.title}>OpenBots is locked</Text>
-            <Text style={styles.description}>Unlock to open your conversations.</Text>
-            {error ? <Text style={styles.description}>{error}</Text> : null}
-            <Pressable
-              accessibilityRole="button"
-              disabled={unlocking}
-              onPress={() => void unlock()}
-              style={styles.button}
-            >
-              <Text style={styles.label}>{unlocking ? 'Unlocking…' : 'Unlock OpenBots'}</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={{ flex: 1 }} key={host?.id ?? 'onboarding'}>
-            {children}
-            {banner && active ? (
-              <View style={styles.banner} accessibilityLiveRegion="polite">
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`${banner.title}. ${banner.body}`}
-                  onPress={() => {
-                    const target = banner.target;
-                    setBanner(null);
-                    if (target.chatId)
-                      router.push({
-                        pathname: '/chat/[id]',
-                        params: {
-                          id: target.chatId,
-                          seq: String(target.seq ?? ''),
-                          thread: target.threadRootId ?? '',
-                        },
-                      });
-                    else router.push(`/bot/${target.botId}` as Href);
-                  }}
-                  style={{ flex: 1, gap: 4 }}
-                >
-                  <Text style={styles.bannerTitle}>{banner.title}</Text>
-                  <Text style={styles.bannerBody} numberOfLines={2}>
-                    {banner.body}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Dismiss notification"
-                  onPress={() => setBanner(null)}
-                  style={{ padding: 10 }}
-                >
-                  <Text style={styles.bannerTitle}>×</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
-        )}
+        <ConnectionErrorsContext.Provider value={!!host}>
+          {ready && host && lockEnabled && locked ? (
+            <View style={styles.lock}>
+              <Text style={styles.title}>OpenBots is locked</Text>
+              <Text style={styles.description}>Unlock to open your conversations.</Text>
+              {error ? <Text style={styles.description}>{error}</Text> : null}
+              <Pressable
+                accessibilityRole="button"
+                disabled={unlocking}
+                onPress={() => void unlock()}
+                style={styles.button}
+              >
+                <Text style={styles.label}>{unlocking ? 'Unlocking…' : 'Unlock OpenBots'}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={{ flex: 1 }} key={host?.id ?? 'onboarding'}>
+              {children}
+              {connectionFailed && active ? (
+                <View style={styles.banner} accessibilityLiveRegion="polite">
+                  <View style={{ flex: 1, gap: 4 }}>
+                    <Text style={styles.bannerTitle}>You’re offline</Text>
+                    <Text style={styles.bannerBody}>
+                      Couldn’t reconnect after three attempts. We’ll keep trying.
+                    </Text>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Reconnect"
+                    onPress={value.refresh}
+                    style={{ padding: 10 }}
+                  >
+                    <Text style={styles.bannerTitle}>Retry</Text>
+                  </Pressable>
+                </View>
+              ) : banner && active ? (
+                <View style={styles.banner} accessibilityLiveRegion="polite">
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${banner.title}. ${banner.body}`}
+                    onPress={() => {
+                      const target = banner.target;
+                      setBanner(null);
+                      if (target.chatId)
+                        router.push({
+                          pathname: '/chat/[id]',
+                          params: {
+                            id: target.chatId,
+                            seq: String(target.seq ?? ''),
+                            thread: target.threadRootId ?? '',
+                          },
+                        });
+                      else router.push(`/bot/${target.botId}` as Href);
+                    }}
+                    style={{ flex: 1, gap: 4 }}
+                  >
+                    <Text style={styles.bannerTitle}>{banner.title}</Text>
+                    <Text style={styles.bannerBody} numberOfLines={2}>
+                      {banner.body}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Dismiss notification"
+                    onPress={() => setBanner(null)}
+                    style={{ padding: 10 }}
+                  >
+                    <Text style={styles.bannerTitle}>×</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          )}
+        </ConnectionErrorsContext.Provider>
       </QueryClientProvider>
     </MobileContext.Provider>
   );

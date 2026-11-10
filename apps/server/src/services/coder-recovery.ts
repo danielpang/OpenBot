@@ -10,7 +10,7 @@ import { enqueueCoderJob } from './coder-jobs.js';
 import { resumeWaitingRun } from './coder-run-resume.js';
 import { settleSession, type CodingSessionRow } from './coder-state.js';
 
-// Sessions an interrupted process left behind (docs/TECHNICAL_PLAN.md 22.8):
+// Sessions an interrupted process left behind (docs/plans/TECHNICAL_PLAN.md 22.8):
 // at worker start, and when a job finds a live session no process runs.
 
 export const RESTART_NOTE =

@@ -4,13 +4,14 @@ import {
   CODER_AGENT_LABELS,
   CODER_AGENTS,
   CODER_PROVIDER_KINDS,
+  SUBSCRIPTION_SIGN_OUT,
   coderProviderFits,
   type CoderAgent,
   type CoderAuthKind,
   type CoderPlanProvider,
   type CoderSignInStyle,
 } from '@openbots/shared';
-import { and, eq, isNull, or } from 'drizzle-orm';
+import { and, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
@@ -21,7 +22,7 @@ import { coderVersion, runAsCoder } from './coder-commands.js';
 import { completeTerminalLogins } from './coder-login.js';
 import { agentFor, computerAvailable, getComputer, startComputer } from './computer.js';
 
-// The owner's coding agent accounts (docs/TECHNICAL_PLAN.md 22.5, 22.13).
+// The owner's coding agent accounts (docs/plans/TECHNICAL_PLAN.md 22.5, 22.13).
 // Settings > Coding agents reads one card per agent from `coder_accounts`
 // (no row reads as not signed in): its sign-in, an API key from Settings >
 // Models instead, Sign out (the agent's config directory on the computer
@@ -56,6 +57,10 @@ export interface CoderAccountInfo {
   checkAvailable: boolean;
   /** How the agent signs in. */
   signIn: CoderSignInStyle;
+  /** The owner's default model for the agent; null when not chosen (CA9). */
+  model: string | null;
+  /** The owner's default agent (CA9): at most one. */
+  isDefault: boolean;
 }
 
 export type CoderLastErrorKind = 'sign_in' | 'key' | 'other';
@@ -160,6 +165,8 @@ function toAccountInfo(agent: CoderAgent, row: AccountRow | undefined): CoderAcc
     lastErrorKind: lastErrorKind({ authKind, lastError }),
     planProvider: planProviderOf(agent, authKind, row?.accountLabel ?? null),
     ...adapterFacts(agent),
+    model: row?.model ?? null,
+    isDefault: row?.isDefault ?? false,
   };
 }
 
@@ -250,7 +257,74 @@ export function toAccountView(info: CoderAccountInfo): CoderAccountView {
     // A lapsed sign-in reads as none, so `code_task` asks for it again.
     authKind: needsSignIn(info) ? 'none' : info.authKind,
     ...(info.accountLabel ? { label: info.accountLabel } : {}),
+    ...(info.isDefault ? { isDefault: true } : {}),
+    ...(info.model ? { model: info.model } : {}),
+    ...(info.available ? {} : { available: false }),
   };
+}
+
+/** The owner's coding defaults (CA9): the default agent, and a model per agent. */
+export interface CoderDefaults {
+  /** Null clears the default agent, so `code_task` asks again. */
+  defaultAgent?: CoderAgent | null;
+  /** A model per agent; null (or an empty name) clears that agent's. Agents left out keep theirs. */
+  models?: Partial<Record<CoderAgent, string | null>>;
+}
+
+/**
+ * Writes the owner's coding defaults on their `coder_accounts` rows (a row
+ * is made for an agent never signed in): `is_default` moves to the one
+ * agent, and each model named is set or cleared. In `db`, so a widget
+ * action's transaction can use it.
+ */
+export async function writeCoderDefaults(
+  db: Db,
+  owner: Owner,
+  defaults: CoderDefaults,
+): Promise<void> {
+  if (defaults.defaultAgent !== undefined) {
+    // Cleared first: the partial unique index allows one default per owner.
+    await db
+      .update(schema.coderAccounts)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.coderAccounts.ownerId, owner.id),
+          eq(schema.coderAccounts.workspaceId, owner.workspaceId),
+          eq(schema.coderAccounts.isDefault, true),
+        ),
+      );
+    if (defaults.defaultAgent) {
+      await upsertAccount(db, owner, defaults.defaultAgent, { isDefault: true });
+    }
+  }
+  for (const [agent, model] of Object.entries(defaults.models ?? {}) as [
+    CoderAgent,
+    string | null | undefined,
+  ][]) {
+    if (model === undefined) continue;
+    await upsertAccount(db, owner, agent, { model: model?.trim() || null });
+  }
+}
+
+/** Settings > Coding agents' Defaults: written together, then the cards read again. */
+export async function setCoderDefaults(
+  deps: Pick<AppDeps, 'db'>,
+  owner: Owner,
+  defaults: CoderDefaults,
+): Promise<CoderAccountInfo[]> {
+  await deps.db.transaction(async (tx) => {
+    await writeCoderDefaults(tx, owner, defaults);
+    await recordAudit(tx, {
+      workspaceId: owner.workspaceId,
+      actor: userActor(owner),
+      action: 'coder.defaults',
+      targetType: 'coder_account',
+      targetId: null,
+      metadata: { ...defaults },
+    });
+  });
+  return listCoderAccounts(deps, owner);
 }
 
 async function upsertAccount(
@@ -269,6 +343,8 @@ async function upsertAccount(
         schema.coderAccounts.agent,
       ],
       set: { ...set, updatedAt: new Date() },
+      setWhere:
+        set.authKind === 'api_key' ? ne(schema.coderAccounts.authKind, 'subscription') : undefined,
     });
 }
 
@@ -299,11 +375,31 @@ export async function setCoderApiKey(
     throw new DomainError(400, 'CODER_PROVIDER_UNSUPPORTED', CODER_PROVIDER_KINDS[agent].message);
   }
   await deps.db.transaction(async (tx) => {
-    await upsertAccount(tx, owner, agent, {
-      authKind: 'api_key',
-      providerId,
-      lastError: null,
-    });
+    // Decide at the write, not from an earlier account read: a concurrent
+    // successful login must not be switched to API billing by saving a key.
+    await tx
+      .insert(schema.coderAccounts)
+      .values({
+        workspaceId: owner.workspaceId,
+        ownerId: owner.id,
+        agent,
+        authKind: 'api_key',
+        providerId,
+        lastError: null,
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.coderAccounts.workspaceId,
+          schema.coderAccounts.ownerId,
+          schema.coderAccounts.agent,
+        ],
+        set: {
+          authKind: sql`case when ${schema.coderAccounts.authKind} = 'subscription' then 'subscription' else 'api_key' end`,
+          providerId,
+          lastError: sql`case when ${schema.coderAccounts.authKind} = 'subscription' then ${schema.coderAccounts.lastError} else null end`,
+          updatedAt: new Date(),
+        },
+      });
     await recordAudit(tx, {
       workspaceId: owner.workspaceId,
       actor: userActor(owner),
@@ -328,12 +424,7 @@ export async function signOutCoder(
 ): Promise<CoderAccountInfo> {
   if (computerAvailable(deps)) {
     const { computer } = await startComputer(deps, owner);
-    const dir = CODER_CONFIG_DIRS[agent].dir;
-    const done = await runAsCoder(agentFor(deps, computer), 'sh', [
-      '-c',
-      '[ -d "$0" ] || exit 0; find "$0" -mindepth 1 -delete',
-      dir,
-    ]);
+    const done = await runAsCoder(agentFor(deps, computer), 'node', [SUBSCRIPTION_SIGN_OUT, agent]);
     if (done.code !== 0) {
       const said = (done.error ?? done.stderr).trim().split('\n').pop() ?? '';
       throw new DomainError(
@@ -405,6 +496,21 @@ export async function checkCoderSignIn(
         lastError: null,
         ...(version ? { version } : {}),
       });
+      if (found.authKind === 'api_key')
+        await tx
+          .update(schema.coderAccounts)
+          .set({
+            lastError: `${CODER_AGENT_LABELS[agent]} is not signed in with a subscription. Reconnect in Settings > Models.`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.coderAccounts.ownerId, owner.id),
+              eq(schema.coderAccounts.workspaceId, owner.workspaceId),
+              eq(schema.coderAccounts.agent, agent),
+              eq(schema.coderAccounts.authKind, 'subscription'),
+            ),
+          );
       await recordAudit(tx, {
         workspaceId: owner.workspaceId,
         actor: userActor(owner),
@@ -418,6 +524,23 @@ export async function checkCoderSignIn(
     if (adapter.signIn.kind === 'terminal') {
       await completeTerminalLogins(deps, owner, agent, found.label);
     }
+  } else if (found && !found.signedIn) {
+    // Keep the subscription selected, but do not present a failed check as connected.
+    // Clearing authKind here would silently enable API billing on the next bot run.
+    await deps.db
+      .update(schema.coderAccounts)
+      .set({
+        lastError: `${CODER_AGENT_LABELS[agent]} is not signed in on the computer. Reconnect in Settings > Models.`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.coderAccounts.ownerId, owner.id),
+          eq(schema.coderAccounts.workspaceId, owner.workspaceId),
+          eq(schema.coderAccounts.agent, agent),
+          eq(schema.coderAccounts.authKind, 'subscription'),
+        ),
+      );
   }
   return getCoderAccount(deps, owner, agent);
 }

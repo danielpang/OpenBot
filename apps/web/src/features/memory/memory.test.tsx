@@ -109,7 +109,9 @@ async function until(check: () => boolean, what: string) {
 }
 
 const button = (label: string, within: ParentNode = host) =>
-  [...within.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
+  [...within.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === label || b.getAttribute('aria-label') === label,
+  );
 const section = (title: string) =>
   [...host.querySelectorAll('section')].find((s) => s.querySelector('h2')?.textContent === title);
 

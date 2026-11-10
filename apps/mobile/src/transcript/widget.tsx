@@ -10,11 +10,13 @@ import {
   RoutineRunPropsSchema,
   CodingSessionPropsSchema,
   CoderLoginPropsSchema,
+  CoderChoicePropsSchema,
 } from '@openbots/widgets';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApi } from '../api/provider';
 import { Button, Card, ErrorNote, Field, Icon, Label, row } from '../components/ui';
-import { CoderLoginBody, CodingSessionBody } from './coder-widgets';
+import { AcceptEdits } from '../components/accept-edits';
+import { CoderChoiceBody, CoderLoginBody, CodingSessionBody } from './coder-widgets';
 import type { Message } from './model';
 
 export function NativeWidget({
@@ -22,11 +24,13 @@ export function NativeWidget({
   messageId,
   index,
   onUpdated,
+  botId,
 }: {
   part: Extract<Message['parts'][number], { type: 'widget' }>;
   messageId: string;
   index: number;
   onUpdated?: () => void;
+  botId?: string;
 }) {
   const api = useApi();
   const cache = useQueryClient();
@@ -145,6 +149,7 @@ export function NativeWidget({
           <Label weight="600">Approval needed</Label>
         </View>
         <Label weight="600">{props.tool_name}</Label>
+        {pending && botId && <AcceptEdits botId={botId} compact />}
         <Label>{props.summary || JSON.stringify(props.args, null, 2)}</Label>
         {props.reason ? (
           <Label muted size={14}>
@@ -243,6 +248,15 @@ export function NativeWidget({
     body = (
       <CoderLoginBody
         props={CoderLoginPropsSchema.parse(part.props)}
+        state={state}
+        busy={busy}
+        act={act}
+      />
+    );
+  } else if (part.kind === 'coder_choice') {
+    body = (
+      <CoderChoiceBody
+        props={CoderChoicePropsSchema.parse(part.props)}
         state={state}
         busy={busy}
         act={act}

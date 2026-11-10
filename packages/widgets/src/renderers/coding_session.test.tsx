@@ -95,7 +95,7 @@ function type(el: HTMLInputElement, value: string) {
 }
 
 describe('<CodingSessionWidget>', () => {
-  it('shows the header, the feed and the pending approval while running', () => {
+  it('shows status and pending approvals without inline CLI output', () => {
     vi.useFakeTimers({
       now: new Date('2026-11-05T10:04:12.000Z'),
       toFake: ['Date', 'setInterval'],
@@ -107,9 +107,8 @@ describe('<CodingSessionWidget>', () => {
     expect(host.textContent).toContain('Claude Code');
     expect(host.textContent).toContain('openbots-relay · bot/relay-reconnect');
     expect(host.querySelector('[role="status"]')?.textContent).toBe('Working · 4:12');
-    const feed = host.querySelector('[data-feed]')!;
-    expect(feed.className).toContain('font-mono');
-    expect(feed.textContent).toContain('Read apps/relay/src/server.ts');
+    expect(host.querySelector('[data-feed]')).toBeNull();
+    expect(host.textContent).not.toContain('Read apps/relay/src/server.ts');
     const approval = host.querySelector(`[data-approval="${APPROVAL}"]`)!;
     expect(approval.textContent).toContain('Wants to push');
     expect(approval.textContent).toContain('Push');
@@ -135,19 +134,19 @@ describe('<CodingSessionWidget>', () => {
     expect(host.querySelector('[data-dot]')?.className).toContain(dot);
   });
 
-  it('approves and denies through the app, then shows the decision', async () => {
+  it('approves and denies through the app, then hides completed requests', async () => {
     const coder = hostApi();
     render(<CodingSessionWidget props={props} state={running} onAction={vi.fn()} coder={coder} />);
     await act(async () => button('Approve')!.click());
     expect(coder.decideApproval).toHaveBeenCalledExactlyOnceWith(APPROVAL, 'approve');
     expect(button('Approve')).toBeUndefined();
-    expect(host.textContent).toContain('Wants to push: Approved');
+    expect(host.querySelector(`[data-approval="${APPROVAL}"]`)).toBeNull();
 
     const second = { ...running, approvals: [{ ...running.approvals[0]!, id: 'x' }] };
     act(() => root!.render(<CodingSessionWidget props={props} state={second} coder={coder} />));
     await act(async () => button('Deny')!.click());
     expect(coder.decideApproval).toHaveBeenLastCalledWith('x', 'deny');
-    expect(host.textContent).toContain('Wants to push: Denied');
+    expect(host.querySelector('[data-approval="x"]')).toBeNull();
   });
 
   it('shows why a decision failed', async () => {
@@ -214,7 +213,7 @@ describe('<CodingSessionWidget>', () => {
       />,
     );
     expect(host.querySelector('[data-error]')?.textContent).toBe(
-      'Not signed in. Sign in under Settings > Coding agents.',
+      'Not signed in. Sign in under Settings > Models.',
     );
     act(() =>
       root!.render(
@@ -249,7 +248,7 @@ describe('<CodingSessionWidget>', () => {
     );
     expect(host.textContent).toContain('a1b2c3d');
     expect(host.textContent).toContain('relay: back off reconnects after a sleep');
-    expect(host.querySelector('[data-usage]')?.textContent).toBe('Billed to your Claude plan');
+    expect(host.querySelector('[data-usage]')).toBeNull();
     const pr = [...host.querySelectorAll('a')].find((a) => a.textContent === 'Open PR')!;
     expect(pr.getAttribute('href')).toBe(settled.result!.pr_url);
     expect(button('Stop')).toBeUndefined();

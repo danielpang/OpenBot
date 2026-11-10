@@ -1,4 +1,5 @@
-import { Button, cn } from '@openbots/ui';
+import { Button, cn, IconButton, RefreshIcon, RotateIcon, Select } from '@openbots/ui';
+import { SettingsPanel, SettingsRow } from '../../app/settings-layout.js';
 import { useMutation } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { ErrorText } from '../models/error-text.js';
@@ -61,8 +62,8 @@ export function ComputerPage({ attach: linked }: { attach?: PtyAttach } = {}) {
   return (
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-3" aria-label="Status">
-        <div className="flex items-center gap-3">
-          <p className="flex flex-1 items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="flex min-w-0 flex-1 items-center gap-2 text-sm">
             <ComputerIcon
               aria-hidden
               className={cn(
@@ -79,16 +80,22 @@ export function ComputerPage({ attach: linked }: { attach?: PtyAttach } = {}) {
               Start
             </Button>
           )}
-          {status === 'running' && (
-            <Button variant="outline" disabled={restart.isPending} onClick={() => restart.mutate()}>
-              Restart
-            </Button>
-          )}
-          {computer && status && !BUSY.has(status) && (
-            <Button variant="outline" onClick={() => setResetting(true)}>
-              Reset computer
-            </Button>
-          )}
+          <div className="flex items-center gap-0.5">
+            {status === 'running' && (
+              <IconButton label="Restart" busy={restart.isPending} onClick={() => restart.mutate()}>
+                <RefreshIcon />
+              </IconButton>
+            )}
+            {computer && status && !BUSY.has(status) && (
+              <IconButton
+                label="Reset computer"
+                className="hover:text-destructive"
+                onClick={() => setResetting(true)}
+              >
+                <RotateIcon />
+              </IconButton>
+            )}
+          </div>
         </div>
         {status && BUSY.has(status) && (
           <div
@@ -161,25 +168,31 @@ function IdleSetting({ computer }: { computer: Computer }) {
   }
 
   return (
-    <section className="flex flex-col gap-2" aria-label="Idle">
-      <label className="flex items-center gap-3 text-sm">
-        <span className="flex-1 font-medium">Stop after idle</span>
-        <select
-          name="idle"
-          value={value}
-          disabled={save.isPending}
-          onChange={(event) => change(event.currentTarget.value)}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-        >
-          {choices.map((minutes) => (
-            <option key={minutes} value={String(minutes)}>
-              {idleLabel(minutes)}
-            </option>
-          ))}
-          <option value={NEVER}>Never</option>
-        </select>
-      </label>
-      <ErrorText error={save.error} />
-    </section>
+    <SettingsPanel aria-label="Idle">
+      <SettingsRow
+        title={<label htmlFor="computer-idle">Stop after idle</label>}
+        description="The computer stops this long after its last use."
+        control={
+          <Select
+            id="computer-idle"
+            name="idle"
+            size="sm"
+            value={value}
+            disabled={save.isPending}
+            onChange={(event) => change(event.currentTarget.value)}
+            className="w-32"
+          >
+            {choices.map((minutes) => (
+              <option key={minutes} value={String(minutes)}>
+                {idleLabel(minutes)}
+              </option>
+            ))}
+            <option value={NEVER}>Never</option>
+          </Select>
+        }
+      >
+        <ErrorText error={save.error} />
+      </SettingsRow>
+    </SettingsPanel>
   );
 }

@@ -1,4 +1,5 @@
 import { Button, Input } from '@openbots/ui';
+import { SettingsSection } from '../../app/settings-layout.js';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { auth, meQuery } from '../../app/api.js';
@@ -21,9 +22,7 @@ export function YourName({ name }: { name: string }) {
   }
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="font-medium">Your name</h2>
-      <p className="text-sm text-muted-foreground">Bots use it to address you.</p>
+    <SettingsSection title="Your name" description="Bots use it to address you.">
       <form className="flex gap-2" onSubmit={submit}>
         <Input
           name="name"
@@ -38,6 +37,6 @@ export function YourName({ name }: { name: string }) {
         </Button>
       </form>
       {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
-    </section>
+    </SettingsSection>
   );
 }

@@ -129,10 +129,23 @@ export function StatusDot({ tone, pulse }: { tone: keyof typeof DOT; pulse?: boo
   );
 }
 
-const KIND_LABEL = { local: 'This Mac', remote: 'Self-hosted', cloud: 'OpenBots account' };
+const KIND_LABEL: Record<ServerProfile['kind'], string> = {
+  local: 'This Mac',
+  remote: 'Self-hosted',
+  cloud: 'OpenBots account',
+  paired: 'Paired',
+};
 
-/** A connection's kind and host, e.g. "Self-hosted · openbots.example.com". */
+/**
+ * A connection's kind and host, e.g. "Self-hosted · openbots.example.com". A
+ * paired server's address is the app's own proxy, so its relay's host stands
+ * in: "Paired · via openbots-relay.fly.dev".
+ */
 export function connectionLine(profile: ServerProfile): string {
+  if (profile.kind === 'paired') {
+    const relay = profile.paired ? new URL(profile.paired.relayUrl).host : null;
+    return relay ? `Paired · via ${relay}` : 'Paired';
+  }
   const host = new URL(profile.url).host;
   const kind = KIND_LABEL[profile.kind];
   return profile.name === kind ? host : `${kind} · ${host}`;

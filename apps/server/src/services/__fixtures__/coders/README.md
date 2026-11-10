@@ -4,7 +4,7 @@ Captured on 2026-11-05 against the versions pinned in `docker/coders/package.jso
 `@openai/codex` 0.166.0 (`codex-cli 0.166.0`, darwin arm64 binary) and
 `@earendil-works/pi-coding-agent` 1.5.0. Every run used empty `HOME`, `CODEX_HOME` and
 `PI_CODING_AGENT_DIR` directories and no provider keys. See
-[docs/CODING_AGENT_VENDORS.md](../../../../../../docs/CODING_AGENT_VENDORS.md) for the commands and what each one showed.
+[docs/plans/CODING_AGENT_VENDORS.md](../../../../../../docs/plans/CODING_AGENT_VENDORS.md) for the commands and what each one showed.
 
 | File                      | Source                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

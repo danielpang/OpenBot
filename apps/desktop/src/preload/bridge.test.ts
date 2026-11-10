@@ -137,6 +137,7 @@ describe('the app bridge', () => {
       'cloud',
       'local',
       'options',
+      'pair',
       'server',
     ]);
     expect(Object.keys(bridge.quickAsk).sort()).toEqual(['bots', 'close', 'send']);
@@ -169,6 +170,7 @@ describe('the app bridge', () => {
     await bridge.connect.check('w.example.com');
     await bridge.connect.server('w.example.com');
     await bridge.connect.local();
+    await bridge.connect.pair('openbots://pair#v=1');
     await bridge.pair.relay();
     await bridge.pair.setRelay('wss://mine.example');
     await bridge.pair.code();
@@ -188,6 +190,7 @@ describe('the app bridge', () => {
       [DESKTOP_CHANNELS.connectCheck, 'w.example.com'],
       [DESKTOP_CHANNELS.connectServer, 'w.example.com'],
       [DESKTOP_CHANNELS.connectLocal],
+      [DESKTOP_CHANNELS.connectPair, 'openbots://pair#v=1'],
       [DESKTOP_CHANNELS.pairRelay],
       [DESKTOP_CHANNELS.pairSetRelay, 'wss://mine.example'],
       [DESKTOP_CHANNELS.pairCode],

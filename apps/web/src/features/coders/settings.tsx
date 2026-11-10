@@ -1,6 +1,20 @@
-import { CODER_AGENT_LABELS, coderProviderFits, type CoderAgent } from '@openbots/shared';
-import { Button } from '@openbots/ui';
-import { CODER_PLAN_WORDS, coderPlanWords } from '@openbots/widgets';
+import {
+  CODER_AGENT_LABELS,
+  CODER_MODEL_SUGGESTIONS,
+  CoderModelNameSchema,
+  coderProviderFits,
+  type CoderAgent,
+} from '@openbots/shared';
+import {
+  Button,
+  IconButton,
+  Input,
+  LogOutIcon,
+  RefreshIcon,
+  Select,
+  TerminalIcon,
+  UnlinkIcon,
+} from '@openbots/ui';
 import { CoderSignInSteps } from '@openbots/widgets/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -16,6 +30,7 @@ import {
   getCoderLogin,
   sendCoderLoginCode,
   setCoderApiKey,
+  setCoderDefaults,
   signOutCoder,
   type CoderAccount,
   type CoderLogin,
@@ -48,8 +63,11 @@ export function keyProviders(agent: CoderAgent, providers: readonly Provider[]):
 /** The card's status line. */
 export function accountWords(account: CoderAccount, providers: readonly Provider[]): string {
   switch (account.authKind) {
-    case 'subscription':
-      return account.accountLabel ? `Signed in as ${account.accountLabel}` : 'Signed in';
+    case 'subscription': {
+      // Older sign-ins stored the placeholder "Signed in" as their label.
+      const label = account.accountLabel?.trim();
+      return label && label.toLowerCase() !== 'signed in' ? `Signed in as ${label}` : 'Signed in';
+    }
     case 'api_key': {
       const provider = providers.find((p) => p.id === account.providerId);
       return `Using API key: ${provider?.name ?? 'a provider from Settings > Models'}`;
@@ -64,7 +82,9 @@ const goTo = (href: string) => window.location.assign(href);
 export function CodingAgentsSettings({
   pollMs = LOGIN_POLL_MS,
   onNavigate = goTo,
+  connectionsOnModels = false,
 }: {
+  connectionsOnModels?: boolean;
   pollMs?: number;
   /** Goes to an in-app path without a page load; a full load where absent. */
   onNavigate?: (href: string) => void;
@@ -76,47 +96,233 @@ export function CodingAgentsSettings({
   return (
     <section className="flex flex-col gap-4" aria-label="Coding agents">
       <p className="text-sm text-muted-foreground">
-        Bots run these on their computer to work in your repositories. Sign in with your own plan,
-        or use an API key from Settings &gt; Models.
+        Bots run these on their computer to work in your repositories. Manage subscriptions and API
+        keys in{' '}
+        <a
+          href="/settings/models"
+          className="font-medium text-foreground underline underline-offset-4"
+        >
+          Models
+        </a>
+        .
       </p>
       {capabilities && !capabilities.computer && (
         <p className="text-sm text-muted-foreground">
           This install has no computer for its Bots, so coding agents cannot run.
         </p>
       )}
+      {coders.data && <CodingDefaults accounts={coders.data.agents} />}
       {coders.error ? (
         <ErrorText error={coders.error} />
       ) : !coders.data ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
-        coders.data.agents.map((account) => (
-          <CoderCard
-            key={account.agent}
-            account={account}
-            providers={providers.data?.items ?? []}
-            pollMs={pollMs}
-            onNavigate={onNavigate}
-          />
-        ))
+        coders.data.agents.map((account) =>
+          connectionsOnModels ? (
+            <article
+              key={account.agent}
+              aria-label={account.label}
+              data-agent={account.agent}
+              className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm"
+            >
+              <header className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-medium">{account.label}</h3>
+                <span className="text-xs text-muted-foreground">
+                  {account.version ? `Version ${account.version}` : 'Version not checked'}
+                </span>
+              </header>
+              <p>{accountWords(account, providers.data?.items ?? [])}</p>
+              {agentNote(account) && (
+                <p className="text-xs text-muted-foreground">{agentNote(account)}</p>
+              )}
+              <AccountError account={account} label={account.label} />
+              <a
+                href="/settings/models"
+                className="self-start font-medium underline underline-offset-4"
+              >
+                Manage
+              </a>
+            </article>
+          ) : (
+            <CoderCard
+              key={account.agent}
+              account={account}
+              providers={providers.data?.items ?? []}
+              pollMs={pollMs}
+              onNavigate={onNavigate}
+            />
+          ),
+        )
       )}
     </section>
   );
 }
 
-function CoderCard({
+/** Why a default model name would be refused, or null when it is fine (or empty). */
+export function defaultModelError(value: string): string | null {
+  if (!value.trim()) return null;
+  const parsed = CoderModelNameSchema.safeParse(value.trim());
+  return parsed.success ? null : (parsed.error.issues[0]?.message ?? 'Not a model name');
+}
+
+/** The defaults as the cards hold them: the default agent ('' for none) and a model per agent. */
+function storedDefaults(accounts: readonly CoderAccount[]) {
+  return {
+    agent: (accounts.find((a) => a.isDefault)?.agent ?? '') as CoderAgent | '',
+    models: Object.fromEntries(accounts.map((a) => [a.agent, a.model ?? ''])) as Record<
+      CoderAgent,
+      string
+    >,
+  };
+}
+
+/**
+ * Defaults (CA9): the agent and model a coding task uses when neither the
+ * task nor the Bot's settings name one. Left unset, the Bot asks in the
+ * chat which agent and model to use, and can keep the answer here.
+ */
+export function CodingDefaults({ accounts }: { accounts: readonly CoderAccount[] }) {
+  const queryClient = useQueryClient();
+  const stored = storedDefaults(accounts);
+  const [agent, setAgent] = useState<CoderAgent | ''>(stored.agent);
+  const [models, setModels] = useState(stored.models);
+  // The cards read again (a save, another tab): the form follows them.
+  const storedKey = JSON.stringify(stored);
+  const [seen, setSeen] = useState(storedKey);
+  if (seen !== storedKey) {
+    setSeen(storedKey);
+    setAgent(stored.agent);
+    setModels(stored.models);
+  }
+  const runnable = accounts.filter((a) => a.available !== false || a.isDefault);
+  const problems = Object.fromEntries(
+    runnable.map((a) => [a.agent, defaultModelError(models[a.agent] ?? '')]),
+  ) as Record<CoderAgent, string | null>;
+  const changed =
+    agent !== stored.agent ||
+    runnable.some((a) => (models[a.agent] ?? '').trim() !== stored.models[a.agent]);
+  const save = useMutation({
+    mutationFn: () =>
+      setCoderDefaults({
+        defaultAgent: agent || null,
+        models: Object.fromEntries(
+          runnable.map((a) => [a.agent, (models[a.agent] ?? '').trim() || null]),
+        ),
+      }),
+    onSuccess: (next) => queryClient.setQueryData(codersQuery.queryKey, next),
+  });
+
+  return (
+    <article
+      aria-label="Defaults"
+      data-coder-defaults
+      className="flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm"
+    >
+      <header className="flex flex-col gap-1">
+        <h3 className="font-medium">Defaults</h3>
+        <p className="text-xs text-muted-foreground">
+          What a coding task runs with when the Bot&apos;s own settings name nothing. Left empty,
+          the Bot asks you to choose when it starts a task.
+        </p>
+      </header>
+      <label className="flex flex-wrap items-center gap-2">
+        <span className="min-w-0 flex-1">Default agent</span>
+        <Select
+          size="sm"
+          aria-label="Default coding agent"
+          value={agent}
+          onChange={(e) => setAgent(e.target.value as CoderAgent | '')}
+          className="max-w-64"
+        >
+          <option value="">Ask each time</option>
+          {runnable.map((a) => (
+            <option key={a.agent} value={a.agent}>
+              {a.label || CODER_AGENT_LABELS[a.agent]}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1">Default model</legend>
+        {runnable.map((a) => {
+          const label = a.label || CODER_AGENT_LABELS[a.agent];
+          const problem = problems[a.agent];
+          const listId = `coder-models-${a.agent}`;
+          return (
+            <div key={a.agent} className="flex flex-col gap-1" data-default-model={a.agent}>
+              <label className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 text-xs">{label}</span>
+                <Input
+                  type="text"
+                  aria-label={`${label} default model`}
+                  aria-invalid={problem ? true : undefined}
+                  placeholder="Ask each time"
+                  list={listId}
+                  value={models[a.agent] ?? ''}
+                  maxLength={100}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(e) => setModels((m) => ({ ...m, [a.agent]: e.target.value }))}
+                  className="h-8 w-64 max-w-full font-mono text-xs placeholder:font-sans"
+                />
+                <datalist id={listId}>
+                  {CODER_MODEL_SUGGESTIONS[a.agent].map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </label>
+              {problem && (
+                <span className="text-xs text-destructive" role="alert">
+                  {problem}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </fieldset>
+      <ErrorText error={save.error} />
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          disabled={!changed || save.isPending || Object.values(problems).some(Boolean)}
+          onClick={() => save.mutate()}
+        >
+          {save.isPending ? 'Saving…' : 'Save defaults'}
+        </Button>
+        {save.isSuccess && !changed && (
+          <span role="status" className="text-xs text-muted-foreground">
+            Saved
+          </span>
+        )}
+      </div>
+    </article>
+  );
+}
+
+export function CoderCard({
   account,
   providers,
   pollMs,
   onNavigate,
+  connectionOnly = false,
+  onConnected,
+  onDisconnected,
+  connectionLabel,
+  connectionBilling,
 }: {
   account: CoderAccount;
   providers: Provider[];
   pollMs: number;
   onNavigate: (href: string) => void;
+  connectionOnly?: boolean;
+  onConnected?: () => void;
+  onDisconnected?: () => void;
+  connectionLabel?: string;
+  connectionBilling?: string;
 }) {
   const queryClient = useQueryClient();
   const agent = account.agent;
-  const label = account.label || CODER_AGENT_LABELS[agent];
+  const label = connectionLabel ?? (account.label || CODER_AGENT_LABELS[agent]);
   const [picking, setPicking] = useState(false);
   const [providerId, setProviderId] = useState('');
   const [login, setLogin] = useState<CoderLogin | null>(null);
@@ -159,9 +365,11 @@ function CoderCard({
 
   // A finished sign-in changes the account; the card reads it again.
   useEffect(() => {
-    if (status === 'signed_in')
+    if (status === 'signed_in') {
       void queryClient.invalidateQueries({ queryKey: codersQuery.queryKey });
-  }, [status, queryClient]);
+      onConnected?.();
+    }
+  }, [status, queryClient, onConnected]);
 
   const signIn = useMutation({
     mutationFn: () => beginCoderLogin(agent),
@@ -183,6 +391,7 @@ function CoderCard({
     onSuccess: (next) => {
       writeAccount(next);
       if (next.authKind !== 'none') setInTerminal(null);
+      if (next.authKind === 'subscription') onConnected?.();
       void refresh();
     },
   });
@@ -210,6 +419,7 @@ function CoderCard({
     onSuccess: (next) => {
       writeAccount(next);
       void refresh();
+      onDisconnected?.();
     },
   });
 
@@ -220,42 +430,47 @@ function CoderCard({
     submitted.status === current.status &&
     submitted.error === current.error;
   const again = account.lastErrorKind === 'sign_in';
-  const signInWords = again ? 'Sign in again' : 'Sign in';
+  const signInWords = connectionOnly
+    ? again
+      ? 'Reconnect'
+      : 'Connect'
+    : again
+      ? 'Sign in again'
+      : 'Sign in';
   const choices = keyProviders(agent, providers);
-  const plan = CODER_PLAN_WORDS[agent];
   const signedIn = account.authKind !== 'none';
   const note = agentNote(account);
-  const billed = coderPlanWords(agent, account.planProvider);
 
   return (
     <article
-      className="flex flex-col gap-3 rounded-md border bg-card p-4 text-sm"
-      aria-label={label}
+      className={
+        connectionOnly
+          ? 'flex min-w-0 flex-col gap-3 text-sm'
+          : 'flex flex-col gap-3 rounded-lg border bg-card p-4 text-sm'
+      }
+      aria-label={connectionOnly ? `${label} subscription` : label}
       data-agent={agent}
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h3 className="font-medium">{label}</h3>
-        {account.version && (
+        <h3 className="font-medium">{connectionOnly ? 'Subscription' : label}</h3>
+        {!connectionOnly && account.version && (
           <span className="text-xs text-muted-foreground">Version {account.version}</span>
         )}
         <span className="ml-auto text-sm" data-account-status>
           {accountWords(account, providers)}
         </span>
       </div>
-      {account.authKind === 'subscription' && (
+      {account.authKind === 'subscription' && connectionBilling && (
         <p className="text-xs text-muted-foreground" data-plan>
-          Usage is {billed}.
+          {connectionBilling}
         </p>
       )}
-      {note && <p className="text-xs text-muted-foreground">{note}</p>}
+      {!connectionOnly && note && <p className="text-xs text-muted-foreground">{note}</p>}
       <AccountError account={account} label={label} />
 
       {signingIn && current && (
         <div className="flex flex-col gap-2 rounded-md border p-3" data-login={current.id}>
-          <p>
-            <span className="font-medium">Sign in to {label}</span>
-            {plan && <span className="text-muted-foreground"> {plan}</span>}
-          </p>
+          <p className="font-medium">Sign in to {label}</p>
           {checking ? (
             <p role="status" className="text-muted-foreground">
               Checking the code with {label}…
@@ -297,23 +512,26 @@ function CoderCard({
           </p>
           <ErrorText error={signIn.error ?? check.error} />
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              disabled={signIn.isPending}
-              onClick={() =>
-                inTerminal ? onNavigate(computerTerminalHref(inTerminal.terminal)) : signIn.mutate()
-              }
-            >
-              {inTerminal ? 'Open the terminal' : signInWords}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={check.isPending}
+            {inTerminal ? (
+              <IconButton
+                label="Terminal"
+                variant="outline"
+                onClick={() => onNavigate(computerTerminalHref(inTerminal.terminal))}
+              >
+                <TerminalIcon />
+              </IconButton>
+            ) : (
+              <Button size="sm" disabled={signIn.isPending} onClick={() => signIn.mutate()}>
+                {signInWords}
+              </Button>
+            )}
+            <IconButton
+              label={check.isPending ? 'Checking…' : 'Check'}
+              busy={check.isPending}
               onClick={() => check.mutate()}
             >
-              {check.isPending ? 'Checking…' : 'Check'}
-            </Button>
+              <RefreshIcon />
+            </IconButton>
           </div>
         </div>
       )}
@@ -332,11 +550,10 @@ function CoderCard({
           {choices.length ? (
             <label className="flex flex-col gap-1">
               <span className="font-medium">API key</span>
-              <select
+              <Select
                 aria-label={`${label} API key`}
                 value={providerId}
                 onChange={(e) => setProviderId(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
               >
                 <option value="">Choose a provider</option>
                 {choices.map((p) => (
@@ -344,7 +561,7 @@ function CoderCard({
                     {p.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           ) : (
             <p className="text-muted-foreground">
@@ -385,36 +602,38 @@ function CoderCard({
               {signInWords}
             </Button>
           )}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setProviderId(account.authKind === 'api_key' ? (account.providerId ?? '') : '');
-              setPicking(true);
-            }}
-          >
-            Use API key
-          </Button>
-          {!terminalPanel && account.checkAvailable && (
+          {!connectionOnly && (
             <Button
               size="sm"
-              variant="ghost"
-              disabled={check.isPending}
-              onClick={() => check.mutate()}
+              variant="outline"
+              onClick={() => {
+                setProviderId(account.authKind === 'api_key' ? (account.providerId ?? '') : '');
+                setPicking(true);
+              }}
             >
-              {check.isPending ? 'Checking…' : 'Check'}
+              Use API key
             </Button>
           )}
-          {signedIn && (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={signOut.isPending}
-              onClick={() => signOut.mutate()}
-            >
-              Sign out
-            </Button>
-          )}
+          <div className="ml-auto flex items-center gap-0.5">
+            {!terminalPanel && account.checkAvailable && (
+              <IconButton
+                label={check.isPending ? 'Checking…' : 'Check'}
+                busy={check.isPending}
+                onClick={() => check.mutate()}
+              >
+                <RefreshIcon />
+              </IconButton>
+            )}
+            {signedIn && (
+              <IconButton
+                label={connectionOnly ? 'Disconnect' : 'Sign out'}
+                busy={signOut.isPending}
+                onClick={() => signOut.mutate()}
+              >
+                {connectionOnly ? <UnlinkIcon /> : <LogOutIcon />}
+              </IconButton>
+            )}
+          </div>
         </div>
       )}
     </article>

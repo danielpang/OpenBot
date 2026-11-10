@@ -18,9 +18,11 @@ import {
   type WaitOptions,
 } from './server-check.js';
 
-// Which connection the app opens, and the three ways to choose one (plan
-// 14.4): an OpenBots account on the hosted server, a self-hosted server, or
-// the bundled stack on this Mac. The first two are thin clients: nothing here
+// Which connection the app opens, and the ways to choose one (plan 14.4): an
+// OpenBots account on the hosted server, a self-hosted server, the bundled
+// stack on this Mac, or another OpenBots server (often another Mac's) that
+// this Mac pairs with through its relay, with the link its "Pair your
+// phone…" window shows. All but This Mac are thin clients: nothing here
 // touches the stack manager unless the connection is This Mac. Plain, so it
 // is tested without Electron; ./index.ts gives it the main window.
 
@@ -48,6 +50,11 @@ export interface LauncherOptions {
   fetch: FetchLike;
   cloudUrl: string | null;
   window: LauncherWindow;
+  /**
+   * Pairs with the server of a pairing link and saves it (./paired.ts);
+   * resolves its profile. Missing where pairing is not wired up.
+   */
+  pair?: (link: string) => Promise<ServerProfile>;
   /** For tests: how long and how often to wait for /readyz. */
   wait?: WaitOptions;
 }
@@ -56,14 +63,21 @@ const LABELS: Record<ProfileKind, string> = {
   local: 'This Mac',
   remote: 'Self-hosted',
   cloud: 'OpenBots account',
+  paired: 'Paired',
 };
 
-/** "This Mac", "Self-hosted" or "OpenBots account", and the server's host. */
+/**
+ * "This Mac", "Self-hosted", "Paired" or "OpenBots account", and the server's
+ * host. A paired server's address is the app's own proxy, so its name stands
+ * in for the host, and it reports `remote`, which every web app knows.
+ */
 export function describeConnection(profile: ServerProfile): Omit<ConnectionInfo, 'stack'> {
+  const { kind } = profile;
+  const paired = kind === 'paired';
   return {
-    kind: profile.kind,
+    kind: kind === 'paired' ? 'remote' : kind,
     label: LABELS[profile.kind],
-    host: new URL(profile.url).host,
+    host: paired ? profile.name : new URL(profile.url).host,
     url: profile.url,
   };
 }
@@ -94,6 +108,8 @@ export interface Launcher {
   connectCloud(): Promise<void>;
   checkServer(input: string): Promise<ServerCheckResult>;
   connectServer(input: string): Promise<void>;
+  /** Pairs with another OpenBots server from its pairing link, saves it and opens it. */
+  connectPaired(link: string): Promise<void>;
   /** After the start page started the stack: waits for /readyz, then opens the web app. */
   connectLocal(): Promise<void>;
   info(): Promise<ConnectionInfo>;
@@ -174,6 +190,12 @@ export function createLauncher(options: LauncherOptions): Launcher {
       const added = await profiles.add({ url: result.url });
       const profile = await profiles.setActive(added.id);
       await window.openServer(profile, entryPath(result.setupRequired));
+    },
+
+    async connectPaired(link) {
+      if (!options.pair) throw new Error('Pairing with another server is not available here.');
+      const profile = await profiles.setActive((await options.pair(link)).id);
+      await window.openServer(profile);
     },
 
     async connectLocal() {

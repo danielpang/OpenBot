@@ -18,7 +18,7 @@ import {
   requestScan,
 } from '../services/repos.js';
 
-// The repositories routes of docs/TECHNICAL_PLAN.md 22.12 (GH2 to GH6): remember from a
+// The repositories routes of docs/plans/TECHNICAL_PLAN.md 22.12 (GH2 to GH6): remember from a
 // connection, found clones, the per-repository toggles, rescue, scan and
 // forget, each scoped to its owner. A self-hosted install has one account,
 // so the second owner is a row of their own, asked through the services the

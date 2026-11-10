@@ -56,6 +56,28 @@ export const gitConnections = pgTable(
   ],
 );
 
+/**
+ * Who an owner's coding sessions commit as: `bot` (the Bot as author, the
+ * owner as co-author) or `owner` (the owner as author). `name` and `email`
+ * override the account's for that, null when not set (session-git.ts).
+ */
+export const gitIdentities = pgTable(
+  'git_identities',
+  {
+    id: id(),
+    workspaceId: workspaceId(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    commitAs: text('commit_as').notNull().default('bot'),
+    name: text('name'),
+    email: text('email'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('git_identities_owner').on(t.workspaceId, t.ownerId)],
+);
+
 /** `instance_settings.key` of the self-hoster's own GitHub App (I17). */
 export const INSTANCE_SETTING_GITHUB_APP = 'github_app';
 

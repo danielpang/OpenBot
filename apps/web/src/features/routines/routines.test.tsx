@@ -156,7 +156,9 @@ async function until(check: () => boolean, what: string) {
 }
 
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
+  [...host.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === label || b.getAttribute('aria-label') === label,
+  );
 const click = (el: HTMLElement | undefined) => act(() => el!.click());
 
 function type(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {

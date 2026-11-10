@@ -118,7 +118,13 @@ const PRESETS = [
   preset('openai', 'OpenAI', 'openai'),
   preset('google', 'Google', 'google'),
   preset('xai', 'xAI', 'xai'),
-  preset('ollama', 'Ollama', 'custom'),
+  {
+    ...preset('ollama', 'Ollama', 'ollama'),
+    baseUrl: 'http://localhost:11434/v1',
+    keyRequired: false,
+    discovery: 'list_models' as const,
+  },
+  preset('lmstudio', 'LM Studio', 'custom'),
 ];
 
 function render(queryClient: QueryClient, node: ReactNode) {
@@ -180,7 +186,7 @@ describe('Settings > Models on the managed service (L6)', () => {
     expect(text.indexOf('Anthropic')).toBeLessThan(text.indexOf('Yours'));
     expect(text.indexOf('My Anthropic')).toBeGreaterThan(text.indexOf('Yours'));
     // A member adds their own custom providers, not the organization's.
-    expect(html.match(/Add custom model provider/g)).toHaveLength(1);
+    expect(html.match(/Add provider/g)).toHaveLength(1);
     // No private network on the hosted service.
     expect(html).not.toContain('Runs on my network');
   });
@@ -197,24 +203,101 @@ describe('Settings > Models', () => {
     { ...provider({}), apiKey: 'sk-ant-secret' } as Provider,
     provider({
       id: CUSTOM_ID,
-      name: 'Ollama',
-      slug: 'ollama',
+      name: 'LM Studio',
+      slug: 'lmstudio',
       kind: 'custom',
       protocol: 'openai_compatible',
-      baseUrl: 'http://localhost:11434/v1',
+      baseUrl: 'http://localhost:1234/v1',
       local: true,
       headers: ['X-Token'],
       hasKey: false,
       discovery: 'list_models',
-      presetId: 'ollama',
+      presetId: 'lmstudio',
     }),
   ];
+
+  it('keeps vendor subscription setup visible beside customized API endpoints', async () => {
+    const html = await settings([provider({ baseUrl: 'https://proxy.example/v1' })], true);
+    expect(html).toContain('anthropic subscription unavailable');
+    expect(html).toContain('Configure a computer to connect a subscription');
+    expect(html).toContain('data-key-status');
+  });
+
+  it('offers Ollama as a built-in with its address and no key', async () => {
+    const html = await settings([], true);
+    expect(html).toContain('aria-label="Ollama"');
+    expect(html).toMatch(
+      /aria-label="Ollama address"[^>]*value="http:\/\/localhost:11434\/v1"|value="http:\/\/localhost:11434\/v1"[^>]*aria-label="Ollama address"/,
+    );
+    expect(html).toContain('No API key needed');
+  });
+
+  it('shows a connected Ollama with its address and an optional key', async () => {
+    const ollama = provider({
+      id: CUSTOM_ID,
+      name: 'Ollama',
+      slug: 'ollama',
+      kind: 'ollama',
+      protocol: 'native',
+      baseUrl: 'http://host.docker.internal:11434/v1',
+      local: true,
+      hasKey: false,
+      keyHint: null,
+      discovery: 'list_models',
+      presetId: 'ollama',
+    });
+    const html = await settings([ollama], true);
+    expect(html).toContain('data-base-url');
+    expect(html).toContain('http://host.docker.internal:11434/v1');
+    expect(html).toContain('none (optional)');
+    expect(html).not.toContain('aria-label="Ollama address"');
+    expect(html).not.toContain('ollama connection');
+  });
+
+  it('offers Ollama Cloud beside a local Ollama, and only the way not set up yet', async () => {
+    const fresh = await settings([], true);
+    expect(fresh).toContain('aria-label="Where Ollama runs"');
+    expect(fresh).toContain('Ollama Cloud');
+
+    const local = provider({
+      id: CUSTOM_ID,
+      name: 'Ollama',
+      slug: 'ollama',
+      kind: 'ollama',
+      protocol: 'native',
+      baseUrl: 'http://host.docker.internal:11434/v1',
+      local: true,
+      hasKey: false,
+      keyHint: null,
+      discovery: 'list_models',
+      presetId: 'ollama',
+    });
+    const withLocal = await settings([local], true);
+    expect(withLocal).toContain('Add Ollama Cloud');
+    expect(withLocal).not.toContain('aria-label="Where Ollama runs"');
+
+    const cloud = provider({
+      ...local,
+      id: '00000000-0000-4000-8000-0000000000c1',
+      name: 'Ollama Cloud',
+      slug: 'ollama-cloud',
+      baseUrl: 'https://ollama.com/v1',
+      local: false,
+    });
+    const both = await settings([local, cloud], true);
+    expect(both).not.toContain('Add Ollama');
+    // The cloud card has a fixed address and needs its key.
+    const cloudOnly = await settings([cloud], true);
+    expect(cloudOnly).toContain('Add Ollama on your machine');
+    expect(cloudOnly).not.toContain('data-base-url');
+    expect(cloudOnly).toContain('>not set<');
+  });
 
   it('shows key status without ever rendering a key', async () => {
     const html = await settings(stored, true);
     // The hint tells keys apart (P3).
-    expect(html).toContain('API key: sk-ant-…a1b2');
-    expect(html).toContain('API key: not set'); // OpenAI, not configured yet
+    expect(html).toContain('sk-ant-…a1b2');
+    expect(html).toContain('>not set<'); // OpenAI, not configured yet
     expect(html).not.toContain('sk-ant-secret');
     expect(html).not.toContain('header-secret');
     expect(html).toContain('headers: X-Token');
@@ -249,18 +332,18 @@ describe('Settings > Models', () => {
 
   it('gives admins the edit controls and members a read-only view', async () => {
     const admin = await settings(stored, true);
-    expect(admin).toContain('Add custom model provider');
-    expect(admin).toContain('>Test<');
+    expect(admin).toContain('Add provider');
+    expect(admin).toContain('aria-label="Test"');
     expect(admin).toContain('type="password"');
 
     const member = await settings(stored, false);
-    expect(member).toContain('Ollama');
+    expect(member).toContain('LM Studio');
     // Members get no hint from the server, only that a key is set.
     const forMember = stored.map((p) => ({ ...p, keyHint: null }));
-    expect(await settings(forMember, false)).toContain('API key: set');
-    expect(member).not.toContain('Add custom model provider');
-    expect(member).not.toContain('>Test<');
-    expect(member).not.toContain('>Delete<');
+    expect(await settings(forMember, false)).toContain('>set<');
+    expect(member).not.toContain('Add provider');
+    expect(member).not.toContain('aria-label="Test"');
+    expect(member).not.toContain('aria-label="Delete"');
     expect(member).not.toContain('type="password"');
   });
 });
@@ -495,8 +578,8 @@ describe('add custom model provider', () => {
   });
 
   it('lets the preset fill kind and protocol', () => {
-    const body = endpointBody(PRESETS[4], { ...form, apiKey: ' k ', headers: '' });
-    expect(body).toMatchObject({ presetId: 'ollama', apiKey: 'k' });
+    const body = endpointBody(PRESETS[5], { ...form, apiKey: ' k ', headers: '' });
+    expect(body).toMatchObject({ presetId: 'lmstudio', apiKey: 'k' });
     expect(body).not.toHaveProperty('protocol');
     expect(body).not.toHaveProperty('headers');
   });
@@ -516,13 +599,13 @@ describe('add custom model provider', () => {
 describe('deleting a provider in use', () => {
   it('turns Delete off and says why while Bots use the provider (L5)', async () => {
     const used = await settings([provider({ botCount: 2 })], true);
-    expect(used).toMatch(/<button[^>]*disabled=""[^>]*>Delete<\/button>/);
+    expect(used).toMatch(/<button(?=[^>]*aria-label="Delete")(?=[^>]*disabled="")/);
     expect(used).toContain('Used by 2 Bots. Move them to another provider first.');
     expect(providerInUseText(1)).toBe('Used by 1 Bot. Move it to another provider first.');
     expect(providerInUseText(0)).toBeNull();
 
     const free = await settings([provider({ botCount: 0 })], true);
-    expect(free).not.toMatch(/<button[^>]*disabled=""[^>]*>Delete<\/button>/);
+    expect(free).not.toMatch(/<button(?=[^>]*aria-label="Delete")(?=[^>]*disabled="")/);
     expect(free).not.toContain('Used by');
   });
 

@@ -76,6 +76,25 @@ describe('createModelFactory', () => {
     expect(built.settings.apiKey).toBe('sk-test');
   });
 
+  it('calls Ollama, a built-in, over the OpenAI compatible client at its base URL', () => {
+    const sdk = fakeSdk();
+    createModelFactory(
+      config({
+        kind: 'ollama',
+        protocol: 'native',
+        slug: 'ollama',
+        presetId: 'ollama',
+        apiKey: null,
+        baseUrl: 'http://localhost:11434/v1',
+      }),
+      asSdk(sdk),
+    )('llama3.2');
+    expect(sdk.createOpenAICompatible).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'ollama', baseURL: 'http://localhost:11434/v1' }),
+    );
+    expect(sdk.createOpenAI).not.toHaveBeenCalled();
+  });
+
   it('uses createOpenAICompatible for openai_compatible, with the key in the preset header', () => {
     const sdk = fakeSdk();
     createModelFactory(

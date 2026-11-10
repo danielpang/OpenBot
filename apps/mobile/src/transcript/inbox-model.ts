@@ -12,7 +12,7 @@ export function pendingWidgets(messages: readonly Message[]): PendingWidget[] {
       message.parts.flatMap((part, index) => {
         if (
           part.type !== 'widget' ||
-          !['question', 'login_request', 'coder_login'].includes(part.kind)
+          !['question', 'login_request', 'coder_login', 'coder_choice'].includes(part.kind)
         )
           return [];
         const state = part.state as { status?: unknown } | null | undefined;

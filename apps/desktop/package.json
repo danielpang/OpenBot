@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Electron shell (main process, preload), loads apps/web",
-  "license": "BUSL-1.1",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/main/index.js",
   "exports": {
@@ -33,6 +33,7 @@
     "@openbots/api-client": "workspace:*",
     "@openbots/avatars": "workspace:*",
     "@openbots/shared": "workspace:*",
+    "@openbots/tunnel": "workspace:*",
     "@openbots/ui": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",

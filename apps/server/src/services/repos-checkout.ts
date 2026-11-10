@@ -123,6 +123,7 @@ export function runGit(ctx: GitContext, args: string[], options: RunnerOptions =
 }
 
 export interface RunnerOptions {
+  signal?: AbortSignal;
   cwd?: string;
   timeoutMs?: number;
   /** The push the owner approved (or a rescue): git gets a push credential. */
@@ -144,8 +145,18 @@ export async function runAsRunner(
   ctx: GitContext,
   command: string,
   args: string[],
-  { cwd, timeoutMs = GIT_TIMEOUT_MS, push = false, write = false, headChars }: RunnerOptions = {},
+  {
+    cwd,
+    timeoutMs = GIT_TIMEOUT_MS,
+    push = false,
+    write = false,
+    headChars,
+    signal,
+  }: RunnerOptions = {},
 ): Promise<GitRun> {
+  if (signal?.aborted)
+    return { code: null, stdout: '', stderr: '', error: `${command} was cancelled` };
+  let cancel: (() => void) | undefined;
   const sessionId = `runner-${randomUUID()}`;
   // `write` is the credentials' own flag (git-credentials.ts), set only when asked.
   runnerSessionIds.set(sessionId, {
@@ -168,10 +179,22 @@ export async function runAsRunner(
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
-        void proc?.close();
+        void proc?.close().catch(() => {});
         resolve({ code: null, stdout, stderr, error: `${command} took too long` });
       }, timeoutMs);
       let proc: Awaited<ReturnType<ComputerAgentClient['coder']>> | undefined;
+      cancel = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        void proc?.close().catch(() => {});
+        resolve({ code: null, stdout, stderr, error: `${command} was cancelled` });
+      };
+      signal?.addEventListener('abort', cancel, { once: true });
+      if (signal?.aborted) {
+        cancel();
+        return;
+      }
       ctx.agent
         .coder(
           {
@@ -200,8 +223,11 @@ export async function runAsRunner(
                 username: request.username,
                 sessionId,
               })
-                .then((answer) => proc?.credential({ request_id: request.request_id, ...answer }))
+                .then((answer) => {
+                  if (!settled) proc?.credential({ request_id: request.request_id, ...answer });
+                })
                 .catch((error: unknown) => {
+                  if (settled) return;
                   ctx.deps.logger.warn({ err: error }, 'git credential not answered');
                   proc?.credential({ request_id: request.request_id, denied: 'No credential' });
                 });
@@ -222,7 +248,7 @@ export async function runAsRunner(
         )
         .then((opened) => {
           proc = opened;
-          if (settled) void opened.close();
+          if (settled) void opened.close().catch(() => {});
           // git reads nothing from stdin; EOF once it runs, so nothing waits on it.
           opened.started
             .then(() => {
@@ -238,6 +264,7 @@ export async function runAsRunner(
         });
     });
   } finally {
+    if (cancel) signal?.removeEventListener('abort', cancel);
     runnerSessionIds.delete(sessionId);
   }
 }

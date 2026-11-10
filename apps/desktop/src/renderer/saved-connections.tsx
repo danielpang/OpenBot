@@ -66,7 +66,7 @@ function ProfileRow({
         </span>
         <span className="truncate text-xs text-muted-foreground">{connectionLine(profile)}</span>
       </span>
-      {profile.kind === 'remote' && (
+      {(profile.kind === 'remote' || profile.kind === 'paired') && (
         <Button
           type="button"
           variant="ghost"

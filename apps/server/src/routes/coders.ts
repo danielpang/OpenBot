@@ -3,6 +3,7 @@ import {
   CoderAgentSchema,
   CoderAuthKindSchema,
   CoderLoginStatusSchema,
+  CoderModelNameSchema,
   CoderPlanProviderSchema,
   CoderSignInStyleSchema,
 } from '@openbots/shared';
@@ -20,6 +21,7 @@ import {
   checkCoderSignIn,
   listCoderAccountsForSettings,
   setCoderApiKey,
+  setCoderDefaults,
   signOutCoder,
   type CoderAccountInfo,
 } from '../services/coder-accounts.js';
@@ -66,8 +68,30 @@ const CoderAccountSchema = z
       description:
         "How the agent signs in: a link to open, a link and a code to enter there (`device`), or in the computer's terminal",
     }),
+    model: z.string().nullable().openapi({
+      description:
+        "The owner's default model for this agent, as its CLI names it; null when not chosen, so a coding task asks",
+    }),
+    isDefault: z.boolean().openapi({
+      description: "The owner's default agent for coding tasks; at most one is",
+    }),
   })
   .openapi('CoderAccount');
+
+const CoderDefaultsSchema = z
+  .strictObject({
+    defaultAgent: CoderAgentSchema.nullable().optional().openapi({
+      description: 'The default agent; null clears it, so a coding task asks. Absent keeps it',
+    }),
+    models: z
+      .partialRecord(CoderAgentSchema, z.union([CoderModelNameSchema, z.literal(''), z.null()]))
+      .optional()
+      .openapi({
+        description:
+          'A default model per agent; null or an empty string clears it. Agents left out keep theirs',
+      }),
+  })
+  .openapi('CoderDefaults');
 
 const CoderLoginSchema = z
   .object({
@@ -330,5 +354,35 @@ export const coderRoutes = createRouter()
     async (c) => {
       const { agent } = c.req.valid('param');
       return c.json({ account: await signOutCoder(c.var.deps, c.var.user, agent) }, 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: 'put',
+      path: '/coders/defaults',
+      tags: ['coders'],
+      summary: 'Set the default coding agent and models',
+      description:
+        'The agent and model a coding task uses when neither the task nor the Bot names one. Without them the task asks the owner to choose.',
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: {
+        body: {
+          content: { 'application/json': { schema: CoderDefaultsSchema } },
+          required: true,
+        },
+      },
+      responses: {
+        200: json(z.object({ agents: z.array(CoderAccountSchema) }), 'One per agent'),
+        ...authProblems,
+      },
+    }),
+    async (c) => {
+      const body = c.req.valid('json');
+      const agents = await setCoderDefaults(c.var.deps, c.var.user, {
+        ...(body.defaultAgent !== undefined ? { defaultAgent: body.defaultAgent } : {}),
+        ...(body.models ? { models: body.models } : {}),
+      });
+      return c.json({ agents: agents.map(account) }, 200);
     },
   );

@@ -11,6 +11,12 @@ import type { Refusal, ServerGate } from './server-gate.js';
 
 export interface OpenerWindows<W> {
   /**
+   * Readies the profile's server before anything else: a paired server's
+   * proxy starts, and the profile comes back with the address it got.
+   * Throwing shows the start page with the error's sentence.
+   */
+  prepare?(profile: ServerProfile): Promise<ServerProfile>;
+  /**
    * The main window for the profile: the current one when it has the
    * profile's session (taking the profile's current URL), else a new one that
    * replaces it. A new one loads nothing until told to.
@@ -47,7 +53,28 @@ export function createOpener<W>(options: {
 }): Opener<W> {
   const { gate, windows } = options;
 
-  async function open(profile: ServerProfile, path = '/'): Promise<OpenResult<W>> {
+  /** The profile as `prepare` readied it, or the start page with why it could not. */
+  async function prepared(
+    profile: ServerProfile,
+  ): Promise<{ profile: ServerProfile } | OpenResult<W>> {
+    if (!windows.prepare) return { profile };
+    try {
+      return { profile: await windows.prepare(profile) };
+    } catch (error) {
+      const window = await windows.forProfile(profile);
+      windows.signOut(profile);
+      const message = error instanceof Error ? error.message : String(error);
+      await windows
+        .showStart(window, profile, { ok: false, reason: 'unreachable', message })
+        .catch(() => undefined);
+      return { window, opened: false };
+    }
+  }
+
+  async function open(requested: ServerProfile, path = '/'): Promise<OpenResult<W>> {
+    const ready = await prepared(requested);
+    if (!('profile' in ready)) return ready;
+    const { profile } = ready;
     const window = await windows.forProfile(profile);
     const verdict = await gate.verify(profile);
     if (!verdict.ok) {
@@ -63,7 +90,10 @@ export function createOpener<W>(options: {
   return {
     open,
 
-    async openPath(profile, path) {
+    async openPath(requested, path) {
+      const ready = await prepared(requested);
+      if (!('profile' in ready)) return ready;
+      const { profile } = ready;
       const window = await windows.forProfile(profile);
       // A page the window shows came through the gate.
       if (windows.showsServer(window, profile)) {

@@ -18,7 +18,10 @@ export type Platform = { kind: 'web' } | DesktopPlatform;
 
 /** How the Mac app reaches its server (apps/desktop `ConnectionInfo`). */
 export interface DesktopConnectionInfo {
-  /** `local` runs the server on this Mac in Docker; `remote` is self-hosted; `cloud` an OpenBots account. */
+  /**
+   * `local` runs the server on this Mac in Docker; `remote` is self-hosted, or
+   * another Mac paired through its relay (`label` "Paired"); `cloud` an OpenBots account.
+   */
   kind: 'local' | 'remote' | 'cloud';
   label: string;
   host: string;

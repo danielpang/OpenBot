@@ -7,6 +7,7 @@ import { capabilitiesQuery } from '../../app/api.js';
 import type { CoderAccount, CoderLogin } from './api.js';
 import { codingSessionHost, computerTerminalHref } from './session-host.js';
 import { accountWords, CodingAgentsSettings, keyProviders } from './settings.js';
+import { ProviderSubscription } from '../models/provider-subscription.js';
 
 // Settings > Coding agents against a fake server (CA2, CA3): a card per
 // agent, Sign in polling the login until it ends, Use API key and Sign out;
@@ -56,6 +57,8 @@ const account = (over: Partial<CoderAccount> & Pick<CoderAccount, 'agent'>): Cod
   planProvider: null,
   checkAvailable: over.agent === 'pi',
   signIn: ({ claude: 'link', codex: 'device', pi: 'terminal' } as const)[over.agent],
+  model: null,
+  isDefault: false,
   ...over,
 });
 
@@ -134,6 +137,18 @@ beforeEach(() => {
       );
       return Response.json({ account: agents[0] });
     }
+    if (path === '/api/v1/coders/defaults' && request.method === 'PUT') {
+      const { defaultAgent, models } = body as {
+        defaultAgent?: CoderAccount['agent'] | null;
+        models?: Record<string, string | null>;
+      };
+      agents = agents.map((a) => ({
+        ...a,
+        ...(defaultAgent !== undefined ? { isDefault: a.agent === defaultAgent } : {}),
+        ...(models && a.agent in models ? { model: models[a.agent] || null } : {}),
+      }));
+      return Response.json({ agents });
+    }
     if (path === '/api/v1/coders/codex/sign-out') {
       agents = agents.map((a) =>
         a.agent === 'codex' ? { ...a, authKind: 'none', providerId: null } : a,
@@ -175,7 +190,9 @@ async function until(check: () => boolean, what: string) {
 
 const card = (agent: string) => host.querySelector<HTMLElement>(`[data-agent="${agent}"]`)!;
 const buttonIn = (el: Element | null, label: string) =>
-  [...(el?.querySelectorAll('button') ?? [])].find((b) => b.textContent === label);
+  [...(el?.querySelectorAll('button') ?? [])].find(
+    (b) => b.textContent === label || b.getAttribute('aria-label') === label,
+  );
 
 function setValue(el: HTMLInputElement | HTMLSelectElement, value: string) {
   act(() => {
@@ -188,6 +205,106 @@ function setValue(el: HTMLInputElement | HTMLSelectElement, value: string) {
 }
 
 describe('Settings > Coding agents (CA2)', () => {
+  it('reuses the saved provider key for coding only after an explicit subscription disconnect', async () => {
+    agents[1] = account({ agent: 'codex', authKind: 'subscription', needsSignIn: false });
+    const original = server.handle;
+    server.handle = async (request, path, body) => {
+      if (path === '/api/v1/coders/codex/api-key') {
+        agents[1] = {
+          ...agents[1]!,
+          authKind: 'api_key',
+          providerId: (body as { providerId: string }).providerId,
+        };
+        return Response.json({ account: agents[1] });
+      }
+      return original(request, path, body);
+    };
+    render(<ProviderSubscription kind="openai" canEdit fallbackProviderId={OPENAI} />);
+    await until(() => !!buttonIn(card('codex'), 'Disconnect'), 'subscription controls');
+    expect(server.requests.some((r) => r.path.endsWith('/api-key'))).toBe(false);
+    act(() => buttonIn(card('codex'), 'Disconnect')!.click());
+    await until(() => agents[1]!.authKind === 'api_key', 'saved coding key');
+    const writes = server.requests.filter((r) => r.method !== 'GET').map((r) => r.path);
+    expect(writes).toEqual(['/api/v1/coders/codex/sign-out', '/api/v1/coders/codex/api-key']);
+    expect(agents[1]!.providerId).toBe(OPENAI);
+  });
+
+  it('adds a distinct native subscription provider when a customized endpoint already exists', async () => {
+    agents[1] = account({ agent: 'codex', authKind: 'subscription', needsSignIn: false });
+    const original = server.handle;
+    const custom = {
+      ...provider(OPENAI, 'OpenAI proxy', 'openai'),
+      baseUrl: 'https://proxy.example/v1',
+    };
+    let created = false;
+    server.handle = async (request, path, body) => {
+      if (path === '/api/v1/providers' && request.method === 'GET')
+        return Response.json({
+          items: created
+            ? [custom, { ...provider('native', 'OpenAI', 'openai'), slug: 'openai-subscription' }]
+            : [custom],
+        });
+      if (path === '/api/v1/providers' && request.method === 'POST') {
+        created = true;
+        return Response.json(
+          { ...provider('native', 'OpenAI', 'openai'), ...(body as object) },
+          { status: 201 },
+        );
+      }
+      return original(request, path, body);
+    };
+    render(<ProviderSubscription kind="openai" canEdit configured={false} />);
+    await until(() => !!buttonIn(host, 'Enable'), 'enable action');
+    act(() => buttonIn(host, 'Enable')!.click());
+    await until(() => created, 'native provider creation');
+    const writes = server.requests.filter(
+      (r) => r.path === '/api/v1/providers' && r.method === 'POST',
+    );
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.body).toMatchObject({ presetId: 'openai', slug: 'openai-subscription' });
+  });
+
+  it('keeps connection setup on Models in the routed settings view', async () => {
+    render(<CodingAgentsSettings connectionsOnModels />);
+    await until(() => !!card('claude'), 'the agent status');
+    expect(card('claude').textContent).toContain('Manage');
+    expect(card('claude').querySelector('a')?.getAttribute('href')).toBe('/settings/models');
+    expect(buttonIn(card('claude'), 'Sign in')).toBeUndefined();
+    expect(buttonIn(card('codex'), 'Use API key')).toBeUndefined();
+  });
+
+  it('saves the default agent and models (CA9)', async () => {
+    agents = agents.map((a) => (a.agent === 'claude' ? { ...a, model: 'sonnet' } : a));
+    render(<CodingAgentsSettings connectionsOnModels />);
+    const defaults = () => host.querySelector<HTMLElement>('[data-coder-defaults]')!;
+    await until(() => !!defaults(), 'the defaults');
+    const select = defaults().querySelector<HTMLSelectElement>('select')!;
+    const model = (label: string) =>
+      defaults().querySelector<HTMLInputElement>(`input[aria-label="${label} default model"]`)!;
+    const save = () => buttonIn(defaults(), 'Save defaults')!;
+    expect(select.value).toBe('');
+    expect(select.options[0]!.textContent).toBe('Ask each time');
+    expect(model('Claude Code').value).toBe('sonnet');
+    expect(save().disabled).toBe(true);
+
+    setValue(select, 'codex');
+    setValue(model('Codex'), '--yolo');
+    expect(defaults().textContent).toContain('A model name like');
+    expect(save().disabled).toBe(true);
+    setValue(model('Codex'), 'gpt-5.3-codex');
+    setValue(model('Claude Code'), '');
+    await act(async () => save().click());
+    await until(() => defaults().textContent!.includes('Saved'), 'the save');
+
+    const put = server.requests.find((r) => r.path === '/api/v1/coders/defaults')!;
+    expect(put.body).toEqual({
+      defaultAgent: 'codex',
+      models: { claude: null, codex: 'gpt-5.3-codex', pi: null },
+    });
+    expect(select.value).toBe('codex');
+    expect(save().disabled).toBe(true);
+  });
+
   it('shows a card per agent with its version, status and error', async () => {
     render(<CodingAgentsSettings />);
     await until(() => !!card('pi'), 'the cards');
@@ -471,7 +588,7 @@ describe('Settings > Coding agents: Codex, pi and Check (CA3)', () => {
         ),
       'the terminal message',
     );
-    expect(buttonIn(card('pi'), 'Open the terminal')).toBeDefined();
+    expect(buttonIn(card('pi'), 'Terminal')).toBeDefined();
     await act(async () => buttonIn(card('pi'), 'Check')!.click());
     await until(
       () =>
@@ -516,36 +633,20 @@ describe('Settings > Coding agents: Codex, pi and Check (CA3)', () => {
     expect(server.requests.some((r) => r.path === '/api/v1/coders/codex/check')).toBe(false);
   });
 
-  it('says what a signed-in plan bills, by the provider pi signed in to', async () => {
-    const signedIn = {
-      authKind: 'subscription',
-      accountLabel: 'dan@example.com',
-      needsSignIn: false,
-    } as const;
+  it('says nothing about billing for a signed-in plan', async () => {
     agents = [
-      account({ agent: 'claude', ...signedIn, planProvider: 'anthropic' }),
-      account({ agent: 'codex', ...signedIn, planProvider: 'openai' }),
-      account({ agent: 'pi', ...signedIn, planProvider: 'anthropic' }),
+      account({
+        agent: 'codex',
+        authKind: 'subscription',
+        accountLabel: 'dan@example.com',
+        needsSignIn: false,
+        planProvider: 'openai',
+      }),
     ];
     render(<CodingAgentsSettings />);
-    await until(() => !!card('pi')?.querySelector('[data-plan]'), 'the plan line');
-    const plan = (agent: string) => card(agent).querySelector('[data-plan]')?.textContent;
-    expect(plan('claude')).toBe('Usage is billed to your Claude plan.');
-    expect(plan('codex')).toBe('Usage is billed to your ChatGPT plan.');
-    expect(plan('pi')).toBe('Usage is billed to your Claude plan as extra usage.');
-    act(() => root!.unmount());
-    host.remove();
-    agents = [account({ agent: 'pi', ...signedIn, planProvider: 'openai' })];
-    render(<CodingAgentsSettings />);
-    await until(() => !!card('pi')?.querySelector('[data-plan]'), 'the plan line');
-    expect(plan('pi')).toBe('Usage is billed to your ChatGPT plan.');
-    act(() => root!.unmount());
-    host.remove();
-    agents = [account({ agent: 'pi', ...signedIn, planProvider: 'other' })];
-    render(<CodingAgentsSettings />);
-    await until(() => !!card('pi')?.querySelector('[data-plan]'), 'the plan line');
-    expect(plan('pi')).toBe('Usage is billed to your plan.');
-    expect(host.textContent).not.toMatch(/[–—]| - /);
+    await until(() => !!card('codex'), 'the card');
+    expect(card('codex').querySelector('[data-plan]')).toBeNull();
+    expect(host.textContent).not.toContain('billed to');
   });
 
   it('says a rejected key with a link to Settings > Models, and other errors as they are', async () => {

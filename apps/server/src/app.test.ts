@@ -142,6 +142,29 @@ describe('app', () => {
     expect((await app.request('/healthz')).status).toBe(200);
   });
 
+  it('does not return SPA HTML for missing build assets', async () => {
+    const app = createApp(t.deps, { webDist });
+    for (const path of ['/assets/old-chunk.js', '/assets/old-style.css']) {
+      const res = await app.request(path);
+      expect(res.status).toBe(404);
+      expect(res.headers.get('content-type')).toContain('application/problem+json');
+      expect(res.headers.get('cache-control') ?? '').not.toContain('immutable');
+    }
+  });
+
+  it('serves the current index on deep links after a rebuild', async () => {
+    const app = createApp(t.deps, { webDist });
+    const index = join(webDist, 'index.html');
+    try {
+      writeFileSync(index, '<!doctype html><title>New build</title>');
+      const res = await app.request('/bots/123');
+      expect(await res.text()).toContain('<title>New build</title>');
+      expect(res.headers.get('cache-control')).toBe('no-cache');
+    } finally {
+      writeFileSync(index, '<!doctype html><title>OpenBots</title>');
+    }
+  });
+
   it('has no SPA fallback without a web build', async () => {
     expect((await t.app.request('/bots/123')).status).toBe(404);
   });

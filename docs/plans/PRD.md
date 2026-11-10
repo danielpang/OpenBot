@@ -1,39 +1,39 @@
 # OpenBots Product Requirements
 
-OpenBots is a source available, self-hosted Grok Bot. This PRD is anchored on xAI's "Designing Grok Bot" essay and the Grok Bot documentation. Where OpenBots deliberately differs (self-hosting, Docker sandboxes, an open connector model), the difference is called out.
+OpenBots is a self-hosted team of persistent AI Bots, with an open source core under the Apache License 2.0. Requirements that come from self-hosting (Docker sandboxes, an open connector model) are called out where they apply.
 
-The test for every feature in this document is the one xAI used: **"Did this help someone delegate, or did it give them one more thing to manage?"**
+The test for every feature in this document: **does it let someone hand off work, or does it give them something else to manage?**
 
 ---
 
 ## 1. Vision and principles
 
-Grok Bot's thesis: chat sessions are the wrong primary object for an agent that "persists beyond any one session and can carry responsibility on its own." The interface should be built around persistent agents, and "as agents take on more responsibility, the interface should ask less of the person."
+A chat session is the wrong primary object for an agent that outlives any one conversation and takes on responsibility by itself. OpenBots builds the interface around persistent Bots, and the more a Bot is trusted with, the less the interface asks of its owner.
 
-OpenBots adopts the following principles from the essay as product requirements:
+OpenBots holds to the following principles as product requirements:
 
-1. **Bots, not conversations, are the main objects.** "A Bot has a name. It has an avatar and a title. It remembers its conversations with you. It has its own computer and tools. When you come back tomorrow, you are coming back to the same Bot."
-2. **Only five concepts are visible.** Bots, Chats, Prompts, Tools, Artifacts. "Everything else could remain beneath the interface until the user had a reason to care about it." Runs, queues, models, sandboxes, and MCP sessions are implementation detail and stay out of the primary UI.
-3. **Identity carries state.** The avatar communicates what the Bot is doing; there are no separate status indicators or "three animated dots."
-4. **Transparency is tiered.** Passive assurance from the avatar, current action on hover, full activity log on demand. People asked for detail "mainly for reassurance that the Bot was still working and on the right track."
-5. **The computer is the Bot's workspace, not the user's.** "The more prominent we made the computer, the more the product encouraged users to supervise it." Status, then preview, then takeover.
+1. **Bots, not conversations, are the main objects.** Each Bot has a name, an avatar and a title, remembers its conversations with you, and has its own computer and tools. Coming back tomorrow means coming back to the same Bot.
+2. **Only five concepts are visible.** Bots, Chats, Prompts, Tools, Artifacts. Everything else stays beneath the interface until the user has a reason to care about it. Runs, queues, models, sandboxes, and MCP sessions are implementation detail and stay out of the primary UI.
+3. **Identity carries state.** The avatar communicates what the Bot is doing; there are no separate status indicators or animated typing dots.
+4. **Transparency is tiered.** Passive assurance from the avatar, current action on hover, full activity log on demand. Most people want detail only to be reassured that the Bot is still working and on track.
+5. **The computer is the Bot's workspace, not the user's.** A prominent computer view invites the user to supervise it, so the computer shows status first, then a preview, then takeover.
 6. **The form of a response is part of the answer.** Bots answer in prose when prose fits and in structured widgets when it does not. The transcript is heterogeneous: conversation, system events, interactive objects, and visualizations share one timeline.
-7. **Capabilities are shared, context is isolated.** "Tools and Skills live at the account level... Memory and Routines belong to the Bot."
-8. **Coordination is done by Bots, not by dashboards.** No assignment boards or explicit handoff controls. "Coordinating Bots handle routine routing and bring the user in when a decision requires judgment."
-9. **Work starts without the user.** "A prompt can start a session, but so can a schedule, an event, or another Bot."
-10. **Remove rather than add.** Grok Bot shipped after removing window and panel controls, computer-view options, and agent metadata. The OpenBots UI reviews use the same bar.
+7. **Capabilities are shared, context is isolated.** Tools and Skills live at the account level. Memory and Routines belong to the Bot.
+8. **Coordination is done by Bots, not by dashboards.** No assignment boards or explicit handoff controls. Coordinating Bots handle routine routing and bring the user in when a decision needs judgment.
+9. **Work starts without the user.** A session can start from a prompt, a schedule, an event, or another Bot.
+10. **Remove rather than add.** Window and panel controls, computer-view options, and agent metadata stay out of the UI unless they earn their place. Every OpenBots UI review applies this bar.
 
 ---
 
 ## 2. The five objects
 
-| Object | Grok Bot definition | OpenBots |
+| Object | Definition | OpenBots |
 | --- | --- | --- |
-| **Bot** | "persistent agents with their own identity, memory, runtime, and tools" | A named agent with an avatar, label, description (standing rules), model, memory, Routines, enabled Skills, tool permissions, and a screen on the owner's computer |
-| **Chat** | "the conversational interface for working with a Bot" | Each Bot has one persistent direct transcript with its owner. Group chats hold two to six Bots. Threads hang off a result or an approval. Bots also message each other directly |
-| **Prompt** | "give a Bot context or instructions. They can be used once, saved as Skills, or triggered automatically as Routines" | A message (used once), a Skill (saved in the account library, referenced with `/`), or a Routine (a prompt or Skill run by a schedule or an event, owned by a Bot) |
-| **Tool** | "let Bots access information and take action through software, APIs, connectors, the shell, or computer use" | Built-in tools, connectors (MCP servers and first-party integrations) at the account level, and the computer (shell, files, browser) |
-| **Artifact** | "documents, designs, code, data, and other durable outputs that Bots create or modify" | Versioned outputs stored by OpenBots, shown as cards in the transcript, openable in a viewer |
+| **Bot** | A persistent agent with its own identity, memory, runtime, and tools | A named agent with an avatar, label, description (standing rules), model, memory, Routines, enabled Skills, tool permissions, and a screen on the owner's computer |
+| **Chat** | The conversation in which a person works with a Bot | Each Bot has one persistent direct transcript with its owner. Group chats hold two to six Bots. Threads hang off a result or an approval. Bots also message each other directly |
+| **Prompt** | Context or instructions for a Bot: used once, saved as a Skill, or run automatically as a Routine | A message (used once), a Skill (saved in the account library, referenced with `/`), or a Routine (a prompt or Skill run by a schedule or an event, owned by a Bot) |
+| **Tool** | Access to information and actions through software, APIs, connectors, the shell, or computer use | Built-in tools, connectors (MCP servers and first-party integrations) at the account level, and the computer (shell, files, browser) |
+| **Artifact** | A durable output a Bot creates or changes, such as a document, design, code, or data | Versioned outputs stored by OpenBots, shown as cards in the transcript, openable in a viewer |
 
 ---
 
@@ -60,7 +60,7 @@ Each requirement has an ID for traceability into the technical plan. "Must" is v
 | B5 | Duplicate a Bot: carries profile, settings, enabled Skills, Routines, and avatar; excludes conversation history, learned memory, attachments, and the main Bot mark (K8); the copy is the main Bot only when the owner has none. | Must |
 | B6 | Removed: there are no Bot templates. A Bot starts from a name and an icon and learns its task by asking (B2). | n/a |
 | B7 | Delete removes profile, conversation, and Routines; the UI recommends hiding instead when unsure. | Must |
-| B8 | Limits: 50 Bots per account, six Bots per group chat. Limits are configurable by the self-host admin but default to Grok Bot's. | Must |
+| B8 | Limits: 50 Bots per account, six Bots per group chat, by default. The self-host admin can change them. | Must |
 
 ### 4.2 Identity and state
 
@@ -101,7 +101,7 @@ Each requirement has an ID for traceability into the technical plan. "Must" is v
 | ID | Requirement | Priority |
 | --- | --- | --- |
 | T1 | Tools live at the account level and are available to every Bot the account owns, subject to per-Bot permissions. | Must |
-| T2 | Connectors: add any MCP server (stdio or Streamable HTTP with OAuth 2.1) from a catalog, a custom form, or pasted `mcpServers` JSON. Every member can add catalog servers (stdio ones included, which run the catalog's pinned command) and any Streamable HTTP server. A custom stdio command runs a program on the OpenBots server, so only a workspace admin can add one, and only after an admin turns custom stdio servers on (off by default; see [SECURITY.md](SECURITY.md) S-1). Pasted JSON imports every server the member may add and lists each refused one with the reason. Connecting an account is one click where the provider registers OpenBots itself (dynamic client registration: Cloudflare, Vercel, Supabase, Neon, Railway, and any pasted URL whose server offers it): Connect opens the provider's sign-in (a popup in the browser, the default browser in the Mac app), the owner logs in and authorizes OpenBots, and the page says "<Provider> is connected. You can close this window." while the card turns Connected. A pasted URL needs nothing else; OpenBots finds out whether it needs OAuth. GitHub uses a public GitHub App installed on selected repositories, followed by device authorization with automatically refreshed user access tokens, without a private key, client secret or public callback (see [GITHUB_CONNECTOR.md](GITHUB_CONNECTOR.md)). The shared app's public client ID and slug can be bundled or configured on the instance; the owner can instead enter their own GitHub App identifiers under Advanced. Other providers without registration (Slack, Gmail, Google Docs for now) take the owner's own OAuth app under Advanced. Expired or revoked sign-ins show one Reconnect button. First-party built-ins at 1.0: web search, web fetch, HTTP request, email (SMTP and IMAP), GitHub. | Must |
+| T2 | Connectors: add any MCP server (stdio or Streamable HTTP with OAuth 2.1) from a catalog, a custom form, or pasted `mcpServers` JSON. Every member can add catalog servers (stdio ones included, which run the catalog's pinned command) and any Streamable HTTP server. A custom stdio command runs a program on the OpenBots server, so only a workspace admin can add one, and only after an admin turns custom stdio servers on (off by default). Pasted JSON imports every server the member may add and lists each refused one with the reason. Connecting an account is one click where the provider registers OpenBots itself (dynamic client registration: Cloudflare, Vercel, Supabase, Neon, Railway, and any pasted URL whose server offers it): Connect opens the provider's sign-in (a popup in the browser, the default browser in the Mac app), the owner logs in and authorizes OpenBots, and the page says "<Provider> is connected. You can close this window." while the card turns Connected. A pasted URL needs nothing else; OpenBots finds out whether it needs OAuth. GitHub uses a public GitHub App installed on selected repositories, followed by device authorization with automatically refreshed user access tokens, without a private key, client secret or public callback (see [GITHUB_CONNECTOR.md](../GITHUB_CONNECTOR.md)). The shared app's public client ID and slug can be bundled or configured on the instance; the owner can instead enter their own GitHub App identifiers under Advanced. Other providers without registration (Slack, Gmail, Google Docs for now) take the owner's own OAuth app under Advanced. Expired or revoked sign-ins show one Reconnect button. First-party built-ins at 1.0: web search, web fetch, HTTP request, email (SMTP and IMAP), GitHub. | Must |
 | T3 | A workspace admin can block a connector for all members; blocked connectors show as "Disabled by admin". | Must |
 | T4 | Bots prefer connectors over the computer when a connector covers the task, and fall back to computer use otherwise. | Must |
 | T5 | Every side-effecting action passes an approval policy (auto, ask, deny) configurable per Bot and per tool, with safe defaults. Approval requests are widgets in the transcript and notifications on desktop. | Must |
@@ -116,7 +116,7 @@ Each requirement has an ID for traceability into the technical plan. "Must" is v
 | K3 | Three levels of access from the chat: **Status** (title-bar icon lights up while active), **Preview** (a pinned side panel that follows the work without leaving the conversation), **Takeover** (open full screen, take control, hand it back). No other computer-view options. | Must |
 | K4 | Work continues when the app, laptop, or phone is closed. | Must |
 | K5 | The computer's wallpaper shifts through the day, lighter in the morning and darker at night, so it reads as the Bot's space rather than the user's desktop. | Must |
-| K6 | Self-host difference: the computer is a Docker sandbox by default (Grok Bot uses a Firecracker microVM). Stronger isolation providers are pluggable. | Must |
+| K6 | The computer is a Docker sandbox by default. Stronger isolation providers, such as a Firecracker microVM, are pluggable. | Must |
 | K7 | Persistent files survive restarts and upgrades; the user can browse, upload, and download them. | Must |
 | K8 | Main Bot for sign-ins. The owner can mark at most one of their Bots as the main Bot in Bot Settings. A member's first Bot becomes their main Bot, and so does a new Bot made while they have none (for example after deleting the main Bot). When a Bot needs a login it does not have, it asks for a sign-in with the site and a reason instead of asking for credentials. With a main Bot set, and the asking Bot not the main Bot, the request goes to the main Bot through their Bot to Bot chat (visible to the owner, C6), and one sign-in request appears in the main Bot's transcript without the main Bot starting any work. It asks the owner once: pending requests for the same site are merged into one. The owner opens Takeover on the main Bot's screen (K3), signs in, hands back, and clicks Done. The login carries over to every Bot (K1) and every waiting Bot resumes. With no main Bot set, or when the main Bot is the one asking, the request appears in the asking Bot's own transcript and the owner signs in on that Bot's screen. A waiting Bot shows the Waiting state with the action "Waiting for sign-in: <site>". | Must |
 
@@ -136,7 +136,7 @@ The three agents are not gated the same way. Claude Code asks through OpenBots a
 | CA6 | Approvals: when the agent wants something the policy marks ask (push, opening a PR, anything outside the worktree, package installs, destructive commands), an OpenBots approval appears in the widget and as a notification, on the Mac and the phone. Edits, tests and commits inside the worktree run without asking by default. Runs started by a webhook or another Bot keep the stricter floor (P2). This holds for Claude Code and pi. Codex asks only when it wants to leave its sandbox, and those requests are decided the same way; what its sandbox allows runs unasked. The push and the PR, which OpenBots does itself, ask the owner for every agent. | Must |
 | CA7 | Open terminal opens the Computer page's terminal in the session's worktree, as the coding agents' user, with the vendor's resume command (`claude --resume <id>`, `codex resume <id>` or `pi --session <id>`) typed and ready. Pausing the Bot's session while the owner has the terminal, and Hand back, are Later. | Must |
 | CA8 | Follow-ups: Continue on an ended session, or a thread reply on its widget, asks the Bot to resume the same vendor session on the same branch with the owner's prompt. | Must |
-| CA9 | Per-Bot settings under Tools and permissions: coding agents on or off (the coder group's Never), default agent, allowed repositories (all by default), a decision per action class (which Codex consults only for what it asks, CA6) and a model per agent, written as that agent's CLI names it (`claude-sonnet-4-5`, `gpt-5.3-codex`, `anthropic/claude-sonnet-4-5` or `sonnet:high` for pi), empty for the agent's default. A name must start with a letter or digit and hold no spaces, so it cannot read as a flag; a stored one that does not parse is dropped on its own and the Bot's other coding settings are kept. | Must |
+| CA9 | Per-Bot settings under Tools and permissions: coding agents on or off (the coder group's Never), default agent, allowed repositories (all by default), a decision per action class (which Codex consults only for what it asks, CA6) and a model per agent, written as that agent's CLI names it (`claude-sonnet-4-5`, `gpt-5.3-codex`, `anthropic/claude-sonnet-4-5` or `sonnet:high` for pi), empty for the owner's default. Settings > Coding agents holds the owner's own defaults, a default agent and a model per agent, used where the Bot names none; with neither set, `code_task` asks the owner in the chat to choose an agent and model (the `coder_choice` card), which they can keep as their defaults. A session keeps the model it started with when it is continued. A name must start with a letter or digit and hold no spaces, so it cannot read as a flag; a stored one that does not parse is dropped on its own and the Bot's other coding settings are kept. | Must |
 | CA10 | Credentials expire: a session that finds its agent signed out fails with "not signed in", posts the `coder_login` widget in the main Bot's transcript (merged per agent, like site sign-ins, K8), and every run waiting on it resumes once the owner signs in. This holds for all three agents: a Codex sign-in that OpenAI refuses reads "Codex could not sign in to OpenAI" rather than the raw 401, and pi's widget sends the owner to its terminal, where Check ends the sign-in and resumes the waiting runs. An agent on an API key has no sign-in to lapse: when the provider refuses the key, the session fails with "The <provider> API key for <agent> was rejected. Check it under Settings > Models.", no sign-in is posted, and the account stays on its key. | Must |
 | CA11 | Routine templates "Fix issues labeled bot" (a GitHub label trigger, `bot` unless the owner names another label), "Review new pull requests" (a pull request opened) and "Weekly dependency update" (weekly, Monday at 09:00), each with a prompt that uses `code_task`, listed above the manual form on a Bot's Routines tab. The owner picks the repository, and the label for the first. When the repository comes through a GitHub App installation, the App's own webhook delivers its events and nothing is pasted into GitHub; otherwise the Routine gets a plain GitHub webhook endpoint, with a token and a signing secret to add on the repository. Shipped in Phase 2. | Must |
 | CA12 | Built-in Skill "Working in a repository": when to plan first, to run the tests the repository has, to keep PRs small and to report what changed. Seeded into the owner's library and enabled for every new Bot on an install with a computer. | Must |
@@ -176,7 +176,7 @@ API keys by agent (CA2). An agent on an API key uses a provider the owner added 
 
 ### 4.8 Webhook endpoints
 
-Grok Bot exposes webhooks only as a Routine trigger. OpenBots keeps that and adds a direct endpoint per Bot because self-hosters integrate with scripts and services that just want to "message the Bot."
+A webhook can trigger a Routine, and each Bot also has a direct webhook endpoint, because self-hosters integrate with scripts and services that just want to message the Bot.
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
@@ -333,12 +333,12 @@ Key screens:
 
 | Limit | Default | Source |
 | --- | --- | --- |
-| Bots per account | 50 | Design essay |
-| Bots per group chat | 6 | Design essay and docs |
-| Routines per Bot | 50 | Docs |
-| Run records kept per Routine | 20 | Docs |
-| Computers per account | 1 | Docs |
-| Concurrent computer-use tasks per Bot | 1 | Docs |
+| Bots per account | 50 | OpenBots |
+| Bots per group chat | 6 | OpenBots |
+| Routines per Bot | 50 | OpenBots |
+| Run records kept per Routine | 20 | OpenBots |
+| Computers per account | 1 | OpenBots |
+| Concurrent computer-use tasks per Bot | 1 | OpenBots |
 | Webhook payload size | 1 MB | OpenBots |
 | Sync webhook wait | 60 s | OpenBots |
 | Concurrent coding sessions per account | 3 | Coding agents design |
@@ -359,14 +359,6 @@ Multi-human group chats, mobile apps, demonstration-recorded Skills, enterprise 
 
 ## 8. Open questions
 
-1. Should a Bot have exactly one transcript (Grok Bot) or allow archived transcripts for a fresh start? Recommendation: one transcript, with a "start fresh" action that archives the old one and keeps memory.
+1. Should a Bot have exactly one transcript, or allow archived transcripts for a fresh start? Recommendation: one transcript, with a "start fresh" action that archives the old one and keeps memory.
 2. How much of the avatar system to ship: generated SVG variations only, or also animated presets? Recommendation: generated SVG with six CSS motion states at 1.0.
-3. Does Claude Code's headless mode (`claude -p`) on a Claude plan sign-in bill the plan? Not yet checked: it needs a real Pro or Max account (docs/CODING_AGENT_VENDORS.md).
-
----
-
-## Sources
-
-- xAI, "Designing Grok Bot": https://x.ai/news/designing-grok-bot
-- xAI, "Introducing Grok Bot": https://x.ai/news/introducing-grok-bot
-- Grok Bot docs: overview, bots, chat and collaboration, skills and routines, teams and enterprises, FAQ: https://docs.x.ai/grok-bot/overview
+3. Does Claude Code's headless mode (`claude -p`) on a Claude plan sign-in bill the plan? Not yet checked: it needs a real Pro or Max account (docs/plans/CODING_AGENT_VENDORS.md).

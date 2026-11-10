@@ -1,4 +1,4 @@
-// The machine's ledger (docs/MOBILE_AND_VM_PLAN.md 5.8, "Each machine on its
+// The machine's ledger (docs/plans/MOBILE_AND_VM_PLAN.md 5.8, "Each machine on its
 // own"): one budget for the bytes in flight on this machine, and one ceiling
 // on its sockets. Every socket gets a ticket when it is admitted, and every
 // byte the relay holds for a destination is reserved on that destination's

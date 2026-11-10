@@ -1,5 +1,5 @@
 # The shared OpenBots relay on Fly Machines (deploy/relay/README.md,
-# docs/MOBILE_AND_VM_PLAN.md 5.8). Several Machines serve one hostname. Redis
+# docs/plans/MOBILE_AND_VM_PLAN.md 5.8). Several Machines serve one hostname. Redis
 # says which Machine owns each host id; a Machine that gets a connection for a
 # host another Machine owns answers with `fly-replay`, and Fly's proxy replays
 # it on the owner.

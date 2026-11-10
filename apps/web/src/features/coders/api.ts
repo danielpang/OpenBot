@@ -115,6 +115,15 @@ export const setCoderApiKey = (agent: CoderAgent, providerId: string) =>
     (r) => asAccount(r.account),
   );
 
+/** The default agent and models a coding task uses when the Bot names none (CA9). */
+export type CoderDefaults = components['schemas']['CoderDefaults'];
+
+export const setCoderDefaults = (defaults: CoderDefaults) =>
+  unwrap(api.PUT('/api/v1/coders/defaults', { body: defaults })).then((r) => ({
+    ...r,
+    agents: r.agents.map(asAccount),
+  }));
+
 export const signOutCoder = (agent: CoderAgent) =>
   unwrap(api.POST('/api/v1/coders/{agent}/sign-out', path(agent))).then((r) =>
     asAccount(r.account),
@@ -153,9 +162,12 @@ export const codingSessionEvents = (id: string, after = 0, limit = 200) =>
   );
 
 /** The owner's next prompt to the agent, once the session has ended. */
-export const sendCodingTurn = (id: string, prompt: string) =>
+export const sendCodingTurn = (id: string, prompt: string, attachments: string[] = []) =>
   unwrap(
-    api.POST('/api/v1/coding-sessions/{id}/turns', { params: { path: { id } }, body: { prompt } }),
+    api.POST('/api/v1/coding-sessions/{id}/turns', {
+      params: { path: { id } },
+      body: { prompt, ...(attachments.length ? { attachments } : {}) },
+    }),
   ).then((r) => r.session);
 
 /** The session's full log, as text. */

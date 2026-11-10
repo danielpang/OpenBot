@@ -4,7 +4,7 @@ import {
   type BuiltinServices,
   type ConnectorTools,
 } from '@openbots/agent';
-import { blockedBy, loadCatalog, toolPermitted, type BlockRule } from '@openbots/mcp';
+import { toolPermitted } from '@openbots/mcp';
 import { PolicyDecisionSchema, resolveToolPolicy, wsEvent } from '@openbots/shared';
 import type { EmailDraftState } from '@openbots/widgets';
 import { and, eq } from 'drizzle-orm';
@@ -12,9 +12,7 @@ import type { AppDeps } from '../context.js';
 import { schema } from '../db/client.js';
 import { publishEvent } from '../infra/index.js';
 import {
-  blockRules,
   callToolForBot,
-  connectorBlocked,
   discoverUntested,
   errorStatus,
   listToolsForBot,
@@ -25,28 +23,18 @@ import {
 import { emailSettings, imapInbox, sendEmail, type EmailOptions } from './email.js';
 import { githubApi, type GithubOptions } from './github.js';
 import type { NetOptions } from './net.js';
-import { searchBackend, type SearchOptions } from './search.js';
+import { searchBackends, type SearchOptions } from './search.js';
 import { fetchPage, httpRequest } from './web.js';
 
 // The backends behind the agent's built-in tools (plan 5.4, 18.3) and the
 // Bot's connector tools, assembled once per run. Built-in connectors (kind
 // `builtin`, added from the catalog on the Connectors page) carry the secrets: the
-// Brave or Tavily key, the mailbox, the GitHub token. They are opened here,
+// Brave, Tavily or Exa key, the mailbox, the GitHub token. They are opened here,
 // lazily, and never reach the model. The Bot's `bot_connectors` rows narrow
 // them like MCP connectors (allow and deny lists, approval override).
 
 type BotRow = typeof schema.bots.$inferSelect;
 
-/**
- * The built-ins (by their `builtin` id) the admin rules block or leave off the allow list.
- * Web fetch and HTTP request need no connector row, so the rules are checked against the
- * catalog entries themselves, the way the catalog's "Disabled by admin" is (T3, U3).
- */
-export function blockedBuiltins(rules: BlockRule[]): string[] {
-  return loadCatalog()
-    .entries.filter((entry) => entry.builtin && blockedBy({ catalogId: entry.id }, rules))
-    .map((entry) => entry.builtin!);
-}
 type BuiltinsDeps = Pick<AppDeps, 'db' | 'config' | 'logger'>;
 
 export interface BuiltinOptions {
@@ -61,7 +49,7 @@ export async function loadBuiltins(
   bot: Pick<BotRow, 'id' | 'ownerId' | 'workspaceId' | 'toolPolicy'>,
   options: BuiltinOptions = {},
 ): Promise<BuiltinServices> {
-  const [rows, permissions, rules] = await Promise.all([
+  const [rows, permissions] = await Promise.all([
     deps.db
       .select()
       .from(schema.connectors)
@@ -73,10 +61,8 @@ export async function loadBuiltins(
         ),
       ),
     deps.db.select().from(schema.botConnectors).where(eq(schema.botConnectors.botId, bot.id)),
-    blockRules(deps.db, bot.workspaceId),
   ]);
   const ruleFor = new Map(permissions.map((p) => [p.connectorId, p]));
-  const blocked = blockedBuiltins(rules);
   const connectors: Record<string, BuiltinConnector> = {};
   const secretsOf = new Map<string, () => Record<string, string>>();
   const paramsOf = new Map<string, Record<string, string>>();
@@ -89,8 +75,6 @@ export async function loadBuiltins(
     }
     if (stored.transport.transport !== 'builtin') continue;
     const builtin = stored.transport.builtin;
-    if (blocked.includes(builtin)) continue;
-    if (blockedBy({ catalogId: row.catalogId, config: stored.transport }, rules)) continue;
     if (connectors[builtin]) continue;
     const rule = ruleFor.get(row.id);
     const override = PolicyDecisionSchema.safeParse(rule?.approvalOverride);
@@ -126,7 +110,7 @@ export async function loadBuiltins(
     privateHosts: (allowlist ?? []).filter((h) => !h.startsWith('*.')),
   };
 
-  const searchKeys = secretsOf.get('web_search')?.() ?? {};
+  const search = searchBackends(secretsOf.get('web_search')?.() ?? {}, options.search);
   const email = connectors.email
     ? emailSettings(paramsOf.get('email') ?? {}, secretsOf.get('email')!())
     : null;
@@ -135,7 +119,8 @@ export async function loadBuiltins(
   if (connectors.github && !githubToken) delete connectors.github;
 
   return {
-    webSearch: searchBackend(searchKeys, options.search),
+    webSearch: search?.web ?? null,
+    newsSearch: search?.news ?? null,
     // web_fetch waits OPENBOTS_WEB_FETCH_TIMEOUT_SECONDS and reads OPENBOTS_WEB_FETCH_MAX_CHARS.
     fetchPage: (url) =>
       fetchPage(url, { timeoutMs: processLimits.webFetchTimeoutSeconds * 1000, ...httpNet }),
@@ -168,12 +153,6 @@ export async function loadBuiltins(
       return { file_id: file.id, name: file.name, mime: file.mime, size: file.size };
     },
     connectors,
-    blocked,
-    // An admin may block a built-in while a run is going: the call reads the rules again.
-    assertNotBlocked: async (builtin) => {
-      const current = await blockRules(deps.db, bot.workspaceId);
-      if (blockedBuiltins(current).includes(builtin)) throw connectorBlocked();
-    },
   };
 }
 

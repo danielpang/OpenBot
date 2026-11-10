@@ -13,8 +13,9 @@ import {
 } from './welcome.js';
 
 // The start page's flow (plan 14.4), without a DOM: ./start-page.tsx renders
-// its state. With `welcome=1` it is the welcome screen: the three ways to
-// connect, on first launch and from "Change connection…". Otherwise it is
+// its state. With `welcome=1` it is the welcome screen: the ways to connect,
+// on first launch and from "Change connection…", and `pair=<link>` when a
+// pairing link was opened on this Mac, for the choice that pairs with it. Otherwise it is
 // shown when the active server does not answer, with the reason, the bundled
 // stack's controls for This Mac (start, stop, update, logs), and a way to
 // change the connection; with `upgrade=1` when the app was updated past the
@@ -34,7 +35,7 @@ export type LocalSetupState =
   | { kind: 'failed'; message: string; detail: string | null };
 
 /** Where an error shows: beside the choice or control that caused it, or at the top. */
-export type ErrorPlace = 'page' | 'cloud' | 'server' | 'local' | 'stack' | 'saved';
+export type ErrorPlace = 'page' | 'cloud' | 'server' | 'pair' | 'local' | 'stack' | 'saved';
 
 export interface PageError {
   message: string;
@@ -62,6 +63,10 @@ export interface StartState {
     address: string;
     warning: string | null;
     checking: boolean;
+    /** Another server's pairing link, pasted or opened on this Mac. */
+    pairLink: string;
+    /** Pairing with it: connecting through its relay. */
+    pairing: boolean;
     local: LocalSetupState;
   };
   status: {
@@ -123,6 +128,8 @@ export function createStartFlow(bridge: AppBridge, query: URLSearchParams) {
       address: '',
       warning: null,
       checking: false,
+      pairLink: (welcome && query.get('pair')) || '',
+      pairing: false,
       local: { kind: 'idle' },
     },
     status: {
@@ -303,6 +310,15 @@ export function createStartFlow(bridge: AppBridge, query: URLSearchParams) {
           .server(get().welcome.address)
           .catch(showError('server'))
           .finally(() => setWelcome({ checking: false }));
+      },
+      setPairLink: (pairLink: string) => setWelcome({ pairLink }),
+      connectPair: () => {
+        clearError();
+        setWelcome({ pairing: true });
+        return bridge.connect
+          .pair(get().welcome.pairLink.trim())
+          .catch(showError('pair'))
+          .finally(() => setWelcome({ pairing: false }));
       },
       setUpLocal: () => setUpLocal(),
       checkAgain: () => setUpLocal(),

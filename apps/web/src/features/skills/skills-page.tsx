@@ -1,5 +1,6 @@
 import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbots/shared';
-import { Button, Input, Textarea } from '@openbots/ui';
+import { Button, IconButton, Input, PlusIcon, Textarea, TrashIcon } from '@openbots/ui';
+import type { SVGProps } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import {
@@ -30,7 +31,19 @@ export function SkillsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-sm text-muted-foreground">{SKILLS_HELP}</p>
+      <div className="flex items-start gap-4">
+        <p className="min-w-0 flex-1 text-sm text-muted-foreground">{SKILLS_HELP}</p>
+        {!(selected?.kind === 'new' || open) && (
+          <div className="flex shrink-0 items-center gap-0.5">
+            <IconButton label="Import from GitHub" onClick={() => setImporting(true)}>
+              <DownloadIcon />
+            </IconButton>
+            <IconButton label="New Skill" onClick={() => setSelected({ kind: 'new' })}>
+              <PlusIcon />
+            </IconButton>
+          </div>
+        )}
+      </div>
       {selected?.kind === 'new' || open ? (
         <SkillEditor
           key={open?.id ?? 'new'}
@@ -40,14 +53,6 @@ export function SkillsPage() {
         />
       ) : (
         <>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => setSelected({ kind: 'new' })}>
-              New Skill
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
-              Import from GitHub
-            </Button>
-          </div>
           {error && <p className="text-sm text-destructive">{error.message}</p>}
           {data && !skills.length && (
             <p className="text-sm text-muted-foreground">No Skills yet.</p>
@@ -77,7 +82,7 @@ export function SkillList({
   onOpen(id: string): void;
 }) {
   return (
-    <ul className="divide-y rounded-md border" aria-label="Skills">
+    <ul className="divide-y overflow-hidden rounded-lg border bg-card" aria-label="Skills">
       {skills.map((skill) => (
         <li key={skill.id}>
           <button
@@ -150,9 +155,9 @@ export function SkillEditor({
   return (
     <form className="flex flex-col gap-4" onSubmit={submit} aria-label="Skill editor">
       <div className="flex items-center gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-          Back
-        </Button>
+        <IconButton label="Back" onClick={onClose}>
+          <BackIcon />
+        </IconButton>
         {skill && <span className="text-xs text-muted-foreground">{usedByText(skill.usedBy)}</span>}
       </div>
       {skill?.origin && <SkillOriginNote origin={skill.origin} />}
@@ -186,17 +191,26 @@ export function SkillEditor({
         <Button type="submit" disabled={!name.trim() || save.isPending}>
           {skill ? 'Save' : 'Create'}
         </Button>
-        {skill && (
-          <Button
-            type="button"
-            variant={confirming ? 'destructive' : 'ghost'}
-            className="ml-auto"
-            disabled={remove.isPending}
-            onClick={() => (confirming ? remove.mutate() : setConfirming(true))}
-          >
-            {confirming ? 'Delete for every Bot' : 'Delete'}
-          </Button>
-        )}
+        {skill &&
+          (confirming ? (
+            <div className="ml-auto flex items-center gap-2">
+              <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={remove.isPending}
+                onClick={() => remove.mutate()}
+              >
+                Delete for every Bot
+              </Button>
+            </div>
+          ) : (
+            <IconButton label="Delete" className="ml-auto" onClick={() => setConfirming(true)}>
+              <TrashIcon />
+            </IconButton>
+          ))}
       </div>
       {remove.error && <p className="text-sm text-destructive">{remove.error.message}</p>}
     </form>
@@ -219,5 +233,40 @@ export function SkillOriginNote({ origin }: { origin: SkillOrigin }) {
       at {origin.ref} ({origin.sha.slice(0, 7)}).
       {origin.license && ` License: ${origin.license}.`} Read it before you enable it.
     </p>
+  );
+}
+
+function Glyph({ children, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      {...props}
+    >
+      {children}
+    </svg>
+  );
+}
+
+function DownloadIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Glyph {...props}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M12 15V3" />
+    </Glyph>
+  );
+}
+
+function BackIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Glyph {...props}>
+      <path d="m15 18-6-6 6-6" />
+    </Glyph>
   );
 }

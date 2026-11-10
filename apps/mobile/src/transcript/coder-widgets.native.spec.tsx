@@ -74,14 +74,16 @@ beforeEach(() => {
 });
 
 describe('coding session widget', () => {
-  it('shows the header, the last eight feed lines and Stop while running', async () => {
+  it('shows status and controls without CLI output while running', async () => {
     session({ status: 'running', feed: feed(12), approvals: [] });
     expect(screen.getByText('Claude Code on danielpang/openbots-relay')).toBeTruthy();
     expect(screen.getByText('Branch openbots/fix-reconnect')).toBeTruthy();
     expect(screen.getByText('Working')).toBeTruthy();
     expect(screen.queryByText('line 4')).toBeNull();
-    expect(screen.getByText('line 5')).toBeTruthy();
-    expect(screen.getByText('line 12')).toBeTruthy();
+    expect(screen.queryByText('line 5')).toBeNull();
+    expect(screen.queryByText('line 12')).toBeNull();
+    expect(screen.queryByTestId('coding-session-feed')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open Code' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /terminal/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /continue/i })).toBeNull();
     fireEvent.press(screen.getByRole('button', { name: 'Stop' }));
@@ -161,7 +163,7 @@ describe('coding session widget', () => {
     expect(screen.getByText('Done')).toBeTruthy();
     expect(screen.getByText('Fixed the reconnect loop with a backoff.')).toBeTruthy();
     expect(screen.getByText('2 files changed (+50, -4), 1 commit')).toBeTruthy();
-    expect(screen.getByText('Push the branch: Approved')).toBeTruthy();
+    expect(screen.queryByText('Push the branch: Approved')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     fireEvent.press(screen.getByRole('button', { name: 'Open pull request' }));
@@ -211,7 +213,7 @@ describe('coding session widget', () => {
     expect(screen.getByText('12,000 in / 600 out tokens, $0.40')).toBeTruthy();
     first.unmount();
     session(settled({ input_tokens: 1, output_tokens: 2, billed: 'subscription' }));
-    expect(screen.getByText('Billed to your Claude plan')).toBeTruthy();
+    expect(screen.queryByText(/Billed to/)).toBeNull();
   });
 
   it('has no diff link without a diff Artifact', () => {
@@ -233,7 +235,7 @@ describe('coding session widget', () => {
 
   it('says a needs_login marker as a sentence', () => {
     session({ status: 'failed', feed: [], approvals: [], error: 'needs_login' });
-    expect(screen.getByText('Not signed in. Sign in under Settings > Coding agents.')).toBeTruthy();
+    expect(screen.getByText('Not signed in. Sign in under Settings > Models.')).toBeTruthy();
     expect(screen.queryByText('needs_login')).toBeNull();
   });
 
@@ -241,7 +243,9 @@ describe('coding session widget', () => {
     session({ status: 'failed', feed: [], approvals: [], error: 'The agent ran out of turns.' });
     expect(screen.getByText('Failed')).toBeTruthy();
     expect(screen.getByText('The agent ran out of turns.')).toBeTruthy();
-    expect(screen.getByText('Reply in this thread to continue the session.')).toBeTruthy();
+    expect(
+      screen.getByText('Open Code to message the agent directly, or reply in this thread.'),
+    ).toBeTruthy();
   });
 });
 
@@ -351,5 +355,50 @@ describe('coding agent sign-in widget', () => {
     expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Open in browser' })).toBeNull();
     expect(screen.queryByLabelText('Code from the sign-in page')).toBeNull();
+  });
+});
+
+describe('the coder_choice widget (CA9)', () => {
+  const choiceProps = {
+    agents: [
+      { agent: 'claude', signed_in: true, model: 'sonnet' },
+      { agent: 'codex', signed_in: false },
+    ],
+    repo: 'danielpang/openbots-relay',
+  };
+  function choice(state: Record<string, unknown> = {}) {
+    return render(
+      <NativeWidget
+        messageId="choice-message"
+        index={0}
+        part={{ type: 'widget', kind: 'coder_choice', props: choiceProps, state }}
+      />,
+    );
+  }
+  beforeEach(() => {
+    mockPost.mockReset();
+    mockPost.mockResolvedValue({ data: {}, response: { ok: true, status: 200 } });
+  });
+
+  it('posts the agent and model chosen, kept as the default', async () => {
+    choice();
+    expect(screen.getByText('For danielpang/openbots-relay')).toBeTruthy();
+    expect(screen.getByLabelText('Model').props.value).toBe('sonnet');
+    fireEvent.press(screen.getByLabelText('Codex (sign in)'));
+    expect(screen.getByLabelText('Model').props.value).toBe('gpt-5.3-codex');
+    fireEvent.press(screen.getByLabelText('Start'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalled());
+    expect(mockPost.mock.calls[0]![1]).toMatchObject({
+      params: { path: { id: 'choice-message', part: 0 } },
+      body: {
+        action: { type: 'choose', agent: 'codex', model: 'gpt-5.3-codex', remember: true },
+      },
+    });
+  });
+
+  it('says what was chosen once answered', () => {
+    choice({ status: 'chosen', agent: 'claude', model: 'opus', remember: true });
+    expect(screen.getByText('Chose Claude Code with opus, saved as your default.')).toBeTruthy();
+    expect(screen.queryByLabelText('Start')).toBeNull();
   });
 });

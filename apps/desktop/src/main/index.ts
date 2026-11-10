@@ -1,9 +1,13 @@
 import { execFile } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { access, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { createServer } from 'node:net';
+import { hostname } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import type { WebSocketLike } from '@openbots/api-client';
+import { base64urlDecode, type BinaryWebSocketLike } from '@openbots/tunnel';
 import {
   app,
   BrowserWindow,
@@ -47,6 +51,7 @@ import {
 import { devAppIconPath } from './app-icon.js';
 import { QUICK_ASK_ACCELERATOR, trayMenu, type PendingApproval } from './approvals.js';
 import { createConnection, type Connection } from './connection.js';
+import { createDeviceKeyStore } from './device-keys.js';
 import {
   deepLinkFromArgv,
   deepLinkPath,
@@ -59,6 +64,7 @@ import { connectionHeader, createLauncher } from './launcher.js';
 import {
   createComputerWake,
   createLocalSignIn,
+  isSignInPath,
   needsLocalSignIn,
   ownerName,
 } from './local-session.js';
@@ -67,10 +73,26 @@ import { navigationVerdict, serverPath } from './navigation.js';
 import { createOAuthBrowser } from './oauth.js';
 import { isWatching, type Notice } from './notices.js';
 import { createOpener } from './opener.js';
-import { createProfileStore, localServerUrl, type ProfileFiles } from './profiles.js';
+import { parsePairingLink } from './pair-link.js';
+import {
+  createTunnelLink,
+  NotPairedError,
+  pairWithServer,
+  relayTunnel,
+  tunnelErrorMessage,
+  type TunnelLink,
+} from './paired.js';
+import {
+  createProfileStore,
+  localServerUrl,
+  pairedPort,
+  pairedProxyUrl,
+  type ProfileFiles,
+} from './profiles.js';
 import { createServerGate, verifyServer, type Refusal } from './server-gate.js';
 import { createTokenStore, sessionCookieChange, type SessionToken } from './tokens.js';
 import { trayIconPath, trayTitle } from './tray-icon.js';
+import { PROXY_SECRET_HEADER, startTunnelProxy, type TunnelProxy } from './tunnel-proxy.js';
 import { createUpdates } from './update-service.js';
 import type { DesktopUpdates } from './updater.js';
 
@@ -194,13 +216,219 @@ const tokens = createTokenStore({
   files,
   path: join(app.getPath('userData'), 'tokens.json'),
 });
+const deviceKeys = createDeviceKeyStore({
+  safeStorage,
+  files,
+  path: join(app.getPath('userData'), 'device-keys.json'),
+});
+
+// Servers this Mac paired with (./paired.ts): one tunnel and one loopback
+// proxy each, started when the server is first opened and kept until the app
+// quits or the profile goes. Each proxy has a secret of its own, which only
+// its profile's window session and this process send (./tunnel-proxy.ts).
+
+interface PairedRuntime {
+  link: TunnelLink;
+  proxy: TunnelProxy;
+  secret: string;
+}
+
+const pairedRuntimes = new Map<string, Promise<PairedRuntime>>();
+/** The started proxies' origins and secrets, for the requests that need them now. */
+const proxySecrets = new Map<string, { profileId: string; secret: string }>();
+const openRelayTunnel = relayTunnel((url) => new WebSocket(url) as unknown as BinaryWebSocketLike);
+
+/** The http origin of a URL, ws:// read as http://; null for anything else. */
+function httpOrigin(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'ws:' || parsed.protocol === 'http:') return `http://${parsed.host}`;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** The proxy secret a request to `url` carries: only to that proxy, and only from its own profile. */
+function proxyHeaders(url: string, profileId?: string): Record<string, string> {
+  const origin = httpOrigin(url);
+  const entry = origin ? proxySecrets.get(origin) : undefined;
+  if (!entry || (profileId !== undefined && entry.profileId !== profileId)) return {};
+  return { [PROXY_SECRET_HEADER]: entry.secret };
+}
+
+async function startPaired(profile: ServerProfile): Promise<PairedRuntime> {
+  const secrets = await deviceKeys.get(profile.id);
+  if (!secrets || !profile.paired) {
+    throw new Error(
+      `This Mac no longer has its keys for ${profile.name}. Remove it from your saved connections, then pair again with a new link.`,
+    );
+  }
+  const link = createTunnelLink({
+    server: profile.paired,
+    name: profile.name,
+    staticKey: base64urlDecode(secrets.staticKey),
+    open: openRelayTunnel,
+  });
+  const secret = randomBytes(32).toString('base64url');
+  try {
+    const proxy = await startTunnelProxy({
+      tunnel: () => link.get(),
+      apiKey: secrets.apiKey,
+      secret,
+      port: pairedPort(profile.url) ?? 0,
+      describeError: (error) => tunnelErrorMessage(error, profile.name),
+    });
+    proxySecrets.set(proxy.origin, { profileId: profile.id, secret });
+    return { link, proxy, secret };
+  } catch (error) {
+    link.close();
+    throw error;
+  }
+}
+
+/** A paired server's proxy, started once; the profile comes back at the address it listens on. */
+async function preparePaired(profile: ServerProfile): Promise<ServerProfile> {
+  if (profile.kind !== 'paired') return profile;
+  let runtime = pairedRuntimes.get(profile.id);
+  if (!runtime) {
+    const started = startPaired(profile);
+    runtime = started;
+    pairedRuntimes.set(profile.id, started);
+    started.catch(() => {
+      if (pairedRuntimes.get(profile.id) === started) pairedRuntimes.delete(profile.id);
+    });
+  }
+  const { proxy } = await runtime;
+  if (proxy.origin === profile.url) return profile;
+  // Another app took the last port: the profile moves with its proxy.
+  const moved = await profiles.setUrl(profile.id, proxy.origin);
+  if (activeProfile?.id === moved.id) activeProfile = moved;
+  return moved;
+}
+
+async function stopPaired(profileId: string): Promise<void> {
+  const runtime = await pairedRuntimes.get(profileId)?.catch(() => null);
+  pairedRuntimes.delete(profileId);
+  if (!runtime) return;
+  proxySecrets.delete(runtime.proxy.origin);
+  runtime.link.close();
+  await runtime.proxy.close().catch(() => undefined);
+}
+
+/** Signs this Mac out of a paired server it is removing, as far as the server answers in time. */
+async function unpair(profile: ServerProfile): Promise<void> {
+  const runtime = await pairedRuntimes.get(profile.id)?.catch(() => null);
+  const secrets = await deviceKeys.get(profile.id).catch(() => undefined);
+  if (secrets && profile.paired) {
+    const { deviceId } = profile.paired;
+    // A server not opened this run gets a tunnel of its own, just for this.
+    const link =
+      runtime?.link ??
+      createTunnelLink({
+        server: profile.paired,
+        name: profile.name,
+        staticKey: base64urlDecode(secrets.staticKey),
+        open: openRelayTunnel,
+      });
+    const revoke = link
+      .get()
+      .then((tunnel) =>
+        tunnel.fetch(`/api/v1/devices/${encodeURIComponent(deviceId)}`, {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${secrets.apiKey}` },
+        }),
+      )
+      .then((response) => {
+        if (!response.ok && response.status !== 404) throw new Error(`HTTP ${response.status}`);
+      });
+    // An offline server keeps the device until its owner removes it there.
+    const late = new Promise<never>((_, fail) =>
+      setTimeout(() => fail(new Error('the server did not answer in time')), 5000).unref(),
+    );
+    await Promise.race([revoke, late]).catch((error: unknown) =>
+      console.error('could not sign out of the paired server', error),
+    );
+    if (!runtime) link.close();
+  }
+  await stopPaired(profile.id);
+  await deviceKeys.clear(profile.id).catch(() => undefined);
+}
+
+/** A free loopback port for a new paired server's proxy; it may move again at its first start. */
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+/** This Mac's name, as the paired server's Devices list shows it. */
+function computerName(): Promise<string> {
+  const fallback = hostname().replace(/\.local$/, '') || 'Mac';
+  if (process.platform !== 'darwin') return Promise.resolve(fallback);
+  return new Promise((done) =>
+    execFile('scutil', ['--get', 'ComputerName'], (error, stdout) =>
+      done(error ? fallback : stdout.trim() || fallback),
+    ),
+  );
+}
+
+/** Pairs with the server of a pairing link and saves it; the launcher opens it. */
+async function pairServer(input: string): Promise<ServerProfile> {
+  const link = parsePairingLink(input);
+  const result = await pairWithServer(link, {
+    open: openRelayTunnel,
+    deviceName: await computerName(),
+    ownerName: link.setup
+      ? await ownerName(
+          () =>
+            new Promise((done, fail) =>
+              execFile('id', ['-F'], (error, stdout) => (error ? fail(error) : done(stdout))),
+            ),
+        )
+      : null,
+  });
+  // Pairing the same server again replaces the old keys: its tunnel starts over with the new ones.
+  const existing = (await profiles.list()).profiles.find(
+    (p) => p.kind === 'paired' && p.paired?.hostId === result.paired.hostId,
+  );
+  if (existing) await stopPaired(existing.id);
+  const profile = await profiles.addPaired({
+    name: link.name,
+    url: existing?.url ?? pairedProxyUrl(await freePort()),
+    paired: result.paired,
+  });
+  await deviceKeys.set(profile.id, result.secrets);
+  return profile;
+}
+
 const gate = createServerGate({
-  verify: (profile) =>
-    verifyServer(profile, {
-      fetch: (url, init) => fetch(url, init),
+  verify: async (profile) => {
+    if (profile.kind === 'paired') {
+      // The tunnel first, so a server that is off says so, not that it is not OpenBots.
+      const runtime = await pairedRuntimes.get(profile.id)?.catch(() => null);
+      try {
+        if (!runtime) throw new Error(`${profile.name} is not connected.`);
+        await runtime.link.get();
+      } catch (error) {
+        return {
+          ok: false,
+          reason: 'unreachable',
+          message: tunnelErrorMessage(error, profile.name),
+        } as const;
+      }
+    }
+    return verifyServer(profile, {
+      fetch: (url, init) => fetch(url, { ...init, headers: proxyHeaders(url, profile.id) }),
       // A development server named by OPENBOTS_DESKTOP_LOCAL_URL is not the stack's.
       stack: process.env.OPENBOTS_DESKTOP_LOCAL_URL ? null : stack,
-    }),
+    });
+  },
 });
 
 // This Mac has no sign-in: the main process signs the owner in with the
@@ -323,6 +551,15 @@ function profileSession(profile: ServerProfile): Session {
     // Notifications are the shell's (N1); the web app does not ask for them here.
     callback(permission === 'clipboard-sanitized-write' || permission === 'fullscreen');
   });
+  if (profile.kind === 'paired') {
+    // The window's requests to its own proxy, its WebSockets too, carry the
+    // proxy's secret; nothing else this session sends does.
+    ses.webRequest.onBeforeSendHeaders((details, callback) => {
+      callback({
+        requestHeaders: { ...details.requestHeaders, ...proxyHeaders(details.url, profile.id) },
+      });
+    });
+  }
   // Every top-level load of the server (a reload, a link, a redirect, a sign-in
   // callback) passes the gate first, so another app that took the server's
   // address never shows in the window, not even for a moment.
@@ -429,12 +666,27 @@ async function renewLocally(profile: ServerProfile, reload: boolean): Promise<vo
 // The main process's own connection: notifications and the tray.
 
 function connect(profile: ServerProfile, token: SessionToken) {
-  if (connection && connectionToken === token.value) return;
+  openConnection(profile, token.value, { token });
+}
+
+/** A paired server's connection goes through its proxy, with the proxy's secret. */
+function connectPaired(profile: ServerProfile) {
+  const headers = proxyHeaders(profile.url, profile.id);
+  if (!headers[PROXY_SECRET_HEADER]) return;
+  openConnection(profile, `paired ${profile.url}`, { headers });
+}
+
+function openConnection(
+  profile: ServerProfile,
+  key: string,
+  auth: { token: SessionToken } | { headers: Record<string, string> },
+) {
+  if (connection && connectionToken === key) return;
   disconnect();
-  connectionToken = token.value;
+  connectionToken = key;
   const current = createConnection({
     baseUrl: profile.url,
-    token,
+    ...auth,
     createSocket: (url, headers) => new WebSocket(url, { headers }) as unknown as WebSocketLike,
     onNotice: showNotice,
     onDevicePaired: (device) => {
@@ -451,8 +703,15 @@ function connect(profile: ServerProfile, token: SessionToken) {
       updateTray();
     },
     onUnauthorized: () => {
-      void tokens.clear(profile.id);
       disconnect();
+      if (profile.kind === 'paired') {
+        // The device key was refused: the server signed this Mac out.
+        if (mainWindow && activeProfile?.id === profile.id) {
+          void showStartPage(mainWindow, profile, new NotPairedError(profile.name).message);
+        }
+        return;
+      }
+      void tokens.clear(profile.id);
       if (profile.kind === 'local') void renewLocally(profile, false);
     },
   });
@@ -547,13 +806,15 @@ async function createMainWindow(profile: ServerProfile): Promise<BrowserWindow> 
   window.on('focus', () => void connection?.refresh().catch(() => undefined));
 
   const contents = window.webContents;
+  // The profile's address now: the local stack's port, or a paired server's proxy, can move.
+  const serverUrl = () => (activeProfile?.id === profile.id ? activeProfile : profile).url;
   contents.setWindowOpenHandler(({ url }) => {
-    if (navigationVerdict(url, profile.url) !== 'deny') void shell.openExternal(url);
+    if (navigationVerdict(url, serverUrl()) !== 'deny') void shell.openExternal(url);
     return { action: 'deny' };
   });
   const guard = (event: { preventDefault(): void }, url: string) => {
     if (isAppPage(url, RENDERER_URL) && isAppPage(contents.getURL(), RENDERER_URL)) return;
-    const verdict = navigationVerdict(url, profile.url);
+    const verdict = navigationVerdict(url, serverUrl());
     if (verdict === 'allow') return;
     event.preventDefault();
     if (verdict === 'external') void shell.openExternal(url);
@@ -567,6 +828,11 @@ async function createMainWindow(profile: ServerProfile): Promise<BrowserWindow> 
   const relogin = (url: string) => {
     const current = activeProfile?.id === profile.id ? activeProfile : profile;
     if (needsLocalSignIn(current, url)) void renewLocally(current, true);
+    // A paired server has no sign-in for this Mac: its sign-in page means the device key was refused.
+    const path = current.kind === 'paired' ? serverPath(url, current.url) : null;
+    if (path != null && isSignInPath(path)) {
+      void showStartPage(window, current, new NotPairedError(current.name).message);
+    }
   };
   contents.on('did-navigate', (_event, url) => relogin(url));
   contents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
@@ -632,15 +898,17 @@ const oauthBrowser = createOAuthBrowser({
 const opener = createOpener<BrowserWindow>({
   gate,
   windows: {
+    prepare: preparePaired,
     forProfile: windowFor,
     showsServer: (window, profile) => {
       const contents = window.webContents;
       return !contents.isLoading() && serverPath(contents.getURL(), profile.url) != null;
     },
-    signIn: (profile) =>
-      profile.kind === 'local'
-        ? signInLocally(profile)
-        : restoreToken(profile, profileSession(profile)),
+    signIn: async (profile) => {
+      if (profile.kind === 'local') return signInLocally(profile);
+      if (profile.kind === 'paired') return connectPaired(profile);
+      return restoreToken(profile, profileSession(profile));
+    },
     signOut: (profile) => {
       if (activeProfile?.id === profile.id) disconnect();
     },
@@ -650,10 +918,17 @@ const opener = createOpener<BrowserWindow>({
   },
 });
 
-/** The three ways to connect, in the main window; the window keeps its profile's session. */
-async function showWelcome(): Promise<void> {
+/**
+ * The ways to connect, in the main window; the window keeps its profile's
+ * session. `pairLink` is a pairing link opened on this Mac, for the choice
+ * that pairs with it.
+ */
+async function showWelcome(pairLink?: string): Promise<void> {
   const window = mainWindow ?? (await createMainWindow(await profiles.active()));
-  await loadAppPage(window, 'index', { welcome: '1' }).catch(() => undefined);
+  await loadAppPage(window, 'index', {
+    welcome: '1',
+    ...(pairLink ? { pair: pairLink } : {}),
+  }).catch(() => undefined);
   if (window.isMinimized()) window.restore();
   window.show();
   window.focus();
@@ -664,6 +939,7 @@ const launcher = createLauncher({
   stack,
   fetch: (url, init) => fetch(url, init),
   cloudUrl: CLOUD_URL,
+  pair: pairServer,
   window: {
     openServer: async (profile, path) => {
       const { window, opened } = await opener.open(profile, path);
@@ -675,7 +951,7 @@ const launcher = createLauncher({
       await showStartPage(window, profile, undefined, options);
       window.show();
     },
-    showWelcome,
+    showWelcome: () => showWelcome(),
   },
 });
 
@@ -691,6 +967,11 @@ async function showMainWindow(): Promise<BrowserWindow> {
 async function openLink(link?: DeepLink) {
   if (!app.isReady()) {
     pendingLink = link ?? null;
+    return;
+  }
+  // Another server's pairing link: the welcome screen offers to pair with it.
+  if (link?.kind === 'pair') {
+    await showWelcome(link.link);
     return;
   }
   await showMainWindow();
@@ -771,6 +1052,14 @@ async function pairRelayView(): Promise<PairRelayView> {
 type PairView = 'pair' | 'relay';
 
 function openPairWindow(view: PairView = 'pair') {
+  if (view === 'pair' && activeProfile?.kind === 'paired') {
+    // A paired Mac is a device of that server; phones pair with the server itself.
+    showNotification(
+      `Pair your phone with ${activeProfile.name}`,
+      'Phones pair with the server itself: use Pair your phone… in OpenBots there.',
+    );
+    return;
+  }
   if (!connection) {
     if (view === 'pair') void openLink({ kind: 'devices' });
     else
@@ -933,6 +1222,8 @@ if (!app.requestSingleInstanceLock()) {
         listProfiles: () => profiles.list(),
         addProfile: (input) => profiles.add(input),
         removeProfile: async (id) => {
+          const removed = (await profiles.list()).profiles.find((p) => p.id === id);
+          if (removed?.kind === 'paired') await unpair(removed);
           const view = await profiles.remove(id);
           await tokens.clear(id);
           if (activeProfile?.id === id) await opener.open(await profiles.active());
@@ -947,6 +1238,7 @@ if (!app.requestSingleInstanceLock()) {
         checkServer: (url) => launcher.checkServer(url),
         connectServer: (url) => launcher.connectServer(url),
         connectLocal: () => launcher.connectLocal(),
+        connectPaired: (link) => launcher.connectPaired(link),
         connectionInfo: () => launcher.info(),
         changeConnection: () => launcher.changeConnection(),
         startLocal: () => launcher.startLocal(),
@@ -1039,6 +1331,7 @@ if (!app.requestSingleInstanceLock()) {
     globalShortcut.unregisterAll();
     updater?.dispose();
     connection?.close();
+    for (const id of [...pairedRuntimes.keys()]) void stopPaired(id);
   });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

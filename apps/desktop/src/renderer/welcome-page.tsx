@@ -8,6 +8,7 @@ import {
   CloudIcon,
   LaptopIcon,
   MoonIcon,
+  PairedIcon,
   ServerIcon,
   SunIcon,
   UserIcon,
@@ -17,7 +18,7 @@ import { Notice, WindowFrame } from './parts.js';
 import { SavedConnections } from './saved-connections.js';
 import type { StartFlow, StartState } from './start-flow.js';
 
-// The welcome screen (plan 14.4): the three ways to connect, as three cards.
+// The welcome screen (plan 14.4): the ways to connect, as cards.
 
 /** A few of the product's own generated Bots, at rest and at work. */
 const HERO_BOTS: { seed: string; state: AvatarState }[] = [
@@ -55,13 +56,14 @@ export function WelcomePage({ flow, state }: { flow: StartFlow; state: StartStat
         </p>
       </header>
 
-      {error && !['cloud', 'server', 'local'].includes(error.place) && (
+      {error && !['cloud', 'server', 'pair', 'local'].includes(error.place) && (
         <Notice id="welcome-error" className="mt-8" title={error.message} />
       )}
 
       <ul className="mt-9 grid gap-3" aria-label="Ways to connect">
         <CloudChoice flow={flow} state={state} error={errorFor('cloud')?.message ?? null} />
         <ServerChoice flow={flow} state={state} error={errorFor('server')?.message ?? null} />
+        <PairChoice flow={flow} state={state} error={errorFor('pair')?.message ?? null} />
         <LocalChoice flow={flow} state={state} error={errorFor('local')?.message ?? null} />
       </ul>
 
@@ -266,6 +268,87 @@ function ServerChoice({
               {warning}
             </p>
           ) : null}
+        </form>
+      </CardPanel>
+    </ChoiceCard>
+  );
+}
+
+function PairChoice({
+  flow,
+  state,
+  error,
+}: {
+  flow: StartFlow;
+  state: StartState;
+  error: string | null;
+}) {
+  const { pairLink, pairing } = state.welcome;
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    void flow.welcome.connectPair();
+  };
+  return (
+    <ChoiceCard
+      labelId="pair-title"
+      icon={<PairedIcon />}
+      title="Connect to another Mac"
+      description="Use OpenBots running on another Mac or server. On it, choose Pair your phone… and copy the link."
+      facts={[
+        { icon: <UserIcon />, text: 'Hosted on the other Mac' },
+        { icon: <MoonIcon />, text: 'Pauses while that Mac sleeps' },
+      ]}
+      action={null}
+    >
+      <CardPanel className="pt-3.5">
+        <form id="pair-form" onSubmit={submit} noValidate>
+          <label htmlFor="pair-link" className="text-xs font-medium text-muted-foreground">
+            Pairing link
+          </label>
+          <div className="mt-1.5 flex gap-2">
+            <Input
+              id="pair-link"
+              value={pairLink}
+              onChange={(event) => flow.welcome.setPairLink(event.target.value)}
+              placeholder="openbots://pair#…"
+              required
+              autoComplete="off"
+              spellCheck={false}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? 'pair-error' : 'pair-note'}
+              className="bg-background"
+            />
+            <Button
+              id="pair-go"
+              type="submit"
+              disabled={pairing || pairLink.trim() === ''}
+              className="min-w-24"
+            >
+              {pairing ? (
+                <>
+                  <Spinner className="motion-reduce:animate-none" aria-label="Pairing" />
+                  Pairing…
+                </>
+              ) : (
+                'Pair'
+              )}
+            </Button>
+          </div>
+          {error ? (
+            <p
+              id="pair-error"
+              role="alert"
+              className="mt-2 flex items-start gap-1.5 text-[13px] text-destructive"
+            >
+              <AlertCircleIcon className="mt-0.5 size-3.5 shrink-0" />
+              {error}
+            </p>
+          ) : (
+            <p id="pair-note" className="mt-2 text-[13px] text-muted-foreground">
+              The link works once, for 5 minutes. This Mac reaches the other one through its relay,
+              end to end encrypted.
+            </p>
+          )}
         </form>
       </CardPanel>
     </ChoiceCard>

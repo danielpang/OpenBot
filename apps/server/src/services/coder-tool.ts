@@ -6,7 +6,7 @@ import { startCodingSession, type CoderRun } from './coding-sessions.js';
 import type { BotRow } from './bots.js';
 import { allowedRepos, reposForContext } from './repos.js';
 
-// What `code_task` and context assembly see of coding (docs/TECHNICAL_PLAN.md
+// What `code_task` and context assembly see of coding (docs/plans/TECHNICAL_PLAN.md
 // 22.2, 22.7): the Bot's repositories, the signed-in agents, and `start`.
 
 type Owner = Pick<CurrentUser, 'id' | 'workspaceId'>;
@@ -17,6 +17,7 @@ export function coderServices(deps: AppDeps, run: CoderRun): CoderServices {
   const policy = resolveToolPolicy(run.bot.toolPolicy);
   return {
     ...(policy.coder.defaultAgent ? { defaultAgent: policy.coder.defaultAgent } : {}),
+    ...(policy.coder.models ? { models: policy.coder.models } : {}),
     repos: async () => allowedRepos(await reposForContext(deps, owner), policy.coder.allowedRepos),
     accounts: async () => (await listCoderAccounts(deps, owner)).map(toAccountView),
     start: (input) => startCodingSession(deps, run, input),

@@ -19,6 +19,7 @@ import {
   remoteOf,
   remoteUrls,
   RUNNER_GIT_CONFIG,
+  runAsRunner,
   worktreePathFor,
 } from './repos-checkout.js';
 
@@ -56,6 +57,40 @@ describe('repos checkout', () => {
         .from(schema.repoCheckouts)
         .where(eq(schema.repoCheckouts.repoId, w.repoId))
     )[0]!;
+
+  it('cancels runner operations before launch and while they are in flight', async () => {
+    const [computer] = await w.t.db
+      .select()
+      .from(schema.computers)
+      .where(eq(schema.computers.id, computerId));
+    const ctx = {
+      deps: w.t.ownerDeps,
+      agent: agentFor(w.t.ownerDeps, computer!),
+      owner: { id: w.ownerId, workspaceId: w.workspaceId },
+    };
+    const controller = new AbortController();
+    controller.abort();
+    const before = w.coder.calls.length;
+    expect(await runAsRunner(ctx, 'sleep', ['3600'], { signal: controller.signal })).toMatchObject({
+      code: null,
+      error: 'sleep was cancelled',
+    });
+    expect(w.coder.calls).toHaveLength(before);
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    w.coder.agent = () => {
+      started();
+    };
+    const active = new AbortController();
+    const operation = runAsRunner(ctx, 'sleep', ['3600'], { signal: active.signal });
+    await running;
+    active.abort();
+    expect(await operation).toMatchObject({ code: null, error: 'sleep was cancelled' });
+    // Cancellation may win before the computer's process-open promise resolves.
+    await w.until(() => expect(w.coder.calls.at(-1)?.ended).toBe(true));
+  });
 
   it('derives paths and urls from the full name or the remote', () => {
     const repo = { fullName: 'acme/relay', remoteUrl: 'https://github.com/acme/relay.git' };
@@ -127,7 +162,10 @@ describe('repos checkout', () => {
     );
     expect(row).toMatchObject({ path: REPO_PATH, state: 'ready', headSha: 'abc1234', error: null });
     expect(row.lastFetchAt).not.toBeNull();
-    const calls = w.coder.calls.slice(before);
+    // The computer's start also writes the owner's git identity as bot and coder (git-identity.ts).
+    const calls = w.coder.calls
+      .slice(before)
+      .filter((c) => !(c.launch.args?.[0] === 'config' && c.launch.args[1] === '--global'));
     const clone = calls.find((c) => gitArgs(c.launch.args)[0] === 'clone')!;
     expect(clone.launch).toMatchObject({ user: 'runner', command: 'git', git_credentials: true });
     expect(clone.launch.env).toMatchObject({ GIT_ATTR_NOSYSTEM: '1', GIT_OPTIONAL_LOCKS: '0' });

@@ -11,7 +11,6 @@ import type {
   FilePart,
   ModelMessage,
   SystemModelMessage,
-  ToolContent,
   ToolModelMessage,
 } from 'ai';
 import type { CoderAccountView, CoderServices, RepoRef } from '../tools/coder.js';
@@ -93,7 +92,7 @@ export function skillBlock(skill: ReferencedSkill): string {
 export interface CoderContext {
   repos: RepoRef[];
   accounts: CoderAccountView[];
-  /** The Bot's `coder.defaultAgent`, when set. */
+  /** The Bot's `coder.defaultAgent`, else the owner's default agent, when set. */
   defaultAgent?: CoderAgent;
 }
 
@@ -107,7 +106,8 @@ export async function loadCoderContext(
 ): Promise<CoderContext | undefined> {
   if (!services || !coderEnabled(policy)) return undefined;
   const [repos, accounts] = await Promise.all([services.repos(), services.accounts()]);
-  const defaultAgent = policy.coder.defaultAgent ?? services.defaultAgent;
+  const defaultAgent =
+    policy.coder.defaultAgent ?? services.defaultAgent ?? accounts.find((a) => a.isDefault)?.agent;
   return { repos, accounts, ...(defaultAgent ? { defaultAgent } : {}) };
 }
 
@@ -295,8 +295,11 @@ function agentsLine(accounts: CoderAccountView[], defaultAgent?: CoderAgent): st
   const parts = [
     signedIn.length ? `Signed in: ${signedIn.join(', ')}.` : 'No coding agent is signed in yet.',
     not.length ? `Not signed in: ${not.join(', ')}.` : null,
-    defaultAgent ? `Your default: ${CODER_AGENT_LABELS[defaultAgent]}.` : null,
-    'Pick one that is signed in; code_task asks your owner to sign in to one that is not.',
+    defaultAgent
+      ? `Your default: ${CODER_AGENT_LABELS[defaultAgent]}.`
+      : 'No default agent is set yet.',
+    'Leave agent and model out of code_task unless your owner named them: it uses the default, ' +
+      'and asks your owner to choose when there is none, and to sign in when the agent is not.',
   ];
   return parts.filter(Boolean).join(' ');
 }
@@ -341,8 +344,7 @@ function partText(part: MessagePart): string | null {
 
 /**
  * Transcript rows to model messages. The Bot's own messages replay as native
- * assistant and tool messages (tool calls without a stored result are
- * dropped, since providers reject an unanswered call, and results replay
+ * assistant and tool messages (unanswered calls are dropped; results replay
  * inside <tool_result>); everyone else's are user turns behind an author
  * prefix, and another Bot's tool activity in a message collapses to one line
  * where its first call was.
@@ -362,9 +364,11 @@ export function toModelMessages(
   for (const [index, message] of transcript.entries()) {
     for (const part of message.parts) if (isAttachmentPart(part)) newest.set(part.file_id, index);
   }
+  const results = ownResults(transcript);
+  const idOf = replayIds();
   for (const [index, message] of transcript.entries()) {
     if (message.author.self) {
-      out.push(...ownMessage(message.parts));
+      out.push(...ownMessage(message.parts, results, idOf));
       continue;
     }
     const shown: Shown = { images: [], frames: [] };
@@ -488,42 +492,113 @@ function toolLine(calls: Extract<MessagePart, { type: 'tool_call' }>[]): string 
   return `[used tools: ${labels.join('; ')}${more}]`;
 }
 
-function ownMessage(parts: MessagePart[]): ModelMessage[] {
-  const answered = new Set(
-    parts
-      .filter((p) => p.type === 'tool_result')
-      .map((p) => (p as { tool_call_id: string }).tool_call_id),
-  );
+type ToolCallPart = Extract<MessagePart, { type: 'tool_call' }>;
+type ToolResultPart = Extract<MessagePart, { type: 'tool_result' }>;
+
+/** Replayed tool names in the provider's spelling, as the run offers them. */
+export function providerToolNames(
+  messages: ModelMessage[],
+  toProvider: (name: string) => string,
+): ModelMessage[] {
+  return messages.map((m) => {
+    if ((m.role !== 'assistant' && m.role !== 'tool') || typeof m.content === 'string') return m;
+    const content = m.content.map((c) =>
+      c.type === 'tool-call' || c.type === 'tool-result'
+        ? { ...c, toolName: toProvider(c.toolName) }
+        : c,
+    );
+    return { ...m, content } as ModelMessage;
+  });
+}
+
+/** Each Bot tool call's result: the last one after it, before its id is reused (some providers reuse ids). */
+function ownResults(transcript: TranscriptMessage[]): Map<ToolCallPart, ToolResultPart> {
+  const results = new Map<ToolCallPart, ToolResultPart>();
+  const open = new Map<string, ToolCallPart>();
+  for (const message of transcript) {
+    if (!message.author.self) continue;
+    for (const part of message.parts) {
+      if (part.type === 'tool_call') open.set(part.tool_call_id, part);
+      if (part.type !== 'tool_result') continue;
+      const call = open.get(part.tool_call_id);
+      if (call) results.set(call, part);
+    }
+  }
+  return results;
+}
+
+/** Replayed call ids: unique, and in the charset every provider accepts (Anthropic's is narrowest). */
+function replayIds(): (call: ToolCallPart) => string {
+  const ids = new Map<ToolCallPart, string>();
+  const used = new Set<string>();
+  return (call) => {
+    let id = ids.get(call);
+    if (id) return id;
+    const base = call.tool_call_id.split('|')[0]!.replace(/[^A-Za-z0-9_-]/g, '_') || 'call';
+    id = base;
+    for (let n = 2; used.has(id); n++) id = `${base}_${n}`;
+    used.add(id);
+    ids.set(call, id);
+    return id;
+  };
+}
+
+/** Call input as an object: an unparsable call stores its raw string, which providers reject. */
+function callInput(args: unknown): Record<string, unknown> {
+  return args && typeof args === 'object' && !Array.isArray(args)
+    ? (args as Record<string, unknown>)
+    : {};
+}
+
+/** One Bot message as assistant turns, each followed by exactly its calls' results. */
+function ownMessage(
+  parts: MessagePart[],
+  results: Map<ToolCallPart, ToolResultPart>,
+  idOf: (call: ToolCallPart) => string,
+): ModelMessage[] {
   const out: ModelMessage[] = [];
   let assistant: Exclude<AssistantContent, string> = [];
-  let results: ToolContent = [];
+  let calls: ToolCallPart[] = [];
+  // Past a result: the next text or call starts a new step.
+  let answered = false;
   const flush = () => {
     if (assistant.length) out.push({ role: 'assistant', content: assistant });
-    if (results.length) out.push({ role: 'tool', content: results } satisfies ToolModelMessage);
+    if (calls.length) {
+      out.push({
+        role: 'tool',
+        content: calls.map((call) => {
+          const result = results.get(call)!;
+          return {
+            type: 'tool-result',
+            toolCallId: idOf(call),
+            toolName: call.tool_name,
+            output: frameToolOutput(result.tool_name, result.result, result.is_error === true),
+          };
+        }),
+      } satisfies ToolModelMessage);
+    }
     assistant = [];
-    results = [];
+    calls = [];
+    answered = false;
   };
   for (const part of parts) {
     if (part.type === 'tool_call') {
-      if (!answered.has(part.tool_call_id)) continue;
-      if (results.length) flush();
+      if (!results.has(part)) continue;
+      if (answered) flush();
+      calls.push(part);
       assistant.push({
         type: 'tool-call',
-        toolCallId: part.tool_call_id,
+        toolCallId: idOf(part),
         toolName: part.tool_name,
-        input: part.args ?? {},
+        input: callInput(part.args),
       });
     } else if (part.type === 'tool_result') {
-      results.push({
-        type: 'tool-result',
-        toolCallId: part.tool_call_id,
-        toolName: part.tool_name,
-        output: frameToolOutput(part.tool_name, part.result, part.is_error === true),
-      });
+      if (calls.some((c) => results.get(c) === part)) answered = true;
     } else if (part.type !== 'reasoning') {
       const text = partText(part);
-      if (!text) continue;
-      if (results.length) flush();
+      // Whitespace-only text blocks are rejected by Anthropic.
+      if (!text?.trim()) continue;
+      if (answered) flush();
       assistant.push({ type: 'text', text });
     }
   }

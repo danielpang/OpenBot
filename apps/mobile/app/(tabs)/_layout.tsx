@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTabletLayout } from '../../src/components/adaptive-layout';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useMobile } from '../../src/api/provider';
-import { Button, ErrorNote, Label, Page } from '../../src/components/ui';
+import { Button, Page } from '../../src/components/ui';
 import { useTheme } from '../../src/theme';
 import { useInbox } from '../../src/screens/inbox-data';
 export default function TabsLayout() {
@@ -23,15 +23,7 @@ export default function TabsLayout() {
   if (!mobile.client && segments.at(-1) !== 'settings')
     return (
       <Page>
-        <Label size={26} weight="600">
-          {mobile.connecting ? 'Connecting…' : 'You’re offline'}
-        </Label>
-        <ErrorNote error={mobile.error} />
-        {mobile.connecting ? (
-          <ActivityIndicator />
-        ) : (
-          <Button title="Reconnect" onPress={mobile.refresh} />
-        )}
+        <ActivityIndicator />
         <Button
           title="Manage servers"
           variant="secondary"
@@ -67,6 +59,10 @@ export default function TabsLayout() {
         {inbox.count > 0 ? (
           <NativeTabs.Trigger.Badge>{String(inbox.count)}</NativeTabs.Trigger.Badge>
         ) : null}
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="coding" contentStyle={{ backgroundColor: c.background }}>
+        <NativeTabs.Trigger.Label>Code</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="chevron.left.forwardslash.chevron.right" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings" contentStyle={{ backgroundColor: c.background }}>
         <NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label>

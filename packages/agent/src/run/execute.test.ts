@@ -6,7 +6,12 @@ import { promptText, scriptedModel, type ScriptedTurn } from '../testing.js';
 import { toolsFor } from '../tools/index.js';
 import type { MemoryItem, ToolContext } from '../tools/types.js';
 import { ContextOverflowError } from './errors.js';
-import { executeRun, type ExecuteRunInput, type StepRecord } from './execute.js';
+import {
+  executeRun,
+  type ExecuteRunInput,
+  type RunCheckpointer,
+  type StepRecord,
+} from './execute.js';
 import { toolCallMessages } from './call.js';
 import {
   injectToolResult,
@@ -14,6 +19,7 @@ import {
   resumeFromCheckpoint,
   trimContext,
   WAITING_RESULT,
+  type RunCheckpoint,
 } from './state.js';
 
 const run = { id: 'run-1', botId: 'bot-1', chatId: 'chat-1', trigger: 'message' };
@@ -307,6 +313,26 @@ describe('executeRun', () => {
     expect(prompt).not.toContain(WAITING_RESULT.status);
   });
 
+  it('saves a question asked in a later step with its placeholder, so the run can resume', async () => {
+    const question = { question: 'Which repo?', options: [{ id: 'a', label: 'openbots' }] };
+    const h = harness([
+      [{ text: 'Looking.' }, { tool: 'search_memory', args: { query: 'repo' }, id: 's1' }],
+      [{ tool: 'ask_user', args: question, id: 'q2' }],
+    ]);
+    const outcome = await executeRun(h.input);
+    if (outcome.status !== 'waiting') throw new Error(`expected waiting, got ${outcome.status}`);
+    expect(outcome.messages.map((m) => m.role)).toEqual([
+      'user',
+      'assistant',
+      'tool',
+      'assistant',
+      'tool',
+    ]);
+    // Resuming injects the answer where the placeholder is (it threw when the step was lost).
+    const resumed = injectToolResult(outcome.messages, 'q2', { answered: true, option_id: 'a' });
+    expect(JSON.stringify(resumed.at(-1))).toContain('option_id');
+  });
+
   it('pauses on request_login: its own widget, or none when the main Bot posted it (K8)', async () => {
     const args = { site: 'github.com', reason: 'Read the private repo' };
     const props = { site: 'github.com', reason: args.reason };
@@ -510,6 +536,62 @@ describe('executeRun', () => {
     expect(outside).toHaveLength(2);
     expect(JSON.stringify(outside)).not.toContain(WAITING_RESULT.status);
     expect(JSON.stringify(outside)).toContain('interrupted_by_restart');
+  });
+
+  const none = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, steps: 0 };
+
+  it("keeps a cut-off step's reasoning and text for the takeover (K4)", async () => {
+    // A checkpoint store like the server's: what a crash right after the tool ran would leave.
+    let current: RunCheckpoint = {
+      messageId: 'm',
+      messages: [],
+      calls: [],
+      seenSeq: 0,
+      usage: none,
+    };
+    let atCrash: RunCheckpoint | undefined;
+    const checkpoint: RunCheckpointer = {
+      step: async (messages) => {
+        current = { ...current, messages, calls: [] };
+        delete current.reply;
+      },
+      started: async (call) => {
+        current.calls.push(call);
+      },
+      finished: async (id, output) => {
+        current.calls.find((c) => c.toolCallId === id)!.output = output;
+        atCrash ??= structuredClone(current);
+      },
+      reply: async (content) => {
+        current.reply = content;
+      },
+    };
+    const h = harness(
+      [
+        [
+          { reasoning: 'Save it first.', signature: 'sig-1' },
+          { text: 'Saving.' },
+          { tool: 'remember', args: { kind: 'fact', content: 'x' }, id: 'c1' },
+        ],
+        [{ text: 'Noted.' }],
+      ],
+      { checkpoint },
+    );
+    await executeRun(h.input);
+    const rebuilt = resumeFromCheckpoint(atCrash!);
+    expect(rebuilt.at(-2)).toEqual({
+      role: 'assistant',
+      content: [
+        {
+          type: 'reasoning',
+          text: 'Save it first.',
+          providerOptions: { anthropic: { signature: 'sig-1' } },
+        },
+        { type: 'text', text: 'Saving.' },
+        expect.objectContaining({ type: 'tool-call', toolCallId: 'c1', toolName: 'remember' }),
+      ],
+    });
+    expect(rebuilt.at(-1)).toMatchObject({ role: 'tool', content: [{ toolCallId: 'c1' }] });
   });
 
   it('stops at max_steps', async () => {

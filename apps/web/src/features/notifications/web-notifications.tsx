@@ -6,6 +6,7 @@ import {
   type WsEvent,
 } from '@openbots/shared';
 import { Button } from '@openbots/ui';
+import { SettingsPanel, SettingsRow, SettingsSection } from '../../app/settings-layout.js';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -137,12 +138,14 @@ export function WebNotifications() {
 export function NotificationSettings() {
   if (hasNativeNotifications()) {
     return (
-      <section className="flex flex-col gap-3">
-        <h2 className="font-medium">Notifications</h2>
-        <p className="text-sm text-muted-foreground">
-          Alerts you when {NOTIFIED}. Turn them off in macOS System Settings &gt; Notifications.
-        </p>
-      </section>
+      <SettingsSection
+        title="Notifications"
+        description={
+          <>
+            Alerts you when {NOTIFIED}. Turn them off in macOS System Settings &gt; Notifications.
+          </>
+        }
+      />
     );
   }
   return <BrowserNotificationSettings />;
@@ -161,19 +164,23 @@ function BrowserNotificationSettings() {
     denied: 'Blocked. Allow notifications for this site in your browser.',
   }[permission];
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="font-medium">Notifications</h2>
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-muted-foreground">{text}</p>
-        {permission === 'default' && (
-          <Button
-            variant="outline"
-            onClick={() => void Notification.requestPermission().then(setPermission)}
-          >
-            Turn on
-          </Button>
-        )}
-      </div>
-    </section>
+    <SettingsSection title="Notifications">
+      <SettingsPanel>
+        <SettingsRow
+          title={text}
+          control={
+            permission === 'default' && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void Notification.requestPermission().then(setPermission)}
+              >
+                Turn on
+              </Button>
+            )
+          }
+        />
+      </SettingsPanel>
+    </SettingsSection>
   );
 }

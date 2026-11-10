@@ -16,6 +16,20 @@ beforeEach(() => {
   jest.spyOn(Alert, 'alert').mockImplementation(() => {});
 });
 describe('native composer', () => {
+  it('supports a text-only coding draft while sending is disabled', () => {
+    const send = jest.fn<() => Promise<unknown>>();
+    const view = render(
+      <Composer onSend={send} sending={false} textOnly sendDisabled maxLength={4000} />,
+    );
+    fireEvent.changeText(screen.getByLabelText('Message'), 'Add tests');
+    expect(screen.getByLabelText('Message').props.editable).toBe(true);
+    expect(screen.getByLabelText('Message').props.maxLength).toBe(4000);
+    expect(screen.queryByRole('button', { name: 'Add to message' })).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Send' }));
+    expect(send).not.toHaveBeenCalled();
+    view.rerender(<Composer onSend={send} sending={false} textOnly />);
+    expect(screen.getByLabelText('Message').props.value).toBe('Add tests');
+  });
   it('keeps an accessible Send action without a visible text label', () => {
     render(<Composer onSend={async () => {}} sending={false} />);
     expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
@@ -93,6 +107,30 @@ describe('native composer', () => {
       expect(send).toHaveBeenCalledWith({ text: 'A reply', threadRootId: 'root-1' }),
     );
     await waitFor(() => expect(screen.getByLabelText('Message').props.value).toBe(''));
+  });
+  it('remounts the input after a send so the empty composer shrinks back to one line', async () => {
+    const send = jest.fn<(...args: unknown[]) => Promise<unknown>>().mockResolvedValue(undefined);
+    render(<Composer onSend={send} sending={false} />);
+    const before = screen.getByLabelText('Message');
+    fireEvent.changeText(before, 'A long message\nthat grew the composer\nto several lines');
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Send' }));
+    });
+    const after = screen.getByLabelText('Message');
+    expect(after).not.toBe(before);
+    expect(after.props.value).toBe('');
+  });
+  it('keeps the same input when sending fails', async () => {
+    const send = jest
+      .fn<(...args: unknown[]) => Promise<unknown>>()
+      .mockRejectedValue(new Error('Offline'));
+    render(<Composer onSend={send} sending={false} />);
+    const before = screen.getByLabelText('Message');
+    fireEvent.changeText(before, 'Keep this draft');
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Send' }));
+    });
+    expect(screen.getByLabelText('Message')).toBe(before);
   });
   it('disables the send button for an empty draft', () => {
     render(

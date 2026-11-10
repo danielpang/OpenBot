@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Control agent inside the sandbox image",
-  "license": "BUSL-1.1",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": {
@@ -39,6 +39,8 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@earendil-works/pi-ai": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0",
     "@types/node": "catalog:",
     "@types/ws": "catalog:",
     "eslint": "catalog:",

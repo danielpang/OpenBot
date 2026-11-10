@@ -22,7 +22,13 @@ import { cookieHeader, type SessionToken } from './tokens.js';
 export interface ConnectionOptions {
   /** The server's origin. */
   baseUrl: string;
-  token: SessionToken;
+  /** The profile's session token, sent as its cookie. */
+  token?: SessionToken;
+  /**
+   * Headers that authenticate instead of the token: a paired server's proxy
+   * secret (./tunnel-proxy.ts), whose proxy adds the device key itself.
+   */
+  headers?: Record<string, string>;
   /** A WebSocket that can send the Cookie header (the `ws` package in the app). */
   createSocket: (url: string, headers: Record<string, string>) => ReturnType<WebSocketFactory>;
   fetch?: typeof fetch;
@@ -75,11 +81,12 @@ export function wsUrlFor(baseUrl: string): string {
 }
 
 export function createConnection(options: ConnectionOptions): Connection {
-  const headers = { cookie: cookieHeader(options.token) };
+  const headers: Record<string, string> =
+    options.headers ?? (options.token ? { cookie: cookieHeader(options.token) } : {});
   const baseFetch = options.fetch ?? fetch;
   const authedFetch: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
-    request.headers.set('cookie', headers.cookie);
+    for (const [name, value] of Object.entries(headers)) request.headers.set(name, value);
     const response = await baseFetch(request);
     if (response.status === 401) options.onUnauthorized?.();
     return response;

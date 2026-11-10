@@ -22,7 +22,7 @@ import {
   type CoderSignInCheck,
 } from './types.js';
 
-// Claude Code (docs/TECHNICAL_PLAN.md 22.2; I10, I11). The session runs
+// Claude Code (docs/plans/TECHNICAL_PLAN.md 22.2; I10, I11). The session runs
 // `claude -p` headless with `--output-format stream-json`, one JSON object
 // per line: a `system` init with the session id, `assistant` messages whose
 // content blocks are text and tool calls, `user` messages carrying the tool
@@ -48,7 +48,7 @@ import {
 // policy they still run without a prompt.
 //
 // The vendor facts (flags, the stream, the sign-in) are in
-// docs/CODING_AGENT_VENDORS.md. The stream fixtures under
+// docs/plans/CODING_AGENT_VENDORS.md. The stream fixtures under
 // services/__fixtures__/coders/ are hand made from the documented
 // stream-json format; refresh them from the CLI version pinned in
 // docker/coders/package.json whenever the pin moves.
@@ -104,9 +104,11 @@ function launch(spec: CoderSessionSpec): CoderLaunchPlan {
     '--max-turns',
     String(spec.maxTurns),
     '--permission-mode',
-    spec.mode === 'plan' ? 'plan' : 'acceptEdits',
+    spec.mode === 'plan' ? 'plan' : spec.acceptEdits === false ? 'default' : 'acceptEdits',
     '--disallowedTools',
     ...disallowed,
+    // The publishing tool gates itself in the runner; avoid a second tool-use approval.
+    ...(spec.mode === 'plan' ? [] : ['--allowedTools', 'mcp__openbots__publish_pull_request']),
     '--permission-prompt-tool',
     PERMISSION_TOOL,
     '--mcp-config',
@@ -457,7 +459,7 @@ export const claudeAdapter: CoderAdapter = {
       'anthropic.com',
     ],
     // Whether a session on this sign-in bills the plan is still to be seen
-    // with a real Pro or Max account (docs/CODING_AGENT_VENDORS.md).
+    // with a real Pro or Max account (docs/plans/CODING_AGENT_VENDORS.md).
     login: () => ({
       command: 'claude',
       args: ['auth', 'login', '--claudeai'],

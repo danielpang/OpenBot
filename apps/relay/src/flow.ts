@@ -1,6 +1,6 @@
 import { positiveIntFromEnv, type Reservation, type Refusal, type Ticket } from './budget.js';
 
-// Flow control between sockets (docs/MOBILE_AND_VM_PLAN.md 5.8, "Each machine
+// Flow control between sockets (docs/plans/MOBILE_AND_VM_PLAN.md 5.8, "Each machine
 // on its own"). Bytes from a fast sender must not pile up in memory behind a
 // slow receiver, so every destination is an `Outlet` that watches its socket's
 // `bufferedAmount`, and every source is a `Valve` that pauses its socket's

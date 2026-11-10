@@ -23,12 +23,16 @@ export async function coderVersion(
 /** How long a one-off command as `coder` (a version, a sign-out, a discard) may take. */
 const COMMAND_MS = 60_000;
 
-/** Runs one command as `coder` and collects its output, capped at `maxBytes`. */
+/** Runs one command as `coder` (or `user`) and collects its output, capped at `maxBytes`. */
 export function runAsCoder(
   agent: ComputerAgentClient,
   command: string,
   args: string[],
-  { env = {}, maxBytes = 2_000_000 }: { env?: Record<string, string>; maxBytes?: number } = {},
+  {
+    env = {},
+    maxBytes = 2_000_000,
+    user = 'coder',
+  }: { env?: Record<string, string>; maxBytes?: number; user?: 'coder' | 'bot' } = {},
 ): Promise<{ code: number | null; stdout: string; stderr: string; error?: string }> {
   return new Promise((resolve, reject) => {
     let stdout = '';
@@ -41,7 +45,7 @@ export function runAsCoder(
     const opened = agent.coder(
       {
         session_id: randomUUID(),
-        user: 'coder',
+        user,
         command,
         args,
         env,

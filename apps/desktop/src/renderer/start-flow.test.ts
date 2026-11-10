@@ -64,6 +64,34 @@ describe('the welcome screen flow', () => {
     });
   });
 
+  it('pairs with the link pasted, or opened on this Mac, and shows a failure by the field', async () => {
+    const bridge = fakeBridge();
+    bridge.connect.pair.mockRejectedValueOnce(
+      new Error(
+        "Error invoking remote method 'openbots:connect:pair': Error: The link was already used or has expired.",
+      ),
+    );
+    const flow = createStartFlow(
+      bridge,
+      new URLSearchParams({ welcome: '1', pair: 'openbots://pair#v=1' }),
+    );
+    expect(flow.store.get().welcome.pairLink).toBe('openbots://pair#v=1');
+    flow.welcome.setPairLink('  openbots://pair#v=1&x  ');
+    const pairing = flow.welcome.connectPair();
+    expect(flow.store.get().welcome.pairing).toBe(true);
+    await pairing;
+    expect(bridge.connect.pair).toHaveBeenCalledWith('openbots://pair#v=1&x');
+    expect(flow.store.get().welcome.pairing).toBe(false);
+    expect(flow.store.get().error).toEqual({
+      message: 'The link was already used or has expired.',
+      detail: null,
+      place: 'pair',
+    });
+    // Only the welcome screen takes a link from the query.
+    const status = createStartFlow(bridge, new URLSearchParams({ pair: 'openbots://pair#v=1' }));
+    expect(status.store.get().welcome.pairLink).toBe('');
+  });
+
   it('shows each step of setting up This Mac, then opens it', async () => {
     const bridge = fakeBridge({
       status: { ...running, services: [] },

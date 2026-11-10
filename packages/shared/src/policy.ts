@@ -131,8 +131,9 @@ export const CoderModelNameSchema = z
  * A Bot's coding agent settings, inside `tool_policy` (`coder`). `enabled`
  * absent means on; `actions` overrides `DEFAULT_CODER_ACTIONS` class by
  * class; `allowedRepos` absent allows every repository the owner keeps,
- * an empty list allows none; `models` picks a model per agent, absent for
- * an agent means the CLI's own default.
+ * an empty list allows none; `models` picks a model per agent. Absent
+ * `defaultAgent` or model falls back to the owner's defaults (Settings >
+ * Coding agents); with none set, `code_task` asks the owner (CA9).
  */
 export const CoderPolicySchema = z.strictObject({
   enabled: z.boolean().optional(),

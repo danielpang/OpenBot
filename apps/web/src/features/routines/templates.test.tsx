@@ -112,7 +112,9 @@ async function until(check: () => boolean, what: string) {
 }
 
 const button = (label: string) =>
-  [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
+  [...host.querySelectorAll('button')].find(
+    (b) => b.textContent?.trim() === label || b.getAttribute('aria-label') === label,
+  );
 const click = (el: Element | null | undefined) => act(() => (el as HTMLElement).click());
 function type(el: HTMLInputElement | HTMLSelectElement, value: string) {
   const proto = Object.getPrototypeOf(el) as object;
@@ -166,10 +168,11 @@ describe('coding Routine templates (CA11)', () => {
     });
     // The server is the authority on the template: nothing it fills is sent.
     expect(Object.keys(body)).toEqual(['template']);
-    await until(() => !!host.querySelector('[data-routine-created]'), 'the created name');
-    expect(host.querySelector('[data-routine-created]')!.textContent).toBe(
-      'Created the Routine Fix issues labeled agent in danielpang/relay.',
+    await until(
+      () => !host.querySelector('form[aria-label="New Routine from a template"]'),
+      'the form to close',
     );
+    expect(host.textContent).not.toContain('Created the Routine');
     expect(host.querySelector('form[aria-label="New Routine from a template"]')).toBeNull();
   });
 
