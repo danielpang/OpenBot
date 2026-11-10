@@ -49,6 +49,8 @@ For several machines, draining and metrics:
 | `RELAY_DRAIN`                    | `false`                       | `true` starts the machine draining: not ready, no new upgrades or leases                                                                                                                       |
 | `RELAY_DRAIN_GRACE_MS`           | `20000`                       | How long a draining machine lets links and streams go on before it closes them with 1012                                                                                                       |
 | `RELAY_METRICS_TOKEN`            |                               | The bearer token for `GET /metrics`, at least 16 characters. Unset, the route answers 404                                                                                                      |
+| `RELAY_POSTHOG_KEY`              |                               | A PostHog project key. Set, the relay sends anonymous usage counts and errors to PostHog (see Anonymous usage data). Unset (the default), it sends nothing                                     |
+| `RELAY_POSTHOG_HOST`             | `https://us.i.posthog.com`    | The PostHog host, for the EU cloud or a self-hosted PostHog                                                                                                                                    |
 | `RELAY_PRESENCE_TOKEN`           |                               | A bearer token, at least 16 characters, that `GET /v1/hosts/{id}` then wants. Unset, presence is open to anyone with a host id                                                                 |
 | `RELAY_REPLAY`                   | `fly` on Fly, else `off`      | `fly` answers an upgrade for a host another machine owns with `fly-replay`; `off` serves every upgrade where it lands. On by itself where `FLY_MACHINE_ID` is set                              |
 | `RELAY_REDIS_COMMAND_TIMEOUT_MS` | `2000`                        | How long one Redis call may take before it fails                                                                                                                                               |
@@ -133,3 +135,12 @@ It stores none of what it sees beyond the rate limit counters, and it writes not
 Every key expires on its own (a lease within 30 seconds of its owner going), and nothing in Redis names a person, an address or a device. Its logs carry host ids, addresses and counts, never device tokens or payloads. Its metrics carry no host ids or addresses at all.
 
 A self-hosted relay cannot send push, since the APNs key belongs to the App Store build. It carries the tunnel only.
+
+## Anonymous usage data
+
+Only the project's shared relay sets `RELAY_POSTHOG_KEY`; a self-hosted relay sends nothing. When it is set, the relay sends PostHog (docs/TERMS.md section 4):
+
+- `relay_usage`, once a minute and only when something happened: new host links, new client streams, messages forwarded each way, and pushes sent or failed. The relay cannot see inside the end to end encrypted traffic, so a chat message and a setting change are both just messages.
+- `$exception` (PostHog error tracking): disconnects the relay forced for an abnormal reason (close codes 1002, 1003, 1007, 1008, 1009, 1011, 1013, 4400) and 500s, one event per kind per minute with an `occurrences` count.
+
+Events carry no host id, address, token or peer supplied text, set `$process_person_profile: false` and `$geoip_disable`, and use a random id that lasts only as long as the process.

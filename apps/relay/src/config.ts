@@ -46,6 +46,8 @@ export const RELAY_ENV_VARS = [
   'RELAY_REPLAY',
   'RELAY_PRESENCE_TOKEN',
   'RELAY_REDIS_COMMAND_TIMEOUT_MS',
+  'RELAY_POSTHOG_KEY',
+  'RELAY_POSTHOG_HOST',
 ] as const;
 
 const milliseconds = (fallback: number) => z.coerce.number().int().min(100).default(fallback);
@@ -83,6 +85,8 @@ const EnvSchema = z.object({
     .default(0.125),
   RELAY_METRICS_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
   RELAY_PRESENCE_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
+  RELAY_POSTHOG_KEY: z.string().min(1).optional(),
+  RELAY_POSTHOG_HOST: z.url().optional(),
   RELAY_REPLAY: z.enum(['fly', 'off']).optional(),
   RELAY_REDIS_COMMAND_TIMEOUT_MS: milliseconds(2_000),
   RELAY_MIN_CLUSTER_SIZE: z.coerce.number().int().min(1).default(1),
@@ -123,6 +127,8 @@ export interface RelayConfig {
   presenceToken?: string;
   /** `fly` on Fly (`FLY_MACHINE_ID` set) or with `RELAY_REPLAY=fly`; `off` serves every upgrade here. */
   replay: 'fly' | 'off';
+  /** Anonymous usage data and errors to PostHog (telemetry.ts); unset sends nothing. */
+  posthog?: { apiKey: string; host?: string };
   /** The time limit of one Redis call. */
   redisCommandTimeoutMs: number;
   cluster: { leaseMs: number; renewMs: number; nodeTtlMs: number; heartbeatMs: number };
@@ -172,6 +178,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayConfig {
   };
   if (e.RELAY_REDIS_URL) config.redisUrl = e.RELAY_REDIS_URL;
   if (e.RELAY_METRICS_TOKEN) config.metricsToken = e.RELAY_METRICS_TOKEN;
+  if (e.RELAY_POSTHOG_KEY) {
+    config.posthog = {
+      apiKey: e.RELAY_POSTHOG_KEY,
+      ...(e.RELAY_POSTHOG_HOST ? { host: e.RELAY_POSTHOG_HOST } : {}),
+    };
+  }
   if (e.RELAY_PRESENCE_TOKEN) config.presenceToken = e.RELAY_PRESENCE_TOKEN;
   const clientIpHeader =
     e.RELAY_CLIENT_IP_HEADER ?? (e.FLY_MACHINE_ID ? 'fly-client-ip' : undefined);

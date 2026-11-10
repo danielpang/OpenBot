@@ -7,6 +7,7 @@ import { drainOptionsFromEnv, drainRequested } from './drain.js';
 import { flowOptionsFromEnv } from './flow.js';
 import { createRelay } from './relay.js';
 import { RedisRegistry } from './registry.js';
+import { PostHogTelemetry } from './telemetry.js';
 
 // The relay's entry: settings from the environment (config.ts), JSON logs on
 // stdout, the shared registry on Redis when `RELAY_REDIS_URL` is set, the
@@ -45,6 +46,9 @@ const registry = config.redisUrl
   : undefined;
 if (!registry) logger.info('no RELAY_REDIS_URL: the registry is in memory, for this machine alone');
 
+const telemetry = config.posthog ? new PostHogTelemetry({ ...config.posthog, logger }) : undefined;
+if (telemetry) logger.info('RELAY_POSTHOG_KEY set: sending anonymous usage data');
+
 const relay = await createRelay({
   port: config.port,
   host: config.host,
@@ -62,6 +66,7 @@ const relay = await createRelay({
   ...(config.nodeId ? { nodeId: config.nodeId } : {}),
   ...(registry ? { registry } : {}),
   ...(apns ? { apns } : {}),
+  ...(telemetry ? { telemetry } : {}),
 });
 logger.info(
   {

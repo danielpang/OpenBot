@@ -271,6 +271,7 @@ export class HostLink implements Link {
       this.deps.logger.info({ hostId: this.hostId, remote: this.remote, code }, 'host link closed');
     }
     if (code !== undefined && this.socket.readyState === WebSocket.OPEN) {
+      this.deps.metrics.closed('host', code);
       this.socket.close(code, closeReason(reason ?? ''));
     }
     this.onEnd(this);
@@ -286,6 +287,7 @@ export class HostLink implements Link {
       if (error instanceof ProtocolError) return this.fail(4400, 'protocol', error.message);
       // A fault of the relay's own costs this link, not the process.
       this.deps.logger.error({ err: error, hostId: this.hostId }, 'host frame failed');
+      this.deps.metrics.failed({ type: 'frame_failed' });
       this.end(1011, 'internal error');
     }
   }
@@ -431,6 +433,7 @@ export class HostLink implements Link {
       this.deps.metrics.pushFailed();
       outcome = { ok: false, reason: 'error', status: null };
     }
+    if (outcome.ok) this.deps.metrics.pushSent();
     this.pushResult(id, outcome);
   }
 

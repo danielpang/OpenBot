@@ -1,6 +1,6 @@
 # OpenBots Terms and Conditions
 
-Last updated: November 5, 2026
+Last updated: November 10, 2026
 
 These Terms and Conditions ("Terms") apply to OpenBots: the OpenBots software, the Mac, iOS and
 other apps, the OpenBots website, the shared OpenBots relay, and any other service the OpenBots
@@ -84,6 +84,14 @@ You understand and agree that:
    with keys the relay never holds. The relay sees your server's id, when it is connected, and how
    many streams and bytes pass through it, but not what they carry. Push notifications sent through
    the shared relay pass through Apple's push service.
+6. **The shared relay collects anonymous usage data.** The shared relay records counts of how it
+   is used (such as how many connections are made, how many messages and push notifications pass
+   through it, and how many errors and disconnects occur) and reports those counts, and the kinds
+   of errors it hits, to a product analytics service (PostHog). This data is anonymous and not
+   identifiable: it does not include the content of your traffic, your server's id, your IP
+   address, your account or device details, or anything else that identifies you, and it is not
+   used to track or profile individuals. We use it only to keep the relay running and to
+   understand how much it is used. A relay you run yourself sends nothing unless you set it up to.
 
 ## 5. Free services and changes to the Service
 

@@ -11,6 +11,7 @@ import { NodeBudget, type BudgetOptions, type SocketKind, type Ticket } from './
 import { DrainController, type DrainOptions } from './drain.js';
 import { FlowControl, type FlowOptions } from './flow.js';
 import { metricsHandler, RelayMetrics } from './metrics.js';
+import type { Telemetry } from './telemetry.js';
 import { readyHandler, relayConditions } from './readiness.js';
 import { ClientStream } from './client-stream.js';
 import {
@@ -105,6 +106,8 @@ export interface RelayOptions {
   replay?: 'fly' | 'off';
   /** How long one registry call may take. Default 2 seconds. */
   registryTimeoutMs?: number;
+  /** Anonymous usage counts and errors (telemetry.ts). Default: none. The relay closes it. */
+  telemetry?: Telemetry;
   /** Node's process metrics on `/metrics` as well. Default true. */
   defaultMetrics?: boolean;
   /**
@@ -161,11 +164,19 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
   const budget = new NodeBudget(options.budget);
   const flow = new FlowControl(options.flow);
   flow.start();
-  const metrics = new RelayMetrics({ defaultMetrics: options.defaultMetrics ?? true });
+  const metrics = new RelayMetrics({
+    defaultMetrics: options.defaultMetrics ?? true,
+    ...(options.telemetry ? { telemetry: options.telemetry } : {}),
+  });
   /** Cleared by a drain: no new upgrade is accepted (replays still go out). */
   let accepting = true;
 
   const app = new Hono();
+  app.onError((err, c) => {
+    logger.error({ err }, 'request failed');
+    metrics.failed({ type: 'http_500', where: 'route' });
+    return c.json({ code: 'INTERNAL', message: 'Internal error' }, 500);
+  });
   app.get('/healthz', (c) => c.json({ ok: true }));
   app.get(
     '/ready',
@@ -337,6 +348,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
       hostWss.handleUpgrade(req, socket, head, (ws) => {
         rawSockets.add(socket);
         socket.once('close', () => rawSockets.delete(socket));
+        metrics.connected('host');
         hostLinks.add(new HostLink(ws, remote, hostId, hostDeps, ticket, hostLinkEnded));
       });
       return;
@@ -360,6 +372,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
         }
         rawSockets.add(socket);
         socket.once('close', () => rawSockets.delete(socket));
+        metrics.connected('client');
         const stream = new ClientStream(ws, hostId, remote, clientDeps, ticket, (s) =>
           clientStreams.delete(s),
         );
@@ -375,6 +388,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
     socket.on('error', () => socket.destroy());
     upgrade(req, socket, head).catch((err: unknown) => {
       logger.error({ err }, 'upgrade failed');
+      metrics.failed({ type: 'http_500', where: 'upgrade' });
       if (!socket.destroyed) reject(socket, 500);
     });
   });
@@ -430,6 +444,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
       }, 1_000).unref();
     });
     if (!options.registry) await shared.close();
+    await options.telemetry?.close();
   };
 
   return {

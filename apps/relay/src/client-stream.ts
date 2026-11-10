@@ -292,7 +292,10 @@ export class ClientStream implements StreamPeer {
     this.releaseFlow(undefined);
     // A paused socket would never read the client's answer to the close.
     if (this.socket.isPaused) this.socket.resume();
-    if (this.socket.readyState === WebSocket.OPEN) this.socket.close(code, closeReason(reason));
+    if (this.socket.readyState === WebSocket.OPEN) {
+      this.deps.metrics.closed('client', code);
+      this.socket.close(code, closeReason(reason));
+    }
     this.onEnd(this);
   }
 
