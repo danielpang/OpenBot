@@ -20,8 +20,7 @@ export type TelemetrySocketKind = 'host' | 'client';
 
 export type TelemetryErrorKind =
   | { type: 'disconnect'; socket: TelemetrySocketKind; code: number }
-  | { type: 'http_500'; where: 'upgrade' | 'route' }
-  | { type: 'frame_failed' };
+  | { type: 'http_500'; where: 'upgrade' | 'route' };
 
 /** What the relay tells its telemetry. Every call is cheap and never throws. */
 export interface Telemetry {
@@ -41,12 +40,20 @@ export const NO_TELEMETRY: Telemetry = {
   async close() {},
 };
 
-/** Close codes that mean something went wrong, not a normal end, a deploy or an absent host. */
-const ERROR_CLOSE_CODES = new Set([1002, 1003, 1007, 1008, 1009, 1011, 1013, 4400]);
+/**
+ * Close codes that mean the relay itself went wrong: 1011 (an internal fault)
+ * and 1013 (it shed a peer it could not keep up with). A peer's own misbehavior
+ * (bad frames, 1008 and 4400, over a byte rate), a deploy (1012) and an absent
+ * host (4404) are not errors of the relay and are left to the counters.
+ */
+const ERROR_CLOSE_CODES = new Set([1011, 1013]);
 
 export function isErrorClose(code: number | undefined): code is number {
   return code !== undefined && ERROR_CLOSE_CODES.has(code);
 }
+
+const SEND_TIMEOUT_MS = 5_000;
+const CLOSE_TIMEOUT_MS = 1_000;
 
 export interface PostHogOptions {
   apiKey: string;
@@ -76,6 +83,7 @@ export class PostHogTelemetry implements Telemetry {
   private connections: Record<TelemetrySocketKind, number> = { host: 0, client: 0 };
   private messages = { to_host: 0, to_client: 0 };
   private pushes = { ok: 0, failed: 0 };
+  private failing = false;
   private errors = new Map<string, { kind: TelemetryErrorKind; count: number }>();
 
   constructor(private readonly options: PostHogOptions) {
@@ -104,26 +112,40 @@ export class PostHogTelemetry implements Telemetry {
     else this.errors.set(key, { kind, count: 1 });
   }
 
+  /** Stops the timer and sends what is pending, waiting at most a second. */
   async close(): Promise<void> {
     clearInterval(this.timer);
-    await this.flush();
+    await this.flush(CLOSE_TIMEOUT_MS);
   }
 
-  /** Sends and clears what is pending. A failed send drops it: telemetry never queues or retries. */
-  async flush(): Promise<void> {
-    const events = this.drain();
-    if (events.length === 0) return;
+  /**
+   * Sends and clears what is pending. A failed send drops it: telemetry never
+   * queues or retries, and never rejects or throws. The first failure after a
+   * success is logged at warn, so a wrong key does not go unseen; the rest at debug.
+   */
+  async flush(timeoutMs = SEND_TIMEOUT_MS): Promise<void> {
     try {
+      const events = this.drain();
+      if (events.length === 0) return;
       const res = await this.send(this.endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ api_key: this.options.apiKey, batch: events }),
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!res.ok) this.options.logger?.debug({ status: res.status }, 'telemetry not accepted');
-    } catch {
-      this.options.logger?.debug('telemetry not sent');
+      if (res.ok) this.failing = false;
+      else this.failed({ status: res.status });
+    } catch (err) {
+      this.failed({ err: err instanceof Error ? err.name : 'error' });
     }
+  }
+
+  private failed(detail: Record<string, unknown>): void {
+    const log = this.options.logger;
+    if (!this.failing)
+      log?.warn(detail, 'telemetry: PostHog did not take the usage data; dropping it');
+    else log?.debug(detail, 'telemetry not sent');
+    this.failing = true;
   }
 
   private drain(): PostHogEvent[] {
@@ -184,9 +206,7 @@ function exceptionProperties(kind: TelemetryErrorKind, count: number): Record<st
           `${kind.socket} socket closed by the relay with ${kind.code}`,
           { socket: kind.socket, close_code: kind.code },
         ]
-      : kind.type === 'http_500'
-        ? ['RelayHttp500', `500 on ${kind.where}`, { where: kind.where, status: 500 }]
-        : ['RelayFrameFailed', 'a host frame failed', {}];
+      : ['RelayHttp500', `500 on ${kind.where}`, { where: kind.where, status: 500 }];
   return {
     $exception_list: [{ type, value, mechanism: { handled: true, synthetic: true } }],
     $exception_level: 'error',

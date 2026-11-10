@@ -131,6 +131,7 @@ export class ClientStream implements StreamPeer {
     }
     this.link = opened.link;
     this.stream = opened.stream;
+    this.deps.metrics.connected('client');
     this.valve = this.deps.flow.valve(this.socket);
     opened.link.linkOutlet.attach(this.valve);
     this.socket.on('message', (data, isBinary) => this.receive(data as Buffer, isBinary));

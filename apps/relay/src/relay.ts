@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { createAdaptorServer } from '@hono/node-server';
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { pino, type Logger } from 'pino';
 import { WebSocketServer } from 'ws';
 import { ApnsGateway, NO_PUSH, type ApnsOptions, type PushGateway } from './apns.js';
@@ -173,6 +174,8 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
 
   const app = new Hono();
   app.onError((err, c) => {
+    // A deliberate 4xx answer is not a fault of the relay.
+    if (err instanceof HTTPException) return err.getResponse();
     logger.error({ err }, 'request failed');
     metrics.failed({ type: 'http_500', where: 'route' });
     return c.json({ code: 'INTERNAL', message: 'Internal error' }, 500);
@@ -348,7 +351,6 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
       hostWss.handleUpgrade(req, socket, head, (ws) => {
         rawSockets.add(socket);
         socket.once('close', () => rawSockets.delete(socket));
-        metrics.connected('host');
         hostLinks.add(new HostLink(ws, remote, hostId, hostDeps, ticket, hostLinkEnded));
       });
       return;
@@ -372,7 +374,6 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
         }
         rawSockets.add(socket);
         socket.once('close', () => rawSockets.delete(socket));
-        metrics.connected('client');
         const stream = new ClientStream(ws, hostId, remote, clientDeps, ticket, (s) =>
           clientStreams.delete(s),
         );
@@ -444,7 +445,6 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
       }, 1_000).unref();
     });
     if (!options.registry) await shared.close();
-    await options.telemetry?.close();
   };
 
   return {
@@ -466,6 +466,9 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
       // Clients first, so they hear the relay is going rather than 4410.
       for (const stream of clientStreams) stream.end(1001, 'relay shutting down');
       for (const link of hostLinks) link.end(1001, 'relay shutting down');
+      // Bounded, and before the registry is torn down: PostHog being slow or
+      // down must not hold the shutdown past its grace.
+      await options.telemetry?.close().catch(() => undefined);
       await registry.flushBytes();
       await ownership.stop(true);
       await shutDown();

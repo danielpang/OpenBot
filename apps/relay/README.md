@@ -141,6 +141,8 @@ A self-hosted relay cannot send push, since the APNs key belongs to the App Stor
 Only the project's shared relay sets `POSTHOG_API_KEY`; a self-hosted relay sends nothing. When it is set, the relay sends PostHog (docs/TERMS.md section 4):
 
 - `relay_usage`, once a minute and only when something happened: new host links, new client streams, messages forwarded each way, and pushes sent or failed. The relay cannot see inside the end to end encrypted traffic, so a chat message and a setting change are both just messages.
-- `$exception` (PostHog error tracking): disconnects the relay forced for an abnormal reason (close codes 1002, 1003, 1007, 1008, 1009, 1011, 1013, 4400) and 500s, one event per kind per minute with an `occurrences` count.
+- `$exception` (PostHog error tracking): disconnects that are the relay's own fault (close 1011, an internal error, and 1013, a peer shed for being too slow; a peer's bad frames or byte rate are only counted) and 500s, one event per kind per minute with an `occurrences` count.
 
 Events carry no host id, address, token or peer supplied text, set `$process_person_profile: false` and `$geoip_disable`, and use a random id that lasts only as long as the process.
+
+Telemetry never gets in the relay's way: it is counted in memory, sent in the background with a 5 second limit, and dropped (with one warning in the log) if PostHog is down or the key is wrong. It is never retried or queued, and shutdown waits at most one second for it.

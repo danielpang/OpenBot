@@ -93,7 +93,7 @@ export class RelayMetrics {
   private readonly telemetry: Telemetry;
 
   constructor(options: RelayMetricsOptions = {}) {
-    this.telemetry = options.telemetry ?? NO_TELEMETRY;
+    this.telemetry = guarded(options.telemetry ?? NO_TELEMETRY);
     if (options.defaultMetrics ?? true) {
       collectDefaultMetrics({ register: this.registry, prefix: 'openbots_relay_' });
     }
@@ -294,8 +294,8 @@ export class RelayMetrics {
   }
 
   /** A 500 was answered, or a frame failed inside the relay. */
-  failed(kind: Exclude<TelemetryErrorKind, { type: 'disconnect' }>): void {
-    if (kind.type === 'http_500') this.serverErrors.inc({ where: kind.where });
+  failed(kind: Extract<TelemetryErrorKind, { type: 'http_500' }>): void {
+    this.serverErrors.inc({ where: kind.where });
     this.telemetry.error(kind);
   }
 
@@ -328,6 +328,26 @@ export class RelayMetrics {
   render(): Promise<string> {
     return this.registry.metrics();
   }
+}
+
+/** A telemetry whose calls cannot throw into the relay, whatever it does. */
+function guarded(inner: Telemetry): Telemetry {
+  const safe =
+    <A extends unknown[]>(call: (...args: A) => void) =>
+    (...args: A) => {
+      try {
+        call(...args);
+      } catch {
+        // Telemetry is never allowed to cost the relay a socket.
+      }
+    };
+  return {
+    connection: safe((kind) => inner.connection(kind)),
+    message: safe((direction) => inner.message(direction)),
+    push: safe((ok) => inner.push(ok)),
+    error: safe((kind) => inner.error(kind)),
+    close: () => inner.close().catch(() => undefined),
+  };
 }
 
 /** A gauge without labels that reads `read` at scrape time; `undefined` reads 0. */

@@ -150,3 +150,22 @@ describe('config', () => {
     );
   });
 });
+
+describe('PostHog settings', () => {
+  it('is off without a key and takes https hosts', () => {
+    expect(loadConfig({}).posthog).toBeUndefined();
+    expect(
+      loadConfig({ POSTHOG_API_KEY: 'phc_x', RELAY_POSTHOG_HOST: 'https://eu.i.posthog.com' })
+        .posthog,
+    ).toEqual({ apiKey: 'phc_x', host: 'https://eu.i.posthog.com' });
+  });
+
+  it('refuses a plain http host, except on localhost', () => {
+    expect(() =>
+      loadConfig({ POSTHOG_API_KEY: 'k', RELAY_POSTHOG_HOST: 'http://posthog.example.com' }),
+    ).toThrow(/https/);
+    expect(
+      loadConfig({ POSTHOG_API_KEY: 'k', RELAY_POSTHOG_HOST: 'http://localhost:8000' }).posthog,
+    ).toBeDefined();
+  });
+});

@@ -86,7 +86,16 @@ const EnvSchema = z.object({
   RELAY_METRICS_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
   RELAY_PRESENCE_TOKEN: z.string().min(16, 'must be at least 16 characters').optional(),
   POSTHOG_API_KEY: z.string().min(1).optional(),
-  RELAY_POSTHOG_HOST: z.url().optional(),
+  RELAY_POSTHOG_HOST: z
+    .url()
+    .refine((value) => {
+      const url = new URL(value);
+      return (
+        url.protocol === 'https:' ||
+        (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
+      );
+    }, 'must be an https:// URL (http:// only for localhost)')
+    .optional(),
   RELAY_REPLAY: z.enum(['fly', 'off']).optional(),
   RELAY_REDIS_COMMAND_TIMEOUT_MS: milliseconds(2_000),
   RELAY_MIN_CLUSTER_SIZE: z.coerce.number().int().min(1).default(1),
