@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/danielpang/OpenBots/main/install.sh
 # or, from a checkout: bash install.sh [--dir <path>] [--ref <tag>] [--no-start] [--pair]
 ```
 
-By hand:
+By hand, the same steps:
 
 ```sh
 git clone https://github.com/danielpang/OpenBots.git OpenBots
