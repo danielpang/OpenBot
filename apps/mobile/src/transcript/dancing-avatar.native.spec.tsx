@@ -5,7 +5,10 @@ import { act, render, screen } from '@testing-library/react-native';
 import { DancingBots } from './dancing-avatar';
 import type { Bot } from '../screens/data';
 
-jest.mock('../components/bot-avatar', () => ({ BotAvatar: () => null }));
+const mockAvatar = jest.fn((_props: { status?: boolean }) => null);
+jest.mock('../components/bot-avatar', () => ({
+  BotAvatar: (props: { status?: boolean }) => mockAvatar(props),
+}));
 
 const bot = { id: 'bot', name: 'Atlas', chatId: 'chat' } as unknown as Bot;
 const reduceMotion = (enabled: boolean) =>
@@ -21,6 +24,8 @@ describe('the loading dance', () => {
     render(<DancingBots bots={[bot]} />);
     await act(async () => {});
     expect(screen.getByLabelText('Loading your conversation with Atlas')).toBeTruthy();
+    // A loader is decoration: no working-state dot on the avatar.
+    expect(mockAvatar).toHaveBeenCalledWith(expect.objectContaining({ status: false }));
     expect(screen.UNSAFE_queryByType(ActivityIndicator)).toBeNull();
     screen.unmount();
   });

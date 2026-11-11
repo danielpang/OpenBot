@@ -161,7 +161,7 @@ function Dancer({
           ],
         }}
       >
-        <BotAvatar bot={bot} size={size} />
+        <BotAvatar bot={bot} size={size} status={false} />
       </Animated.View>
     </View>
   );
