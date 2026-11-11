@@ -87,8 +87,9 @@ export function DancingBots({ bots }: { bots: Bot[] }) {
         style={{
           flexDirection: 'row',
           justifyContent: 'center',
-          // Close enough to read as one group, with room for each Bot's sway.
-          gap: size * 0.12,
+          // Shoulder to shoulder: generated avatars carry their own margin, and the
+          // sway is small enough that neighbours don't collide.
+          gap: size * 0.05,
         }}
       >
         {dancers.map((bot, index) => (
