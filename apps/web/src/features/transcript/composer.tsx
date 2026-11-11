@@ -1,5 +1,5 @@
 import { Avatar } from '@openbots/avatars/react';
-import { Button, cn, XIcon } from '@openbots/ui';
+import { ArrowUpIcon, Button, cn, PlusIcon, XIcon } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
   useId,
@@ -311,11 +311,13 @@ export function Composer({
         <Button
           type="button"
           variant="ghost"
-          size="sm"
-          className="text-muted-foreground"
+          size="icon"
+          aria-label="Attach files"
+          title="Attach files"
+          className="size-8 rounded-full text-muted-foreground"
           onClick={() => fileInput.current?.click()}
         >
-          Attach
+          <PlusIcon className="size-5" />
         </Button>
         <input
           ref={fileInput}
@@ -329,8 +331,16 @@ export function Composer({
         />
         <div className="flex items-center gap-1">
           {extra}
-          <Button type="button" size="sm" disabled={!canSend} onClick={() => void send()}>
-            Send
+          <Button
+            type="button"
+            size="icon"
+            aria-label="Send"
+            title="Send"
+            className="size-8 rounded-full"
+            disabled={!canSend}
+            onClick={() => void send()}
+          >
+            <ArrowUpIcon className="size-4" />
           </Button>
         </div>
       </div>
