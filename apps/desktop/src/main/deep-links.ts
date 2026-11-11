@@ -26,6 +26,8 @@ export type DeepLink =
   | MessageLink
   | { kind: 'connectors' }
   | { kind: 'devices' }
+  /** The home page's office of Bots (View > Show Office Space). */
+  | { kind: 'office' }
   /** Another server's pairing link, as it came; ./pair-link.ts checks it before anything uses it. */
   | { kind: 'pair'; link: string };
 
@@ -35,6 +37,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function formatDeepLink(link: DeepLink): string {
   if (link.kind === 'connectors') return `${PROTOCOL}://connectors`;
   if (link.kind === 'devices') return `${PROTOCOL}://devices`;
+  if (link.kind === 'office') return `${PROTOCOL}://office`;
   if (link.kind === 'pair') return link.link;
   const [kind, id] = link.kind === 'bot' ? ['bot', link.botId] : ['chat', link.chatId];
   const base = `${PROTOCOL}://${kind}/${encodeURIComponent(id)}`;
@@ -68,6 +71,7 @@ export function parseDeepLink(raw: string): DeepLink | null {
   if (segments.length === 1 && !url.search) {
     if (segments[0] === 'connectors') return { kind: 'connectors' };
     if (segments[0] === 'devices') return { kind: 'devices' };
+    if (segments[0] === 'office') return { kind: 'office' };
   }
   const [kind, id, message, seqText, ...rest] = segments;
   if (rest.length > 0 || id == null || !UUID.test(id)) return null;
@@ -105,6 +109,7 @@ export function parseDeepLink(raw: string): DeepLink | null {
 export function deepLinkPath(link: DeepLink): string {
   if (link.kind === 'connectors') return '/connectors';
   if (link.kind === 'devices') return '/settings/devices';
+  if (link.kind === 'office') return '/';
   // A pairing link opens the welcome screen, never a page of the current server.
   if (link.kind === 'pair') return '/';
   const base = link.kind === 'bot' ? `/bots/${link.botId}` : `/groups/${link.chatId}`;

@@ -1,3 +1,4 @@
+import { cn } from '@openbots/ui';
 import { memo, useEffect, useState, type ComponentProps } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -6,9 +7,36 @@ import remarkGfm from 'remark-gfm';
 // lists) with no raw HTML, and fenced code highlighted by shiki, which loads
 // on first use so the transcript does not wait for it.
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+/**
+ * Rich typography for a whole document (an Artifact): headings, spacing
+ * between blocks, quotes and rules, on top of the transcript's prose.
+ */
+const DOCUMENT_CLASS = cn(
+  'text-[15px] leading-7',
+  '[&_h1]:mt-6 [&_h1]:mb-3 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:leading-tight [&_h1:first-child]:mt-0',
+  '[&_h2]:mt-6 [&_h2]:mb-2 [&_h2]:border-b [&_h2]:pb-1 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:leading-snug',
+  '[&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold',
+  '[&_h4]:mt-4 [&_h4]:mb-1 [&_h4]:font-semibold',
+  '[&_p]:my-3 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1 [&_li>p]:my-1',
+  '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground',
+  '[&_hr]:my-6 [&_table]:my-4 [&_img]:my-3 [&_img]:max-w-full [&_img]:rounded',
+);
+
+export const Markdown = memo(function Markdown({
+  text,
+  variant = 'chat',
+}: {
+  text: string;
+  /** `document` for an Artifact read on its own; `chat` (the default) for messages. */
+  variant?: 'chat' | 'document';
+}) {
   return (
-    <div className="prose-transcript min-w-0 break-words text-sm leading-relaxed [&_ol]:list-decimal [&_ol]:pl-5 [&_p+p]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_table]:my-2 [&_td]:border [&_td]:px-2 [&_th]:border [&_th]:px-2">
+    <div
+      className={cn(
+        'prose-transcript min-w-0 break-words text-sm leading-relaxed [&_ol]:list-decimal [&_ol]:pl-5 [&_p+p]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_table]:my-2 [&_td]:border [&_td]:px-2 [&_th]:border [&_th]:px-2',
+        variant === 'document' && DOCUMENT_CLASS,
+      )}
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
         {text}
       </ReactMarkdown>

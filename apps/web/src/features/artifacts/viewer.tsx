@@ -49,6 +49,8 @@ export function ArtifactViewer({ artifactId, version }: { artifactId: string; ve
   const versions = useQuery(artifactVersionsQuery(artifactId));
   const [selected, setSelected] = useState(version);
   const [mode, setMode] = useState<'view' | 'edit' | 'compare'>('view');
+  /** A document's source instead of its formatted text. */
+  const [raw, setRaw] = useState(false);
   useArtifactRefresh({ artifactId });
 
   const failure = artifact.error ?? versions.error;
@@ -104,6 +106,16 @@ export function ArtifactViewer({ artifactId, version }: { artifactId: string; ve
             Compare
           </Button>
         )}
+        {artifact.data.kind === 'document' && isTextMime(shown.mime) && mode === 'view' && (
+          <Button
+            size="sm"
+            variant={raw ? 'secondary' : 'outline'}
+            aria-pressed={raw}
+            onClick={() => setRaw(!raw)}
+          >
+            Raw text
+          </Button>
+        )}
         <Button size="sm" variant="outline" asChild>
           <a href={defaultArtifactDownloadUrl(artifactId, shown.version)} download>
             Download
@@ -123,7 +135,7 @@ export function ArtifactViewer({ artifactId, version }: { artifactId: string; ve
       ) : mode === 'compare' && text ? (
         <CompareVersions artifactId={artifactId} versions={versions.data} to={shown.version} />
       ) : (
-        <VersionContent artifact={artifact.data} version={shown} />
+        <VersionContent artifact={artifact.data} version={shown} raw={raw} />
       )}
 
       <VersionHistory
@@ -197,8 +209,30 @@ function VersionHistory({
   );
 }
 
+/**
+ * Whether a document is Markdown: saved as Markdown, named `.md`, or plain
+ * text written in Markdown (headings, lists, emphasis, links or code fences).
+ */
+export function isMarkdownDocument(title: string, mime: string, text: string): boolean {
+  if (mime === 'text/markdown' || /\.(md|markdown)$/i.test(title)) return true;
+  if (mime !== 'text/plain') return false;
+  return (
+    /^(#{1,6}\s|\s*[-*+]\s|\s*\d+\.\s|>\s|```)/m.test(text) ||
+    /\*\*[^*\n]+\*\*/.test(text) ||
+    /\[[^\]\n]+\]\([^)\s]+\)/.test(text)
+  );
+}
+
 /** One version, rendered for its kind and mime type. */
-function VersionContent({ artifact, version }: { artifact: Artifact; version: ArtifactVersion }) {
+function VersionContent({
+  artifact,
+  version,
+  raw = false,
+}: {
+  artifact: Artifact;
+  version: ArtifactVersion;
+  raw?: boolean;
+}) {
   const { mime } = version;
   if (mime.startsWith('image/')) {
     return (
@@ -218,15 +252,30 @@ function VersionContent({ artifact, version }: { artifact: Artifact; version: Ar
       </p>
     );
   }
-  return <TextContent artifact={artifact} version={version} />;
+  return <TextContent artifact={artifact} version={version} raw={raw} />;
 }
 
-function TextContent({ artifact, version }: { artifact: Artifact; version: ArtifactVersion }) {
+function TextContent({
+  artifact,
+  version,
+  raw,
+}: {
+  artifact: Artifact;
+  version: ArtifactVersion;
+  raw: boolean;
+}) {
   const text = useQuery(artifactTextQuery(artifact.id, version.version));
   if (text.error) return <p className="text-destructive">{text.error.message}</p>;
   if (text.data === undefined) return <p className="text-muted-foreground">Loading…</p>;
-  if (artifact.kind === 'document' && version.mime === 'text/markdown') {
-    return <Markdown text={text.data} />;
+  if (artifact.kind === 'document' && raw) {
+    return (
+      <pre className="whitespace-pre-wrap break-words rounded border bg-muted/40 p-3 font-mono text-xs leading-relaxed">
+        {text.data}
+      </pre>
+    );
+  }
+  if (artifact.kind === 'document' && isMarkdownDocument(artifact.title, version.mime, text.data)) {
+    return <Markdown text={text.data} variant="document" />;
   }
   if (artifact.kind === 'data') {
     const table = parseTable(text.data, version.mime);

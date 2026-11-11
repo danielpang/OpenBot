@@ -3,6 +3,7 @@ import { Button, cn, IconButton, TerminalIcon } from '@openbots/ui';
 import { sessionStatusWords } from '@openbots/widgets';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useChatDock } from '../../../app/chat-dock.js';
 import { ComputerTerminal } from '../../computer/terminal.js';
 import { ErrorText } from '../../models/error-text.js';
 import { SessionComposer } from './session-composer.js';
@@ -74,6 +75,7 @@ export function SessionView({
 
   // Follow the newest entry while live, unless the owner scrolled up.
   const log = useRef<HTMLDivElement>(null);
+  const dock = useChatDock<HTMLDivElement>();
   const atBottom = useRef(true);
   const count = transcript.entries.length;
   useLayoutEffect(() => {
@@ -83,7 +85,7 @@ export function SessionView({
 
   return (
     <div className="flex h-full flex-col" data-session={session.id}>
-      <header className="flex flex-col gap-2 border-b px-4 py-3">
+      <header data-slot="chat-header" className="flex flex-col gap-2 border-b px-4 py-3">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={onBack}>
             Back
@@ -128,6 +130,7 @@ export function SessionView({
         role="log"
         aria-label="Session"
         aria-busy={transcript.loading}
+        data-slot="chat-scroll"
         className="min-h-0 flex-1 overflow-auto px-4 py-3"
         onScroll={(e) => {
           const el = e.currentTarget;
@@ -152,7 +155,14 @@ export function SessionView({
       </div>
 
       {terminal && <SessionTerminal sessionId={session.id} />}
-      <SessionComposer session={session} onSent={keep} />
+      {/* With the terminal open the composer stays below it, not over the log. */}
+      {terminal ? (
+        <SessionComposer session={session} onSent={keep} />
+      ) : (
+        <div ref={dock} data-slot="chat-dock">
+          <SessionComposer session={session} onSent={keep} />
+        </div>
+      )}
     </div>
   );
 }

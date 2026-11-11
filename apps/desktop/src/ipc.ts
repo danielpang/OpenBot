@@ -64,6 +64,11 @@ export interface PlatformInfo {
   version: string;
   /** The shell shows approvals, questions, mentions and Routine exceptions natively (N1). */
   nativeNotifications: boolean;
+  /**
+   * The window draws the system material behind a clear page for the web app's
+   * Liquid Glass (macOS 26 and later, main window only). Missing before it.
+   */
+  liquidGlass?: boolean;
 }
 
 /**

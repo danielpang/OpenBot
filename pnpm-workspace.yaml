@@ -111,6 +111,9 @@ overrides:
   'query-string>decode-uri-component': ^0.5.1
   # Expo tooling compatibility is exercised by mobile tooling tests and export.
   '@expo/cli>zod': ^4.6.7
+  # node-forge <= 1.4.2 (GHSA-j8rw-jp99-435v, GHSA-6889-vf6x-f3g5 and two more): Expo's CLI and code
+  # signing certificates; 1.4.3 is a patch release with the fixes.
+  'node-forge@<1.4.3': ^1.4.3
   'glob@>=9.0.0 <14.0.2': ^14.0.2
   'esbuild@>=0.27.3 <0.28.1': ^0.28.1
 

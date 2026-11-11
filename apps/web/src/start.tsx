@@ -4,6 +4,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { installChunkRecovery } from './app/chunk-recovery.js';
 import { configureWeb, type WebExtensions } from './app/extensions.js';
+import { applyLiquidGlass } from './app/platform.js';
 import { createAppRouter } from './app/router.js';
 
 // Renders the web app into #root. The self-hosted build (main.tsx) starts it
@@ -13,6 +14,7 @@ import { createAppRouter } from './app/router.js';
 export function startWeb(extensions: WebExtensions = {}) {
   installChunkRecovery(import.meta.url);
   configureWeb(extensions);
+  applyLiquidGlass();
   const root = document.getElementById('root');
   if (!root) throw new Error('missing #root element');
 

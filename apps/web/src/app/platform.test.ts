@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { createElement } from 'react';
 import {
+  applyLiquidGlass,
   hasInsetTitleBar,
+  hasLiquidGlass,
   hasNativeNotifications,
   platform,
   WINDOW_DRAG,
@@ -60,6 +62,28 @@ describe('platform', () => {
     });
     expect(hasInsetTitleBar()).toBe(false);
     expect(renderToString(createElement(TitleBarInset))).toBe('');
+  });
+
+  it('turns on Liquid Glass only when the Mac app window draws the material', () => {
+    const root = () => ({ dataset: {} as Record<string, string> }) as unknown as HTMLElement;
+
+    vi.stubGlobal('window', {});
+    expect(hasLiquidGlass()).toBe(false);
+
+    // App versions before it, and macOS before 26, leave it out or false.
+    vi.stubGlobal('window', { openbots: { platform: desktop, onNavigate: () => () => {} } });
+    expect(hasLiquidGlass()).toBe(false);
+    const plain = root();
+    applyLiquidGlass(plain);
+    expect(plain.dataset.glass).toBeUndefined();
+
+    vi.stubGlobal('window', {
+      openbots: { platform: { ...desktop, liquidGlass: true }, onNavigate: () => () => {} },
+    });
+    expect(hasLiquidGlass()).toBe(true);
+    const glass = root();
+    applyLiquidGlass(glass);
+    expect(glass.dataset.glass).toBe('');
   });
 
   it('ignores something else called openbots', () => {

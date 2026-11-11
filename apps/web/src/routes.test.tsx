@@ -66,7 +66,9 @@ describe('routes', () => {
     const { html } = await renderPath('/');
     // Positioned panes keep hidden absolute elements from stretching the document.
     expect(html).toContain('data-slot="shell" class="relative flex h-dvh overflow-hidden"');
-    expect(html).toContain('<main class="relative min-w-0 flex-1 overflow-auto"');
+    expect(html).toContain(
+      '<main data-slot="content" class="relative min-w-0 flex-1 overflow-auto"',
+    );
   });
 
   it('names the connectors page Connectors in the sidebar and the page title', async () => {

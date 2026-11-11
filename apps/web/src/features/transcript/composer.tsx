@@ -1,5 +1,5 @@
 import { Avatar } from '@openbots/avatars/react';
-import { Button, cn, XIcon } from '@openbots/ui';
+import { ArrowUpIcon, Button, cn, PlusIcon, XIcon } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import {
   useId,
@@ -210,6 +210,7 @@ export function Composer({
 
   return (
     <div
+      data-slot="composer"
       className={cn(
         'relative flex flex-col gap-2 rounded-xl border bg-background p-2 shadow-xs',
         dragging && 'ring-2 ring-ring/50',
@@ -310,11 +311,13 @@ export function Composer({
         <Button
           type="button"
           variant="ghost"
-          size="sm"
-          className="text-muted-foreground"
+          size="icon"
+          aria-label="Attach files"
+          title="Attach files"
+          className="size-8 rounded-full text-muted-foreground"
           onClick={() => fileInput.current?.click()}
         >
-          Attach
+          <PlusIcon className="size-5" />
         </Button>
         <input
           ref={fileInput}
@@ -328,8 +331,16 @@ export function Composer({
         />
         <div className="flex items-center gap-1">
           {extra}
-          <Button type="button" size="sm" disabled={!canSend} onClick={() => void send()}>
-            Send
+          <Button
+            type="button"
+            size="icon"
+            aria-label="Send"
+            title="Send"
+            className="size-8 rounded-full"
+            disabled={!canSend}
+            onClick={() => void send()}
+          >
+            <ArrowUpIcon className="size-4" />
           </Button>
         </div>
       </div>
@@ -399,6 +410,7 @@ function Picker({
       id={id}
       role="listbox"
       aria-label={trigger.char === '/' ? 'Skills' : 'Mention a Bot'}
+      data-slot="composer-picker"
       className="absolute inset-x-2 bottom-full mb-1 rounded-lg border bg-popover p-1 text-sm shadow-md"
     >
       {options.length === 0 ? (

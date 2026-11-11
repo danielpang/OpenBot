@@ -394,6 +394,20 @@ describe('<ArtifactViewer> with binary versions', () => {
     }
   });
 
+  it('formats a plain text document written in Markdown, and shows its source on request', async () => {
+    server.mime = 'text/plain';
+    server.texts = ['# Playbook\n\n**Market** matters most.\n'];
+    render(<ArtifactViewer artifactId={ID} />);
+    await until(() => !!host.querySelector('h1'), 'the formatted document');
+    expect(host.querySelector('strong')?.textContent).toBe('Market');
+
+    click(button('Raw text'));
+    await until(() => !!host.querySelector('pre'), 'the source');
+    expect(host.querySelector('pre')?.textContent).toContain('# Playbook');
+    expect(host.querySelector('h1')).toBeNull();
+    expect(button('Raw text')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('previews a text version of a file as text (A2)', async () => {
     server.kind = 'file';
     server.mime = 'text/plain';

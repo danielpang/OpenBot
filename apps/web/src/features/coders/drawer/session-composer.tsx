@@ -7,8 +7,9 @@ import {
   CODING_ATTACHMENTS_BYTES,
 } from '@openbots/shared';
 import {
+  ArrowUpIcon,
   Button,
-  Textarea,
+  cn,
   PlusIcon,
   XIcon,
   DropdownMenu,
@@ -113,7 +114,9 @@ export function SessionComposer({
     }
   }
   return (
-    <form className="flex flex-col gap-2 border-t p-3" onSubmit={(event) => void submit(event)}>
+    // The same card as a Bot's composer (transcript/composer.tsx): the message
+    // on top, + on the left and Send on the right below it.
+    <form data-slot="session-composer" className="p-3" onSubmit={(event) => void submit(event)}>
       <input
         ref={fileInput}
         type="file"
@@ -137,63 +140,51 @@ export function SessionComposer({
           event.target.value = '';
         }}
       />
-      {attachments.length > 0 && (
-        <ul className="flex flex-wrap gap-2" aria-label="Attachments">
-          {attachments.map((item) => (
-            <li
-              key={item.key}
-              className="flex max-w-full items-center gap-2 rounded-lg bg-muted px-3 py-2 text-xs"
-            >
-              <span className="min-w-0 truncate">
-                {item.name}
-                {!item.file && !item.error ? ' · Uploading…' : ''}
-              </span>
-              {item.error && <span className="text-destructive">{item.error}</span>}
-              <button
-                type="button"
-                aria-label={`Remove ${item.name}`}
-                disabled={send.isPending}
-                onClick={() => update(held.current.filter((file) => file.key !== item.key))}
+      <div
+        data-slot="composer"
+        className="relative flex flex-col gap-2 rounded-xl border bg-background p-2 shadow-xs"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          addFiles(event.dataTransfer.files);
+        }}
+      >
+        {attachments.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5" aria-label="Attachments">
+            {attachments.map((item) => (
+              <li
+                key={item.key}
+                className={cn(
+                  'flex max-w-full items-center gap-1 rounded-md border px-2 py-0.5 text-xs',
+                  item.error && 'border-destructive text-destructive',
+                )}
               >
-                <XIcon className="size-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="flex items-end gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label="Add to coding message"
-              disabled={send.isPending}
-            >
-              <PlusIcon className="size-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" sideOffset={8}>
-            <DropdownMenuItem onSelect={() => imageInput.current?.click()}>
-              Attach screenshot or image
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => fileInput.current?.click()}>
-              Attach files
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <AcceptEdits botId={session.botId} menu />
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Textarea
+                <span className="max-w-48 truncate">{item.name}</span>
+                <span className="text-muted-foreground">
+                  {item.error ?? (item.file ? '' : 'Uploading…')}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${item.name}`}
+                  className="rounded p-0.5 hover:bg-accent"
+                  disabled={send.isPending}
+                  onClick={() => update(held.current.filter((file) => file.key !== item.key))}
+                >
+                  <XIcon className="size-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <textarea
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           aria-label="Next prompt"
           placeholder="Message…"
           maxLength={4000}
-          rows={2}
+          rows={Math.min(8, Math.max(1, prompt.split('\n').length))}
           disabled={!ended || send.isPending}
-          className="min-h-0 resize-none"
+          className="max-h-60 resize-none bg-transparent px-1.5 py-1 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();
@@ -206,15 +197,44 @@ export function SessionComposer({
               addFiles(event.clipboardData.files);
             }
           }}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => {
-            event.preventDefault();
-            addFiles(event.dataTransfer.files);
-          }}
         />
-        <Button type="submit" disabled={!canSend}>
-          Send
-        </Button>
+        <div className="flex items-center justify-between">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Add to coding message"
+                title="Attach or set edits"
+                className="size-8 rounded-full text-muted-foreground"
+                disabled={send.isPending}
+              >
+                <PlusIcon className="size-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start" sideOffset={8}>
+              <DropdownMenuItem onSelect={() => imageInput.current?.click()}>
+                Attach screenshot or image
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => fileInput.current?.click()}>
+                Attach files
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <AcceptEdits botId={session.botId} menu />
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            type="submit"
+            size="icon"
+            aria-label="Send"
+            title="Send"
+            className="size-8 rounded-full"
+            disabled={!canSend}
+          >
+            <ArrowUpIcon className="size-4" />
+          </Button>
+        </div>
       </div>
       <ErrorText error={attachmentError || send.error} />
     </form>

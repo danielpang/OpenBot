@@ -15,6 +15,7 @@ export {
   PencilIcon,
   PlayIcon,
   PlusIcon,
+  ArrowUpIcon,
   RefreshIcon,
   RotateIcon,
   SearchIcon,
