@@ -17,7 +17,7 @@ import { BotAvatar } from '../components/bot-avatar';
 import { GlassIconButton } from '../components/glass';
 import { Button, Empty, ErrorNote, Field, Icon, Label, Page, Section, row } from '../components/ui';
 import { useTheme } from '../theme';
-import { groupTitle, useBots, useChats, type Bot } from './data';
+import { groupTitle, useBots, useChats, useGroupLimit, type Bot } from './data';
 
 export function BotsScreen({
   sidebar = false,
@@ -241,6 +241,7 @@ function CreateSheet({
   const [kind, setKind] = useState<'bot' | 'group'>('bot');
   const [name, setName] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
+  const limit = useGroupLimit();
   const [avatar, setAvatar] = useState(() => newBotAvatar(String(Date.now())));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -323,7 +324,7 @@ function CreateSheet({
         />
         {kind === 'group' ? (
           <>
-            <Label muted>Choose 2 to 6 Bots.</Label>
+            <Label muted>Choose 2 to {limit} Bots.</Label>
             {bots
               .filter((bot) => !bot.hidden)
               .map((bot) => (
@@ -335,7 +336,7 @@ function CreateSheet({
                     setSelected((current) =>
                       current.includes(bot.id)
                         ? current.filter((id) => id !== bot.id)
-                        : current.length < 6
+                        : current.length < limit
                           ? [...current, bot.id]
                           : current,
                     )
@@ -360,7 +361,8 @@ function CreateSheet({
         <Button
           title={kind === 'bot' ? 'Create Bot' : 'Start group'}
           loading={busy}
-          disabled={kind === 'bot' ? !name.trim() : selected.length < 2}
+          // The limit can drop while the sheet is open, leaving too many chosen.
+          disabled={kind === 'bot' ? !name.trim() : selected.length < 2 || selected.length > limit}
           onPress={() => void create()}
         />
       </Page>

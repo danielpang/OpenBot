@@ -11,14 +11,17 @@ type Bot = components['schemas']['Bot'];
 export const BotAvatar = memo(function BotAvatar({
   bot,
   size = 54,
+  status = true,
 }: {
   bot: Pick<Bot, 'avatar' | 'state' | 'name'>;
   size?: number;
+  /** The working-state dot. Off where the avatar is decoration, as in a loader. */
+  status?: boolean;
 }) {
   const c = useTheme();
   const source = useFileSource(bot.avatar.kind === 'upload' ? bot.avatar.file_id : undefined);
   const pulse = useRef(new Animated.Value(1)).current;
-  const active = ['working', 'thinking'].includes(bot.state.state);
+  const active = status && ['working', 'thinking'].includes(bot.state.state);
   useEffect(() => {
     if (!active) {
       pulse.setValue(1);
@@ -35,7 +38,7 @@ export const BotAvatar = memo(function BotAvatar({
   }, [active, pulse]);
   return (
     <View
-      accessibilityLabel={`${bot.name}, ${bot.state.state}`}
+      accessibilityLabel={status ? `${bot.name}, ${bot.state.state}` : bot.name}
       style={{ width: size, height: size }}
     >
       {bot.avatar.kind === 'generated' ? (
@@ -43,24 +46,26 @@ export const BotAvatar = memo(function BotAvatar({
       ) : (
         <Image source={source} style={{ width: size, height: size, borderRadius: size / 3 }} />
       )}
-      <Animated.View
-        style={{
-          position: 'absolute',
-          right: 0,
-          bottom: 0,
-          width: 11,
-          height: 11,
-          borderRadius: 6,
-          borderWidth: 2,
-          borderColor: c.background,
-          backgroundColor: active
-            ? c.success
-            : bot.state.state === 'waiting'
-              ? '#d89c36'
-              : c.mutedForeground,
-          opacity: pulse,
-        }}
-      />
+      {status ? (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            right: 0,
+            bottom: 0,
+            width: 11,
+            height: 11,
+            borderRadius: 6,
+            borderWidth: 2,
+            borderColor: c.background,
+            backgroundColor: active
+              ? c.success
+              : bot.state.state === 'waiting'
+                ? '#d89c36'
+                : c.mutedForeground,
+            opacity: pulse,
+          }}
+        />
+      ) : null}
     </View>
   );
 });

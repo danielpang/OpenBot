@@ -1,0 +1,122 @@
+import { Pressable, View } from 'react-native';
+import { Icon, Label, row } from '../components/ui';
+import { useTheme } from '../theme';
+import type { Message } from './model';
+
+/** The picker's choices, in the order they are offered. */
+export const REACTION_EMOJI = ['👍', '👎', '❤️', '💯', '👌'] as const;
+
+/**
+ * A message's footer: its reactions, a button that opens the picker in place, and the
+ * thread reply. The picker is a row in the message, not a system alert.
+ */
+export function MessageReactions({
+  message,
+  alignEnd,
+  picking,
+  onPicking,
+  onReaction,
+  onThread,
+}: {
+  message: Pick<Message, 'reactions' | 'replyCount'>;
+  alignEnd: boolean;
+  picking: boolean;
+  onPicking: (open: boolean) => void;
+  onReaction: (emoji: string) => void;
+  onThread?: () => void;
+}) {
+  const c = useTheme();
+  const reactions = message.reactions ?? [];
+  const mine = new Set(
+    reactions.filter((reaction) => reaction.reactorType === 'user').map(({ emoji }) => emoji),
+  );
+  const counts = new Map<string, number>();
+  for (const { emoji } of reactions) counts.set(emoji, (counts.get(emoji) ?? 0) + 1);
+  const justify = alignEnd ? 'flex-end' : 'flex-start';
+  return (
+    <View style={{ marginTop: 8, gap: 8 }}>
+      {picking ? (
+        <View
+          testID="reaction-picker"
+          style={[row.base, { flexWrap: 'wrap', justifyContent: justify, gap: 6 }]}
+        >
+          {REACTION_EMOJI.map((emoji) => (
+            <Pressable
+              key={emoji}
+              accessibilityRole="button"
+              accessibilityLabel={`${mine.has(emoji) ? 'Remove' : 'React with'} ${emoji}`}
+              accessibilityState={{ selected: mine.has(emoji) }}
+              onPress={() => {
+                onPicking(false);
+                onReaction(emoji);
+              }}
+              style={({ pressed }) => ({
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: mine.has(emoji) ? c.foreground : c.border,
+                backgroundColor: pressed || mine.has(emoji) ? c.muted : c.card,
+              })}
+            >
+              <Label size={20}>{emoji}</Label>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      <View style={[row.base, { flexWrap: 'wrap', justifyContent: justify }]}>
+        {[...counts].map(([emoji, count]) => (
+          <Pressable
+            key={emoji}
+            accessibilityRole="button"
+            accessibilityLabel={`${mine.has(emoji) ? 'Remove' : 'React'} ${emoji}, ${count} ${
+              count === 1 ? 'reaction' : 'reactions'
+            }`}
+            accessibilityState={{ selected: mine.has(emoji) }}
+            onPress={() => onReaction(emoji)}
+            style={{
+              borderWidth: 1,
+              borderColor: mine.has(emoji) ? c.foreground : c.border,
+              backgroundColor: mine.has(emoji) ? c.muted : 'transparent',
+              borderRadius: 14,
+              paddingHorizontal: 9,
+              paddingVertical: 4,
+            }}
+          >
+            <Label size={13}>
+              {emoji} {count}
+            </Label>
+          </Pressable>
+        ))}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add a reaction"
+          accessibilityState={{ expanded: picking }}
+          onPress={() => onPicking(!picking)}
+          hitSlop={6}
+          style={[row.base, { padding: 4, gap: 5 }]}
+        >
+          <Icon name={picking ? 'close' : 'happy-outline'} size={15} color={c.mutedForeground} />
+          <Label size={12} muted>
+            React
+          </Label>
+        </Pressable>
+        {onThread ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Reply in thread"
+            onPress={onThread}
+            style={[row.base, { padding: 4, gap: 5 }]}
+          >
+            <Icon name="chatbubble-outline" size={14} color={c.mutedForeground} />
+            <Label size={12} muted>
+              {message.replyCount ? `${message.replyCount} replies` : 'Reply'}
+            </Label>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}

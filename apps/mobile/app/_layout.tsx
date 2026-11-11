@@ -5,6 +5,7 @@ import { MobileProvider } from '../src/api/provider';
 import { AppearanceProvider, useTheme, useThemeScheme } from '../src/theme';
 import { ServerCompatibility } from '../src/components/server-compatibility';
 import { GlassProvider } from '../src/components/glass';
+import { useConversationHeader } from '../src/components/conversation-header';
 import { TabletWorkspace } from '../src/components/tablet-workspace';
 
 export default function RootLayout() {
@@ -23,6 +24,7 @@ export default function RootLayout() {
 function Navigator() {
   const c = useTheme();
   const scheme = useThemeScheme();
+  const conversationHeader = useConversationHeader();
   return (
     <>
       <ServerCompatibility />
@@ -42,6 +44,11 @@ function Navigator() {
           <Stack.Screen name="(onboarding)/welcome" options={{ title: 'Welcome' }} />
           <Stack.Screen name="(onboarding)/pair" options={{ title: 'Pair your device' }} />
           <Stack.Screen name="(onboarding)/connect" options={{ title: 'Connect' }} />
+          {/* A conversation's transparent header has to be in place before its screen
+              first appears. Set from inside the screen it arrives after the push has
+              begun: the content starts below an opaque header, then moves up under it. */}
+          <Stack.Screen name="bot/[id]/index" options={conversationHeader} />
+          <Stack.Screen name="chat/[id]" options={conversationHeader} />
         </Stack>
       </TabletWorkspace>
     </>

@@ -25,6 +25,18 @@ describe('mobile streaming transcript', () => {
       message('b', 2),
     ]);
   });
+  it('keeps held rows, and the held list, when the server re-sends them unchanged', () => {
+    const held = [message('a', 1), message('b', 2)];
+    // A refresh on open returns equal content in new objects.
+    const same = mergeMessages(held, [message('a', 1), message('b', 2)]);
+    expect(same).toBe(held);
+    const changed = mergeMessages(held, [message('a', 1), { ...message('b', 2), replyCount: 3 }]);
+    expect(changed).not.toBe(held);
+    expect(changed[0]).toBe(held[0]);
+    expect(changed[1]).not.toBe(held[1]);
+    expect(changed[1]?.replyCount).toBe(3);
+  });
+
   it('applies only contiguous deltas and preserves unrelated row references', () => {
     const other = message('b', 2);
     const event = wsEvent(

@@ -1,5 +1,6 @@
 import { unwrap, type components } from '@openbots/api-client';
 import { useQuery } from '@tanstack/react-query';
+import { DEFAULT_LIMITS } from '@openbots/shared';
 import { useMobile } from '../api/provider';
 import { botsQueryOptions } from '../api/bots';
 
@@ -22,6 +23,16 @@ export function useChats() {
     queryFn: () => unwrap(api!.GET('/api/v1/chats')),
     select: (result) => result.items,
   });
+}
+/** The most Bots a group holds on this server, or the default before the server says. */
+export function useGroupLimit() {
+  const { client: api, transport } = useMobile();
+  const me = useQuery({
+    queryKey: ['me'],
+    enabled: !!api && !!transport,
+    queryFn: () => unwrap(api!.GET('/api/v1/me')),
+  });
+  return me.data?.limits?.botsPerGroup ?? DEFAULT_LIMITS.botsPerGroup;
 }
 export function useApprovals() {
   const { client, transport } = useMobile();
