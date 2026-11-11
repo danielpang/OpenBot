@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { createAdaptorServer } from '@hono/node-server';
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { pino, type Logger } from 'pino';
 import { WebSocketServer } from 'ws';
 import { ApnsGateway, NO_PUSH, type ApnsOptions, type PushGateway } from './apns.js';
@@ -11,6 +12,7 @@ import { NodeBudget, type BudgetOptions, type SocketKind, type Ticket } from './
 import { DrainController, type DrainOptions } from './drain.js';
 import { FlowControl, type FlowOptions } from './flow.js';
 import { metricsHandler, RelayMetrics } from './metrics.js';
+import type { Telemetry } from './telemetry.js';
 import { readyHandler, relayConditions } from './readiness.js';
 import { ClientStream } from './client-stream.js';
 import {
@@ -105,6 +107,8 @@ export interface RelayOptions {
   replay?: 'fly' | 'off';
   /** How long one registry call may take. Default 2 seconds. */
   registryTimeoutMs?: number;
+  /** Anonymous usage counts and errors (telemetry.ts). Default: none. The relay closes it. */
+  telemetry?: Telemetry;
   /** Node's process metrics on `/metrics` as well. Default true. */
   defaultMetrics?: boolean;
   /**
@@ -161,11 +165,21 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
   const budget = new NodeBudget(options.budget);
   const flow = new FlowControl(options.flow);
   flow.start();
-  const metrics = new RelayMetrics({ defaultMetrics: options.defaultMetrics ?? true });
+  const metrics = new RelayMetrics({
+    defaultMetrics: options.defaultMetrics ?? true,
+    ...(options.telemetry ? { telemetry: options.telemetry } : {}),
+  });
   /** Cleared by a drain: no new upgrade is accepted (replays still go out). */
   let accepting = true;
 
   const app = new Hono();
+  app.onError((err, c) => {
+    // A deliberate 4xx answer is not a fault of the relay.
+    if (err instanceof HTTPException) return err.getResponse();
+    logger.error({ err }, 'request failed');
+    metrics.failed({ type: 'http_500', where: 'route' });
+    return c.json({ code: 'INTERNAL', message: 'Internal error' }, 500);
+  });
   app.get('/healthz', (c) => c.json({ ok: true }));
   app.get(
     '/ready',
@@ -375,6 +389,7 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
     socket.on('error', () => socket.destroy());
     upgrade(req, socket, head).catch((err: unknown) => {
       logger.error({ err }, 'upgrade failed');
+      metrics.failed({ type: 'http_500', where: 'upgrade' });
       if (!socket.destroyed) reject(socket, 500);
     });
   });
@@ -451,6 +466,9 @@ export async function createRelay(options: RelayOptions = {}): Promise<Relay> {
       // Clients first, so they hear the relay is going rather than 4410.
       for (const stream of clientStreams) stream.end(1001, 'relay shutting down');
       for (const link of hostLinks) link.end(1001, 'relay shutting down');
+      // Bounded, and before the registry is torn down: PostHog being slow or
+      // down must not hold the shutdown past its grace.
+      await options.telemetry?.close().catch(() => undefined);
       await registry.flushBytes();
       await ownership.stop(true);
       await shutDown();

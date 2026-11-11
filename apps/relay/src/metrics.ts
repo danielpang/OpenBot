@@ -2,6 +2,12 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { Context } from 'hono';
 import { collectDefaultMetrics, Counter, Gauge, Registry } from 'prom-client';
 import { SOCKET_KINDS, type BudgetSnapshot, type SocketKind } from './budget.js';
+import {
+  isErrorClose,
+  NO_TELEMETRY,
+  type Telemetry,
+  type TelemetryErrorKind,
+} from './telemetry.js';
 
 // The relay's Prometheus metrics (docs/plans/MOBILE_AND_VM_PLAN.md 5.8), served at
 // `GET /metrics` behind `RELAY_METRICS_TOKEN` as the API server serves its
@@ -52,6 +58,8 @@ export interface MetricSources {
 export interface RelayMetricsOptions {
   /** Node's default process metrics as well. Default true. */
   defaultMetrics?: boolean;
+  /** Anonymous usage counts and errors for PostHog; each event below also goes here. */
+  telemetry?: Telemetry;
 }
 
 export class RelayMetrics {
@@ -74,8 +82,18 @@ export class RelayMetrics {
   readonly servedAloneLinks: Counter;
   /** Pushes answered `error` because the gateway failed. */
   readonly pushFailures: Counter;
+  /** Sockets accepted, by kind. */
+  readonly connections: Counter<'kind'>;
+  /** Stream payloads forwarded, by direction. */
+  readonly messages: Counter<'direction'>;
+  /** Sockets the relay closed for an abnormal reason, by kind. */
+  readonly disconnects: Counter<'kind'>;
+  /** 500s answered, by where. */
+  readonly serverErrors: Counter<'where'>;
+  private readonly telemetry: Telemetry;
 
   constructor(options: RelayMetricsOptions = {}) {
+    this.telemetry = guarded(options.telemetry ?? NO_TELEMETRY);
     if (options.defaultMetrics ?? true) {
       collectDefaultMetrics({ register: this.registry, prefix: 'openbots_relay_' });
     }
@@ -217,6 +235,30 @@ export class RelayMetrics {
       help: 'Pushes answered with reason error because the push gateway failed',
       registers,
     });
+    this.connections = new Counter({
+      name: 'openbots_relay_connections_total',
+      help: 'Sockets accepted, by kind (host links and client streams)',
+      labelNames: ['kind'] as const,
+      registers,
+    });
+    this.messages = new Counter({
+      name: 'openbots_relay_messages_total',
+      help: 'Stream payloads forwarded, by direction',
+      labelNames: ['direction'] as const,
+      registers,
+    });
+    this.disconnects = new Counter({
+      name: 'openbots_relay_disconnects_total',
+      help: 'Sockets the relay closed for an abnormal reason, by kind',
+      labelNames: ['kind'] as const,
+      registers,
+    });
+    this.serverErrors = new Counter({
+      name: 'openbots_relay_server_errors_total',
+      help: '500 answers, by where they happened',
+      labelNames: ['where'] as const,
+      registers,
+    });
   }
 
   /** Points the gauges at the relay's live state. A later call replaces the sources it names. */
@@ -234,6 +276,27 @@ export class RelayMetrics {
 
   forwarded(direction: Direction, bytes: number): void {
     this.bytesForwarded.inc({ direction }, bytes);
+    this.messages.inc({ direction });
+    this.telemetry.message(direction);
+  }
+
+  /** A socket was accepted. */
+  connected(kind: SocketKind): void {
+    this.connections.inc({ kind });
+    this.telemetry.connection(kind);
+  }
+
+  /** A socket the relay closed with `code`; only abnormal codes count as errors. */
+  closed(kind: SocketKind, code: number | undefined): void {
+    if (!isErrorClose(code)) return;
+    this.disconnects.inc({ kind });
+    this.telemetry.error({ type: 'disconnect', socket: kind, code });
+  }
+
+  /** A 500 was answered, or a frame failed inside the relay. */
+  failed(kind: Extract<TelemetryErrorKind, { type: 'http_500' }>): void {
+    this.serverErrors.inc({ where: kind.where });
+    this.telemetry.error(kind);
   }
 
   shed(kind: SocketKind): void {
@@ -254,12 +317,37 @@ export class RelayMetrics {
 
   pushFailed(): void {
     this.pushFailures.inc();
+    this.telemetry.push(false);
+  }
+
+  pushSent(): void {
+    this.telemetry.push(true);
   }
 
   /** The Prometheus text exposition. */
   render(): Promise<string> {
     return this.registry.metrics();
   }
+}
+
+/** A telemetry whose calls cannot throw into the relay, whatever it does. */
+function guarded(inner: Telemetry): Telemetry {
+  const safe =
+    <A extends unknown[]>(call: (...args: A) => void) =>
+    (...args: A) => {
+      try {
+        call(...args);
+      } catch {
+        // Telemetry is never allowed to cost the relay a socket.
+      }
+    };
+  return {
+    connection: safe((kind) => inner.connection(kind)),
+    message: safe((direction) => inner.message(direction)),
+    push: safe((ok) => inner.push(ok)),
+    error: safe((kind) => inner.error(kind)),
+    close: () => inner.close().catch(() => undefined),
+  };
 }
 
 /** A gauge without labels that reads `read` at scrape time; `undefined` reads 0. */

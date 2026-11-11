@@ -271,6 +271,7 @@ export class HostLink implements Link {
       this.deps.logger.info({ hostId: this.hostId, remote: this.remote, code }, 'host link closed');
     }
     if (code !== undefined && this.socket.readyState === WebSocket.OPEN) {
+      this.deps.metrics.closed('host', code);
       this.socket.close(code, closeReason(reason ?? ''));
     }
     this.onEnd(this);
@@ -383,6 +384,7 @@ export class HostLink implements Link {
     }
     this.state = 'linked';
     this.deps.registry.addLink(this);
+    this.deps.metrics.connected('host');
     this.deps.logger.info(
       { hostId, remote: this.remote, capabilities: [...this.capabilities] },
       'host linked',
@@ -428,9 +430,10 @@ export class HostLink implements Link {
         : { ok: false, reason: 'error', status: 429 };
     } catch (error) {
       this.deps.logger.warn({ err: String(error), hostId: this.hostId }, 'push failed');
-      this.deps.metrics.pushFailed();
       outcome = { ok: false, reason: 'error', status: null };
     }
+    if (outcome.ok) this.deps.metrics.pushSent();
+    else if (outcome.reason === 'error') this.deps.metrics.pushFailed();
     this.pushResult(id, outcome);
   }
 
