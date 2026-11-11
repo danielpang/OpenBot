@@ -9,6 +9,8 @@ const LOOP_MS = 1100;
 const BEATS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1];
 // Each Bot in a group starts a quarter loop after its neighbour, so they bob in turn.
 const NEIGHBOUR_OFFSET = 2;
+// A bigger group shows its first Bots: one tight row reads better than a crowd.
+const MAX_DANCERS = 5;
 
 // Asked once when the app loads, so a loader knows the setting on its first frame
 // instead of standing still until the answer arrives.
@@ -33,6 +35,8 @@ function avatarSize(count: number) {
 
 /** A conversation's Bots dancing in place while it loads. Motion is decorative. */
 export function DancingBots({ bots }: { bots: Bot[] }) {
+  const dancers = bots.slice(0, MAX_DANCERS);
+  const others = bots.length - dancers.length;
   const phase = useRef(new Animated.Value(0)).current;
   // Unknown only if a chat opens before the app has its answer: still, without a spinner.
   const [reduced, setReduced] = useState(reduceMotion);
@@ -67,8 +71,8 @@ export function DancingBots({ bots }: { bots: Bot[] }) {
     animation.start();
     return () => animation.stop();
   }, [phase, reduced]);
-  const size = avatarSize(bots.length);
-  const names = bots.map((bot) => bot.name);
+  const size = avatarSize(dancers.length);
+  const names = [...dancers.map((bot) => bot.name), ...(others ? [`${others} more`] : [])];
   return (
     <View
       testID="chat-loading-avatar"
@@ -82,14 +86,12 @@ export function DancingBots({ bots }: { bots: Bot[] }) {
       <View
         style={{
           flexDirection: 'row',
-          flexWrap: 'wrap',
           justifyContent: 'center',
-          maxWidth: 300,
-          columnGap: size * 0.3,
-          rowGap: 14,
+          // Close enough to read as one group, with room for each Bot's sway.
+          gap: size * 0.12,
         }}
       >
-        {bots.map((bot, index) => (
+        {dancers.map((bot, index) => (
           <Dancer
             key={bot.id}
             bot={bot}

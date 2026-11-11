@@ -37,6 +37,20 @@ describe('the loading dance', () => {
     screen.unmount();
   });
 
+  it('shows at most five Bots of a bigger group', async () => {
+    reduceMotion(false);
+    const group = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(
+      (name) => ({ id: name, name, chatId: `dm-${name}` }) as unknown as Bot,
+    );
+    render(<DancingBots bots={group} />);
+    await act(async () => {});
+    expect(screen.getAllByTestId('chat-loading-dancer')).toHaveLength(5);
+    expect(
+      screen.getByLabelText('Loading your conversation with A, B, C, D, E and 2 more'),
+    ).toBeTruthy();
+    screen.unmount();
+  });
+
   it('stands still with a spinner when Reduce Motion is on', async () => {
     reduceMotion(true);
     render(<DancingBots bots={[bot]} />);
