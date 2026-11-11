@@ -308,9 +308,16 @@ describe('reopening a conversation', () => {
         'Loading your conversation with Atlas',
       ),
     ).toBeTruthy();
-    // A group has no single Bot, so it keeps the plain spinner.
+    // A group shows all of its Bots.
     screen.unmount();
-    render(<Transcript chatId="group" bots={[bot]} title="Team" />);
+    const other = { id: 'bea', name: 'Bea', chatId: 'dm-bea' } as unknown as Bot;
+    render(<Transcript chatId="group" bots={[bot, other]} members={[bot, other]} title="Team" />);
+    expect(
+      within(screen.getByTestId('chat-transcript-loading')).getAllByTestId('chat-loading-dancer'),
+    ).toHaveLength(2);
+    // Before the roster is on the phone there is no Bot to show yet.
+    screen.unmount();
+    render(<Transcript chatId="group" bots={[]} title="Team" />);
     expect(screen.getByTestId('chat-transcript-loading')).toBeTruthy();
     expect(screen.queryByTestId('chat-loading-avatar')).toBeNull();
   });

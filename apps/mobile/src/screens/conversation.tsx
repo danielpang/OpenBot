@@ -1,5 +1,5 @@
 import { ActivityIndicator } from 'react-native';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { unwrap } from '@openbots/api-client';
@@ -88,6 +88,11 @@ export function ChatScreen() {
   const chat = chats.data?.find((chat) => chat.id === id);
   const bot = bots.data?.find((bot) => bot.chatId === id);
   const name = title ?? bot?.name ?? (chat ? groupTitle(chat, bots.data) : 'Conversation');
+  const members = useMemo(
+    () =>
+      (chat?.botIds ?? []).flatMap((botId) => bots.data?.find((item) => item.id === botId) ?? []),
+    [chat?.botIds, bots.data],
+  );
   return (
     <>
       <Stack.Screen
@@ -121,6 +126,7 @@ export function ChatScreen() {
       <Transcript
         chatId={id}
         bots={bots.data ?? []}
+        members={members}
         title={name}
         threadRootId={threadRootId ?? thread}
         targetMessageId={message}

@@ -12,7 +12,7 @@ import { BotAvatar } from '../components/bot-avatar';
 import { GlassIconButton } from '../components/glass';
 import { useTheme } from '../theme';
 import { Composer } from './composer';
-import { DancingBotAvatar } from './dancing-avatar';
+import { DancingBots } from './dancing-avatar';
 import { MessagePartView } from './parts';
 import type { Message } from './model';
 import type { Bot } from '../screens/data';
@@ -38,6 +38,8 @@ type TranscriptProps = {
   threadRootId?: string;
   targetMessageId?: string;
   targetSeq?: number;
+  /** A group's Bots, in join order. A Bot's own chat is recognised without it. */
+  members?: Bot[];
 };
 
 // Remount per conversation so its scroll position, reveal and jump state, unsent
@@ -53,6 +55,7 @@ function ConversationTranscript({
   threadRootId,
   targetMessageId,
   targetSeq,
+  members,
 }: TranscriptProps) {
   const c = useTheme();
   const safe = useSafeAreaInsets();
@@ -127,7 +130,9 @@ function ConversationTranscript({
   // One loader covers both waits, the first messages and the hidden list, from the
   // first frame: any delay before it is a moment of empty screen.
   const waiting = hidden || (messages.loading && messages.messages.length === 0);
+  // Who dances while it loads: a group's Bots, or the Bot whose own chat this is.
   const chatBot = bots.find((bot) => bot.chatId === chatId);
+  const dancers = members?.length ? members : chatBot ? [chatBot] : [];
   // FlashList won't repeat onStartReached while the list stays in the start zone, so
   // page in history skipped while hidden once it is shown, if it settled near the top
   // (a short conversation, or a link to an early message).
@@ -311,8 +316,8 @@ function ConversationTranscript({
               justifyContent: 'center',
             }}
           >
-            {/* A Bot's own chat shows that Bot; a group has no single Bot to show. */}
-            {chatBot ? <DancingBotAvatar bot={chatBot} /> : <ActivityIndicator />}
+            {/* Until the roster is on the phone there is no Bot to show. */}
+            {dancers.length ? <DancingBots bots={dancers} /> : <ActivityIndicator />}
           </View>
         ) : null}
         {awayFromBottom && !hidden ? (
