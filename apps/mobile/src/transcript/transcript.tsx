@@ -15,6 +15,7 @@ import { Composer } from './composer';
 import { DancingBots } from './dancing-avatar';
 import { ActivityView, MessagePartView } from './parts';
 import { toBlocks } from './blocks';
+import { MessageReactions } from './reactions';
 import type { Message } from './model';
 import type { Bot } from '../screens/data';
 
@@ -377,18 +378,13 @@ const MessageRow = memo(
     const c = useTheme();
     const bot = bots.find((bot) => bot.id === message.authorId);
     const user = message.authorType === 'user';
-    function menu() {
-      Alert.alert('Message', undefined, [
-        { text: '👍', onPress: () => onReaction('👍') },
-        { text: '❤️', onPress: () => onReaction('❤️') },
-        ...(onThread ? [{ text: 'Reply in thread', onPress: onThread }] : []),
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    }
+    // Rows are recycled for other messages, so the open picker is tied to this one.
+    const [pickingFor, setPickingFor] = useState<string>();
+    const picking = pickingFor === message.id;
     return (
       <Pressable
         accessibilityRole="none"
-        onLongPress={menu}
+        onLongPress={() => setPickingFor(message.id)}
         style={{
           paddingHorizontal: 20,
           paddingVertical: 16,
@@ -447,7 +443,8 @@ const MessageRow = memo(
         >
           {toBlocks(message).map((block) =>
             block.kind === 'activity' ? (
-              <ActivityView key={`${block.index}-activity`} steps={block.steps} />
+              // Keyed by message: a recycled row must not carry an opened activity over.
+              <ActivityView key={`${message.id}-${block.index}`} steps={block.steps} />
             ) : (
               <MessagePartView
                 key={`${block.index}-${block.part.type}`}
@@ -464,53 +461,14 @@ const MessageRow = memo(
             This response was interrupted.
           </Label>
         ) : null}
-        <View
-          style={[
-            row.base,
-            { marginTop: 8, flexWrap: 'wrap', justifyContent: user ? 'flex-end' : 'flex-start' },
-          ]}
-        >
-          {Object.entries(
-            (message.reactions ?? []).reduce<Record<string, number>>(
-              (counts, reaction) => ({
-                ...counts,
-                [reaction.emoji]: (counts[reaction.emoji] ?? 0) + 1,
-              }),
-              {},
-            ),
-          ).map(([emoji, count]) => (
-            <Pressable
-              key={emoji}
-              accessibilityRole="button"
-              accessibilityLabel={`React ${emoji}, ${count} reactions`}
-              onPress={() => onReaction(emoji)}
-              style={{
-                borderWidth: 1,
-                borderColor: c.border,
-                borderRadius: 14,
-                paddingHorizontal: 9,
-                paddingVertical: 4,
-              }}
-            >
-              <Label size={13}>
-                {emoji} {count}
-              </Label>
-            </Pressable>
-          ))}
-          {onThread ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Reply in thread"
-              onPress={onThread}
-              style={[row.base, { padding: 4, gap: 5 }]}
-            >
-              <Icon name="chatbubble-outline" size={14} color={c.mutedForeground} />
-              <Label size={12} muted>
-                {message.replyCount ? `${message.replyCount} replies` : 'Reply'}
-              </Label>
-            </Pressable>
-          ) : null}
-        </View>
+        <MessageReactions
+          message={message}
+          alignEnd={user}
+          picking={picking}
+          onPicking={(open) => setPickingFor(open ? message.id : undefined)}
+          onReaction={onReaction}
+          onThread={onThread}
+        />
       </Pressable>
     );
   },
