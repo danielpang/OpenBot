@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { access, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createServer } from 'node:net';
-import { hostname } from 'node:os';
+import { hostname, release } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import type { WebSocketLike } from '@openbots/api-client';
 import { base64urlDecode, type BinaryWebSocketLike } from '@openbots/tunnel';
@@ -49,6 +49,7 @@ import {
   sharedRelayUrl,
 } from './pairing.js';
 import { devAppIconPath } from './app-icon.js';
+import { glassWindowOptions, supportsLiquidGlass } from './glass.js';
 import { QUICK_ASK_ACCELERATOR, trayMenu, type PendingApproval } from './approvals.js';
 import { createConnection, type Connection } from './connection.js';
 import { createDeviceKeyStore } from './device-keys.js';
@@ -68,7 +69,7 @@ import {
   needsLocalSignIn,
   ownerName,
 } from './local-session.js';
-import { fileMenu } from './menu.js';
+import { fileMenu, viewMenu } from './menu.js';
 import { navigationVerdict, serverPath } from './navigation.js';
 import { createOAuthBrowser } from './oauth.js';
 import { isWatching, type Notice } from './notices.js';
@@ -480,16 +481,21 @@ function refreshUpdates() {
   }
 }
 
-function platformInfo(): PlatformInfo {
+/** Liquid Glass in the main window (glass.ts). */
+const LIQUID_GLASS = supportsLiquidGlass(process.platform, release());
+
+function platformInfo(liquidGlass: boolean): PlatformInfo {
   return {
     kind: 'desktop',
     os: process.platform,
     version: app.getVersion(),
     nativeNotifications: Notification.isSupported(),
+    liquidGlass,
   };
 }
 
-function webPreferences(partition?: Session, updates = false): Electron.WebPreferences {
+/** `main` is the main window: update notices, and Liquid Glass where the system has it. */
+function webPreferences(partition?: Session, main = false): Electron.WebPreferences {
   return {
     preload: PRELOAD,
     contextIsolation: true,
@@ -498,8 +504,8 @@ function webPreferences(partition?: Session, updates = false): Electron.WebPrefe
     webSecurity: true,
     ...(partition ? { session: partition } : {}),
     additionalArguments: [
-      `--openbots-updates=${updates}`,
-      `--openbots-platform=${JSON.stringify(platformInfo())}`,
+      `--openbots-updates=${main}`,
+      `--openbots-platform=${JSON.stringify(platformInfo(main && LIQUID_GLASS))}`,
       `--openbots-app-base=${RENDERER_URL ?? ''}`,
     ],
   };
@@ -789,6 +795,7 @@ async function createMainWindow(profile: ServerProfile): Promise<BrowserWindow> 
     // Windows and Linux show it on the window and taskbar; macOS uses the Dock icon.
     icon: DEV_ICON,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    ...glassWindowOptions(LIQUID_GLASS),
     webPreferences: webPreferences(ses, true),
   });
   mainWindow = window;
@@ -1162,7 +1169,7 @@ function applicationMenu() {
       pairPhone: () => openPairWindow(),
     }),
     { role: 'editMenu' },
-    { role: 'viewMenu' },
+    viewMenu({ showOffice: () => void openLink({ kind: 'office' }) }),
     { role: 'windowMenu' },
   ]);
 }

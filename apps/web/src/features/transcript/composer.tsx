@@ -210,6 +210,7 @@ export function Composer({
 
   return (
     <div
+      data-slot="composer"
       className={cn(
         'relative flex flex-col gap-2 rounded-xl border bg-background p-2 shadow-xs',
         dragging && 'ring-2 ring-ring/50',
@@ -399,6 +400,7 @@ function Picker({
       id={id}
       role="listbox"
       aria-label={trigger.char === '/' ? 'Skills' : 'Mention a Bot'}
+      data-slot="composer-picker"
       className="absolute inset-x-2 bottom-full mb-1 rounded-lg border bg-popover p-1 text-sm shadow-md"
     >
       {options.length === 0 ? (

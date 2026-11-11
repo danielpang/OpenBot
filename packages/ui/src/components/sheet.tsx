@@ -20,8 +20,12 @@ export function SheetContent({
 }: ComponentProps<typeof SheetPrimitive.Content> & { side?: keyof typeof sides }) {
   return (
     <SheetPrimitive.Portal>
-      <SheetPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50" />
+      <SheetPrimitive.Overlay
+        data-slot="dialog-overlay"
+        className="fixed inset-0 z-50 bg-black/50"
+      />
       <SheetPrimitive.Content
+        data-slot="sheet-content"
         className={cn(
           'fixed z-50 flex flex-col gap-4 bg-background shadow-lg',
           sides[side],

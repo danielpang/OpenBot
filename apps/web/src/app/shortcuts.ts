@@ -70,3 +70,33 @@ export function useNewShortcut(onNew: () => void) {
     };
   }, [onNew]);
 }
+
+// Show Office Space: back to the home page's office of Bots. Cmd/Ctrl+Shift+O in the
+// Mac app, whose View menu has it with that accelerator; a browser keeps
+// Cmd/Ctrl+Shift+O for itself, so a tab uses Alt+Shift+O (Option+Shift+O).
+
+/** Whether a keydown shows the office. Option+Shift+O types Ø on a Mac, so the physical key decides. */
+export function showsOffice(event: Keys & { target: EventTarget | null }) {
+  const o = event.code === 'KeyO' || event.key.toLowerCase() === 'o';
+  if (!o || !event.shiftKey) return false;
+  if ((event.metaKey || event.ctrlKey) && !event.altKey) return true;
+  return event.altKey && !event.metaKey && !event.ctrlKey && !isTextEntry(event.target);
+}
+
+/** The Show Office Space shortcut that works here. */
+export function officeShortcutLabel(platform: string, desktop: boolean) {
+  if (desktop) return isMac(platform) ? '⇧⌘O' : 'Ctrl+Shift+O';
+  return isMac(platform) ? '⌥⇧O' : 'Alt+Shift+O';
+}
+
+export function useOfficeShortcut(onShow: () => void) {
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => {
+      if (!showsOffice(event)) return;
+      event.preventDefault();
+      onShow();
+    };
+    window.addEventListener('keydown', listener);
+    return () => window.removeEventListener('keydown', listener);
+  }, [onShow]);
+}

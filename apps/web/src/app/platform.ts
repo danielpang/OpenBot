@@ -12,6 +12,11 @@ export interface DesktopPlatform {
   os: string;
   version: string;
   nativeNotifications: boolean;
+  /**
+   * The window shows the system material through a clear page (macOS 26 and
+   * later): the app draws Liquid Glass. Missing in app versions before it.
+   */
+  liquidGlass?: boolean;
 }
 
 export type Platform = { kind: 'web' } | DesktopPlatform;
@@ -83,6 +88,21 @@ export function hasNativeNotifications(): boolean {
 export function hasInsetTitleBar(): boolean {
   const current = platform();
   return current.kind === 'desktop' && current.os === 'darwin';
+}
+
+/**
+ * The Mac app's window draws the system material behind the page, so the app
+ * floats its sidebar and controls as Liquid Glass over it. False in a browser,
+ * before macOS 26 and in app versions without it.
+ */
+export function hasLiquidGlass(): boolean {
+  const current = platform();
+  return current.kind === 'desktop' && current.liquidGlass === true;
+}
+
+/** Turns on the Liquid Glass styles (`html[data-glass]`, @openbots/ui styles.css). */
+export function applyLiquidGlass(root: HTMLElement = document.documentElement) {
+  if (hasLiquidGlass()) root.dataset.glass = '';
 }
 
 /**

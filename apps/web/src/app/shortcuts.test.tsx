@@ -7,7 +7,9 @@ import {
   isNewFallbackShortcut,
   isNewShortcut,
   newShortcutLabel,
+  officeShortcutLabel,
   opensNew,
+  showsOffice,
   useNewShortcut,
 } from './shortcuts.js';
 
@@ -88,6 +90,27 @@ describe('New shortcut', () => {
     } finally {
       delete (window as { openbots?: unknown }).openbots;
     }
+  });
+});
+
+describe('Show Office Space shortcut', () => {
+  const field = Object.assign(document.createElement('textarea'));
+  it('takes Cmd/Ctrl+Shift+O, and Alt+Shift+O outside text fields', () => {
+    expect(showsOffice({ ...key('o', { metaKey: true, shiftKey: true }), target: null })).toBe(true);
+    expect(showsOffice({ ...key('O', { ctrlKey: true, shiftKey: true }), target: null })).toBe(true);
+    expect(
+      showsOffice({ ...key('Ø', { altKey: true, shiftKey: true }), code: 'KeyO', target: null }),
+    ).toBe(true);
+    expect(
+      showsOffice({ ...key('Ø', { altKey: true, shiftKey: true }), code: 'KeyO', target: field }),
+    ).toBe(false);
+    expect(showsOffice({ ...key('o', { metaKey: true }), target: null })).toBe(false);
+  });
+
+  it('labels the keys that work here', () => {
+    expect(officeShortcutLabel('MacIntel', true)).toBe('⇧⌘O');
+    expect(officeShortcutLabel('MacIntel', false)).toBe('⌥⇧O');
+    expect(officeShortcutLabel('Win32', true)).toBe('Ctrl+Shift+O');
   });
 });
 

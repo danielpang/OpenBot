@@ -1,9 +1,11 @@
 import { cn } from '@openbots/ui';
-import { Outlet } from '@tanstack/react-router';
+import { Outlet, useNavigate } from '@tanstack/react-router';
+import { useCallback } from 'react';
 import { WebNotifications } from '../features/notifications/web-notifications.js';
 import { RealtimeProvider } from '../features/transcript/realtime.js';
 import { DesktopNavigation } from './platform.js';
 import { RightPanelProvider, useRightPanel } from './right-panel.js';
+import { useOfficeShortcut } from './shortcuts.js';
 import { Sidebar } from './sidebar.js';
 
 // The signed-in frame (PRD section 5): sidebar, main area, right panel, and
@@ -16,6 +18,8 @@ import { Sidebar } from './sidebar.js';
 // instead of stretching the document below the sidebar.
 
 export function Shell() {
+  const navigate = useNavigate();
+  useOfficeShortcut(useCallback(() => void navigate({ to: '/' }), [navigate]));
   return (
     <RealtimeProvider>
       <WebNotifications />
@@ -23,7 +27,7 @@ export function Shell() {
       <RightPanelProvider>
         <div data-slot="shell" className="relative flex h-dvh overflow-hidden">
           <Sidebar />
-          <main className="relative min-w-0 flex-1 overflow-auto">
+          <main data-slot="content" className="relative min-w-0 flex-1 overflow-auto">
             <Outlet />
           </main>
           <RightPanelSlot />
@@ -38,6 +42,7 @@ function RightPanelSlot() {
   if (!content) return null;
   return (
     <aside
+      data-slot="right-panel"
       data-width={width}
       className={cn(
         'relative shrink-0 overflow-auto border-l',

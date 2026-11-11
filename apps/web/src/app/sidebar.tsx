@@ -29,7 +29,7 @@ export function Sidebar() {
   const shortcut = newShortcutLabel(platform, appPlatform().kind === 'desktop');
 
   return (
-    <nav className="flex w-60 shrink-0 flex-col border-r bg-sidebar">
+    <nav data-slot="sidebar" className="flex w-60 shrink-0 flex-col border-r bg-sidebar">
       <TitleBarInset>
         <ConnectionIndicator />
       </TitleBarInset>
