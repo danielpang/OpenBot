@@ -34,9 +34,7 @@ function RosterObserver() {
   return <Text testID="roster-avatar">{JSON.stringify(bots.data?.[0]?.avatar)}</Text>;
 }
 function setup(value = bot, response: BotsResponse | undefined = { items: [value] }) {
-  const cache = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: Infinity } },
-  });
+  const cache = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   caches.push(cache);
   cache.setQueryData(queryKey, response);
   render(
