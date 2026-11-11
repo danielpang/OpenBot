@@ -8,6 +8,7 @@ const mockPush = jest.fn();
 const mockNavigate = jest.fn();
 const mockRefresh = jest.fn();
 const mockRefetch = jest.fn<() => Promise<unknown>>();
+let mockGroupLimit = 6;
 const mockMobile = {
   host: { name: 'My Mac' },
   connected: false,
@@ -40,7 +41,10 @@ jest.mock('expo-router', () => ({
   },
 }));
 jest.mock('@openbots/api-client', () => ({ unwrap: jest.fn() }));
-jest.mock('@openbots/avatars', () => ({ generate: () => '<svg/>', newBotAvatar: () => ({}) }));
+jest.mock('@openbots/avatars', () => ({
+  generate: () => ({ svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"/>' }),
+  newBotAvatar: () => ({}),
+}));
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }));
 jest.mock('../api/provider', () => ({ useMobile: () => mockMobile, useApi: () => ({}) }));
 jest.mock('../components/bot-avatar', () => ({ BotAvatar: () => null }));
@@ -49,6 +53,7 @@ jest.mock('./data', () => ({
   useBots: () => mockBots,
   useChats: () => ({ data: [], refetch: mockRefetch }),
   groupTitle: () => '',
+  useGroupLimit: () => mockGroupLimit,
 }));
 
 beforeEach(() => {
@@ -143,5 +148,30 @@ describe('background reconnection on the Bots home screen', () => {
     expect(screen.queryByText('Meet your first Bot')).toBeNull();
     expect(screen.getByLabelText('Search Bots and groups')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Create a Bot or group' })).toBeTruthy();
+  });
+});
+
+describe('starting a group within the server limit', () => {
+  it('lets no more Bots be chosen than the server allows', () => {
+    mockGroupLimit = 2;
+    const roster = ['a', 'b', 'c'].map((id) => ({
+      id,
+      name: `Bot ${id}`,
+      handle: id,
+      pinned: false,
+      hidden: false,
+      state: { currentAction: null },
+    }));
+    Object.assign(mockBots, { data: roster });
+    render(<BotsScreen />);
+    fireEvent.press(screen.getByLabelText('Create a Bot or group'));
+    fireEvent.press(screen.getByRole('button', { name: 'Group' }));
+    expect(screen.getByText('Choose 2 to 2 Bots.')).toBeTruthy();
+    const boxes = screen.getAllByRole('checkbox');
+    for (const box of boxes) fireEvent.press(box);
+    expect(
+      screen.getAllByRole('checkbox').filter((box) => box.props.accessibilityState.checked),
+    ).toHaveLength(2);
+    mockGroupLimit = 6;
   });
 });

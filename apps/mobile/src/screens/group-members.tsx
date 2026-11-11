@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useApi } from '../api/provider';
 import { BotAvatar } from '../components/bot-avatar';
 import { Button, ErrorNote, Label, Page, Section, row } from '../components/ui';
-import type { Bot, Chat } from './data';
+import { useGroupLimit, type Bot, type Chat } from './data';
 
 export function GroupMembers({
   chat,
@@ -20,6 +20,7 @@ export function GroupMembers({
 }) {
   const api = useApi();
   const cache = useQueryClient();
+  const limit = useGroupLimit();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   async function change(botId: string, remove: boolean) {
@@ -60,7 +61,7 @@ export function GroupMembers({
           title={joined ? 'Remove' : 'Add'}
           variant="secondary"
           loading={busy === bot.id}
-          disabled={!!busy || (joined ? chat.botIds.length <= 2 : chat.botIds.length >= 6)}
+          disabled={!!busy || (joined ? chat.botIds.length <= 2 : chat.botIds.length >= limit)}
           onPress={() => void change(bot.id, joined)}
         />
       </View>
@@ -85,9 +86,9 @@ export function GroupMembers({
           {bots.filter((bot) => chat.botIds.includes(bot.id)).map((bot) => member(bot, true))}
         </Section>
         <Label muted size={13}>
-          A group keeps 2 to 6 Bots. Mention another Bot with @ to invite it while you chat.
+          A group keeps 2 to {limit} Bots. Mention another Bot with @ to invite it while you chat.
         </Label>
-        {chat.botIds.length < 6 &&
+        {chat.botIds.length < limit &&
         bots.some((bot) => !chat.botIds.includes(bot.id) && !bot.hidden) ? (
           <Section title="Add a Bot">
             {bots
