@@ -3,11 +3,24 @@ import { ActivityIndicator, Alert, Keyboard, RefreshControl, StyleSheet } from '
 import type * as ReactNative from 'react-native';
 import type * as Glass from '../components/glass';
 import { describe, expect, it, jest, beforeEach, afterEach } from '@jest/globals';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import {
+  act,
+  configure,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { CodingSessionScreen, CodingSessionsScreen, Entry } from './screens';
 import { CodingSessionDetailsScreen } from './session-details';
 import { ConnectionErrorsContext, OfflineError } from '../api/connection-state';
+
+// Whichever test runs first renders these screens cold: about 300ms on an idle machine
+// against 50ms once warm, and past the default 1s wait on a busy CI runner. Give every
+// `findBy` and `waitFor` here room for that. A passing wait still returns at once.
+configure({ asyncUtilTimeout: 5000 });
 
 const mockGet = jest.fn<(path: string, ...args: unknown[]) => Promise<unknown>>();
 const mockPost = jest.fn<(...args: unknown[]) => Promise<unknown>>();
