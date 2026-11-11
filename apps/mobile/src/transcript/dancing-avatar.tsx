@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Animated, Easing, View } from 'react-native';
 import { BotAvatar } from '../components/bot-avatar';
-import { useTheme } from '../theme';
 import type { Bot } from '../screens/data';
 
 // One loop is two beats: a small bounce leaning left, then one leaning right.
@@ -9,8 +8,9 @@ const LOOP_MS = 1100;
 const BEATS = [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1];
 // Each Bot in a group starts a quarter loop after its neighbour, so they bob in turn.
 const NEIGHBOUR_OFFSET = 2;
-// A bigger group shows its first Bots: one tight row reads better than a crowd.
-const MAX_DANCERS = 5;
+// A full group by default (`botsPerGroup`), so nobody is left out of it. A server
+// that allows bigger groups shows the first six: one tight row reads better than a crowd.
+const MAX_DANCERS = 6;
 
 // Asked once when the app loads, so a loader knows the setting on its first frame
 // instead of standing still until the answer arrives.
@@ -118,14 +118,13 @@ function Dancer({
   phase: Animated.Value;
   offset: number;
 }) {
-  const c = useTheme();
   // A bob, not a jump: the Bot barely leaves the floor.
   const lift = size * 0.07;
   const sway = size * 0.07;
   const beat = <T extends number | string>(values: T[]) =>
     phase.interpolate({ inputRange: BEATS, outputRange: shifted(values, offset) as never });
   return (
-    <View testID="chat-loading-dancer" style={{ alignItems: 'center', gap: 6 }}>
+    <View testID="chat-loading-dancer">
       <Animated.View
         accessible={false}
         importantForAccessibility="no-hide-descendants"
@@ -164,18 +163,6 @@ function Dancer({
       >
         <BotAvatar bot={bot} size={size} />
       </Animated.View>
-      {/* The shadow stays on the floor and shrinks a little as the Bot lifts. */}
-      <Animated.View
-        accessible={false}
-        style={{
-          width: size * 0.6,
-          height: size * 0.09,
-          borderRadius: size,
-          backgroundColor: c.mutedForeground,
-          opacity: beat([0.3, 0.25, 0.22, 0.25, 0.3, 0.25, 0.22, 0.25]),
-          transform: [{ scaleX: beat([1, 0.9, 0.85, 0.9, 1, 0.9, 0.85, 0.9]) }],
-        }}
-      />
     </View>
   );
 }

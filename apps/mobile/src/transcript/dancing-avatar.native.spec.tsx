@@ -37,16 +37,16 @@ describe('the loading dance', () => {
     screen.unmount();
   });
 
-  it('shows at most five Bots of a bigger group', async () => {
+  it('shows at most six Bots of a bigger group', async () => {
     reduceMotion(false);
-    const group = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(
+    const group = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map(
       (name) => ({ id: name, name, chatId: `dm-${name}` }) as unknown as Bot,
     );
     render(<DancingBots bots={group} />);
     await act(async () => {});
-    expect(screen.getAllByTestId('chat-loading-dancer')).toHaveLength(5);
+    expect(screen.getAllByTestId('chat-loading-dancer')).toHaveLength(6);
     expect(
-      screen.getByLabelText('Loading your conversation with A, B, C, D, E and 2 more'),
+      screen.getByLabelText('Loading your conversation with A, B, C, D, E, F and 2 more'),
     ).toBeTruthy();
     screen.unmount();
   });
