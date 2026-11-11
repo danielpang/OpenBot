@@ -168,6 +168,7 @@ export function ChatTimeline({
     <div
       ref={scroller}
       onScroll={onScroll}
+      data-slot="chat-scroll"
       className="relative min-h-0 flex-1 overflow-y-auto"
       role="log"
       aria-label={label}

@@ -8,6 +8,7 @@ import type { Message } from './api.js';
 import { ChatTimeline } from './chat-timeline.js';
 import { Composer } from './composer.js';
 import { useBotPanel, useFocusThread } from './panel.js';
+import { useChatDock } from '../../app/chat-dock.js';
 import { useBotState } from './realtime.js';
 import { StopControl } from './run-controls.js';
 import { useTranscript } from './use-transcript.js';
@@ -50,6 +51,7 @@ export function Transcript({
     [chatId, showPanel],
   );
   useFocusThread(showPanel, chatId, focusThread, focusSeq);
+  const dock = useChatDock<HTMLDivElement>();
 
   const failure = chat.error ?? transcript.error;
   if (failure) {
@@ -76,7 +78,11 @@ export function Transcript({
         }
         onOpenThread={onOpenThread}
       />
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 pb-4">
+      <div
+        ref={dock}
+        data-slot="chat-dock"
+        className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 pb-4"
+      >
         <BotChats botId={botId} focus={focusChat ? { chatId: focusChat, seq } : undefined} />
         <Composer
           chatId={chat.data.id}

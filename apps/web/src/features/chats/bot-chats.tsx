@@ -34,6 +34,7 @@ export function BotChats({ botId, focus }: { botId: string; focus?: BotChatFocus
     // A new focus opens the list again, even after the owner closed it.
     <details
       key={focused ? `${focused.chatId}:${focused.seq ?? ''}` : 'none'}
+      data-slot="bot-chats"
       className="rounded-lg border text-sm"
       data-bot-chats
       open={focused != null}

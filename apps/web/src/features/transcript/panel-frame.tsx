@@ -17,7 +17,10 @@ export function PanelFrame({
 }) {
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-2">
+      <header
+        data-slot="panel-header"
+        className="flex items-center justify-between border-b px-4 py-2"
+      >
         <h2 className="text-sm font-medium">{title}</h2>
         {onClose && (
           <Button variant="ghost" size="icon" aria-label={`Close ${title}`} onClick={onClose}>

@@ -2,6 +2,7 @@ import { cn } from '@openbots/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo } from 'react';
 import { meQuery } from '../../app/api.js';
+import { useChatDock } from '../../app/chat-dock.js';
 import { windowDragClass } from '../../app/platform.js';
 import { botsQuery } from '../bots/queries.js';
 import type { Message } from '../transcript/api.js';
@@ -36,6 +37,7 @@ export function GroupView({
   const bots = useQuery(botsQuery);
   const me = useQuery(meQuery);
   const queryClient = useQueryClient();
+  const dock = useChatDock<HTMLDivElement>();
   const { client } = useRealtime();
   const showPanel = useBotPanel(chatId);
   const transcript = useTranscript(chatId);
@@ -94,7 +96,10 @@ export function GroupView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className={cn('flex items-center gap-3 border-b px-4 py-3', windowDragClass())}>
+      <header
+        data-slot="chat-header"
+        className={cn('flex items-center gap-3 border-b px-4 py-3', windowDragClass())}
+      >
         <h1 className="truncate font-semibold">{title}</h1>
         <GroupMembers
           members={members}
@@ -118,7 +123,7 @@ export function GroupView({
         }
         onOpenThread={onOpenThread}
       />
-      <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+      <div ref={dock} data-slot="chat-dock" className="mx-auto w-full max-w-3xl px-4 pb-4">
         <Composer
           chatId={chatId}
           mentionable={members}

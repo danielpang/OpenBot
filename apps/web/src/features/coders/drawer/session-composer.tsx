@@ -113,7 +113,10 @@ export function SessionComposer({
     }
   }
   return (
-    <form className="flex flex-col gap-2 border-t p-3" onSubmit={(event) => void submit(event)}>
+    <form
+      data-slot="session-composer"
+      className="flex flex-col gap-2 border-t p-3"
+      onSubmit={(event) => void submit(event)}>
       <input
         ref={fileInput}
         type="file"

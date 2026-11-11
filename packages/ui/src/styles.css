@@ -283,3 +283,134 @@ html[data-glass] [data-slot='dialog-content'] {
 html[data-glass] [data-slot='dialog-overlay'] {
   background: oklch(0 0 0 / 22%);
 }
+
+/*
+ * Liquid Glass in conversations: Bot and group chats, a Bot's chats with
+ * other Bots, and coding sessions (in the page and in the drawer).
+ *
+ * The dock (the composer and what sits on it) floats over the end of the
+ * conversation, which scrolls on under it and shows through the glass;
+ * `--dock-height` (apps/web app/chat-dock.ts) is the room the conversation
+ * leaves so its last message clears the dock. The conversation fades out
+ * under the toolbar instead of meeting a hairline (the scroll edge effect).
+ * Headers are toolbars: no rule under them, their buttons in a glass capsule,
+ * and a Bot's tabs a glass segmented control.
+ */
+html[data-glass] [data-slot='chat-scroll'] {
+  padding-bottom: var(--dock-height, 0px);
+  scroll-padding-bottom: var(--dock-height, 0px);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 20px,
+    #000 calc(100% - 14px),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 20px,
+    #000 calc(100% - 14px),
+    transparent
+  );
+}
+
+html[data-glass] [data-slot='chat-dock'] {
+  position: relative;
+  z-index: 10;
+  margin-top: calc(-1 * var(--dock-height, 0px));
+  pointer-events: none;
+}
+html[data-glass] [data-slot='chat-dock'] > * {
+  pointer-events: auto;
+}
+
+html[data-glass]
+  :is([data-slot='chat-header'], [data-slot='panel-header'], [data-slot='bot-tabs']) {
+  border-bottom-color: transparent;
+}
+
+html[data-glass] [data-slot='toolbar-group']:has(> *) {
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9999px;
+  background: var(--glass-fill);
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge),
+    inset 0 0 0 1px var(--glass-rim),
+    0 2px 8px oklch(0 0 0 / 8%);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  --accent: var(--glass-hover);
+}
+html[data-glass] [data-slot='toolbar-group'] :is(button, a) {
+  border-radius: 9999px;
+}
+
+html[data-glass] [data-slot='bot-tabs'] {
+  padding-block: 2px 8px;
+}
+html[data-glass] [data-slot='bot-tabs'] [role='tablist'] {
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9999px;
+  background: var(--glass-fill);
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge),
+    inset 0 0 0 1px var(--glass-rim),
+    0 2px 8px oklch(0 0 0 / 8%);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+html[data-glass] [data-slot='bot-tabs'] [role='tab'] {
+  margin-bottom: 0;
+  border-bottom-width: 0;
+  border-radius: 9999px;
+  padding: 4px 14px;
+}
+html[data-glass] [data-slot='bot-tabs'] [role='tab']:hover {
+  background: var(--glass-hover);
+}
+/* The selected tab is a lens on the bar: a brighter drop of glass. */
+html[data-glass] [data-slot='bot-tabs'] [role='tab'][data-status='active'] {
+  background: color-mix(in oklab, var(--foreground) 12%, transparent);
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge),
+    0 1px 3px oklch(0 0 0 / 14%);
+}
+
+/* A Bot's chats with other Bots sit on the dock above the composer: glass too. */
+html[data-glass] [data-slot='bot-chats'] {
+  border-color: var(--glass-rim);
+  border-radius: 16px;
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge),
+    var(--glass-shadow);
+  --accent: var(--glass-hover);
+  --border: var(--glass-line);
+}
+
+/* A coding session's composer floats as a glass card over the end of the log. */
+html[data-glass] [data-slot='session-composer'] {
+  margin: 0 12px 12px;
+  border: 1px solid var(--glass-rim);
+  border-radius: 20px;
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow:
+    inset 0 1px 0 var(--glass-edge),
+    var(--glass-shadow);
+  --background: var(--glass-tint);
+  --accent: var(--glass-hover);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html[data-glass] [data-slot='chat-scroll'] {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}

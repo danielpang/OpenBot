@@ -81,13 +81,16 @@ export function BotView({ botId }: { botId: string }) {
 
 export function BotTitleBar({ bot }: { bot: Bot }) {
   return (
-    <header className={cn('flex items-center gap-3 px-4 py-3', windowDragClass())}>
+    <header
+      data-slot="chat-header"
+      className={cn('flex items-center gap-3 px-4 py-3', windowDragClass())}
+    >
       <Avatar params={bot.avatar} state={bot.state.state} size={32} label={bot.name} />
       <div className="flex min-w-0 items-baseline gap-2">
         <h1 className="truncate font-semibold">{bot.name}</h1>
         {bot.label && <span className="truncate text-sm text-muted-foreground">{bot.label}</span>}
       </div>
-      <div className="ml-auto flex items-center gap-1">
+      <div data-slot="toolbar-group" className="ml-auto flex items-center gap-1">
         <ComputerControls bot={bot} />
         <CodingSessionsButton botId={bot.id} iconOnly />
       </div>
