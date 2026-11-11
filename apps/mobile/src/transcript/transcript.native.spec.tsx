@@ -71,7 +71,7 @@ jest.mock('../api/messages', () => ({
   }),
 }));
 jest.mock('../components/bot-avatar', () => ({ BotAvatar: () => null }));
-jest.mock('./parts', () => ({ MessagePartView: () => null }));
+jest.mock('./parts', () => ({ MessagePartView: () => null, ActivityView: () => null }));
 jest.mock('./composer', () => ({ Composer: () => null }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 

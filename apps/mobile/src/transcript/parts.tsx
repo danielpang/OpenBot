@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react';
-import { Alert, Pressable, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import Markdown from 'react-native-markdown-display';
@@ -9,6 +9,7 @@ import { Card, Icon, Label, row } from '../components/ui';
 import { useTheme } from '../theme';
 import { NativeWidget } from './widget';
 import { formatBytes, type Message } from './model';
+import type { ActivityStep } from './blocks';
 
 const listContent = { flex: 0, flexGrow: 1, flexShrink: 1 } as const;
 
@@ -46,6 +47,90 @@ const MessageText = memo(function MessageText({ text }: { text: string }) {
     [c],
   );
   return <Markdown style={style}>{text}</Markdown>;
+});
+
+/** One tool step: its label, and on a tap what the tool was given and returned. */
+function StepRow({ step }: { step: ActivityStep }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <View style={{ gap: 8 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded(!expanded)}
+        style={row.base}
+      >
+        <StepIcon step={step} />
+        <Label muted size={14} style={{ flex: 1 }}>
+          {step.label}
+          {step.done ? '' : '…'}
+        </Label>
+        <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={14} />
+      </Pressable>
+      {expanded ? (
+        <Card>
+          <Label size={12} style={{ fontFamily: 'Menlo' }}>
+            {JSON.stringify(step.result === undefined ? step.args : step.result, null, 2)}
+          </Label>
+        </Card>
+      ) : null}
+    </View>
+  );
+}
+
+function StepIcon({ step }: { step: ActivityStep }) {
+  const c = useTheme();
+  return (
+    <Icon
+      name={
+        !step.done
+          ? 'construct-outline'
+          : step.error
+            ? 'alert-circle-outline'
+            : 'checkmark-circle-outline'
+      }
+      size={16}
+      color={c.mutedForeground}
+    />
+  );
+}
+
+/**
+ * A run of tool steps as one line: the latest step and how many there were. A long
+ * research reply would otherwise be a screen of "Reading…" rows before its answer.
+ */
+export const ActivityView = memo(function ActivityView({ steps }: { steps: ActivityStep[] }) {
+  const c = useTheme();
+  const [expanded, setExpanded] = useState(false);
+  const last = steps.at(-1);
+  if (!last) return null;
+  if (steps.length === 1) return <StepRow step={last} />;
+  return (
+    <View style={{ gap: 8 }}>
+      <Pressable
+        testID="message-activity"
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${last.label}, ${steps.length} steps`}
+        onPress={() => setExpanded(!expanded)}
+        style={row.base}
+      >
+        <StepIcon step={last} />
+        <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, color: c.mutedForeground }}>
+          {last.label}
+          {last.done ? '' : '…'} · {steps.length} steps
+        </Text>
+        <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={14} />
+      </Pressable>
+      {expanded ? (
+        <View style={{ gap: 8, paddingLeft: 12, borderLeftWidth: 1, borderColor: c.border }}>
+          {steps.map((step) => (
+            <StepRow key={step.id} step={step} />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
 });
 
 export const MessagePartView = memo(function MessagePartView({

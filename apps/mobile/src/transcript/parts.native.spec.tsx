@@ -1,8 +1,9 @@
 import React from 'react';
 import { describe, expect, it, jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
-import { render, screen } from '@testing-library/react-native';
-import { MessagePartView } from './parts';
+import { fireEvent, render, screen } from '@testing-library/react-native';
+import { ActivityView, MessagePartView } from './parts';
+import type { ActivityStep } from './blocks';
 import type { Message } from './model';
 
 jest.mock('../api/provider', () => ({ useMobile: () => ({}) }));
@@ -46,5 +47,43 @@ describe('message text parts', () => {
     view.rerender(<MessagePartView part={second.part} message={second.message} index={0} />);
     // Remounting the text would flicker and re-measure the row on every refresh.
     expect(screen.getByText('First step')).toBe(before);
+  });
+});
+
+describe('tool activity in a message', () => {
+  const step = (id: string, label: string, done = true): ActivityStep => ({
+    id,
+    label,
+    done,
+    error: false,
+    args: { url: `https://${id}.com` },
+    result: done ? { ok: id } : undefined,
+  });
+
+  it('folds many steps into one line until it is opened', () => {
+    const steps = [step('a', 'Read a.com'), step('b', 'Read b.com'), step('c', 'Read c.com')];
+    render(<ActivityView steps={steps} />);
+    expect(screen.getByText('Read c.com · 3 steps')).toBeTruthy();
+    expect(screen.queryByText('Read a.com')).toBeNull();
+    expect(screen.queryByText('Read b.com')).toBeNull();
+    fireEvent.press(screen.getByLabelText('Read c.com, 3 steps'));
+    expect(screen.getByText('Read a.com')).toBeTruthy();
+    expect(screen.getByText('Read b.com')).toBeTruthy();
+    // Each step still opens to what the tool returned.
+    fireEvent.press(screen.getByText('Read a.com'));
+    expect(screen.getByText(/"ok": "a"/)).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Read c.com, 3 steps'));
+    expect(screen.queryByText('Read a.com')).toBeNull();
+  });
+
+  it('shows the step in progress while the Bot is still working', () => {
+    render(<ActivityView steps={[step('a', 'Read a.com'), step('b', 'Reading b.com', false)]} />);
+    expect(screen.getByText('Reading b.com… · 2 steps')).toBeTruthy();
+  });
+
+  it('shows a single step as its own row', () => {
+    render(<ActivityView steps={[step('a', 'Read a.com')]} />);
+    expect(screen.getByText('Read a.com')).toBeTruthy();
+    expect(screen.queryByTestId('message-activity')).toBeNull();
   });
 });

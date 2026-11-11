@@ -13,7 +13,8 @@ import { GlassIconButton } from '../components/glass';
 import { useTheme } from '../theme';
 import { Composer } from './composer';
 import { DancingBots } from './dancing-avatar';
-import { MessagePartView } from './parts';
+import { ActivityView, MessagePartView } from './parts';
+import { toBlocks } from './blocks';
 import type { Message } from './model';
 import type { Bot } from '../screens/data';
 
@@ -444,15 +445,19 @@ const MessageRow = memo(
               : { gap: 10 }
           }
         >
-          {message.parts.map((part, index) => (
-            <MessagePartView
-              key={`${index}-${part.type}`}
-              part={part}
-              message={message}
-              index={index}
-              onUpdated={onUpdated}
-            />
-          ))}
+          {toBlocks(message).map((block) =>
+            block.kind === 'activity' ? (
+              <ActivityView key={`${block.index}-activity`} steps={block.steps} />
+            ) : (
+              <MessagePartView
+                key={`${block.index}-${block.part.type}`}
+                part={block.part}
+                message={message}
+                index={block.index}
+                onUpdated={onUpdated}
+              />
+            ),
+          )}
         </View>
         {message.status === 'failed' ? (
           <Label size={13} style={{ color: c.danger }}>
