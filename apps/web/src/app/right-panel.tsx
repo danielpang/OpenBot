@@ -69,3 +69,40 @@ export function useRightPanel(): RightPanel {
   if (!panel) throw new Error('useRightPanel outside RightPanelProvider');
   return panel;
 }
+
+// The panel's width (resizable): the user drags its left edge, or uses the
+// arrow keys on the handle, and the width is remembered per kind of panel.
+
+/** Starting widths in pixels: Tailwind's w-96 and w-[34rem]. */
+export const PANEL_WIDTHS: Record<RightPanelWidth, number> = { default: 384, wide: 544 };
+export const MIN_PANEL_WIDTH = 320;
+/** What the page beside the panel keeps, with the sidebar. */
+const KEEP_FOR_PAGE = 600;
+
+/** A width the window can take: at least MIN_PANEL_WIDTH, leaving the page its room. */
+export function clampPanelWidth(width: number, viewport: number): number {
+  const max = Math.max(MIN_PANEL_WIDTH, viewport - KEEP_FOR_PAGE);
+  return Math.round(Math.min(max, Math.max(MIN_PANEL_WIDTH, width)));
+}
+
+const storageKey = (kind: RightPanelWidth) => `openbots.rightPanel.width.${kind}`;
+
+/** The width the user last left this kind of panel at, or its starting width. */
+export function storedPanelWidth(kind: RightPanelWidth): number {
+  try {
+    const saved = Number(localStorage.getItem(storageKey(kind)));
+    if (Number.isFinite(saved) && saved > 0) return saved;
+  } catch {
+    // Storage can be unavailable; the starting width will do.
+  }
+  return PANEL_WIDTHS[kind];
+}
+
+export function storePanelWidth(kind: RightPanelWidth, width: number | null) {
+  try {
+    if (width == null) localStorage.removeItem(storageKey(kind));
+    else localStorage.setItem(storageKey(kind), String(width));
+  } catch {
+    // Not remembered; the panel still resizes.
+  }
+}
