@@ -1,3 +1,4 @@
+import { transcriptOf } from '../testing.js';
 import type { MessagePart } from '@openbots/shared';
 import { describe, expect, it } from 'vitest';
 import { assembleContext, type ContextInput, type TranscriptMessage } from './assemble.js';
@@ -163,7 +164,7 @@ describe('assembleContext with attachments', () => {
       messages: [owner(1, [{ type: 'text', text: 'Look' }, image(1, 3_000)])],
       attachments: { vision: false, loaded: new Map() },
     });
-    expect(context.messages).toEqual([
+    expect(transcriptOf(context)).toEqual([
       {
         role: 'user',
         content: `[@dana (owner)] Look\n[attached image: shot-1.png (image/png, 3 KB, file ${id(1)}); your model cannot see images]`,
@@ -187,7 +188,7 @@ describe('assembleContext with attachments', () => {
       ],
       attachments: { vision: true, loaded },
     });
-    expect(context.messages).toEqual([
+    expect(transcriptOf(context)).toEqual([
       {
         role: 'user',
         content: [

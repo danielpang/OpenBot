@@ -37,6 +37,20 @@ Line one.
         "type": "file",
       },
     ],
+    "providerOptions": {
+      "anthropic": {
+        "cacheControl": {
+          "type": "ephemeral",
+        },
+      },
+    },
+    "role": "user",
+  },
+  {
+    "content": "[system] Context for this run, from OpenBots (nobody in the chat wrote this):
+
+## Memory
+(nothing saved yet)",
     "role": "user",
   },
 ]

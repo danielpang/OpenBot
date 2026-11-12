@@ -599,7 +599,8 @@ describe('run worker', () => {
     });
     await say(bot, 'what is 2+2?');
     await until(async () => expect(model.calls).toHaveLength(2));
-    expect(JSON.stringify(model.calls[1]!.prompt[1])).toContain(
+    // After the transcript, so a new memory leaves the cached prompt before it alone.
+    expect(JSON.stringify(model.calls[1]!.prompt.at(-1))).toContain(
       '[preference] Dana wants answers under three lines',
     );
     const res = await call('GET', `/bots/${bot.id}/memories`);
@@ -665,8 +666,8 @@ describe('run worker', () => {
       expect(state.checkpoint?.calls).toMatchObject([{ toolCallId: 'r1' }]);
       expect(state.checkpoint?.calls[0]!.output).toBeUndefined();
       // A takeover that overflows may cut only this many leading messages (plan 5.7):
-      // the opening line, the Bot's greeting and the owner's message.
-      expect(state.checkpoint?.contextLength).toBe(3);
+      // the opening line, the Bot's greeting, the owner's message and the run's context message.
+      expect(state.checkpoint?.contextLength).toBe(4);
     });
     const [run] = await runsOf(bot.id);
 

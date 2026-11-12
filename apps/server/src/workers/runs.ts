@@ -127,7 +127,7 @@ import {
   ACTIVE_STATUSES,
   scheduleRun,
 } from '../services/runs.js';
-import { updateChatSummary } from '../services/summaries.js';
+import { contextWindow, SUMMARY_BATCH, updateChatSummary } from '../services/summaries.js';
 
 // The run worker (plan 5.5 to 5.9). One job runs one run from `queued` to
 // `completed`, `waiting`, `failed` or `cancelled`:
@@ -262,7 +262,8 @@ async function processRun(
     const continued = state?.checkpoint ?? null;
     const resuming = !continued && state?.pending && state.resume && state.messages ? state : null;
     let window = options.historyWindow ?? HISTORY_WINDOW;
-    let context = await buildContext(deps, run, bot, chat, embedder, window, vision);
+    const batch = options.summaryBatch ?? SUMMARY_BATCH;
+    let context = await buildContext(deps, run, bot, chat, embedder, window, vision, batch);
 
     // A thread run replies in the thread (C7).
     const thread = runThread(run);
@@ -909,13 +910,15 @@ async function buildContext(
   embedder: Embedder,
   window: number,
   vision: boolean,
+  /** The summary's batch size, to hold the window's start still (`contextWindow`); null for exactly the last `window`. */
+  batch: number | null = null,
 ): Promise<RunContext> {
   const [owner] = await deps.db
     .select({ name: schema.users.name })
     .from(schema.users)
     .where(eq(schema.users.id, chat.ownerId));
   // A thread run reads the root and every reply in full (C7); otherwise the
-  // last `window` top-level messages.
+  // last `window` top-level messages, and up to a batch more (`contextWindow`).
   const thread = runThread(run);
   const rows = thread
     ? await deps.db
@@ -923,14 +926,17 @@ async function buildContext(
         .from(schema.messages)
         .where(and(eq(schema.messages.chatId, chat.id), inThread(thread)))
         .orderBy(asc(schema.messages.seq))
-    : (
+    : contextWindow(
         await deps.db
           .select()
           .from(schema.messages)
           .where(and(eq(schema.messages.chatId, chat.id), isNull(schema.messages.threadRootId)))
           .orderBy(desc(schema.messages.seq))
-          .limit(window)
-      ).reverse();
+          .limit(batch ? window + 2 * batch : window),
+        window,
+        batch ?? 1,
+        batch ? chat.summaryThroughSeq : null,
+      );
   // In a group or Bot-to-Bot chat the roster lists every Bot, one line each (plan 5.3).
   const members = chat.type === 'bot_dm' ? [bot] : await chatBots(deps.db, chat);
   const handles = await chatHandles(deps.db, chat, [
@@ -999,7 +1005,8 @@ async function buildContext(
     ? await routineInstructions(deps.db, input.routine.routineId)
     : null;
   if (routine) context.messages.push({ role: 'user', content: routine });
-  if (!context.messages.length) {
+  // The run's context message alone: nothing was said and nothing was asked.
+  if (context.messages.length === 1) {
     context.messages.push({ role: 'user', content: `[system] Run started by ${run.trigger}.` });
   }
   return { ...context, seenSeq: rows.at(-1)?.seq ?? chat.chatSeq };

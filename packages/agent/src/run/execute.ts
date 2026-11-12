@@ -144,6 +144,7 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
   let stepStartedAt = Date.now();
   let lastMessages = input.messages;
   let priorResponses = 0;
+  let tail: { index: number; message: ModelMessage } | null = null;
   let outputStarted = false;
   const argsById = new Map<string, unknown>();
   // The step as streamed, for the checkpoint (K4): a takeover replays its reasoning and text.
@@ -273,7 +274,11 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
     await input.recordStep({
       type: 'llm',
       label: thoughtLabel(durationMs),
-      payload: { finishReason: step.finishReason, cachedInputTokens: stepUsage.cached },
+      payload: {
+        finishReason: step.finishReason,
+        cachedInputTokens: stepUsage.cached,
+        cacheWriteTokens: stepUsage.cacheWrite,
+      },
       tokensIn: stepUsage.in,
       tokensOut: stepUsage.out,
       durationMs,
@@ -318,6 +323,8 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
     prepareStep: async ({ messages, responseMessages }) => {
       stepStartedAt = Date.now();
       priorResponses = responseMessages.length;
+      // The SDK hands back what the last step sent, the loop's breakpoint included.
+      if (tail) messages = messages.map((m, i) => (i === tail!.index ? tail!.message : m));
       const active = activeTools();
       const offer = active ? { activeTools: active } : {};
       const steer = await input.drainSteering();
@@ -347,7 +354,11 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
         ];
       }
       await input.checkpoint?.step(lastMessages, { ...usage });
-      return { ...offer, messages: lastMessages };
+      // As it was before the breakpoint, to put back when the breakpoint moves on.
+      tail = lastMessages.length
+        ? { index: lastMessages.length - 1, message: lastMessages.at(-1)! }
+        : null;
+      return { ...offer, messages: cacheTail(lastMessages) };
     },
     onStepFinish,
   });
@@ -499,6 +510,47 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
   return { status: 'completed', usage, text };
 }
 
+// Prompt caching for the loop. The context's own breakpoints (context/
+// assemble.ts) cover the tools, the instructions and the transcript; this one
+// covers the run's work. It sits on the last message of each step's request,
+// so the next step reads everything this one sent from the cache and pays in
+// full only for what was added since. Anthropic allows four breakpoints and
+// finds the previous step's entry by looking back from the newest, so this
+// one moves: only the last message carries it. Other providers ignore it.
+const CACHE_TAIL = { type: 'ephemeral' } as const;
+/** Breakpoints the context may bring on its messages: four, less the instructions' and the loop's. */
+const CONTEXT_BREAKPOINTS = 2;
+
+const breakpoint = (message: ModelMessage) => message.providerOptions?.anthropic?.cacheControl;
+
+function withBreakpoint(message: ModelMessage, value: typeof CACHE_TAIL | undefined) {
+  const { cacheControl: _, ...anthropic } = message.providerOptions?.anthropic ?? {};
+  const { anthropic: __, ...others } = message.providerOptions ?? {};
+  const providerOptions = {
+    ...others,
+    ...(value || Object.keys(anthropic).length
+      ? { anthropic: { ...anthropic, ...(value ? { cacheControl: value } : {}) } }
+      : {}),
+  };
+  const { providerOptions: ___, ...bare } = message;
+  return (
+    Object.keys(providerOptions).length ? { ...bare, providerOptions } : bare
+  ) as ModelMessage;
+}
+
+/**
+ * The messages with the loop's breakpoint on the last one, and the context's
+ * kept to the newest two, so a request never carries more than Anthropic takes.
+ */
+export function cacheTail(messages: ModelMessage[]): ModelMessage[] {
+  const marked = messages.flatMap((m, i) => (breakpoint(m) ? [i] : []));
+  const drop = new Set(marked.slice(0, -CONTEXT_BREAKPOINTS));
+  const last = messages.length - 1;
+  return messages.map((m, i) =>
+    i === last ? withBreakpoint(m, CACHE_TAIL) : drop.has(i) ? withBreakpoint(m, undefined) : m,
+  );
+}
+
 /** Tools the model already called in these messages; a resumed run keeps offering them. */
 function calledTools(messages: ModelMessage[], names: ToolNameMap): string[] {
   const out: string[] = [];
@@ -514,6 +566,7 @@ function tokens(usage: LanguageModelUsage) {
     in: usage.inputTokens ?? 0,
     out: usage.outputTokens ?? 0,
     cached: usage.inputTokenDetails?.cacheReadTokens ?? 0,
+    cacheWrite: usage.inputTokenDetails?.cacheWriteTokens ?? 0,
   };
 }
 

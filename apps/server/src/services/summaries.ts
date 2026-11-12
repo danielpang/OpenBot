@@ -20,6 +20,36 @@ export const SUMMARY_BATCH = 20;
 /** Messages folded in at most per pass; the rest wait for the next run. */
 export const SUMMARY_MAX_BATCH = 100;
 
+/**
+ * The top-level messages a run reads, oldest first, out of the newest
+ * `window + 2 * batch` (`rows`, newest first). The last `window` exactly would
+ * start one message later after every message, so no two runs would open with
+ * the same messages and a provider's prompt cache (a prefix match) would never
+ * hold the transcript. Instead the start stays put while up to `batch` more
+ * messages arrive, then moves on by about a batch:
+ *
+ * - to the message after the summary's (`through`), when that leaves at
+ *   least `window`. The window then moves exactly when the summary is
+ *   rewritten, and no message is in both or in neither.
+ * - otherwise (no summary yet, or one that has fallen behind) to the last
+ *   multiple of `batch` at or before the `window`th newest message's seq.
+ */
+export function contextWindow<T extends { seq: number }>(
+  rows: T[],
+  window: number,
+  batch: number,
+  through: number | null,
+): T[] {
+  const edge = rows[window - 1];
+  if (!edge) return rows.toReversed();
+  const oldest = rows.at(-1)!.seq;
+  const start =
+    through !== null && through < edge.seq && through >= oldest - 1
+      ? through + 1
+      : Math.floor(edge.seq / batch) * batch;
+  return rows.filter((r) => r.seq >= start).toReversed();
+}
+
 export interface SummaryOptions {
   /** The context window the summary sits behind (`HISTORY_WINDOW`). */
   window: number;

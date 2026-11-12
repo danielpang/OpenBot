@@ -1,4 +1,4 @@
-import { simulateReadableStream } from 'ai';
+import { simulateReadableStream, type ModelMessage } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 
 type DoStream = Extract<
@@ -133,4 +133,16 @@ function resultText(output: { type: string; value?: unknown }): string {
     typeof output.value === 'string'
     ? output.value
     : JSON.stringify(output);
+}
+
+/** An assembled context's transcript: its messages without the run's context message or cache breakpoints. */
+export function transcriptOf(context: { messages: ModelMessage[] }): ModelMessage[] {
+  return context.messages
+    .slice(0, -1)
+    .map(({ providerOptions: _, ...message }) => message as ModelMessage);
+}
+
+/** The run's context message (memories, repositories, Skills for this turn), as text. */
+export function runContextOf(context: { messages: ModelMessage[] }): string {
+  return String(context.messages.at(-1)?.content ?? '');
 }
