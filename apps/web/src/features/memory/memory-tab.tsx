@@ -1,5 +1,5 @@
 import { unwrap, type components } from '@openbots/api-client';
-import { Button } from '@openbots/ui';
+import { Button, SaveButton, useSaveState } from '@openbots/ui';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { api } from '../../app/api.js';
@@ -137,9 +137,10 @@ function MemoryRow({ botId, memory }: { botId: string; memory: Memory }) {
       unwrap(api.PATCH('/api/v1/bots/{id}/memories/{memoryId}', { ...path, body })),
     onSuccess: async () => {
       await onSuccess();
-      setEditing(false);
+      saved.afterCheck(() => setEditing(false));
     },
   });
+  const saved = useSaveState(save);
   const remove = useMutation({
     mutationFn: () => unwrap(api.DELETE('/api/v1/bots/{id}/memories/{memoryId}', path)),
     onSuccess,
@@ -177,9 +178,9 @@ function MemoryRow({ botId, memory }: { botId: string; memory: Memory }) {
             <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={save.isPending}>
+            <SaveButton type="submit" size="sm" state={saved.state}>
               Save
-            </Button>
+            </SaveButton>
           </div>
         </form>
       </li>

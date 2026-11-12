@@ -11,9 +11,11 @@ import {
   Input,
   LogOutIcon,
   RefreshIcon,
+  SaveButton,
   Select,
   TerminalIcon,
   UnlinkIcon,
+  useSaveState,
 } from '@openbots/ui';
 import { CoderSignInSteps } from '@openbots/widgets/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -211,6 +213,7 @@ export function CodingDefaults({ accounts }: { accounts: readonly CoderAccount[]
       }),
     onSuccess: (next) => queryClient.setQueryData(codersQuery.queryKey, next),
   });
+  const saved = useSaveState(save);
 
   return (
     <article
@@ -282,18 +285,14 @@ export function CodingDefaults({ accounts }: { accounts: readonly CoderAccount[]
       </fieldset>
       <ErrorText error={save.error} />
       <div className="flex items-center gap-2">
-        <Button
+        <SaveButton
           size="sm"
-          disabled={!changed || save.isPending || Object.values(problems).some(Boolean)}
+          state={saved.state}
+          disabled={!changed || Object.values(problems).some(Boolean)}
           onClick={() => save.mutate()}
         >
-          {save.isPending ? 'Saving…' : 'Save defaults'}
-        </Button>
-        {save.isSuccess && !changed && (
-          <span role="status" className="text-xs text-muted-foreground">
-            Saved
-          </span>
-        )}
+          Save defaults
+        </SaveButton>
       </div>
     </article>
   );

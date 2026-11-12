@@ -12,8 +12,10 @@ import {
   Input,
   LightbulbIcon,
   PlusIcon,
+  SaveButton,
   SearchIcon,
   Switch,
+  useSaveState,
   WrenchIcon,
   XIcon,
 } from '@openbots/ui';
@@ -307,10 +309,11 @@ export function ModelEditor({ provider, canEdit }: { provider: Provider; canEdit
     },
     onSuccess: (result) => {
       queryClient.setQueryData(query.queryKey, result);
-      setDraft(null);
+      saveState.afterCheck(() => setDraft(null));
       return queryClient.invalidateQueries({ queryKey: ['models'] });
     },
   });
+  const saveState = useSaveState(save);
   const discover = useMutation({
     mutationFn: () => discoverModels(provider.id),
     onSuccess: (result) => {
@@ -372,9 +375,9 @@ export function ModelEditor({ provider, canEdit }: { provider: Provider; canEdit
           )}
           {dirty && (
             <>
-              <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
+              <SaveButton size="sm" state={saveState.state} onClick={() => save.mutate()}>
                 Save models
-              </Button>
+              </SaveButton>
               <Button variant="ghost" size="sm" onClick={() => setDraft(null)}>
                 Discard
               </Button>

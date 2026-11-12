@@ -1,6 +1,6 @@
 import { ApiError } from '@openbots/api-client';
 import { isTextMime, lineDiff, rebaseEdit } from '@openbots/artifacts';
-import { Button, cn } from '@openbots/ui';
+import { Button, cn, SaveButton, useSaveState } from '@openbots/ui';
 import {
   ARTIFACT_KIND_LABELS,
   ArtifactKindIcon,
@@ -393,9 +393,10 @@ function ArtifactEditor({
         artifact.botId &&
           queryClient.invalidateQueries({ queryKey: ['bot-artifacts', artifact.botId] }),
       ]);
-      onDone(saved.currentVersion?.version);
+      saveState.afterCheck(() => onDone(saved.currentVersion?.version));
     },
   });
+  const saveState = useSaveState(save);
   // Reapply: the owner's changes since `base` replayed onto the newest version.
   const reapply = useMutation({
     mutationFn: latest,
@@ -463,13 +464,14 @@ function ArtifactEditor({
       )}
       <div className="flex gap-2">
         {!conflict && (
-          <Button
+          <SaveButton
             size="sm"
+            state={saveState.state}
             disabled={busy || content === base.text}
             onClick={() => save.mutate({ content, baseVersion: base.version })}
           >
-            {save.isPending ? 'Saving…' : 'Save'}
-          </Button>
+            Save
+          </SaveButton>
         )}
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => onDone()}>
           Cancel

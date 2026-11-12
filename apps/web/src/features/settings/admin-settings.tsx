@@ -1,5 +1,5 @@
 import { unwrap, type components } from '@openbots/api-client';
-import { Button, Input } from '@openbots/ui';
+import { Input, SaveButton, useSaveState } from '@openbots/ui';
 import { SettingsPanel } from '../../app/settings-layout.js';
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FormEvent } from 'react';
@@ -100,13 +100,14 @@ export function LimitFields({ limits, ceilings }: { limits: Limits; ceilings?: L
 }
 
 export function SaveRow({ save }: { save: ReturnType<typeof useSaveSettings> }) {
+  const saved = useSaveState(save);
   return (
     <>
       {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
       <div className="flex items-center gap-3">
-        <Button type="submit" disabled={save.isPending}>
+        <SaveButton type="submit" state={saved.state}>
           Save
-        </Button>
+        </SaveButton>
       </div>
     </>
   );

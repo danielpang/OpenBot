@@ -78,3 +78,10 @@ export { Badge, badgeVariants } from './components/badge.js';
 export { Textarea } from './components/textarea.js';
 export { Kbd } from './components/kbd.js';
 export { Spinner } from './components/spinner.js';
+export {
+  SaveButton,
+  SAVED_CLOSE_MS,
+  SAVED_SHOWN_MS,
+  useSaveState,
+  type SaveState,
+} from './components/save-button.js';

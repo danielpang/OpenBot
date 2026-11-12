@@ -16,6 +16,7 @@ import {
   Input,
   Kbd,
   PACKAGE_NAME,
+  SaveButton,
   ScrollArea,
   Spinner,
   Textarea,
@@ -90,5 +91,18 @@ describe('@openbots/ui', () => {
     expect(css.match(/--success: oklch\(/g)).toHaveLength(2);
     expect(css).toContain('--color-success: var(--success);');
     expect(renderToString(<CheckIcon className="text-success" />)).toContain('M20 6 9 17l-5-5');
+  });
+
+  it('keeps a SaveButton named by its label, and says when it saved', () => {
+    const idle = renderToString(<SaveButton state="idle">Save</SaveButton>);
+    expect(idle).toContain('data-save-state="idle"');
+    expect(idle).not.toContain('disabled=""');
+    const saved = renderToString(<SaveButton state="saved">Save</SaveButton>);
+    expect(saved).toContain('bg-green-700');
+    expect(saved).toContain('disabled=""');
+    expect(saved).toMatch(/role="status"[^>]*>Saved</);
+    const saving = renderToString(<SaveButton state="saving">Save</SaveButton>);
+    expect(saving).toContain('aria-busy="true"');
+    expect(saving).toMatch(/role="status"[^>]*>Saving</);
   });
 });

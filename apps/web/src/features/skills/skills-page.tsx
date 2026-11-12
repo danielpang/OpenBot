@@ -1,5 +1,14 @@
 import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbots/shared';
-import { Button, IconButton, Input, PlusIcon, Textarea, TrashIcon } from '@openbots/ui';
+import {
+  Button,
+  IconButton,
+  Input,
+  PlusIcon,
+  SaveButton,
+  Textarea,
+  TrashIcon,
+  useSaveState,
+} from '@openbots/ui';
 import type { SVGProps } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -139,6 +148,7 @@ export function SkillEditor({
       onSaved?.(saved);
     },
   });
+  const saveState = useSaveState(save);
   const remove = useMutation({
     mutationFn: () => deleteSkill(skill!.id),
     onSuccess: async () => {
@@ -188,9 +198,14 @@ export function SkillEditor({
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={!name.trim() || save.isPending}>
+        <SaveButton
+          type="submit"
+          state={saveState.state}
+          savedLabel={skill ? 'Saved' : 'Created'}
+          disabled={!name.trim()}
+        >
           {skill ? 'Save' : 'Create'}
-        </Button>
+        </SaveButton>
         {skill &&
           (confirming ? (
             <div className="ml-auto flex items-center gap-2">

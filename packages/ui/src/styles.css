@@ -399,3 +399,21 @@ html[data-glass] [data-slot='bot-chats'] {
     mask-image: none;
   }
 }
+
+/* SaveButton (components/save-button.tsx): the check draws itself in once saved. */
+@keyframes save-check-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.save-check {
+  stroke-dasharray: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .save-check {
+    animation: save-check-draw 0.35s ease-out 0.05s both;
+  }
+}

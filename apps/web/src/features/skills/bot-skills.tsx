@@ -1,4 +1,4 @@
-import { Button } from '@openbots/ui';
+import { SaveButton, useSaveState } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -51,6 +51,7 @@ export function BotSkillsForm({
     // Also refreshes the library's "used by".
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   });
+  const saved = useSaveState(save);
 
   function toggle(id: string, on: boolean) {
     const next = new Set(chosen);
@@ -83,14 +84,15 @@ export function BotSkillsForm({
       </ul>
       {save.error && <p className="text-destructive">{save.error.message}</p>}
       <div>
-        <Button
+        <SaveButton
           type="button"
           size="sm"
-          disabled={!changed || save.isPending}
+          state={saved.state}
+          disabled={!changed}
           onClick={() => save.mutate()}
         >
           Save Skills
-        </Button>
+        </SaveButton>
       </div>
     </div>
   );

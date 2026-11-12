@@ -9,8 +9,11 @@ import {
   PlayIcon,
   PlusIcon,
   RotateIcon,
+  SaveButton,
+  type SaveState,
   Switch,
   TrashIcon,
+  useSaveState,
 } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -53,6 +56,7 @@ const DELIVERY_WORDS: Record<EventDelivery['status'], string> = {
 export function EventSubscriptions({ admin = false }: { admin?: boolean }) {
   const { data, error } = useQuery(subscriptionsQuery);
   const actions = useSubscriptionActions();
+  const created = useSaveState(actions.create);
   const [adding, setAdding] = useState(false);
   const [secret, setSecret] = useState<{ id: string; secret: string } | null>(null);
 
@@ -71,13 +75,13 @@ export function EventSubscriptions({ admin = false }: { admin?: boolean }) {
       {adding && (
         <SubscriptionForm
           admin={admin}
-          pending={actions.create.isPending}
+          state={created.state}
           error={actions.create.error}
           onSave={(body) =>
             actions.create.mutate(body, {
               onSuccess: (issued) => {
                 if (issued.secret) setSecret({ id: issued.subscription.id, secret: issued.secret });
-                setAdding(false);
+                created.afterCheck(() => setAdding(false));
               },
             })
           }
@@ -117,6 +121,7 @@ function SubscriptionRow({
   onSecret(secret: string | null): void;
 }) {
   const actions = useSubscriptionActions();
+  const saved = useSaveState(actions.update);
   const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(false);
   const failure = [actions.update, actions.remove].find((m) => m.error)?.error;
@@ -127,12 +132,12 @@ function SubscriptionRow({
         <SubscriptionForm
           admin={admin}
           subscription={subscription}
-          pending={actions.update.isPending}
+          state={saved.state}
           error={actions.update.error}
           onSave={(body) =>
             actions.update.mutate(
               { id: subscription.id, body },
-              { onSuccess: () => setEditing(false) },
+              { onSuccess: () => saved.afterCheck(() => setEditing(false)) },
             )
           }
           onCancel={() => setEditing(false)}
@@ -266,14 +271,14 @@ function EventDeliveries({ subscriptionId }: { subscriptionId: string }) {
 function SubscriptionForm({
   admin,
   subscription,
-  pending,
+  state,
   error,
   onSave,
   onCancel,
 }: {
   admin: boolean;
   subscription?: Subscription;
-  pending: boolean;
+  state: SaveState;
   error: Error | null;
   onSave(body: { url: string; events: OutboundEvent[]; local?: boolean }): void;
   onCancel(): void;
@@ -352,9 +357,14 @@ function SubscriptionForm({
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" size="sm" disabled={pending}>
+        <SaveButton
+          type="submit"
+          size="sm"
+          state={state}
+          savedLabel={subscription ? 'Saved' : 'Added'}
+        >
           {subscription ? 'Save' : 'Add subscription'}
-        </Button>
+        </SaveButton>
       </div>
     </form>
   );

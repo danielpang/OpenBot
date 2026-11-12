@@ -1,5 +1,14 @@
 import { AvatarEditor } from '@openbots/avatars/react';
-import { Button, CopyIcon, IconButton, Input, Switch, Textarea, TrashIcon } from '@openbots/ui';
+import {
+  CopyIcon,
+  IconButton,
+  Input,
+  SaveButton,
+  Switch,
+  Textarea,
+  TrashIcon,
+  useSaveState,
+} from '@openbots/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -32,6 +41,7 @@ export function BotSettings({ botId }: { botId: string }) {
 function BotSettingsForm({ bot }: { bot: Bot }) {
   const { data } = useQuery(botsQuery);
   const { update, duplicate } = useBotActions();
+  const saved = useSaveState(update);
   const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
   const [draft, setDraft] = useState({
@@ -98,13 +108,9 @@ function BotSettingsForm({ bot }: { bot: Bot }) {
         </Field>
         {update.error && <p className="text-sm text-destructive">{update.error.message}</p>}
         <div>
-          <Button
-            type="submit"
-            aria-busy={update.isPending}
-            disabled={!changed || !draft.name.trim() || update.isPending}
-          >
-            {update.isPending ? 'Saving…' : 'Save'}
-          </Button>
+          <SaveButton type="submit" state={saved.state} disabled={!changed || !draft.name.trim()}>
+            Save
+          </SaveButton>
         </div>
       </form>
 

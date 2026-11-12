@@ -508,7 +508,9 @@ describe('the GitHub card (GH1, GH8)', () => {
       () => form()!.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled,
       'the save to settle',
     );
-    expect(form()!.textContent).not.toContain('Saved');
+    expect(form()!.querySelector('[data-save-state]')!.getAttribute('data-save-state')).toBe(
+      'saved',
+    );
     noDashes();
   });
 
