@@ -472,6 +472,11 @@ const MessageRow = memo(
           onPicking={(open) => setPickingFor(open ? message.id : undefined)}
           onReaction={onReaction}
           onThread={onThread}
+          onActivity={
+            message.authorType === 'bot' && message.runId && message.status !== 'streaming'
+              ? () => router.push(`/run/${message.runId}`)
+              : undefined
+          }
         />
       </Pressable>
     );

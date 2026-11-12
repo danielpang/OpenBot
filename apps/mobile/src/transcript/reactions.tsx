@@ -17,6 +17,7 @@ export function MessageReactions({
   onPicking,
   onReaction,
   onThread,
+  onActivity,
 }: {
   message: Pick<Message, 'reactions' | 'replyCount'>;
   alignEnd: boolean;
@@ -24,6 +25,7 @@ export function MessageReactions({
   onPicking: (open: boolean) => void;
   onReaction: (emoji: string) => void;
   onThread?: () => void;
+  onActivity?: () => void;
 }) {
   const c = useTheme();
   const reactions = message.reactions ?? [];
@@ -142,6 +144,17 @@ export function MessageReactions({
                 {message.replyCount === 1 ? '1 reply' : `${message.replyCount} replies`}
               </Label>
             ) : null}
+          </Pressable>
+        ) : null}
+        {onActivity ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Activity"
+            onPress={onActivity}
+            hitSlop={8}
+            style={[row.base, { padding: 6 }]}
+          >
+            <Icon name="pulse-outline" size={18} color={c.mutedForeground} />
           </Pressable>
         ) : null}
       </View>
