@@ -42,6 +42,12 @@ export const previewSkillImport = (url: string) =>
 export const importSkills = (body: SkillImportRequest) =>
   unwrap(api.POST('/api/v1/skills/import', { body }));
 
+/** Replaces the Bots that have the Skill enabled. */
+export const putSkillBots = (skillId: string, botIds: string[]) =>
+  unwrap(
+    api.PUT('/api/v1/skills/{id}/bots', { params: { path: { id: skillId } }, body: { botIds } }),
+  );
+
 export const putBotSkills = (botId: string, skillIds: string[]) =>
   unwrap(
     api.PUT('/api/v1/bots/{id}/skills', { params: { path: { id: botId } }, body: { skillIds } }),

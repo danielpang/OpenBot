@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { matchSkills, type Skill } from './api.js';
 import { BotSkillsForm } from './bot-skills.js';
+import { SkillBotsForm } from './skill-bots.js';
 import { SkillEditor, SkillList, usedByText } from './skills-page.js';
 
 const server = vi.hoisted(() => {
@@ -137,7 +138,7 @@ describe('<SkillEditor>', () => {
       />,
     );
     expect(host.textContent).toContain(
-      'Imported from acme/skills/pdf/SKILL.md at main (abcdef1). License: MIT. Read it before you enable it.',
+      'Imported from acme/skills/pdf/SKILL.md at main (abcdef1). License: MIT. It is on for every Bot: read it, and turn it off below for any Bot that should not use it.',
     );
   });
 
@@ -237,6 +238,31 @@ describe('<BotSkillsForm>', () => {
     await settle();
     expect(server.requests).toEqual([
       { method: 'PUT', path: '/api/v1/bots/b1/skills', body: { skillIds: ['s2'] } },
+    ]);
+  });
+});
+
+describe('<SkillBotsForm>', () => {
+  it('turns the Skill off for a Bot from the Skill', async () => {
+    render(
+      <SkillBotsForm
+        skillId="s1"
+        bots={[
+          { id: 'b1', name: 'Ada', handle: 'ada' },
+          { id: 'b2', name: 'Bo', handle: 'bo' },
+        ]}
+        enabled={['b1', 'b2']}
+      />,
+    );
+    expect(host.textContent).toContain('New Skills start on for every Bot.');
+    expect(button('Save Bots')!.disabled).toBe(true);
+    const boxes = host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    expect([...boxes].map((b) => b.checked)).toEqual([true, true]);
+    act(() => boxes[0]!.click());
+    await click('Save Bots');
+    await settle();
+    expect(server.requests).toEqual([
+      { method: 'PUT', path: '/api/v1/skills/s1/bots', body: { botIds: ['b2'] } },
     ]);
   });
 });

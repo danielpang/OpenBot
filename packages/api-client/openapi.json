@@ -7600,6 +7600,22 @@
         },
         "additionalProperties": false
       },
+      "SkillBots": {
+        "type": "object",
+        "properties": {
+          "botIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 500,
+            "description": "The Bots that have it enabled"
+          }
+        },
+        "required": ["botIds"],
+        "additionalProperties": false
+      },
       "BotSkills": {
         "type": "object",
         "properties": {
@@ -18820,7 +18836,7 @@
       },
       "post": {
         "tags": ["skills"],
-        "summary": "Write a Skill",
+        "summary": "Write a Skill, enabled for every one of the owner's Bots",
         "security": [
           {
             "session": []
@@ -19274,6 +19290,83 @@
           },
           "404": {
             "description": "No such Skill",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{id}/bots": {
+      "put": {
+        "tags": ["skills"],
+        "summary": "Replace the Bots that have the Skill enabled",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillBots"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The Skill",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such Skill or Bot",
             "content": {
               "application/problem+json": {
                 "schema": {

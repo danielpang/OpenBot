@@ -14,13 +14,16 @@ import {
   getSkill,
   listSkills,
   setBotSkills,
+  setSkillBots,
   skillOrigin,
   updateSkill,
   type SkillRecord,
 } from '../services/skills.js';
 
 // The Skills library (S1 to S3; plan 10.1, 14.1): one private library per
-// account, each Skill a name and markdown content, and per-Bot enablement.
+// account, each Skill a name and markdown content, and per-Bot enablement
+// (a new Skill starts enabled for every Bot of the owner's), set from either
+// side: a Bot's Skills, or a Skill's Bots.
 // Owner-scoped: another user's Skill or Bot is 404. Skills can also be
 // imported from a GitHub link: a preview lists what the link holds, then the
 // import adds the picked ones.
@@ -73,6 +76,12 @@ const BotSkillsSchema = z
     skillIds: z.array(z.uuid()).max(500).openapi({ description: 'The enabled Skills' }),
   })
   .openapi('BotSkills');
+
+const SkillBotsSchema = z
+  .strictObject({
+    botIds: z.array(z.uuid()).max(500).openapi({ description: 'The Bots that have it enabled' }),
+  })
+  .openapi('SkillBots');
 
 const githubUrl = z.string().trim().min(1).max(2000).openapi({
   description: 'A GitHub repository, folder (…/tree/ref/path) or file (…/blob/ref/path/SKILL.md)',
@@ -214,7 +223,7 @@ export const skillRoutes = createRouter()
       method: 'post',
       path: '/skills',
       tags: ['skills'],
-      summary: 'Write a Skill',
+      summary: "Write a Skill, enabled for every one of the owner's Bots",
       middleware: [requireUser] as const,
       security: authenticated,
       request: {
@@ -362,6 +371,35 @@ export const skillRoutes = createRouter()
     async (c) => {
       await deleteSkill(c.var.deps.db, c.var.user, c.req.valid('param').id);
       return c.body(null, 204);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: 'put',
+      path: '/skills/{id}/bots',
+      tags: ['skills'],
+      summary: 'Replace the Bots that have the Skill enabled',
+      middleware: [requireUser] as const,
+      security: authenticated,
+      request: {
+        params: idParams,
+        body: { content: { 'application/json': { schema: SkillBotsSchema } }, required: true },
+      },
+      responses: {
+        200: skillResponse('The Skill'),
+        ...authProblems,
+        400: problemResponse('Invalid'),
+        404: problemResponse('No such Skill or Bot'),
+      },
+    }),
+    async (c) => {
+      const record = await setSkillBots(
+        c.var.deps.db,
+        c.var.user,
+        c.req.valid('param').id,
+        c.req.valid('json').botIds,
+      );
+      return c.json(toSkill(record), 200);
     },
   )
   .openapi(

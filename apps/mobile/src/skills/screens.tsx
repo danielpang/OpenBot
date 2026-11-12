@@ -32,14 +32,15 @@ import {
   type SkillImportPreview,
   type SkillOrigin,
 } from './data';
+import { SkillBots } from './skill-bots';
 
 // The Skills library on iOS (S1, S3): list the account's Skills, write a new
 // one or fill it from a markdown file in Files, edit or delete one, and
-// import Skills from a GitHub link. Bots use a Skill once it is enabled for
-// them in Bot details → About.
+// import Skills from a GitHub link. A new Skill starts enabled for every Bot;
+// it is turned off per Bot on the Skill or in Bot details → About.
 
 export const SKILLS_HELP =
-  'Instructions your Bots can follow. Enable them for a Bot in Bot details → About, or type / in a chat.';
+  'Instructions your Bots can follow. New Skills are on for every Bot; turn one off on the Skill or in Bot details → About. Type / in a chat to use one.';
 export const IMPORT_HELP =
   'Link a GitHub repository, folder or SKILL.md file. For a private repository, add the GitHub connector on your computer first.';
 
@@ -277,6 +278,7 @@ export function SkillEditor({ skill }: { skill?: Skill }) {
       />
       {skill ? (
         <>
+          <SkillBots skill={skill} />
           <ErrorNote error={remove.error} />
           <Button
             title="Delete"
@@ -298,7 +300,8 @@ export function SkillOriginNote({ origin }: { origin: SkillOrigin }) {
     <Card style={{ gap: 6, padding: 14 }}>
       <Label muted size={13}>
         Imported from {origin.repo}/{origin.path} at {origin.ref} ({origin.sha.slice(0, 7)}).
-        {origin.license ? ` License: ${origin.license}.` : ''} Read it before you enable it.
+        {origin.license ? ` License: ${origin.license}.` : ''} It is on for every Bot: read it, and
+        turn it off below for any Bot that should not use it.
       </Label>
       <Button
         title="View on GitHub"

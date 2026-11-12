@@ -110,6 +110,7 @@ const SAMPLE_BODIES: Record<string, unknown> = {
   'put /api/v1/artifacts/{id}': { content: 'overwritten' },
   'patch /api/v1/routines/{id}': { name: 'Taken' },
   'patch /api/v1/skills/{id}': { name: 'Taken' },
+  'put /api/v1/skills/{id}/bots': { botIds: [] },
   'patch /api/v1/endpoints/{id}': { slug: 'taken' },
   'post /api/v1/endpoints/{id}/test': { payload: {} },
   'patch /api/v1/event-subscriptions/{id}': { enabled: false },

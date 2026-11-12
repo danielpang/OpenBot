@@ -534,7 +534,8 @@ describe('routines', () => {
       expect(body.code).toBe('SKILL_UNAVAILABLE');
       expect(JSON.stringify(body)).toMatch(message);
     };
-    // Not enabled for this Bot.
+    // New Skills start enabled for every Bot; turned off here, it is refused.
+    await call('PUT', `/bots/${bot.id}/skills`, { skillIds: [] });
     await refused(ready.id, /not enabled for this Bot/);
     await call('PUT', `/bots/${bot.id}/skills`, { skillIds: [ready.id] });
     const routine = await newRoutine(bot.id, {

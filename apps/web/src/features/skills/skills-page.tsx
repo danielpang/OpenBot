@@ -21,13 +21,15 @@ import {
   type SkillOrigin,
 } from './api.js';
 import { ImportSkillsDialog } from './import-dialog.js';
+import { SkillBots } from './skill-bots.js';
 
 // The Skills library page (S1 to S3, plan 10.1): every Skill in the account's
-// library with the Bots that use it, and an editor for its name and content.
-// Bots get a Skill once it is enabled in their Settings.
+// library with the Bots that use it, an editor for its name and content, and
+// which Bots have it enabled. A new Skill starts enabled for every Bot; it is
+// turned off per Bot here or in the Bot's Settings.
 
 export const SKILLS_HELP =
-  'Instructions your Bots can follow. Enable them per Bot in its Settings, or type / in a chat.';
+  'Instructions your Bots can follow. New Skills are on for every Bot; turn one off here or in a Bot’s Settings. Type / in a chat to use one.';
 
 type Selected = { kind: 'new' } | { kind: 'skill'; id: string } | null;
 
@@ -54,12 +56,15 @@ export function SkillsPage() {
         )}
       </div>
       {selected?.kind === 'new' || open ? (
-        <SkillEditor
-          key={open?.id ?? 'new'}
-          skill={open}
-          onSaved={(skill) => setSelected({ kind: 'skill', id: skill.id })}
-          onClose={() => setSelected(null)}
-        />
+        <>
+          <SkillEditor
+            key={open?.id ?? 'new'}
+            skill={open}
+            onSaved={(skill) => setSelected({ kind: 'skill', id: skill.id })}
+            onClose={() => setSelected(null)}
+          />
+          {open && <SkillBots skill={open} />}
+        </>
       ) : (
         <>
           {error && <p className="text-sm text-destructive">{error.message}</p>}
@@ -246,7 +251,8 @@ export function SkillOriginNote({ origin }: { origin: SkillOrigin }) {
         {origin.repo}/{origin.path}
       </a>{' '}
       at {origin.ref} ({origin.sha.slice(0, 7)}).
-      {origin.license && ` License: ${origin.license}.`} Read it before you enable it.
+      {origin.license && ` License: ${origin.license}.`} It is on for every Bot: read it, and turn
+      it off below for any Bot that should not use it.
     </p>
   );
 }

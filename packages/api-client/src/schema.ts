@@ -9230,7 +9230,7 @@ export interface paths {
       };
     };
     put?: never;
-    /** Write a Skill */
+    /** Write a Skill, enabled for every one of the owner's Bots */
     post: {
       parameters: {
         query?: never;
@@ -9648,6 +9648,75 @@ export interface paths {
         };
       };
     };
+    trace?: never;
+  };
+  '/api/v1/skills/{id}/bots': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Replace the Bots that have the Skill enabled */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['SkillBots'];
+        };
+      };
+      responses: {
+        /** @description The Skill */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Skill'];
+          };
+        };
+        /** @description Invalid */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description Not signed in */
+        401: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+        /** @description No such Skill or Bot */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/problem+json': components['schemas']['Problem'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   '/api/v1/bots/{id}/skills': {
@@ -14106,6 +14175,10 @@ export interface components {
       name?: string;
       /** @description Markdown */
       content?: string;
+    };
+    SkillBots: {
+      /** @description The Bots that have it enabled */
+      botIds: string[];
     };
     BotSkills: {
       /** @description The enabled Skills */

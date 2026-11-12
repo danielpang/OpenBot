@@ -27,7 +27,10 @@ import { widgetClosed } from './runs.js';
 
 // Skills (S1 to S3; plan 4.6, 10.1). One library per account (S2): every
 // Skill belongs to its owner and is shared by all of the owner's Bots, each
-// of which enables the ones it may use (`bot_skills`). A Skill is a name and
+// of which enables the ones it may use (`bot_skills`). A new Skill (written,
+// imported or saved from a run) starts enabled for every one of the owner's
+// Bots; the owner turns it off per Bot, from the Bot's Settings or from the
+// Skill's own list of Bots. A Skill is a name and
 // markdown content. Only enabled Skills reach a Bot's index and `use_skill`,
 // and only those can be referenced with `/` (a `skill_ref` part): in a group,
 // a Skill enabled for any member Bot, whose content each Bot loads for that
@@ -224,9 +227,29 @@ export async function createSkill(
         createdFromRunId: input.createdFromRunId ?? null,
       })
       .returning();
+    await enableForAllBots(tx, owner, [row!.id]);
     return row!;
   });
-  return { skill: row, usedBy: [] };
+  const [record] = await withUsers(deps.db, [row]);
+  return record!;
+}
+
+/** Enables new Skills for every one of the owner's Bots in the organization. */
+async function enableForAllBots(tx: Db, owner: Owner, skillIds: string[]): Promise<void> {
+  if (!skillIds.length) return;
+  const bots = await tx
+    .select({ id: schema.bots.id })
+    .from(schema.bots)
+    .where(and(eq(schema.bots.ownerId, owner.id), eq(schema.bots.workspaceId, owner.workspaceId)));
+  if (!bots.length) return;
+  await tx
+    .insert(schema.botSkills)
+    .values(
+      bots.flatMap((bot) =>
+        skillIds.map((skillId) => ({ workspaceId: owner.workspaceId, botId: bot.id, skillId })),
+      ),
+    )
+    .onConflictDoNothing();
 }
 
 /**
@@ -313,9 +336,14 @@ export async function createImportedSkills(
         .returning();
       out.push(row!);
     }
+    await enableForAllBots(
+      tx,
+      owner,
+      out.map((r) => r.id),
+    );
     return out;
   });
-  return rows.map((skill) => ({ skill, usedBy: [] }));
+  return withUsers(deps.db, rows);
 }
 
 export async function updateSkill(
@@ -410,6 +438,53 @@ export async function setBotSkills(
     }
   });
   return getBotSkills(db, owner, botId);
+}
+
+/**
+ * Replaces the Bots that have the Skill enabled with `botIds`, from the
+ * Skill's side; an id outside the owner's Bots (or Skill) is 404.
+ */
+export async function setSkillBots(
+  db: Db,
+  owner: Owner,
+  skillId: string,
+  botIds: string[],
+): Promise<SkillRecord> {
+  await ownedSkill(db, owner, skillId);
+  const ids = [...new Set(botIds)];
+  await db.transaction(async (tx) => {
+    if (ids.length) {
+      const owned = await tx
+        .select({ id: schema.bots.id })
+        .from(schema.bots)
+        .where(
+          and(
+            inArray(schema.bots.id, ids),
+            eq(schema.bots.ownerId, owner.id),
+            eq(schema.bots.workspaceId, owner.workspaceId),
+          ),
+        );
+      if (owned.length !== ids.length) throw notFound('Bot not found');
+    }
+    await tx
+      .delete(schema.botSkills)
+      .where(
+        and(
+          eq(schema.botSkills.skillId, skillId),
+          ...(ids.length ? [notInArray(schema.botSkills.botId, ids)] : []),
+        ),
+      );
+    if (ids.length) {
+      await tx
+        .insert(schema.botSkills)
+        .values(ids.map((botId) => ({ workspaceId: owner.workspaceId, botId, skillId })))
+        .onConflictDoUpdate({
+          target: [schema.botSkills.botId, schema.botSkills.skillId],
+          set: { enabled: true },
+        });
+    }
+  });
+  return getSkill(db, owner, skillId);
 }
 
 // For runs (plan 5.3 item 4, 10.1)

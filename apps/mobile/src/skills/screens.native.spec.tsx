@@ -60,6 +60,10 @@ const skill = {
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
+const bots = [
+  { id: 'bot-1', name: 'Ada', handle: 'ada' },
+  { id: 'bot-2', name: 'Bo', handle: 'bo' },
+];
 let enabled: string[];
 const caches: QueryClient[] = [];
 
@@ -68,7 +72,13 @@ beforeEach(() => {
   delete mockParams.id;
   enabled = [];
   mockGet.mockImplementation(async (path) =>
-    ok(path === '/api/v1/skills' ? { items: [skill] } : { skillIds: enabled }),
+    ok(
+      path === '/api/v1/skills'
+        ? { items: [skill] }
+        : path === '/api/v1/bots'
+          ? { items: bots }
+          : { skillIds: enabled },
+    ),
   );
 });
 afterEach(() => {
@@ -130,6 +140,22 @@ describe('Skill editor', () => {
       body: { name: 'Monthly report', content: skill.content },
     });
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
+  });
+});
+
+describe("A Skill's Bots", () => {
+  it('turns the Skill on or off for a Bot from the Skill', async () => {
+    mockParams.id = skill.id;
+    mockPut.mockResolvedValue(ok(skill));
+    show(<SkillEditorScreen />);
+    const ada = await screen.findByLabelText('Enable for Ada');
+    expect(ada.props.value).toBe(true);
+    expect(screen.getByLabelText('Enable for Bo').props.value).toBe(false);
+    await act(async () => fireEvent(screen.getByLabelText('Enable for Bo'), 'valueChange', true));
+    expect(mockPut).toHaveBeenCalledWith('/api/v1/skills/{id}/bots', {
+      params: { path: { id: skill.id } },
+      body: { botIds: ['bot-1', 'bot-2'] },
+    });
   });
 });
 

@@ -132,7 +132,8 @@ describe('Skills in runs', () => {
     const { bot: a, model: aModel } = await newBot('Holder', [[{ text: 'On it.' }]]);
     const { bot: b, model: bModel } = await newBot('Bystander', [[{ text: 'Watching.' }]]);
     const plan = await skill('Launch plan', 'Before a launch.\n\nEvery step has an owner.');
-    await call('PUT', `/bots/${a.id}/skills`, { skillIds: [plan.id] });
+    // New Skills start enabled for every Bot; this one is kept to the first.
+    await call('PUT', `/skills/${plan.id}/bots`, { botIds: [a.id] });
     const res = await call('POST', '/chats', { botIds: [a.id, b.id] });
     const chat = (await res.json()) as { id: string };
     const sent = await call('POST', `/chats/${chat.id}/messages`, {

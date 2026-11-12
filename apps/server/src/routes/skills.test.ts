@@ -49,7 +49,8 @@ describe('Skills API', () => {
       summary: 'Every Friday',
       content: '# Weekly report\n\nEvery Friday\nafternoon.\n\n1. List merged PRs',
       source: 'manual',
-      usedBy: [],
+      // A new Skill starts enabled for every one of the owner's Bots.
+      usedBy: [{ id: bot.id, name: 'Ada', handle: bot.handle }],
     });
 
     // Content is optional, and slugs stay unique per library.
@@ -93,14 +94,65 @@ describe('Skills API', () => {
     expect((await call(alice, 'GET', `/skills/${skill.id}`)).status).toBe(404);
   });
 
+  it('enables a new Skill for every Bot of the owner, and only theirs', async () => {
+    const second = (await (await call(alice, 'POST', '/bots', { name: 'Zed' })).json()) as {
+      id: string;
+      handle: string;
+    };
+    const skill = await json(await call(alice, 'POST', '/skills', { name: 'Everywhere' }));
+    expect(skill.usedBy).toEqual([
+      { id: bot.id, name: 'Ada', handle: bot.handle },
+      { id: second.id, name: 'Zed', handle: second.handle },
+    ]);
+    for (const id of [bot.id, second.id]) {
+      const enabled = await json<{ skillIds: string[] }>(
+        await call(alice, 'GET', `/bots/${id}/skills`),
+      );
+      expect(enabled.skillIds).toContain(skill.id);
+    }
+    // Another account's Bot does not get it.
+    const theirs = await json<{ skillIds: string[] }>(
+      await call(bob, 'GET', `/bots/${other.id}/skills`),
+    );
+    expect(theirs.skillIds).not.toContain(skill.id);
+
+    // Turned off from the Skill's side, per Bot.
+    const narrowed = await call(alice, 'PUT', `/skills/${skill.id}/bots`, { botIds: [second.id] });
+    expect(narrowed.status).toBe(200);
+    expect((await json(narrowed)).usedBy).toEqual([
+      { id: second.id, name: 'Zed', handle: second.handle },
+    ]);
+    const off = await json<{ skillIds: string[] }>(
+      await call(alice, 'GET', `/bots/${bot.id}/skills`),
+    );
+    expect(off.skillIds).not.toContain(skill.id);
+    expect(
+      (await json(await call(alice, 'PUT', `/skills/${skill.id}/bots`, { botIds: [] }))).usedBy,
+    ).toEqual([]);
+
+    // Someone else's Bot or Skill is not found.
+    expect(
+      (await call(alice, 'PUT', `/skills/${skill.id}/bots`, { botIds: [other.id] })).status,
+    ).toBe(404);
+    expect((await call(bob, 'PUT', `/skills/${skill.id}/bots`, { botIds: [] })).status).toBe(404);
+
+    expect((await call(alice, 'DELETE', `/skills/${skill.id}`)).status).toBe(204);
+    expect((await call(alice, 'DELETE', `/bots/${second.id}`)).status).toBeLessThan(300);
+  });
+
   it('enables Skills per Bot and lists the Bots that use each', async () => {
     const a = await json(await call(alice, 'POST', '/skills', { name: 'Alpha' }));
     const b = await json(await call(alice, 'POST', '/skills', { name: 'Beta' }));
     const theirs = await json(await call(bob, 'POST', '/skills', { name: 'Theirs' }));
 
-    expect(await json(await call(alice, 'GET', `/bots/${bot.id}/skills`))).toEqual({
-      skillIds: [],
-    });
+    // Both start enabled; turning all off leaves none.
+    expect(
+      (await json<{ skillIds: string[] }>(await call(alice, 'GET', `/bots/${bot.id}/skills`)))
+        .skillIds,
+    ).toEqual(expect.arrayContaining([a.id, b.id]));
+    expect(
+      await json(await call(alice, 'PUT', `/bots/${bot.id}/skills`, { skillIds: [] })),
+    ).toEqual({ skillIds: [] });
     const put = await call(alice, 'PUT', `/bots/${bot.id}/skills`, { skillIds: [a.id, b.id] });
     expect(await json(put)).toEqual({ skillIds: [a.id, b.id] });
     const replaced = await call(alice, 'PUT', `/bots/${bot.id}/skills`, { skillIds: [b.id] });
