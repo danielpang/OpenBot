@@ -282,7 +282,9 @@ describe('<ThreadPanel>', () => {
 
     // The root is a Bot's message: React opens the picker.
     const rootView = host.querySelector('[data-thread-root]')!;
-    const react = [...rootView.querySelectorAll('button')].find((b) => b.textContent === 'React')!;
+    const react = [...rootView.querySelectorAll('button')].find(
+      (b) => b.getAttribute('aria-label') === 'React',
+    )!;
     act(() => react.click());
     act(() => rootView.querySelector<HTMLButtonElement>('[aria-label="React with 👍"]')!.click());
     await flush();

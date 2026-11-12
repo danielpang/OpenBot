@@ -12,6 +12,7 @@ import { AcceptEdits } from '../components/accept-edits';
 import { BotAppearance } from './bot-appearance';
 import { BotModel } from './bot-model';
 import { BotSkills } from '../skills/bot-skills';
+import { RunSteps } from './run-activity';
 
 type Tab = 'Activity' | 'Artifacts' | 'Routines' | 'About';
 export function BotDetailsScreen() {
@@ -106,21 +107,9 @@ export function BotDetailsScreen() {
   );
 }
 function Activity({ bot }: { bot: Bot }) {
-  const api = useApi();
   const runId = bot.state.runId;
-  const steps = useQuery({
-    queryKey: ['runs', runId, 'steps'],
-    enabled: !!runId,
-    queryFn: async () =>
-      runId
-        ? (await unwrap(api.GET('/api/v1/runs/{id}/steps', { params: { path: { id: runId } } })))
-            .items
-        : [],
-    refetchInterval: bot.state.state === 'working' ? 3000 : false,
-  });
   return (
     <>
-      <ErrorNote error={steps.error} />
       {bot.state.currentAction ? (
         <Card>
           <Label weight="600">{bot.state.currentAction}</Label>
@@ -129,28 +118,15 @@ function Activity({ bot }: { bot: Bot }) {
           </Label>
         </Card>
       ) : null}
-      {steps.data?.map((step) => (
-        <View key={step.id} style={[row.base, { alignItems: 'flex-start' }]}>
-          <Icon
-            name={step.type === 'error' ? 'alert-circle-outline' : 'checkmark-circle-outline'}
-            size={19}
-          />
-          <View style={{ flex: 1, gap: 4 }}>
-            <Label>{step.label}</Label>
-            <Label muted size={12}>
-              {new Date(step.createdAt).toLocaleTimeString()}
-              {step.durationMs ? ` · ${(step.durationMs / 1000).toFixed(1)}s` : ''}
-            </Label>
-          </View>
-        </View>
-      ))}
-      {!runId ? (
+      {runId ? (
+        <RunSteps runId={runId} live={bot.state.state === 'working'} />
+      ) : (
         <Empty
           icon="pulse-outline"
           title="No recent activity"
           detail="Run steps appear here while your Bot works."
         />
-      ) : null}
+      )}
     </>
   );
 }

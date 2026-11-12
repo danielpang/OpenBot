@@ -110,7 +110,8 @@ test('a Chief of Staff routes work to three specialists; the loop guard stops a 
   const [researcher] = team;
   const result = log.locator('[data-author="bot"]', { hasText: `On it: @${researcher!.handle}` });
   await result.hover();
-  await result.getByRole('button', { name: 'Reply in thread' }).click();
+  await result.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Reply in thread' }).click();
   const panel = page.getByRole('complementary');
   await expect(panel.getByRole('heading', { name: 'Thread' })).toBeVisible();
   const reply = panel.getByRole('textbox', { name: 'Message' });

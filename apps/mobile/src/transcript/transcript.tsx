@@ -4,6 +4,7 @@ import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { unwrap } from '@openbots/api-client';
+import { showsThinking } from '@openbots/shared';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApi } from '../api/provider';
 import { useMessages } from '../api/messages';
@@ -13,6 +14,7 @@ import { GlassIconButton } from '../components/glass';
 import { useTheme } from '../theme';
 import { Composer } from './composer';
 import { DancingBots } from './dancing-avatar';
+import { ThinkingLine } from './thinking-line';
 import { ActivityView, MessagePartView } from './parts';
 import { toBlocks } from './blocks';
 import { MessageReactions } from './reactions';
@@ -423,7 +425,6 @@ const MessageRow = memo(
               minute: '2-digit',
             })}
           </Label>
-          {message.status === 'streaming' ? <ActivityIndicator size="small" /> : null}
         </View>
         <View
           style={
@@ -455,6 +456,9 @@ const MessageRow = memo(
               />
             ),
           )}
+          {showsThinking(message) ? (
+            <ThinkingLine seed={message.id} who={bot?.name ?? 'The Bot'} />
+          ) : null}
         </View>
         {message.status === 'failed' ? (
           <Label size={13} style={{ color: c.danger }}>
@@ -468,6 +472,11 @@ const MessageRow = memo(
           onPicking={(open) => setPickingFor(open ? message.id : undefined)}
           onReaction={onReaction}
           onThread={onThread}
+          onActivity={
+            message.authorType === 'bot' && message.runId && message.status !== 'streaming'
+              ? () => router.push(`/run/${message.runId}`)
+              : undefined
+          }
         />
       </Pressable>
     );

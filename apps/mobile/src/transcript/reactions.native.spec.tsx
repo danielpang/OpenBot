@@ -71,4 +71,20 @@ describe('reacting to a message', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Add a reaction' }));
     expect(screen.getByRole('button', { name: 'Remove 👍' })).toBeTruthy();
   });
+
+  it('offers Activity as an icon only when the reply has one', () => {
+    const onActivity = jest.fn();
+    const props = {
+      message: { reactions: [], replyCount: 0 },
+      alignEnd: false,
+      picking: false,
+      onPicking: () => {},
+      onReaction: () => {},
+    };
+    const view = render(<MessageReactions {...props} onActivity={onActivity} />);
+    fireEvent.press(screen.getByLabelText('Activity'));
+    expect(onActivity).toHaveBeenCalledTimes(1);
+    view.rerender(<MessageReactions {...props} />);
+    expect(screen.queryByLabelText('Activity')).toBeNull();
+  });
 });

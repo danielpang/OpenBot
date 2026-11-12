@@ -67,7 +67,8 @@ test('send a message and watch a streamed reply arrive', async ({ page }) => {
 
   const reply = log.locator('[data-author="bot"]').last();
   await reply.hover();
-  await reply.getByRole('button', { name: 'Activity' }).click();
+  await reply.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Activity' }).click();
   const panel = page.getByRole('complementary');
   await expect(panel.getByRole('heading', { name: 'Activity' })).toBeVisible();
   await expect(panel.getByText(/^Thought/)).toBeVisible();

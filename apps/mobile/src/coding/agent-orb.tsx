@@ -5,6 +5,19 @@ import { Label, row } from '../components/ui';
 
 /** Native counterpart to Bento's inline thinking orb. Motion is decorative. */
 export function AgentOrb({ label, tool }: { label: string; tool?: string }) {
+  const searching = /read|grep|glob|search|fetch|ls|find/i.test(tool ?? '');
+  return (
+    <View style={row.base} accessibilityLiveRegion="polite" accessibilityLabel={label}>
+      <OrbGlyph searching={searching} />
+      <Label muted size={14}>
+        {label}
+      </Label>
+    </View>
+  );
+}
+
+/** The orb itself, turning unless Reduce Motion is on. Decorative. */
+export function OrbGlyph({ searching = false, size = 28 }: { searching?: boolean; size?: number }) {
   const phase = useRef(new Animated.Value(0)).current;
   const [reduced, setReduced] = useState(true);
   useEffect(() => {
@@ -18,7 +31,6 @@ export function AgentOrb({ label, tool }: { label: string; tool?: string }) {
       subscription.remove();
     };
   }, []);
-  const searching = /read|grep|glob|search|fetch|ls|find/i.test(tool ?? '');
   useEffect(() => {
     if (reduced) {
       phase.setValue(0);
@@ -36,56 +48,51 @@ export function AgentOrb({ label, tool }: { label: string; tool?: string }) {
     return () => animation.stop();
   }, [phase, reduced, searching]);
   return (
-    <View style={row.base} accessibilityLiveRegion="polite" accessibilityLabel={label}>
-      <Animated.View
-        accessible={false}
-        style={{
-          transform: [
-            { rotate: phase.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
-            {
-              scale: phase.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.9, 1.08, 0.9] }),
-            },
-          ],
-        }}
-      >
-        <Svg width={28} height={28} viewBox="0 0 32 32">
-          <Defs>
-            <RadialGradient id="orb" cx="35%" cy="25%" r="75%">
-              <Stop offset="0" stopColor="#d5f2ff" />
-              <Stop offset="0.45" stopColor="#72acbd" />
-              <Stop offset="1" stopColor="#304b68" />
-            </RadialGradient>
-          </Defs>
-          <Circle cx={16} cy={16} r={13} fill="url(#orb)" />
-          <Ellipse
-            cx={16}
-            cy={16}
-            rx={7}
-            ry={12}
-            rotation={35}
-            origin="16,16"
-            fill="none"
-            stroke="#e0f7ff"
-            strokeOpacity={0.65}
-            strokeWidth={1}
-          />
-          <Ellipse
-            cx={16}
-            cy={16}
-            rx={12}
-            ry={5}
-            rotation={-25}
-            origin="16,16"
-            fill="none"
-            stroke="#e0f7ff"
-            strokeOpacity={0.45}
-            strokeWidth={1}
-          />
-        </Svg>
-      </Animated.View>
-      <Label muted size={14}>
-        {label}
-      </Label>
-    </View>
+    <Animated.View
+      accessible={false}
+      style={{
+        transform: [
+          { rotate: phase.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) },
+          {
+            scale: phase.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.9, 1.08, 0.9] }),
+          },
+        ],
+      }}
+    >
+      <Svg width={size} height={size} viewBox="0 0 32 32">
+        <Defs>
+          <RadialGradient id="orb" cx="35%" cy="25%" r="75%">
+            <Stop offset="0" stopColor="#d5f2ff" />
+            <Stop offset="0.45" stopColor="#72acbd" />
+            <Stop offset="1" stopColor="#304b68" />
+          </RadialGradient>
+        </Defs>
+        <Circle cx={16} cy={16} r={13} fill="url(#orb)" />
+        <Ellipse
+          cx={16}
+          cy={16}
+          rx={7}
+          ry={12}
+          rotation={35}
+          origin="16,16"
+          fill="none"
+          stroke="#e0f7ff"
+          strokeOpacity={0.65}
+          strokeWidth={1}
+        />
+        <Ellipse
+          cx={16}
+          cy={16}
+          rx={12}
+          ry={5}
+          rotation={-25}
+          origin="16,16"
+          fill="none"
+          stroke="#e0f7ff"
+          strokeOpacity={0.45}
+          strokeWidth={1}
+        />
+      </Svg>
+    </Animated.View>
   );
 }

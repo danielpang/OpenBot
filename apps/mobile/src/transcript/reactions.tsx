@@ -17,6 +17,7 @@ export function MessageReactions({
   onPicking,
   onReaction,
   onThread,
+  onActivity,
 }: {
   message: Pick<Message, 'reactions' | 'replyCount'>;
   alignEnd: boolean;
@@ -24,6 +25,7 @@ export function MessageReactions({
   onPicking: (open: boolean) => void;
   onReaction: (emoji: string) => void;
   onThread?: () => void;
+  onActivity?: () => void;
 }) {
   const c = useTheme();
   const reactions = message.reactions ?? [];
@@ -35,38 +37,65 @@ export function MessageReactions({
   const justify = alignEnd ? 'flex-end' : 'flex-start';
   return (
     <View style={{ marginTop: 8, gap: 8 }}>
-      {picking ? (
-        <View
-          testID="reaction-picker"
-          style={[row.base, { flexWrap: 'wrap', justifyContent: justify, gap: 6 }]}
-        >
-          {REACTION_EMOJI.map((emoji) => (
-            <Pressable
-              key={emoji}
-              accessibilityRole="button"
-              accessibilityLabel={`${mine.has(emoji) ? 'Remove' : 'React with'} ${emoji}`}
-              accessibilityState={{ selected: mine.has(emoji) }}
-              onPress={() => {
-                onPicking(false);
-                onReaction(emoji);
-              }}
-              style={({ pressed }) => ({
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                alignItems: 'center',
-                justifyContent: 'center',
+      <View
+        style={[
+          row.base,
+          { flexWrap: 'wrap', justifyContent: justify, position: 'relative', zIndex: 10 },
+        ]}
+      >
+        {picking ? (
+          <View
+            testID="reaction-picker"
+            // Opens upward over the message, as a panel, so nothing below moves
+            // and the close button never slips behind the composer.
+            style={[
+              row.base,
+              {
+                position: 'absolute',
+                bottom: '100%',
+                marginBottom: 6,
+                ...(alignEnd ? { right: 0 } : { left: 0 }),
+                zIndex: 10,
+                elevation: 8,
+                gap: 4,
+                padding: 6,
+                borderRadius: 26,
                 borderWidth: 1,
-                borderColor: mine.has(emoji) ? c.foreground : c.border,
-                backgroundColor: pressed || mine.has(emoji) ? c.muted : c.card,
-              })}
-            >
-              <Label size={20}>{emoji}</Label>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-      <View style={[row.base, { flexWrap: 'wrap', justifyContent: justify }]}>
+                borderColor: c.border,
+                backgroundColor: c.card,
+                shadowColor: '#000',
+                shadowOpacity: 0.3,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 4 },
+              },
+            ]}
+          >
+            {REACTION_EMOJI.map((emoji) => (
+              <Pressable
+                key={emoji}
+                accessibilityRole="button"
+                accessibilityLabel={`${mine.has(emoji) ? 'Remove' : 'React with'} ${emoji}`}
+                accessibilityState={{ selected: mine.has(emoji) }}
+                onPress={() => {
+                  onPicking(false);
+                  onReaction(emoji);
+                }}
+                style={({ pressed }) => ({
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: mine.has(emoji) ? c.foreground : 'transparent',
+                  backgroundColor: pressed || mine.has(emoji) ? c.muted : 'transparent',
+                })}
+              >
+                <Label size={20}>{emoji}</Label>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         {[...counts].map(([emoji, count]) => (
           <Pressable
             key={emoji}
@@ -95,25 +124,37 @@ export function MessageReactions({
           accessibilityLabel="Add a reaction"
           accessibilityState={{ expanded: picking }}
           onPress={() => onPicking(!picking)}
-          hitSlop={6}
-          style={[row.base, { padding: 4, gap: 5 }]}
+          hitSlop={8}
+          style={[row.base, { padding: 6 }]}
         >
-          <Icon name={picking ? 'close' : 'happy-outline'} size={15} color={c.mutedForeground} />
-          <Label size={12} muted>
-            React
-          </Label>
+          <Icon name={picking ? 'close' : 'happy-outline'} size={18} color={c.mutedForeground} />
         </Pressable>
         {onThread ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Reply in thread"
             onPress={onThread}
-            style={[row.base, { padding: 4, gap: 5 }]}
+            hitSlop={8}
+            style={[row.base, { padding: 6, gap: 5 }]}
           >
-            <Icon name="chatbubble-outline" size={14} color={c.mutedForeground} />
-            <Label size={12} muted>
-              {message.replyCount ? `${message.replyCount} replies` : 'Reply'}
-            </Label>
+            <Icon name="chatbubble-outline" size={17} color={c.mutedForeground} />
+            {/* Icon only, as React is; a thread with replies still says how many. */}
+            {message.replyCount ? (
+              <Label size={12} muted>
+                {message.replyCount === 1 ? '1 reply' : `${message.replyCount} replies`}
+              </Label>
+            ) : null}
+          </Pressable>
+        ) : null}
+        {onActivity ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Activity"
+            onPress={onActivity}
+            hitSlop={8}
+            style={[row.base, { padding: 6 }]}
+          >
+            <Icon name="pulse-outline" size={18} color={c.mutedForeground} />
           </Pressable>
         ) : null}
       </View>

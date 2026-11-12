@@ -4,6 +4,7 @@ export const PACKAGE_NAME = packageName('ui');
 
 export { cn } from './lib/utils.js';
 export {
+  ActivityIcon,
   CheckIcon,
   ChevronDownIcon,
   CopyIcon,
@@ -11,6 +12,8 @@ export {
   ExternalIcon,
   LightbulbIcon,
   LogOutIcon,
+  MessageIcon,
+  MoreIcon,
   PauseIcon,
   PencilIcon,
   PlayIcon,
@@ -21,6 +24,7 @@ export {
   SearchIcon,
   SendIcon,
   SlidersIcon,
+  SmilePlusIcon,
   SpinnerGlyph,
   TerminalIcon,
   TrashIcon,

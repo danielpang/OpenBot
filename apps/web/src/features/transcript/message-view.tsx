@@ -1,4 +1,5 @@
 import { Avatar } from '@openbots/avatars/react';
+import { showsThinking } from '@openbots/shared';
 import { cn } from '@openbots/ui';
 import { EventRow, FileCard, Widget } from '@openbots/widgets/react';
 import { memo, type ReactNode } from 'react';
@@ -13,6 +14,8 @@ import { fileUrl } from './api.js';
 import { isEventOnly, toBlocks, type ActivityItem, type Block } from './blocks.js';
 import { Markdown } from './markdown.js';
 import { reactionChips } from './reactions.js';
+import { ThinkingLine } from './thinking-line.js';
+import { MessageMore, messageText } from './message-more.js';
 import { ReactButton, ReactionChips } from './reactions-view.js';
 
 // One transcript entry (C2, principle 6, W3). The owner's messages are
@@ -139,6 +142,8 @@ export const MessageView = memo(function MessageView({
     byBot &&
     !streaming &&
     !message.parts.some((p) => p.type === 'widget' && p.kind === 'approval');
+  const copyText = streaming ? '' : messageText(message.parts);
+  const more = Boolean(activity || replyHere || copyText);
   return (
     <div className="group flex gap-3 py-1.5" data-author={byBot ? 'bot' : message.authorType}>
       <div
@@ -157,34 +162,19 @@ export const MessageView = memo(function MessageView({
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         {prefix && <div className="text-xs font-medium text-muted-foreground">{prefix}</div>}
         {content}
-        {streaming && blocks.length === 0 && (
-          <span className="sr-only">{bot?.name ?? 'The Bot'} is replying</span>
-        )}
+        {showsThinking(message) && <ThinkingLine seed={message.id} who={bot?.name ?? 'The Bot'} />}
         {message.status === 'failed' && (
           <p className="text-xs text-muted-foreground">This reply did not finish.</p>
         )}
         {after}
-        {(activity || replyHere || (onReact && !streaming)) && (
-          <div className="flex opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-            {activity && (
-              <button
-                type="button"
-                className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent"
-                onClick={() => onOpenActivity(message.runId!)}
-              >
-                Activity
-              </button>
-            )}
-            {replyHere && (
-              <button
-                type="button"
-                className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent"
-                onClick={reply}
-              >
-                Reply in thread
-              </button>
-            )}
-            {toggle && !streaming && <ReactButton onPick={(emoji) => toggle(emoji, true)} />}
+        {!streaming && (toggle || more) && (
+          <div className="-ml-1.5 flex gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 has-[[data-state=open]]:opacity-100 has-[[aria-expanded=true]]:opacity-100">
+            {toggle && <ReactButton onPick={(emoji) => toggle(emoji, true)} />}
+            <MessageMore
+              onReply={replyHere ? reply : undefined}
+              onActivity={activity ? () => onOpenActivity(message.runId!) : undefined}
+              copyText={copyText || undefined}
+            />
           </div>
         )}
       </div>
