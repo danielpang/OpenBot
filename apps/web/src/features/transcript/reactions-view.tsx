@@ -1,4 +1,4 @@
-import { cn } from '@openbots/ui';
+import { cn, SmilePlusIcon } from '@openbots/ui';
 import { useState } from 'react';
 import type { Reaction } from './api.js';
 import { REACTION_EMOJI, type ReactionChip } from './reactions.js';
@@ -42,18 +42,24 @@ export function ReactionChips({
   );
 }
 
-/** "React" and the picker it opens. */
+/** A message's hover actions are 28 px ghost icons. */
+export const ACTION_ICON =
+  'inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 outline-none [&_svg]:size-4 data-[state=open]:bg-accent data-[state=open]:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground';
+
+/** The React icon and the picker it opens. */
 export function ReactButton({ onPick }: { onPick(emoji: string): void }) {
   const [open, setOpen] = useState(false);
   return (
     <span className="relative">
       <button
         type="button"
+        aria-label="React"
+        title="React"
         aria-expanded={open}
-        className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent"
+        className={ACTION_ICON}
         onClick={() => setOpen(!open)}
       >
-        React
+        <SmilePlusIcon />
       </button>
       {open && (
         <span

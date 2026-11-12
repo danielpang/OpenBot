@@ -220,3 +220,42 @@ export function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
     </Glyph>
   );
 }
+
+export function SmilePlusIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Glyph {...props}>
+      <path d="M22 11v1a10 10 0 1 1-9-10" />
+      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+      <path d="M9 9h.01" />
+      <path d="M15 9h.01" />
+      <path d="M16 5h6" />
+      <path d="M19 2v6" />
+    </Glyph>
+  );
+}
+
+export function MessageIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Glyph {...props}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </Glyph>
+  );
+}
+
+export function ActivityIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Glyph {...props}>
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </Glyph>
+  );
+}
+
+export function MoreIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Glyph {...props}>
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+    </Glyph>
+  );
+}

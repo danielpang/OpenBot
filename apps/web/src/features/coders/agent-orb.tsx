@@ -28,47 +28,54 @@ export function sessionActivity(
 
 /** Bento-inspired inline orb, with the same visual vocabulary as the native app. */
 export function AgentOrb({ label, state }: { label: string; state: string }) {
-  const gradient = useId();
   return (
     <div role="status" className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-      <svg
-        aria-hidden="true"
-        className="coding-agent-orb"
-        data-state={state}
-        width="24"
-        height="24"
-        viewBox="0 0 32 32"
-      >
-        <defs>
-          <radialGradient id={gradient} cx="35%" cy="25%" r="75%">
-            <stop offset="0" stopColor="#d5f2ff" />
-            <stop offset=".45" stopColor="#72acbd" />
-            <stop offset="1" stopColor="#304b68" />
-          </radialGradient>
-        </defs>
-        <circle cx="16" cy="16" r="13" fill={`url(#${gradient})`} />
-        <ellipse
-          cx="16"
-          cy="16"
-          rx="7"
-          ry="12"
-          transform="rotate(35 16 16)"
-          fill="none"
-          stroke="#e0f7ff"
-          strokeOpacity=".65"
-        />
-        <ellipse
-          cx="16"
-          cy="16"
-          rx="12"
-          ry="5"
-          transform="rotate(-25 16 16)"
-          fill="none"
-          stroke="#e0f7ff"
-          strokeOpacity=".45"
-        />
-      </svg>
+      <OrbGlyph state={state} />
       <span>{label}</span>
     </div>
+  );
+}
+
+/** The orb itself, turning unless reduced motion is on. Decorative. */
+export function OrbGlyph({ state = 'shaping', size = 24 }: { state?: string; size?: number }) {
+  const gradient = useId();
+  return (
+    <svg
+      aria-hidden="true"
+      className="coding-agent-orb"
+      data-state={state}
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+    >
+      <defs>
+        <radialGradient id={gradient} cx="35%" cy="25%" r="75%">
+          <stop offset="0" stopColor="#d5f2ff" />
+          <stop offset=".45" stopColor="#72acbd" />
+          <stop offset="1" stopColor="#304b68" />
+        </radialGradient>
+      </defs>
+      <circle cx="16" cy="16" r="13" fill={`url(#${gradient})`} />
+      <ellipse
+        cx="16"
+        cy="16"
+        rx="7"
+        ry="12"
+        transform="rotate(35 16 16)"
+        fill="none"
+        stroke="#e0f7ff"
+        strokeOpacity=".65"
+      />
+      <ellipse
+        cx="16"
+        cy="16"
+        rx="12"
+        ry="5"
+        transform="rotate(-25 16 16)"
+        fill="none"
+        stroke="#e0f7ff"
+        strokeOpacity=".45"
+      />
+    </svg>
   );
 }

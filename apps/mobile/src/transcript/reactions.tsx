@@ -95,25 +95,26 @@ export function MessageReactions({
           accessibilityLabel="Add a reaction"
           accessibilityState={{ expanded: picking }}
           onPress={() => onPicking(!picking)}
-          hitSlop={6}
-          style={[row.base, { padding: 4, gap: 5 }]}
+          hitSlop={8}
+          style={[row.base, { padding: 6 }]}
         >
-          <Icon name={picking ? 'close' : 'happy-outline'} size={15} color={c.mutedForeground} />
-          <Label size={12} muted>
-            React
-          </Label>
+          <Icon name={picking ? 'close' : 'happy-outline'} size={18} color={c.mutedForeground} />
         </Pressable>
         {onThread ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Reply in thread"
             onPress={onThread}
-            style={[row.base, { padding: 4, gap: 5 }]}
+            hitSlop={8}
+            style={[row.base, { padding: 6, gap: 5 }]}
           >
-            <Icon name="chatbubble-outline" size={14} color={c.mutedForeground} />
-            <Label size={12} muted>
-              {message.replyCount ? `${message.replyCount} replies` : 'Reply'}
-            </Label>
+            <Icon name="chatbubble-outline" size={17} color={c.mutedForeground} />
+            {/* Icon only, as React is; a thread with replies still says how many. */}
+            {message.replyCount ? (
+              <Label size={12} muted>
+                {message.replyCount === 1 ? '1 reply' : `${message.replyCount} replies`}
+              </Label>
+            ) : null}
           </Pressable>
         ) : null}
       </View>

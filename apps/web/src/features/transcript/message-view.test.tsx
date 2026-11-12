@@ -1,3 +1,4 @@
+import { thinkingPhrase } from '@openbots/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -87,7 +88,7 @@ describe('<MessageView>', () => {
     expect(html).toContain('Computer started 4.2s');
     expect(html).not.toContain('bg-destructive');
     expect(html).not.toContain('data-author');
-    expect(html).not.toContain('>Activity</button>');
+    expect(html).not.toContain('More actions');
   });
 
   it('renders the Bot as prose beside its avatar with no author prefix, and offers Activity', () => {
@@ -95,7 +96,7 @@ describe('<MessageView>', () => {
     expect(html).toContain('data-author="bot"');
     expect(html).toContain('<strong>there</strong>');
     expect(html).toContain('data-state="idle"');
-    expect(html).toContain('>Activity</button>');
+    expect(html).toContain('aria-label="More actions"');
     expect(html).not.toContain('font-medium text-muted-foreground');
   });
 
@@ -112,7 +113,21 @@ describe('<MessageView>', () => {
     );
     expect(html).toContain('data-state="working"');
     expect(html).toContain('title="Running npm test"');
-    expect(html).not.toContain('>Activity</button>');
+    expect(html).not.toContain('More actions');
+  });
+
+  it('shows the thinking orb and a phrase until the reply has text, keeping the avatar', () => {
+    const thinking = render(message({ status: 'streaming', parts: [] }));
+    expect(thinking).toContain('data-thinking');
+    expect(thinking).toContain('coding-agent-orb');
+    expect(thinking).toContain(thinkingPhrase('m1', 0).replace('…', ''));
+    expect(thinking).toContain('is replying');
+    expect(thinking).toContain('data-author="bot"');
+    const typing = render(
+      message({ status: 'streaming', parts: [{ type: 'text', text: 'On it' }] }),
+    );
+    expect(typing).not.toContain('data-thinking');
+    expect(render(message({ status: 'complete', parts: [] }))).not.toContain('data-thinking');
   });
 
   it('renders the owner as a bubble and other authors with a prefix', () => {

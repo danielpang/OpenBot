@@ -198,7 +198,8 @@ describe('group messages', () => {
     const none = renderToStaticMarkup(
       <MessageView message={message({})} bot={BOTS[0]} ownerId="u1" onOpenThread={open} />,
     );
-    expect(none).toContain('Reply in thread');
+    // Reply in thread sits in the message's More menu.
+    expect(none).toContain('aria-label="More actions"');
     expect(none).not.toContain('repl');
     const two = renderToStaticMarkup(
       <MessageView

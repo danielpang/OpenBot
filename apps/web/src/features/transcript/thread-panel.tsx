@@ -81,7 +81,12 @@ export function ThreadPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 px-3 pt-3" role="log" aria-label="Thread" aria-busy={loading}>
+      <div
+        className="min-h-0 flex-1 overflow-y-auto px-3 pt-3"
+        role="log"
+        aria-label="Thread"
+        aria-busy={loading}
+      >
         {loading ? (
           <p className="text-xs text-muted-foreground">Loading…</p>
         ) : (
@@ -121,11 +126,6 @@ export function ThreadPanel({
             />
           </div>
         ))}
-        {!loading && messages.length <= 1 && (
-          <p className="py-2 text-xs text-muted-foreground">
-            Replies here keep the Bot&rsquo;s attention on this message.
-          </p>
-        )}
         <div ref={bottom} />
       </div>
       <div className="p-3">

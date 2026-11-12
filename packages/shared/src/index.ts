@@ -25,3 +25,4 @@ export * from './routines.js';
 export * from './skills.js';
 export * from './webhooks.js';
 export * from './git.js';
+export * from './thinking.js';
