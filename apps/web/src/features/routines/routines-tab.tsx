@@ -1,5 +1,5 @@
 import type { CodingRoutineTemplate, RoutineTriggerInput } from '@openbots/shared';
-import { Button, cn, Input } from '@openbots/ui';
+import { Button, cn, Input, SaveButton, useSaveState } from '@openbots/ui';
 import { browserTimezone } from '@openbots/widgets/react';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -288,6 +288,7 @@ export function RoutineForm({
   );
   const [problem, setProblem] = useState<string | null>(null);
   const mutation = routine ? actions.update : actions.create;
+  const saved = useSaveState(mutation);
   // A Routine runs only a Skill its Bot has enabled (S2); the one it already
   // has stays listed, unselectable, so the form says why it will not run.
   const usable = usableSkills(skills.data?.items ?? [], [botId]);
@@ -323,7 +324,7 @@ export function RoutineForm({
       timezone: timezone.trim() || 'UTC',
       trigger,
     };
-    const done = { onSuccess: onDone };
+    const done = { onSuccess: () => saved.afterCheck(onDone) };
     if (routine) actions.update.mutate({ id: routine.id, body }, done);
     else actions.create.mutate(body, done);
   }
@@ -406,9 +407,14 @@ export function RoutineForm({
         <Button type="button" variant="ghost" size="sm" onClick={onDone}>
           Cancel
         </Button>
-        <Button type="submit" size="sm" disabled={mutation.isPending}>
+        <SaveButton
+          type="submit"
+          size="sm"
+          state={saved.state}
+          savedLabel={routine ? 'Saved' : 'Created'}
+        >
           {routine ? 'Save' : 'Create Routine'}
-        </Button>
+        </SaveButton>
       </div>
     </form>
   );

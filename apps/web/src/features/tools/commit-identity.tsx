@@ -1,4 +1,4 @@
-import { Button, Input } from '@openbots/ui';
+import { Input, SaveButton, useSaveState } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 import { gitIdentityQuery, putGitIdentity, type GitIdentity } from '../repos/api.js';
@@ -35,6 +35,7 @@ export function CommitIdentity() {
       putGitIdentity({ commitAs, name: name.trim() || null, email: email.trim() || null }),
     onSuccess: (data) => queryClient.setQueryData(gitIdentityQuery.queryKey, data),
   });
+  const saved = useSaveState(save);
 
   if (identity.error) return <ErrorText error={identity.error} />;
   if (!identity.data) return null;
@@ -123,9 +124,9 @@ export function CommitIdentity() {
         )}
       </p>
       <div>
-        <Button type="submit" size="sm" disabled={!changed || save.isPending}>
-          {save.isPending ? 'Saving…' : 'Save'}
-        </Button>
+        <SaveButton type="submit" size="sm" state={saved.state} disabled={!changed}>
+          Save
+        </SaveButton>
       </div>
       <ErrorText error={save.error} />
     </form>

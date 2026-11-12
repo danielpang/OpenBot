@@ -11,7 +11,7 @@ import {
   type ToolGroupName,
   type ToolPolicy,
 } from '@openbots/shared';
-import { Button, Input, Select, Switch, Textarea } from '@openbots/ui';
+import { Input, SaveButton, Select, Switch, Textarea, useSaveState } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -124,6 +124,7 @@ export function BotToolsForm({
         queryClient.invalidateQueries({ queryKey: botConnectorsQuery(bot.id).queryKey }),
       ]),
   });
+  const saveState = useSaveState(save);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -315,9 +316,9 @@ export function BotToolsForm({
 
       <ErrorText error={save.error} />
       <div className="flex items-center gap-3 pt-1">
-        <Button type="submit" disabled={save.isPending}>
+        <SaveButton type="submit" state={saveState.state}>
           Save
-        </Button>
+        </SaveButton>
       </div>
     </form>
   );

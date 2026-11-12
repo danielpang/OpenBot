@@ -4,8 +4,10 @@ import {
   IconButton,
   Input,
   RefreshIcon,
+  SaveButton,
   SlidersIcon,
   TrashIcon,
+  useSaveState,
   WrenchIcon,
 } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -271,9 +273,10 @@ export function ConnectorSettings({
       updateConnector(connector.id, body),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['connectors'] });
-      onDone();
+      saved.afterCheck(onDone);
     },
   });
+  const saved = useSaveState(save);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -337,9 +340,9 @@ export function ConnectorSettings({
       )}
       <ErrorText error={save.error} />
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={save.isPending}>
+        <SaveButton type="submit" size="sm" state={saved.state}>
           Save
-        </Button>
+        </SaveButton>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
           Cancel
         </Button>

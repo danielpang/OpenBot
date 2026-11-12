@@ -190,6 +190,8 @@ describe('the Memory tab', () => {
     expect(server.requests.find((r) => r.method === 'PATCH')?.body).toEqual({
       content: 'Fiscal year starts in May',
     });
+    // The editor stays a moment to show the check, then closes.
+    await until(() => !section('Facts')!.querySelector('form'), 'the editor to close');
 
     act(() => button('Delete', section('Facts'))!.click());
     await until(() => host.textContent!.includes('Nothing remembered yet.'), 'the delete');

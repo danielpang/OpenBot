@@ -5,11 +5,14 @@ import {
   IconButton,
   Input,
   RotateIcon,
+  SaveButton,
+  type SaveState,
   Select,
   SlidersIcon,
   Switch,
   Textarea,
   TrashIcon,
+  useSaveState,
   XIcon,
 } from '@openbots/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -212,6 +215,7 @@ export function EndpointCard({
   onDismiss(): void;
 }) {
   const actions = useEndpointActions(botId);
+  const saved = useSaveState(actions.update);
   const [editing, setEditing] = useState(false);
   const [open, setOpen] = useState(false);
   const failure = [actions.rotate, actions.remove].find((m) => m.error)?.error;
@@ -299,7 +303,7 @@ export function EndpointCard({
       {editing && (
         <EndpointSettings
           endpoint={endpoint}
-          pending={actions.update.isPending}
+          state={saved.state}
           error={actions.update.error}
           onSave={(body) =>
             actions.update.mutate(
@@ -307,7 +311,7 @@ export function EndpointCard({
               {
                 onSuccess: (issued) => {
                   onIssued(issued);
-                  setEditing(false);
+                  saved.afterCheck(() => setEditing(false));
                 },
               },
             )
@@ -486,13 +490,13 @@ function Field({ label, note, children }: { label: string; note?: string; childr
 
 export function EndpointSettings({
   endpoint,
-  pending,
+  state,
   error,
   onSave,
   onCancel,
 }: {
   endpoint: Endpoint;
-  pending: boolean;
+  state: SaveState;
   error: Error | null;
   onSave(body: UpdateEndpoint): void;
   onCancel(): void;
@@ -654,9 +658,9 @@ export function EndpointSettings({
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" size="sm" disabled={pending}>
+        <SaveButton type="submit" size="sm" state={state}>
           Save
-        </Button>
+        </SaveButton>
       </div>
     </form>
   );

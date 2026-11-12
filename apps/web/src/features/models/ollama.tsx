@@ -1,4 +1,4 @@
-import { Button, cn, IconButton, Input, PencilIcon } from '@openbots/ui';
+import { Button, cn, IconButton, Input, PencilIcon, SaveButton, useSaveState } from '@openbots/ui';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useLocalAuth } from '../../app/deployment.js';
@@ -194,10 +194,11 @@ export function BaseUrlField({ provider, canEdit }: { provider: Provider; canEdi
   const save = useMutation({
     mutationFn: () => updateProvider(provider.id, { baseUrl: value.trim() }),
     onSuccess: async () => {
-      setEditing(false);
       await queryClient.invalidateQueries({ queryKey: providersQuery.queryKey });
+      saved.afterCheck(() => setEditing(false));
     },
   });
+  const saved = useSaveState(save);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -240,9 +241,9 @@ export function BaseUrlField({ provider, canEdit }: { provider: Provider; canEdi
           className={cn('h-8 max-w-sm flex-1 font-mono text-xs')}
           required
         />
-        <Button type="submit" size="sm" disabled={save.isPending}>
+        <SaveButton type="submit" size="sm" state={saved.state}>
           Save
-        </Button>
+        </SaveButton>
         <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(false)}>
           Cancel
         </Button>

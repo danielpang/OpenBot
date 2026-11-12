@@ -153,12 +153,12 @@ describe('Settings avatar', () => {
     try {
       await until(() => save.getAttribute('aria-busy') === 'true', 'pending save');
       expect(save.disabled).toBe(true);
-      expect(save.textContent).toBe('Saving…');
+      expect(save.dataset.saveState).toBe('saving');
       expect(server.bots[0]?.avatar).toMatchObject({ shape: 'bean' });
     } finally {
       await act(async () => finish());
     }
-    await until(() => save.getAttribute('aria-busy') === 'false', 'persisted save');
+    await until(() => save.dataset.saveState === 'saved', 'persisted save');
     expect(save.textContent).toBe('Save');
     expect(save.disabled).toBe(true);
     expect(server.bots[0]?.avatar).toMatchObject({ shape: 'rounded' });

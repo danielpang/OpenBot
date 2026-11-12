@@ -353,6 +353,11 @@ describe('endpoint settings', () => {
     await until(() => !!sent('PATCH', `/endpoints/${INBOX}`), 'save');
     expect(sent('PATCH', `/endpoints/${INBOX}`)!.body).not.toHaveProperty('signature');
     expect(sent('PATCH', `/endpoints/${INBOX}`)!.body).toMatchObject({ rateLimitPerMin: 60 });
+    // The form stays a moment to show the check, then closes.
+    await until(
+      () => !host.querySelector('form[aria-label="Endpoint settings"]'),
+      'the form to close',
+    );
 
     // A typed secret is sent once and does not stay in the form.
     server.requests = [];

@@ -7,9 +7,11 @@ import {
   PencilIcon,
   PlusIcon,
   RefreshIcon,
+  SaveButton,
   Select,
   Switch,
   TrashIcon,
+  useSaveState,
 } from '@openbots/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -69,7 +71,11 @@ export function KeyField({
   onSave: (apiKey: string) => Promise<unknown>;
 }) {
   const [replacing, setReplacing] = useState(false);
-  const save = useMutation({ mutationFn: onSave, onSuccess: () => setReplacing(false) });
+  const save = useMutation({
+    mutationFn: onSave,
+    onSuccess: () => saved.afterCheck(() => setReplacing(false)),
+  });
+  const saved = useSaveState(save);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -116,9 +122,9 @@ export function KeyField({
           className="h-8 max-w-xs flex-1"
           required
         />
-        <Button type="submit" size="sm" disabled={save.isPending}>
+        <SaveButton type="submit" size="sm" state={saved.state}>
           Save key
-        </Button>
+        </SaveButton>
         {replacing && (
           <Button variant="ghost" size="sm" onClick={() => setReplacing(false)}>
             Cancel

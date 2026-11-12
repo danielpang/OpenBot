@@ -1,4 +1,4 @@
-import { Button, Input } from '@openbots/ui';
+import { Input, SaveButton, useSaveState } from '@openbots/ui';
 import { SettingsSection } from '../../app/settings-layout.js';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -14,6 +14,7 @@ export function YourName({ name }: { name: string }) {
     mutationFn: (next: string) => auth.updateUser({ name: next }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: meQuery.queryKey }),
   });
+  const saved = useSaveState(save);
   const trimmed = value.trim();
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -32,9 +33,9 @@ export function YourName({ name }: { name: string }) {
           required
           aria-label="Your name"
         />
-        <Button type="submit" disabled={!trimmed || trimmed === name || save.isPending}>
+        <SaveButton type="submit" state={saved.state} disabled={!trimmed || trimmed === name}>
           Save
-        </Button>
+        </SaveButton>
       </form>
       {save.error && <p className="text-sm text-destructive">{save.error.message}</p>}
     </SettingsSection>
