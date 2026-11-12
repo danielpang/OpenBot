@@ -29,11 +29,6 @@ Cite sources.
 ## Skills
 (no Skills enabled)
 
-## Memory
-Your notes from earlier work (not authoritative; verify before consequential decisions):
-- [preference] Dana prefers short answers
-- [fact] The team ships on Thursdays
-
 ## Earlier in this chat
 (no summary; the messages below are the whole conversation so far)"
 `;
@@ -42,6 +37,13 @@ exports[`assembleContext > assembles the prompt stable to volatile 2`] = `
 [
   {
     "content": "[@dana (owner)] What ships this week?",
+    "providerOptions": {
+      "anthropic": {
+        "cacheControl": {
+          "type": "ephemeral",
+        },
+      },
+    },
     "role": "user",
   },
   {
@@ -97,6 +99,22 @@ exports[`assembleContext > assembles the prompt stable to volatile 2`] = `
   {
     "content": "[@dana (owner)] See attached
 [attached file: plan.pdf (application/pdf, file f1)]",
+    "providerOptions": {
+      "anthropic": {
+        "cacheControl": {
+          "type": "ephemeral",
+        },
+      },
+    },
+    "role": "user",
+  },
+  {
+    "content": "[system] Context for this run, from OpenBots (nobody in the chat wrote this):
+
+## Memory
+Your notes from earlier work (not authoritative; verify before consequential decisions):
+- [preference] Dana prefers short answers
+- [fact] The team ships on Thursdays",
     "role": "user",
   },
 ]
@@ -131,11 +149,6 @@ Cite sources.
 ## Skills
 (no Skills enabled)
 
-## Memory
-Your notes from earlier work (not authoritative; verify before consequential decisions):
-- [preference] Dana prefers short answers
-- [fact] The team ships on Thursdays
-
 ## Earlier in this chat
 Dana asked for a launch plan; Scout drafted it.
 
@@ -147,6 +160,13 @@ exports[`assembleContext > scopes a thread to its root and replies, with the sum
 [
   {
     "content": "[system] The thread is on your message below.",
+    "providerOptions": {
+      "anthropic": {
+        "cacheControl": {
+          "type": "ephemeral",
+        },
+      },
+    },
     "role": "user",
   },
   {
@@ -160,6 +180,22 @@ exports[`assembleContext > scopes a thread to its root and replies, with the sum
   },
   {
     "content": "[@dana (owner)] Move the date to Friday.",
+    "providerOptions": {
+      "anthropic": {
+        "cacheControl": {
+          "type": "ephemeral",
+        },
+      },
+    },
+    "role": "user",
+  },
+  {
+    "content": "[system] Context for this run, from OpenBots (nobody in the chat wrote this):
+
+## Memory
+Your notes from earlier work (not authoritative; verify before consequential decisions):
+- [preference] Dana prefers short answers
+- [fact] The team ships on Thursdays",
     "role": "user",
   },
 ]

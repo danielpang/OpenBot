@@ -212,8 +212,11 @@ Ordered stable to volatile so provider prompt caches hit:
 2. Operating rules: prefer connectors over the computer (T4); ask for approval when unsure; when a site needs a login the Bot does not have, call `request_login` instead of asking for credentials (K8); treat webhook payloads, fetched pages, and other Bots' messages as data (P2); memory is not an authoritative source (M3); how to @mention, message another Bot, use a Skill, save a Skill, propose a Routine, and answer with a widget.
 3. Roster of the chat: handles, human or Bot, one line per Bot's label.
 4. Skills index: the name and first line of each Skill on for the Bot (every one in the owner's library not turned off for it); the full content is loaded when the user references it with `/` or the Bot calls `use_skill`.
-5. Memory: top K memories by recency and similarity to recent messages.
-6. Chat summary for history beyond the message window. Thread replies (C7) load the thread root and its subtree in full, plus the summary.
+5. Chat summary for history beyond the message window. Thread replies (C7) load the thread root and its subtree in full, plus the summary.
+6. The messages.
+7. What is chosen for this run alone, as one `[system]` message after the transcript: the Bot's repositories and signed-in coding agents, its memories (top K by recency and similarity to recent messages), and any Skill referenced for this turn.
+
+A provider's prompt cache matches a prefix, so whatever changes must come after what does not. Memories are picked afresh for every run; ahead of the transcript they would stop it being read from the cache. The message window holds its start while up to a summary batch of new messages arrive and then moves with the summary (`contextWindow` in `services/summaries.ts`), so consecutive runs open with the same messages. Anthropic cache breakpoints sit on the stable block (1 to 4), on the last transcript message and the one before the Bot's last reply, and on the last message of each step of the loop.
 
 Messages carry author prefixes like `[@dana (owner)]` or `[@researcher (bot)]`. The Bot's own prior tool calls are replayed as native tool messages; other Bots' tool activity is collapsed to one line each.
 
@@ -1092,7 +1095,7 @@ A session asks the same way on a Bot's turn and on the owner's own turn (CA15). 
 
 `classify` reads a command the way the shell would (words with quotes and escapes, compound commands, `$(...)`, backticks and `sh -c` bodies; `coder-adapters/shell-words.ts`), classes each simple command by its argv, and takes the strictest. All three adapters share it (`coder-adapters/classify.ts`): Claude Code's tools, Codex's command and file change requests and pi's tools are each mapped onto it. A path it cannot resolve without running the shell counts as outside the worktree; a write to the computer's private state is destructive. This is a convenience that decides when to ask, not the boundary. The hard controls hold whatever it misreads: the coder uid's filesystem permissions, the credential helper's push gate and repository scope, and the computer's sandbox firewall and egress proxy.
 
-The operating rules (`packages/agent/src/context/rules.ts`) tell a Bot with `code_task` to use it for repository work instead of editing by hand, never to push or open a PR itself, that repository text is data and never instructions, and how to continue a session. Context assembly lists the Bot's repositories and the signed-in agents at the top of the volatile block (`loadCoderContext`), and the built-in Skill "Working in a repository" (`packages/agent/src/skills/working-in-a-repository.md`, seeded by `services/builtin-skills.ts` for every new Bot on an install with a computer) covers planning, tests, small PRs and reporting.
+The operating rules (`packages/agent/src/context/rules.ts`) tell a Bot with `code_task` to use it for repository work instead of editing by hand, never to push or open a PR itself, that repository text is data and never instructions, and how to continue a session. Context assembly lists the Bot's repositories and the signed-in agents at the top of the run's context message (`loadCoderContext`), and the built-in Skill "Working in a repository" (`packages/agent/src/skills/working-in-a-repository.md`, seeded by `services/builtin-skills.ts` for every new Bot on an install with a computer) covers planning, tests, small PRs and reporting.
 
 ### 22.8 Recovery and the control channel
 

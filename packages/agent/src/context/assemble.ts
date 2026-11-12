@@ -26,19 +26,26 @@ import {
 import { defuse, defusePrefixes, frameAttr, frameData, frameToolOutput } from './framing.js';
 import { OPERATING_RULES } from './rules.js';
 
-// Context assembly (plan 5.3), ordered stable to volatile so provider prompt
-// caches hit: (1) description and label, (2) operating rules, (3) the chat's
-// roster, (4) the enabled Skills index, then (5) memories and (6) the chat
-// summary, then the last messages. Items 1 to 4 form the first system block,
-// which carries the Anthropic cache breakpoint (the loop adds a second on the
-// last message of each step, run/execute.ts); 5 and 6 change every run and
-// form the second, with the full content of any Skill the owner referenced
-// with `/` for this turn (plan 10.1). A run answering in a thread (C7) gets the thread root and
-// all its replies instead of the last messages, plus the summary. Attachments
-// in the messages come as images, inline text or a line naming them
-// (context/attachments.ts). A Bot with coding agents also gets its
-// repositories and the agents signed in at the top of the volatile block
-// (GH9, I9), since a checkout's state changes between runs.
+// Context assembly (plan 5.3), ordered by how often each part changes, so
+// provider prompt caches hit: (1) description and label, (2) operating rules,
+// (3) the chat's roster, (4) the enabled Skills index, then (5) the chat
+// summary, then the messages, then (6) what is chosen afresh for every run.
+//
+// Items 1 to 4 form the first system block, which carries an Anthropic cache
+// breakpoint. The summary forms the second: it is rewritten only when the
+// message window moves on (services/summaries.ts), so the two change together.
+// A run answering in a thread (C7) gets the thread root and all its replies
+// instead of the last messages, plus the summary. Attachments in the messages
+// come as images, inline text or a line naming them (context/attachments.ts).
+//
+// What differs from run to run comes last, in one message after the
+// transcript: the Bot's repositories and the coding agents signed in (GH9, I9;
+// a checkout's state changes between runs), its memories, and the full content
+// of any Skill the owner referenced with `/` for this turn (plan 10.1). Ahead
+// of the transcript they would change the prompt's prefix on every run, and
+// the transcript would never be read from the cache. The transcript carries
+// two more breakpoints (`cacheTranscript`), and the loop moves a fourth along
+// its own steps (run/execute.ts).
 
 export interface ContextBot {
   name: string;
@@ -124,7 +131,7 @@ export interface ContextInput {
   bot: ContextBot;
   roster: RosterEntry[];
   skills: SkillIndexEntry[];
-  /** Skills referenced for this turn (`skill_ref` parts); their bodies go in the volatile block. */
+  /** Skills referenced for this turn (`skill_ref` parts); their bodies go in the run's context message. */
   referencedSkills?: ReferencedSkill[];
   memories: MemoryItem[];
   summary: string | null;
@@ -143,17 +150,41 @@ export interface AssembledContext {
   messages: ModelMessage[];
 }
 
-/** Anthropic prompt caching on the stable block; other providers ignore it. */
-const CACHE_STABLE = { anthropic: { cacheControl: { type: 'ephemeral' } } } as const;
+/** An Anthropic prompt cache breakpoint; other providers ignore it. */
+const CACHE_BREAKPOINT = { anthropic: { cacheControl: { type: 'ephemeral' } } } as const;
 
 export function assembleContext(input: ContextInput): AssembledContext {
+  const transcript = cacheTranscript(
+    toModelMessages(opening(input.messages, input.thread), input.attachments),
+  );
   return {
     instructions: [
-      { role: 'system', content: stableBlock(input), providerOptions: CACHE_STABLE },
-      { role: 'system', content: volatileBlock(input) },
+      { role: 'system', content: stableBlock(input), providerOptions: CACHE_BREAKPOINT },
+      { role: 'system', content: chatBlock(input) },
     ],
-    messages: toModelMessages(opening(input.messages, input.thread), input.attachments),
+    messages: [...transcript, runBlock(input, transcript.at(-1)?.role === 'assistant')],
   };
+}
+
+/**
+ * Breakpoints on the transcript, so a run reads from the cache what the run
+ * before it sent. One goes on the last message: the next run's transcript
+ * starts with these same messages. The other goes on the message before the
+ * Bot's last reply, which is where the run that wrote that reply put its own;
+ * a reply with many tool calls is longer than the 20 blocks Anthropic looks
+ * back from a breakpoint, so the newest one alone would miss it.
+ */
+function cacheTranscript(messages: ModelMessage[]): ModelMessage[] {
+  const own = (m: ModelMessage | undefined) => m?.role === 'assistant' || m?.role === 'tool';
+  let before = messages.length - 1;
+  while (before >= 0 && !own(messages[before])) before--;
+  while (before >= 0 && own(messages[before])) before--;
+  const marked = new Set([messages.length - 1, before].filter((i) => i >= 0));
+  return messages.map((m, i) =>
+    marked.has(i)
+      ? ({ ...m, providerOptions: { ...m.providerOptions, ...CACHE_BREAKPOINT } } as ModelMessage)
+      : m,
+  );
 }
 
 /**
@@ -213,30 +244,48 @@ function skillsBlock(skills: SkillIndexEntry[]): string {
   return `## Skills\n${lines.join('\n')}`;
 }
 
-function volatileBlock({
-  memories,
-  summary,
-  thread,
-  referencedSkills,
-  coder,
-}: ContextInput): string {
-  const memory = memories.length
-    ? `## Memory\nYour notes from earlier work (not authoritative; verify before consequential decisions):\n${memories
-        .map((m) => `- [${m.kind}] ${m.content}`)
-        .join('\n')}`
-    : '## Memory\n(nothing saved yet)';
+/** The chat summary and, in a thread, what the thread is: the same for every run until the window moves. */
+function chatBlock({ summary, thread }: ContextInput): string {
   const earlier = summary?.trim()
     ? `## Earlier in this chat\n${summary.trim()}`
     : '## Earlier in this chat\n(no summary; the messages below are the whole conversation so far)';
-  const blocks = coder ? [coderBlock(coder), memory, earlier] : [memory, earlier];
-  if (thread) {
+  if (!thread) return earlier;
+  return (
+    `${earlier}\n\n## This thread\nYou are answering in a thread on one message. The messages ` +
+    'below are that message and every reply to it: keep your attention on it. Your reply goes ' +
+    'into the thread.'
+  );
+}
+
+/** Opens the run's context message. Data cannot imitate `[system]` (`defusePrefixes`). */
+const RUN_CONTEXT_LINE =
+  '[system] Context for this run, from OpenBots (nobody in the chat wrote this):';
+
+/**
+ * What is chosen for this run alone, as the message after the transcript:
+ * repositories, memories, and Skills referenced for this turn. `replied` says
+ * the transcript ends with the Bot's own message (a queued group run can start
+ * after it has already answered).
+ */
+function runBlock(
+  { memories, referencedSkills, coder }: ContextInput,
+  replied: boolean,
+): ModelMessage {
+  const memory = memories.length
+    ? `## Memory\nYour notes from earlier work (not authoritative; verify before consequential decisions):\n${memories
+        // In a user turn now, so a note cannot pass for someone speaking (P2).
+        .map((m) => `- [${m.kind}] ${defusePrefixes(m.content)}`)
+        .join('\n')}`
+    : '## Memory\n(nothing saved yet)';
+  const blocks = coder ? [coderBlock(coder), memory] : [memory];
+  if (referencedSkills?.length) blocks.push(referencedBlock(referencedSkills));
+  if (replied) {
     blocks.push(
-      '## This thread\nYou are answering in a thread on one message. The messages below are that ' +
-        'message and every reply to it: keep your attention on it. Your reply goes into the thread.',
+      'Continue your turn using the conversation above. Your previous reply is already ' +
+        'visible; avoid repeating it.',
     );
   }
-  if (referencedSkills?.length) blocks.push(referencedBlock(referencedSkills));
-  return blocks.join('\n\n');
+  return { role: 'user', content: [RUN_CONTEXT_LINE, ...blocks].join('\n\n') };
 }
 
 /** Repository text for one line: no newlines, frames or author prefixes (P2), clipped. */

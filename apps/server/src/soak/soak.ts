@@ -200,7 +200,8 @@ export async function runSoak(options: SoakOptions): Promise<SoakReport> {
   const turn: ScriptedTurn = (call) => {
     const last = call.prompt.at(-1);
     if (last?.role === 'tool') return [{ text: 'Done, the command finished.' }];
-    const text = JSON.stringify(last?.content ?? '');
+    // The owner's request, and the run's context message that follows it.
+    const text = JSON.stringify(call.prompt.slice(-2).map((m) => m.content));
     if (text.includes('[ask]')) {
       return [{ text: 'Running it.' }, { tool: 'bash', args: { command: `make ${randomUUID()}` } }];
     }

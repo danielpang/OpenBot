@@ -269,10 +269,12 @@ describe('approvals', () => {
       },
       seenSeq: expect.any(Number),
     });
-    // The opening line and the Bot's greeting, the owner's message, the call and its result.
+    // The opening line and the Bot's greeting, the owner's message, the run's
+    // context message, the call and its result.
     expect(state.messages.map((m) => m.role)).toEqual([
       'user',
       'assistant',
+      'user',
       'user',
       'assistant',
       'tool',
@@ -366,8 +368,8 @@ describe('approvals', () => {
     const second = async () => (await runsOf(bot.id))[1]!;
     await until(async () => expect((await second()).status).toBe('waiting'));
     const run = await second();
-    // The transcript part: the first message, the reply, the second message.
-    expect((run.state as SerializedRunState).contextLength).toBe(3);
+    // The context: the first message, the reply, the second message, and the run's context message.
+    expect((run.state as SerializedRunState).contextLength).toBe(4);
     const [approval] = await approvalsOf(run.id);
     const res = await call('POST', `/approvals/${approval!.id}/decide`, { decision: 'approve' });
     expect(res.status).toBe(200);

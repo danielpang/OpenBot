@@ -124,18 +124,9 @@ describe('executeRun', () => {
         },
       ],
     });
-    expect(context.messages.at(-1)!.role).toBe('assistant');
-    const checkpoints: unknown[] = [];
-    const h = harness([[{ text: 'Nothing further to add.' }]], {
-      ...context,
-      checkpoint: {
-        step: async (messages) => {
-          checkpoints.push(messages);
-        },
-        started: async () => {},
-        finished: async () => {},
-      },
-    });
+    // The run's context message follows the reply and says to carry on.
+    expect(context.messages.map((m) => m.role)).toEqual(['user', 'user', 'assistant', 'user']);
+    const h = harness([[{ text: 'Nothing further to add.' }]], context);
 
     expect(await executeRun(h.input)).toMatchObject({ status: 'completed' });
     const prompt = h.model.calls[0]!.prompt;
@@ -149,24 +140,41 @@ describe('executeRun', () => {
     ]);
     expect(prompt.at(-1)).toMatchObject({
       role: 'user',
+      content: [{ type: 'text', text: expect.stringContaining('Continue your turn') }],
+    });
+    expect(promptText(h.model.calls[0]!)).not.toContain('[system] Continue');
+  });
+
+  it('continues after a trailing assistant message without assistant prefill', async () => {
+    const messages: ExecuteRunInput['messages'] = [
+      { role: 'user', content: 'Review this.' },
+      { role: 'assistant', content: 'Here is my review.' },
+    ];
+    const checkpoints: unknown[] = [];
+    const h = harness([[{ text: 'Nothing further to add.' }]], {
+      messages,
+      checkpoint: {
+        step: async (m) => void checkpoints.push(m),
+        started: async () => {},
+        finished: async () => {},
+      },
+    });
+    expect(await executeRun(h.input)).toMatchObject({ status: 'completed' });
+    const prompt = h.model.calls[0]!.prompt;
+    expect(prompt.at(-1)).toMatchObject({
+      role: 'user',
       content: [{ type: 'text', text: expect.stringContaining('[system] Continue') }],
     });
     expect(checkpoints).toEqual([
-      [
-        ...context.messages,
-        {
-          role: 'user',
-          content: expect.stringContaining('[system] Continue'),
-        },
-      ],
+      [...messages, { role: 'user', content: expect.stringContaining('[system] Continue') }],
     ]);
-    // Normalization must not mutate the transcript or duplicate on checkpoint resume.
-    expect(context.messages).toHaveLength(3);
+    // Normalization must not mutate the messages or duplicate on checkpoint resume.
+    expect(messages).toHaveLength(2);
     const resumed = harness([[{ text: 'Done.' }]], {
       messages: checkpoints[0] as ExecuteRunInput['messages'],
     });
     await executeRun(resumed.input);
-    expect(resumed.model.calls[0]!.prompt.slice(1)).toEqual(prompt.slice(2));
+    expect(resumed.model.calls[0]!.prompt.slice(1)).toEqual(prompt.slice(1));
   });
 
   it('uses real steering instead of a synthetic continuation after an assistant message', async () => {
