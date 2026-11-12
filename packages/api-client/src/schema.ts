@@ -12415,7 +12415,7 @@ export interface components {
       threadRootId?: string;
       /**
        * Format: uuid
-       * @description A Skill referenced with `/`: enabled for one of the chat's Bots
+       * @description A Skill referenced with `/`: on for one of the chat's Bots
        */
       skillId?: string;
     };
