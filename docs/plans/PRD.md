@@ -165,7 +165,7 @@ API keys by agent (CA2). An agent on an API key uses a provider the owner added 
 | ID | Requirement | Priority |
 | --- | --- | --- |
 | S1 | A Skill is a reusable set of instructions: a name and free-form markdown content. The Bot's tool policy decides what needs approval (T5), unless the Skill says more. | Must |
-| S2 | Skills are one private library per account, shared by all of that account's Bots. A Bot may still need a connector or login to use one. Skills are enabled per Bot and referenced in the composer with `/`. | Must |
+| S2 | Skills are one private library per account, shared by all of that account's Bots. A Bot may still need a connector or login to use one. Every Skill is on for all of the account's Bots unless its page turns it off for a Bot, and is referenced in the composer with `/`. | Must |
 | S3 | Create a Skill by asking a Bot to save a completed process as a Skill (the Bot drafts it from the transcript), by writing it directly, or by importing it from GitHub: a link to a SKILL.md, a folder or a repository in the common Agent Skills format, or any markdown file. An imported Skill takes its name from the frontmatter (else the folder or file name), its content from the file, and records where it came from. No Bot uses it until the owner enables it. | Must |
 | S4 | Teach a Skill by demonstrating a browser workflow on the computer; the recording becomes a draft Skill. | Later |
 | R1 | A Routine tells one Bot when to run a prompt or Skill. Triggers: **schedule** (presets: every day at a time, weekdays, weekly on a day, monthly on a date, every N minutes for any N from 1 to 1440, plus custom cron) or **event**. | Must |

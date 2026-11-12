@@ -36,11 +36,11 @@ import { SkillBots } from './skill-bots';
 
 // The Skills library on iOS (S1, S3): list the account's Skills, write a new
 // one or fill it from a markdown file in Files, edit or delete one, and
-// import Skills from a GitHub link. A new Skill starts enabled for every Bot;
-// it is turned off per Bot on the Skill or in Bot details → About.
+// import Skills from a GitHub link. Every Skill is on for all of the owner's
+// Bots; the Skill's own screen turns it off for a Bot.
 
 export const SKILLS_HELP =
-  'Instructions your Bots can follow. New Skills are on for every Bot; turn one off on the Skill or in Bot details → About. Type / in a chat to use one.';
+  'Instructions your Bots can follow. Every Skill is on for all your Bots; open one to turn it off for a Bot. Type / in a chat to use one.';
 export const IMPORT_HELP =
   'Link a GitHub repository, folder or SKILL.md file. For a private repository, add the GitHub connector on your computer first.';
 

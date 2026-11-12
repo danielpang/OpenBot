@@ -58,8 +58,12 @@ export const skills = pgTable(
   (t) => [unique('skills_slug_per_owner').on(t.workspaceId, t.ownerId, t.slug)],
 );
 
-export const botSkills = pgTable(
-  'bot_skills',
+/**
+ * Bots that must not use a Skill (S2). Every Skill is on for all of its
+ * owner's Bots, present and future; a row here turns it off for one Bot.
+ */
+export const botSkillBlocks = pgTable(
+  'bot_skill_blocks',
   {
     id: id(),
     workspaceId: workspaceId(),
@@ -69,9 +73,12 @@ export const botSkills = pgTable(
     skillId: uuid('skill_id')
       .notNull()
       .references(() => skills.id, { onDelete: 'cascade' }),
-    enabled: boolean('enabled').notNull().default(true),
+    createdAt: createdAt(),
   },
-  (t) => [unique().on(t.botId, t.skillId)],
+  (t) => [
+    unique('bot_skill_blocks_pair').on(t.botId, t.skillId),
+    index('bot_skill_blocks_skill').on(t.workspaceId, t.skillId),
+  ],
 );
 
 /** Cap 50 per Bot, enforced in code (R4). */

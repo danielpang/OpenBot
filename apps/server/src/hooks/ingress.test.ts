@@ -819,7 +819,6 @@ describe('webhook ingress', () => {
     const { bot, model } = await newBot('Drafty', [[{ text: 'ran' }]]);
     const res = await call('POST', '/skills', { name: 'Triage', content: 'Alerts.\n\n1. Look' });
     const skill = (await res.json()) as { id: string };
-    await call('PUT', `/bots/${bot.id}/skills`, { skillIds: [skill.id] });
     const created = await call('POST', `/bots/${bot.id}/routines`, {
       name: 'On alert',
       skillId: skill.id,
@@ -828,7 +827,7 @@ describe('webhook ingress', () => {
     expect(created.status).toBe(201);
     const routine = (await created.json()) as { id: string; slug: string };
     const { endpoint, token } = await newEndpoint(bot.id, { routineId: routine.id });
-    await call('PUT', `/bots/${bot.id}/skills`, { skillIds: [] });
+    await call('PUT', `/skills/${skill.id}/blocked-bots`, { botIds: [bot.id] });
     const sent = await hook(`/hooks/${bot.id}/${routine.slug}`, {
       body: '{"alert":1}',
       headers: bearer(token),
@@ -839,7 +838,7 @@ describe('webhook ingress', () => {
       {
         status: 'ignored',
         matched: true,
-        error: expect.stringContaining('is not enabled for this Bot'),
+        error: expect.stringContaining('is turned off for this Bot'),
       },
     ]);
     expect(await runsOf(bot.id)).toHaveLength(0);

@@ -289,7 +289,7 @@ export function RoutineForm({
   const [problem, setProblem] = useState<string | null>(null);
   const mutation = routine ? actions.update : actions.create;
   const saved = useSaveState(mutation);
-  // A Routine runs only a Skill its Bot has enabled (S2); the one it already
+  // A Routine runs only a Skill that is on for its Bot (S2); the one it already
   // has stays listed, unselectable, so the form says why it will not run.
   const usable = usableSkills(skills.data?.items ?? [], [botId]);
   const skillChoices = (skills.data?.items ?? []).filter(
@@ -362,11 +362,11 @@ export function RoutineForm({
           <option value="">No Skill</option>
           {skillChoices.map((skill) => (
             <option key={skill.id} value={skill.id} disabled={!usable.includes(skill)}>
-              {usable.includes(skill) ? skill.name : `${skill.name} (not enabled for this Bot)`}
+              {usable.includes(skill) ? skill.name : `${skill.name} (turned off for this Bot)`}
             </option>
           ))}
         </select>
-        <span>Skills enabled for this Bot in its Settings.</span>
+        <span>Skills on for this Bot. Turn one off or on from its page in Skills.</span>
       </label>
       {/* An endpoint belongs to an event Routine, so the kind of trigger is chosen once. */}
       {!routine && (

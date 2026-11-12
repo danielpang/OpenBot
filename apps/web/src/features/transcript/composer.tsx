@@ -19,7 +19,7 @@ import { activeTrigger, detectLinks, replaceTrigger, type Trigger } from './comp
 // The composer (C1): text with Shift+Enter for a new line, images and files by
 // paste, drop or the attach button (uploaded to `POST /files` as soon as they
 // are added), links noted under the draft, `/` for the Skills picker (the
-// Skills enabled for one of the chat's Bots, S2; the chosen Skill rides
+// Skills on for one of the chat's Bots, S2; the chosen Skill rides
 // along as the message's `skill_ref` and its content is loaded for that turn by
 // each Bot that has it enabled) and `@` for the mention
 // picker: the chat's Bots, in a group `@everyone` (C5) and the Bots a
@@ -47,7 +47,7 @@ export interface ComposerProps {
   chatId: string;
   /**
    * Bots `@` can insert; in a bot_dm only the Bot itself. `/` offers the
-   * Skills enabled for any of them.
+   * Skills on for any of them.
    */
   mentionable: MentionBot[];
   /** Offer `@everyone`, as a group does. */
@@ -403,7 +403,7 @@ function Picker({
       : noSkills === 'library'
         ? 'No Skills yet'
         : noSkills === 'usable'
-          ? "No Skills are enabled here. Enable one in a Bot's Settings."
+          ? 'No Skills are on for the Bots here. Turn one on from its page in Skills.'
           : 'No Skills match';
   return (
     <div

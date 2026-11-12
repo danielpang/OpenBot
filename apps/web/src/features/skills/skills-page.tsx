@@ -25,11 +25,11 @@ import { SkillBots } from './skill-bots.js';
 
 // The Skills library page (S1 to S3, plan 10.1): every Skill in the account's
 // library with the Bots that use it, an editor for its name and content, and
-// which Bots have it enabled. A new Skill starts enabled for every Bot; it is
-// turned off per Bot here or in the Bot's Settings.
+// the Bots it is turned off for. Every Skill is on for all of the owner's
+// Bots unless its page turns it off for one.
 
 export const SKILLS_HELP =
-  'Instructions your Bots can follow. New Skills are on for every Bot; turn one off here or in a Bot’s Settings. Type / in a chat to use one.';
+  'Instructions your Bots can follow. Every Skill is on for all your Bots; open one to turn it off for a Bot. Type / in a chat to use one.';
 
 type Selected = { kind: 'new' } | { kind: 'skill'; id: string } | null;
 
@@ -117,9 +117,9 @@ export function SkillList({
   );
 }
 
-/** "Used by Ada and Scout", or that no Bot has it enabled. */
+/** "Used by Ada and Scout", or that it is turned off for every Bot. */
 export function usedByText(bots: readonly { name: string }[]): string {
-  if (!bots.length) return 'Not enabled for any Bot';
+  if (!bots.length) return 'Turned off for every Bot';
   const names = bots.map((b) => b.name);
   const list =
     names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;

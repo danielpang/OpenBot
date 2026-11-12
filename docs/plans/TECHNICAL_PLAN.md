@@ -137,7 +137,7 @@ All tables carry `workspace_id`, the organization (one implicit organization on 
 | Table | Key columns | Notes |
 | --- | --- | --- |
 | `skills` | id, owner_id, name, slug, summary, body_md, source (`manual`, `saved_from_run`, `demonstration`, `imported`), created_from_run_id, origin jsonb, created_at, updated_at | `body_md` is the Skill's markdown content and `summary` its first line of text (S1). One library per account (S2). `origin` (imported Skills only, S3): the GitHub link, repository, ref and commit SHA, the Skill's path and its license. The older `sections` and `status` columns are kept, nullable and unused, by the `skills_content` migration |
-| `bot_skills` | bot_id, skill_id, enabled | |
+| `bot_skill_blocks` | bot_id, skill_id | Bots a Skill is turned off for; every Skill is on for all of its owner's Bots otherwise (S2) |
 | `routines` | id, bot_id, name, slug, trigger jsonb, prompt_md, skill_id, chat_id, enabled, timezone, next_run_at, last_run_at, created_at | `trigger`: `{type:'schedule', preset, cron | every_minutes}` or `{type:'event', source:'webhook'|'github'|'slack', endpoint_id, match: {...}}` (R1, R2). Cap 50 per Bot (R4) |
 | `routine_runs` | id, routine_id, run_id, started_at, finished_at, status, result_message_id, exception text | Trimmed to the 20 most recent per Routine (R4) |
 

@@ -429,7 +429,7 @@ describe('the Routine editor', () => {
       ['No Skill', false],
       ['Triage', false],
       // The Routine's own Skill stays listed with the reason it cannot run.
-      ['Elsewhere (not enabled for this Bot)', true],
+      ['Elsewhere (turned off for this Bot)', true],
     ]);
   });
 

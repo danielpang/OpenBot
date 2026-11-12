@@ -195,7 +195,7 @@ describe('<Composer>', () => {
     await loaded();
     type('/');
     expect(host.querySelector('[role="listbox"]')!.textContent).toBe(
-      "No Skills are enabled here. Enable one in a Bot's Settings.",
+      'No Skills are on for the Bots here. Turn one on from its page in Skills.',
     );
   });
 

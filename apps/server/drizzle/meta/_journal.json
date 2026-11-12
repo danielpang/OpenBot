@@ -288,6 +288,20 @@
       "when": 1794242879141,
       "tag": "0040_coder_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794464538227,
+      "tag": "0041_bot_skill_blocks",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794464543454,
+      "tag": "0042_drop_bot_skills",
+      "breakpoints": true
     }
   ]
 }

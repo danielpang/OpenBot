@@ -76,7 +76,7 @@ describe('initialPicks', () => {
 
 describe('usedByText', () => {
   it('lists the Bots', () => {
-    expect(usedByText([])).toBe('Not enabled for any Bot');
+    expect(usedByText([])).toBe('Turned off for every Bot');
     expect(usedByText([{ name: 'Ada' }])).toBe('Used by Ada');
     expect(usedByText([{ name: 'Ada' }, { name: 'Bo' }, { name: 'Cy' }])).toBe(
       'Used by Ada, Bo and Cy',

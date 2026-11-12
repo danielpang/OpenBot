@@ -10,20 +10,17 @@ import {
 import {
   createSkill,
   deleteSkill,
-  getBotSkills,
   getSkill,
   listSkills,
-  setBotSkills,
-  setSkillBots,
+  setSkillBlocks,
   skillOrigin,
   updateSkill,
   type SkillRecord,
 } from '../services/skills.js';
 
 // The Skills library (S1 to S3; plan 10.1, 14.1): one private library per
-// account, each Skill a name and markdown content, and per-Bot enablement
-// (a new Skill starts enabled for every Bot of the owner's), set from either
-// side: a Bot's Skills, or a Skill's Bots.
+// account, each Skill a name and markdown content. Every Skill is on for all
+// of the owner's Bots except those its blocklist turns it off for.
 // Owner-scoped: another user's Skill or Bot is 404. Skills can also be
 // imported from a GitHub link: a preview lists what the link holds, then the
 // import adds the picked ones.
@@ -54,7 +51,10 @@ const SkillSchema = z
     origin: SkillOriginSchema.nullable(),
     usedBy: z
       .array(z.object({ id: z.uuid(), name: z.string(), handle: z.string() }))
-      .openapi({ description: 'Bots that have the Skill enabled' }),
+      .openapi({ description: "The owner's Bots it is on for: all but the blocked ones" }),
+    blockedBotIds: z
+      .array(z.uuid())
+      .openapi({ description: "The owner's Bots it is turned off for" }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -71,17 +71,14 @@ const UpdateSkillSchema = z
   .strictObject({ name: name.optional(), content: content.optional() })
   .openapi('UpdateSkill');
 
-const BotSkillsSchema = z
+const BlockedBotsSchema = z
   .strictObject({
-    skillIds: z.array(z.uuid()).max(500).openapi({ description: 'The enabled Skills' }),
+    botIds: z
+      .array(z.uuid())
+      .max(500)
+      .openapi({ description: 'The Bots the Skill is turned off for' }),
   })
-  .openapi('BotSkills');
-
-const SkillBotsSchema = z
-  .strictObject({
-    botIds: z.array(z.uuid()).max(500).openapi({ description: 'The Bots that have it enabled' }),
-  })
-  .openapi('SkillBots');
+  .openapi('SkillBlockedBots');
 
 const githubUrl = z.string().trim().min(1).max(2000).openapi({
   description: 'A GitHub repository, folder (…/tree/ref/path) or file (…/blob/ref/path/SKILL.md)',
@@ -159,7 +156,7 @@ const githubProblems = {
   504: problemResponse('GitHub took too long'),
 };
 
-function toSkill({ skill, usedBy }: SkillRecord): z.infer<typeof SkillSchema> {
+function toSkill({ skill, usedBy, blockedBotIds }: SkillRecord): z.infer<typeof SkillSchema> {
   const origin = skillOrigin(skill.origin);
   return {
     id: skill.id,
@@ -181,6 +178,7 @@ function toSkill({ skill, usedBy }: SkillRecord): z.infer<typeof SkillSchema> {
       importedAt: origin.importedAt,
     },
     usedBy,
+    blockedBotIds,
     createdAt: skill.createdAt.toISOString(),
     updatedAt: skill.updatedAt.toISOString(),
   };
@@ -191,10 +189,6 @@ const skillResponse = (description: string) => ({
   description,
   content: { 'application/json': { schema: SkillSchema } },
 });
-const botSkillsResponse = {
-  description: 'The enabled Skills',
-  content: { 'application/json': { schema: BotSkillsSchema } },
-};
 
 export const skillRoutes = createRouter()
   .openapi(
@@ -223,7 +217,7 @@ export const skillRoutes = createRouter()
       method: 'post',
       path: '/skills',
       tags: ['skills'],
-      summary: "Write a Skill, enabled for every one of the owner's Bots",
+      summary: "Write a Skill, on for every one of the owner's Bots",
       middleware: [requireUser] as const,
       security: authenticated,
       request: {
@@ -376,14 +370,14 @@ export const skillRoutes = createRouter()
   .openapi(
     createRoute({
       method: 'put',
-      path: '/skills/{id}/bots',
+      path: '/skills/{id}/blocked-bots',
       tags: ['skills'],
-      summary: 'Replace the Bots that have the Skill enabled',
+      summary: 'Replace the Bots the Skill is turned off for; it stays on for every other Bot',
       middleware: [requireUser] as const,
       security: authenticated,
       request: {
         params: idParams,
-        body: { content: { 'application/json': { schema: SkillBotsSchema } }, required: true },
+        body: { content: { 'application/json': { schema: BlockedBotsSchema } }, required: true },
       },
       responses: {
         200: skillResponse('The Skill'),
@@ -393,60 +387,12 @@ export const skillRoutes = createRouter()
       },
     }),
     async (c) => {
-      const record = await setSkillBots(
+      const record = await setSkillBlocks(
         c.var.deps.db,
         c.var.user,
         c.req.valid('param').id,
         c.req.valid('json').botIds,
       );
       return c.json(toSkill(record), 200);
-    },
-  )
-  .openapi(
-    createRoute({
-      method: 'get',
-      path: '/bots/{id}/skills',
-      tags: ['bots'],
-      summary: "The Bot's enabled Skills",
-      middleware: [requireUser] as const,
-      security: authenticated,
-      request: { params: idParams },
-      responses: {
-        200: botSkillsResponse,
-        ...authProblems,
-        404: problemResponse('No such Bot'),
-      },
-    }),
-    async (c) => {
-      const skillIds = await getBotSkills(c.var.deps.db, c.var.user, c.req.valid('param').id);
-      return c.json({ skillIds }, 200);
-    },
-  )
-  .openapi(
-    createRoute({
-      method: 'put',
-      path: '/bots/{id}/skills',
-      tags: ['bots'],
-      summary: "Replace the Bot's enabled Skills",
-      middleware: [requireUser] as const,
-      security: authenticated,
-      request: {
-        params: idParams,
-        body: { content: { 'application/json': { schema: BotSkillsSchema } }, required: true },
-      },
-      responses: {
-        200: botSkillsResponse,
-        ...authProblems,
-        404: problemResponse('No such Bot or Skill'),
-      },
-    }),
-    async (c) => {
-      const skillIds = await setBotSkills(
-        c.var.deps.db,
-        c.var.user,
-        c.req.valid('param').id,
-        c.req.valid('json').skillIds,
-      );
-      return c.json({ skillIds }, 200);
     },
   );

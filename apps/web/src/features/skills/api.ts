@@ -2,9 +2,10 @@ import { unwrap, type components } from '@openbots/api-client';
 import { queryOptions } from '@tanstack/react-query';
 import { api } from '../../app/api.js';
 
-// The Skills library (S1 to S3): the owner's Skills with the Bots that use
-// each, and which Skills a Bot has enabled. Every Skill change invalidates
-// the `['skills']` prefix, which the composer's `/` picker reads too.
+// The Skills library (S1 to S3): the owner's Skills, each on for all of the
+// owner's Bots but those it blocks (`usedBy` lists the rest). Every Skill
+// change invalidates the `['skills']` prefix, which the composer's `/`
+// picker reads too.
 
 export type Skill = components['schemas']['Skill'];
 export type CreateSkill = components['schemas']['CreateSkill'];
@@ -19,12 +20,6 @@ export const skillsQuery = queryOptions({
   queryKey: ['skills', 'list'],
   queryFn: () => unwrap(api.GET('/api/v1/skills')),
 });
-
-export const botSkillsQuery = (botId: string) =>
-  queryOptions({
-    queryKey: ['skills', 'bot', botId],
-    queryFn: () => unwrap(api.GET('/api/v1/bots/{id}/skills', { params: { path: { id: botId } } })),
-  });
 
 export const createSkill = (body: CreateSkill) => unwrap(api.POST('/api/v1/skills', { body }));
 
@@ -42,19 +37,17 @@ export const previewSkillImport = (url: string) =>
 export const importSkills = (body: SkillImportRequest) =>
   unwrap(api.POST('/api/v1/skills/import', { body }));
 
-/** Replaces the Bots that have the Skill enabled. */
-export const putSkillBots = (skillId: string, botIds: string[]) =>
+/** Replaces the Bots the Skill is turned off for; it stays on for every other Bot. */
+export const putSkillBlocks = (skillId: string, botIds: string[]) =>
   unwrap(
-    api.PUT('/api/v1/skills/{id}/bots', { params: { path: { id: skillId } }, body: { botIds } }),
-  );
-
-export const putBotSkills = (botId: string, skillIds: string[]) =>
-  unwrap(
-    api.PUT('/api/v1/bots/{id}/skills', { params: { path: { id: botId } }, body: { skillIds } }),
+    api.PUT('/api/v1/skills/{id}/blocked-bots', {
+      params: { path: { id: skillId } },
+      body: { botIds },
+    }),
   );
 
 /**
- * The Skills `/` offers in a chat (S2): enabled for one of the chat's Bots,
+ * The Skills `/` offers in a chat (S2): on for one of the chat's Bots,
  * matching what is typed after `/` by name or slug.
  */
 export function matchSkills<T extends Pick<Skill, 'name' | 'slug' | 'usedBy'>>(
@@ -68,7 +61,7 @@ export function matchSkills<T extends Pick<Skill, 'name' | 'slug' | 'usedBy'>>(
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The Skills enabled for any of `botIds`. */
+/** The Skills on for any of `botIds`. */
 export function usableSkills<T extends Pick<Skill, 'usedBy'>>(
   skills: readonly T[],
   botIds: readonly string[],

@@ -194,7 +194,7 @@ describe('coding agents', () => {
       .set({ status: 'settled' })
       .where(eq(schema.codingSessions.botId, bot.id));
 
-  it('seeds "Working in a repository" once per library and enables it for each new Bot', async () => {
+  it('seeds "Working in a repository" once per library, on for every Bot', async () => {
     const res = await call(dana, 'POST', '/bots', { name: 'Second Bot', modelConfig: null });
     expect(res.status).toBe(201);
     const second = (await res.json()) as { id: string };
@@ -202,15 +202,11 @@ describe('coding agents', () => {
     const builtin = skills.filter((s) => s.slug === 'working-in-a-repository');
     expect(builtin).toHaveLength(1);
     expect(builtin[0]).toMatchObject({ name: 'Working in a repository', source: 'manual' });
-    for (const botId of [bot.id, second.id]) {
-      const [enabled] = await t.db
-        .select()
-        .from(schema.botSkills)
-        .where(
-          and(eq(schema.botSkills.botId, botId), eq(schema.botSkills.skillId, builtin[0]!.id)),
-        );
-      expect(enabled?.enabled).toBe(true);
-    }
+    const library = (await (await call(dana, 'GET', '/skills')).json()) as {
+      items: { id: string; usedBy: { id: string }[] }[];
+    };
+    const usedBy = library.items.find((s) => s.id === builtin[0]!.id)!.usedBy.map((b) => b.id);
+    expect(usedBy).toEqual(expect.arrayContaining([bot.id, second.id]));
   });
 
   describe('repositories', () => {

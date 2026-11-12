@@ -4,7 +4,7 @@ import { queryOptions } from '@tanstack/react-query';
 
 // The Skills library on iOS: the same endpoints and cache keys as the web app.
 // Every Skill change invalidates the `['skills']` prefix, which covers the
-// library, each Bot's enabled Skills and the "used by" lists.
+// library, its "used by" lists and each Skill's blocked Bots.
 
 export type Skill = components['schemas']['Skill'];
 export type SkillOrigin = NonNullable<Skill['origin']>;
@@ -18,15 +18,9 @@ export const skillsQuery = (api: Client) =>
     queryFn: () => unwrap(api.GET('/api/v1/skills')),
   });
 
-export const botSkillsQuery = (api: Client, botId: string) =>
-  queryOptions({
-    queryKey: ['skills', 'bot', botId] as const,
-    queryFn: () => unwrap(api.GET('/api/v1/bots/{id}/skills', { params: { path: { id: botId } } })),
-  });
-
-/** "Used by Ada and Scout", or that no Bot has it enabled. */
+/** "Used by Ada and Scout", or that it is turned off for every Bot. */
 export function usedByText(bots: readonly { name: string }[]): string {
-  if (!bots.length) return 'Not enabled for any Bot';
+  if (!bots.length) return 'Turned off for every Bot';
   const names = bots.map((b) => b.name);
   const list =
     names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;

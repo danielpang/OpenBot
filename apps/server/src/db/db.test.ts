@@ -35,7 +35,7 @@ const SECTION_4_TABLES = [
   'git_connections',
   'git_identities',
   'skills',
-  'bot_skills',
+  'bot_skill_blocks',
   'routines',
   'routine_runs',
   'webhook_endpoints',

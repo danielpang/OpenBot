@@ -14,11 +14,22 @@ import {
 } from '@openbots/shared';
 import type { SkillDraftProps, SkillDraftState } from '@openbots/widgets';
 import type { LanguageModel } from 'ai';
-import { and, asc, count, desc, eq, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  notInArray,
+  sql,
+  type AnyColumn,
+} from 'drizzle-orm';
 import type { AppDeps, CurrentUser } from '../context.js';
 import { schema, type Db } from '../db/client.js';
 import { DomainError, notFound } from '../errors.js';
-import { assertBotOwner } from '../ownership.js';
 import type { Config } from '../config.js';
 import { organizationSettings, raiseLimitHint } from '../workspace.js';
 import { chatHandles, transcriptMessage } from './chats.js';
@@ -26,15 +37,13 @@ import { onWidgetAction } from './hooks.js';
 import { widgetClosed } from './runs.js';
 
 // Skills (S1 to S3; plan 4.6, 10.1). One library per account (S2): every
-// Skill belongs to its owner and is shared by all of the owner's Bots, each
-// of which enables the ones it may use (`bot_skills`). A new Skill (written,
-// imported or saved from a run) starts enabled for every one of the owner's
-// Bots; the owner turns it off per Bot, from the Bot's Settings or from the
-// Skill's own list of Bots. A Skill is a name and
-// markdown content. Only enabled Skills reach a Bot's index and `use_skill`,
-// and only those can be referenced with `/` (a `skill_ref` part): in a group,
-// a Skill enabled for any member Bot, whose content each Bot loads for that
-// turn only if it has the Skill enabled.
+// Skill belongs to its owner and is on for all of the owner's Bots, present
+// and future, except those the owner blocks on the Skill's page
+// (`bot_skill_blocks`). A Skill is a name and markdown content. Only a
+// Bot's unblocked Skills reach its index and `use_skill`, and only those can
+// be referenced with `/` (a `skill_ref` part): in a group, a Skill on for
+// any member Bot, whose content each Bot loads for that turn only if the
+// Skill is on for it.
 //
 // An imported Skill (skill-import.ts) also keeps its `origin`, where it came
 // from; wherever it reaches a Bot it says so (`imported_from`, P2).
@@ -52,8 +61,10 @@ export interface SkillUser {
 
 export interface SkillRecord {
   skill: SkillRow;
-  /** The owner's Bots that have it enabled ("used by"). */
+  /** The owner's Bots it is on for ("used by"): every one not blocked. */
   usedBy: SkillUser[];
+  /** The owner's Bots it is turned off for. */
+  blockedBotIds: string[];
 }
 
 export interface SkillInput {
@@ -144,32 +155,44 @@ async function freeSlug(tx: Db, owner: Owner, base: string, except?: string): Pr
   }
 }
 
-async function usedBy(db: Db, skillIds: string[]): Promise<Map<string, SkillUser[]>> {
-  const out = new Map<string, SkillUser[]>();
-  if (!skillIds.length) return out;
-  const rows = await db
+/** The block of a Skill for a Bot (columns or a Skill id), for a left join. */
+const blockOf = (skillId: AnyColumn | string, botId: AnyColumn) =>
+  and(eq(schema.botSkillBlocks.skillId, skillId), eq(schema.botSkillBlocks.botId, botId));
+
+/** Each Skill's "used by" (its owner's Bots, less the blocked ones) and its blocks. */
+async function withUsers(db: Db, rows: SkillRow[]): Promise<SkillRecord[]> {
+  const ids = rows.map((r) => r.id);
+  if (!ids.length) return [];
+  const bots = await db
     .select({
-      skillId: schema.botSkills.skillId,
+      skillId: schema.skills.id,
       id: schema.bots.id,
       name: schema.bots.name,
       handle: schema.bots.handle,
+      blocked: schema.botSkillBlocks.id,
     })
-    .from(schema.botSkills)
-    .innerJoin(schema.bots, eq(schema.bots.id, schema.botSkills.botId))
-    .where(and(inArray(schema.botSkills.skillId, skillIds), eq(schema.botSkills.enabled, true)))
+    .from(schema.skills)
+    .innerJoin(
+      schema.bots,
+      and(
+        eq(schema.bots.ownerId, schema.skills.ownerId),
+        eq(schema.bots.workspaceId, schema.skills.workspaceId),
+      ),
+    )
+    .leftJoin(schema.botSkillBlocks, blockOf(schema.skills.id, schema.bots.id))
+    .where(inArray(schema.skills.id, ids))
     .orderBy(asc(schema.bots.name));
-  for (const { skillId, ...bot } of rows) {
-    out.set(skillId, [...(out.get(skillId) ?? []), bot]);
+  const users = new Map<string, SkillUser[]>();
+  const blocked = new Map<string, string[]>();
+  for (const { skillId, blocked: block, ...bot } of bots) {
+    if (block) blocked.set(skillId, [...(blocked.get(skillId) ?? []), bot.id]);
+    else users.set(skillId, [...(users.get(skillId) ?? []), bot]);
   }
-  return out;
-}
-
-async function withUsers(db: Db, rows: SkillRow[]): Promise<SkillRecord[]> {
-  const users = await usedBy(
-    db,
-    rows.map((r) => r.id),
-  );
-  return rows.map((skill) => ({ skill, usedBy: users.get(skill.id) ?? [] }));
+  return rows.map((skill) => ({
+    skill,
+    usedBy: users.get(skill.id) ?? [],
+    blockedBotIds: blocked.get(skill.id) ?? [],
+  }));
 }
 
 async function ownedSkill(db: Db, owner: Owner, skillId: string): Promise<SkillRow> {
@@ -227,29 +250,10 @@ export async function createSkill(
         createdFromRunId: input.createdFromRunId ?? null,
       })
       .returning();
-    await enableForAllBots(tx, owner, [row!.id]);
     return row!;
   });
   const [record] = await withUsers(deps.db, [row]);
   return record!;
-}
-
-/** Enables new Skills for every one of the owner's Bots in the organization. */
-async function enableForAllBots(tx: Db, owner: Owner, skillIds: string[]): Promise<void> {
-  if (!skillIds.length) return;
-  const bots = await tx
-    .select({ id: schema.bots.id })
-    .from(schema.bots)
-    .where(and(eq(schema.bots.ownerId, owner.id), eq(schema.bots.workspaceId, owner.workspaceId)));
-  if (!bots.length) return;
-  await tx
-    .insert(schema.botSkills)
-    .values(
-      bots.flatMap((bot) =>
-        skillIds.map((skillId) => ({ workspaceId: owner.workspaceId, botId: bot.id, skillId })),
-      ),
-    )
-    .onConflictDoNothing();
 }
 
 /**
@@ -336,11 +340,6 @@ export async function createImportedSkills(
         .returning();
       out.push(row!);
     }
-    await enableForAllBots(
-      tx,
-      owner,
-      out.map((r) => r.id),
-    );
     return out;
   });
   return withUsers(deps.db, rows);
@@ -382,136 +381,84 @@ async function writeSkill(tx: Db, current: SkillRow, patch: SkillPatch) {
     .where(eq(schema.skills.id, current.id));
 }
 
-/** Deletes the Skill; its `bot_skills` rows cascade and Routines keep running without it. */
+/** Deletes the Skill; its blocks cascade and Routines keep running without it. */
 export async function deleteSkill(db: Db, owner: Owner, skillId: string): Promise<void> {
   await ownedSkill(db, owner, skillId);
   await db.delete(schema.skills).where(eq(schema.skills.id, skillId));
 }
 
-// Per-Bot enablement (S2)
-
-/** The Skills the Bot has enabled, by id. */
-export async function getBotSkills(db: Db, owner: Owner, botId: string): Promise<string[]> {
-  await assertBotOwner(db, owner, botId);
-  const rows = await db
-    .select({ skillId: schema.botSkills.skillId })
-    .from(schema.botSkills)
-    .innerJoin(schema.skills, eq(schema.skills.id, schema.botSkills.skillId))
-    .where(and(eq(schema.botSkills.botId, botId), eq(schema.botSkills.enabled, true)))
-    .orderBy(asc(schema.skills.name));
-  return rows.map((r) => r.skillId);
-}
-
-/** Replaces the Bot's enabled Skills with `skillIds`; an id outside the owner's library is 404. */
-export async function setBotSkills(
-  db: Db,
-  owner: Owner,
-  botId: string,
-  skillIds: string[],
-): Promise<string[]> {
-  await replaceEnabled(db, owner, { botId, skillIds });
-  return getBotSkills(db, owner, botId);
-}
+// Per-Bot blocks (S2)
 
 /**
- * Replaces the Bots that have the Skill enabled with `botIds`, from the
- * Skill's side; an id outside the owner's Bots (or Skill) is 404.
+ * Replaces the Bots the Skill is turned off for with `botIds`; every other
+ * Bot of the owner's, including ones made later, has it on. An id outside
+ * the owner's Skills or Bots is 404 and changes nothing. The rows are locked
+ * (`FOR KEY SHARE`) as they are checked, so a Bot or Skill deleted meanwhile
+ * waits for this transaction instead of failing its inserts.
  */
-export async function setSkillBots(
+export async function setSkillBlocks(
   db: Db,
   owner: Owner,
   skillId: string,
   botIds: string[],
 ): Promise<SkillRecord> {
-  await replaceEnabled(db, owner, { skillId, botIds });
-  return getSkill(db, owner, skillId);
-}
-
-/** One side of `bot_skills`: a Bot's enabled Skills, or the Bots a Skill is enabled for. */
-type Enablement = { botId: string; skillIds: string[] } | { skillId: string; botIds: string[] };
-
-/**
- * Replaces one side of `bot_skills` with exactly the ids given. Every id must
- * be the owner's (the fixed side's checked first), or the call is 404 and
- * nothing changes. Rows are locked (`FOR KEY SHARE`) as they are checked, so
- * a Bot or Skill deleted meanwhile waits for this transaction instead of
- * failing its inserts.
- */
-async function replaceEnabled(db: Db, owner: Owner, side: Enablement): Promise<void> {
-  const bySkill = 'skillId' in side;
-  const botIds = bySkill ? [...new Set(side.botIds)] : [side.botId];
-  const skillIds = bySkill ? [side.skillId] : [...new Set(side.skillIds)];
+  const ids = [...new Set(botIds)];
   await db.transaction(async (tx) => {
-    const lockBots = async () => {
-      if (!botIds.length) return;
-      const rows = await tx
+    const [skill] = await tx
+      .select({ id: schema.skills.id })
+      .from(schema.skills)
+      .where(and(eq(schema.skills.id, skillId), libraryOf(owner)))
+      .for('key share');
+    if (!skill) throw notFound('Skill not found');
+    if (ids.length) {
+      const bots = await tx
         .select({ id: schema.bots.id })
         .from(schema.bots)
         .where(
           and(
-            inArray(schema.bots.id, botIds),
+            inArray(schema.bots.id, ids),
             eq(schema.bots.ownerId, owner.id),
             eq(schema.bots.workspaceId, owner.workspaceId),
           ),
         )
         .for('key share');
-      if (rows.length !== botIds.length) throw notFound('Bot not found');
-    };
-    const lockSkills = async () => {
-      if (!skillIds.length) return;
-      const rows = await tx
-        .select({ id: schema.skills.id })
-        .from(schema.skills)
-        .where(and(inArray(schema.skills.id, skillIds), libraryOf(owner)))
-        .for('key share');
-      if (rows.length !== skillIds.length) throw notFound('Skill not found');
-    };
-    if (bySkill) {
-      await lockSkills();
-      await lockBots();
-    } else {
-      await lockBots();
-      await lockSkills();
+      if (bots.length !== ids.length) throw notFound('Bot not found');
     }
-
-    const { botSkills } = schema;
     await tx
-      .delete(botSkills)
+      .delete(schema.botSkillBlocks)
       .where(
-        bySkill
-          ? and(
-              eq(botSkills.skillId, side.skillId),
-              ...(botIds.length ? [notInArray(botSkills.botId, botIds)] : []),
-            )
-          : and(
-              eq(botSkills.botId, side.botId),
-              ...(skillIds.length ? [notInArray(botSkills.skillId, skillIds)] : []),
-            ),
+        and(
+          eq(schema.botSkillBlocks.skillId, skillId),
+          ...(ids.length ? [notInArray(schema.botSkillBlocks.botId, ids)] : []),
+        ),
       );
-    const rows = botIds.flatMap((botId) =>
-      skillIds.map((skillId) => ({ workspaceId: owner.workspaceId, botId, skillId })),
-    );
-    if (rows.length) {
+    if (ids.length) {
       await tx
-        .insert(botSkills)
-        .values(rows)
-        .onConflictDoUpdate({
-          target: [botSkills.botId, botSkills.skillId],
-          set: { enabled: true },
-        });
+        .insert(schema.botSkillBlocks)
+        .values(ids.map((botId) => ({ workspaceId: owner.workspaceId, botId, skillId })))
+        .onConflictDoNothing();
     }
   });
+  return getSkill(db, owner, skillId);
 }
 
 // For runs (plan 5.3 item 4, 10.1)
 
-/** The Bot's enabled Skills. */
+/** The Skills on for the Bot: every one in its owner's library that does not block it. */
 async function enabledSkills(db: Db, botId: string) {
   return db
     .select({ skill: schema.skills })
-    .from(schema.botSkills)
-    .innerJoin(schema.skills, eq(schema.skills.id, schema.botSkills.skillId))
-    .where(and(eq(schema.botSkills.botId, botId), eq(schema.botSkills.enabled, true)))
+    .from(schema.skills)
+    .innerJoin(
+      schema.bots,
+      and(
+        eq(schema.bots.id, botId),
+        eq(schema.bots.ownerId, schema.skills.ownerId),
+        eq(schema.bots.workspaceId, schema.skills.workspaceId),
+      ),
+    )
+    .leftJoin(schema.botSkillBlocks, blockOf(schema.skills.id, schema.bots.id))
+    .where(isNull(schema.botSkillBlocks.id))
     .orderBy(asc(schema.skills.name));
 }
 
@@ -522,9 +469,9 @@ export async function skillIndex(db: Db, botId: string): Promise<SkillIndexEntry
 }
 
 /**
- * The Skills referenced with `/` (`skill_ref` parts) in `parts` that the Bot
- * has enabled, in full (S2). A deleted Skill and a Skill only another Bot of
- * the group has enabled are skipped.
+ * The Skills referenced with `/` (`skill_ref` parts) in `parts` that are on
+ * for the Bot, in full (S2). A deleted Skill and a Skill turned off for this
+ * Bot (on only for another Bot of the group) are skipped.
  */
 export async function referencedSkills(
   db: Db,
@@ -542,8 +489,8 @@ export async function referencedSkills(
 }
 
 /**
- * The Skill the owner references with `/` in a chat: theirs and enabled
- * for one of `botIds` (the chat's Bots).
+ * The Skill the owner references with `/` in a chat: theirs and on for one
+ * of `botIds` (the chat's Bots).
  */
 export async function referableSkill(
   db: Db,
@@ -556,24 +503,26 @@ export async function referableSkill(
     .from(schema.skills)
     .where(and(eq(schema.skills.id, skillId), libraryOf(owner)));
   if (!skill) throw notFound('Skill not found');
-  const [enabled] = botIds.length
+  const [usable] = botIds.length
     ? await db
-        .select({ botId: schema.botSkills.botId })
-        .from(schema.botSkills)
+        .select({ botId: schema.bots.id })
+        .from(schema.bots)
+        .leftJoin(schema.botSkillBlocks, blockOf(skill.id, schema.bots.id))
         .where(
           and(
-            eq(schema.botSkills.skillId, skill.id),
-            inArray(schema.botSkills.botId, botIds),
-            eq(schema.botSkills.enabled, true),
+            inArray(schema.bots.id, botIds),
+            eq(schema.bots.ownerId, owner.id),
+            eq(schema.bots.workspaceId, owner.workspaceId),
+            isNull(schema.botSkillBlocks.id),
           ),
         )
         .limit(1)
     : [];
-  if (!enabled) {
+  if (!usable) {
     throw new DomainError(
       400,
       'SKILL_UNAVAILABLE',
-      "Enable the Skill in the Bot's Settings before using it with /",
+      "This Skill is turned off for the Bots in this chat. Turn it on for one on the Skill's page before using it with /",
     );
   }
   return { id: skill.id, name: skill.name };
@@ -598,7 +547,7 @@ export function skillServices(deps: SkillsDeps, ctx: SkillRunContext): SkillServ
       );
       if (!found) {
         const names = rows.map(({ skill }) => skill.name).join(', ') || 'none';
-        throw new Error(`No enabled Skill named "${name}". Your Skills: ${names}`);
+        throw new Error(`No Skill named "${name}" is on for you. Your Skills: ${names}`);
       }
       const { content, importedFrom } = readable(found.skill);
       return {

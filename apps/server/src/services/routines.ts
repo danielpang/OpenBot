@@ -167,23 +167,26 @@ export async function skillProblem(
 ): Promise<string | null> {
   if (!skillId) return null;
   const [skill] = await db
-    .select({ name: schema.skills.name, enabled: schema.botSkills.enabled })
+    .select({ name: schema.skills.name, blocked: schema.botSkillBlocks.id })
     .from(schema.skills)
     .leftJoin(
-      schema.botSkills,
-      and(eq(schema.botSkills.skillId, schema.skills.id), eq(schema.botSkills.botId, botId)),
+      schema.botSkillBlocks,
+      and(
+        eq(schema.botSkillBlocks.skillId, schema.skills.id),
+        eq(schema.botSkillBlocks.botId, botId),
+      ),
     )
     .where(eq(schema.skills.id, skillId));
   if (!skill) return 'Its Skill was deleted.';
-  if (!skill.enabled) {
-    return `The Skill "${skill.name}" is not enabled for this Bot. Enable it in the Bot's Settings first.`;
+  if (skill.blocked) {
+    return `The Skill "${skill.name}" is turned off for this Bot. Turn it on for this Bot on the Skill's page first.`;
   }
   return null;
 }
 
 const skillUnavailable = (problem: string) => new DomainError(409, 'SKILL_UNAVAILABLE', problem);
 
-/** 400 unless the Skill is the owner's and enabled for the Bot (S2). */
+/** 400 unless the Skill is the owner's and on for the Bot (S2). */
 async function assertUsableSkill(db: Db, owner: Owner, botId: string, skillId: string) {
   await assertSkillOwner(db, owner, skillId);
   const problem = await skillProblem(db, botId, skillId);

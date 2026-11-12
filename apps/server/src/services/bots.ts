@@ -130,7 +130,7 @@ export async function createBot(deps: BotsDeps, owner: Owner, input: BotInput): 
     await audit(tx, owner, 'bot.create', bot.id, { handle, name: bot.name });
     // "Working in a repository" (CA12), enabled for it, where Bots can code:
     // `code_task` is offered only on an install with a computer.
-    if (computerAvailable(deps as AppDeps)) await seedBuiltinSkills(tx, owner, bot.id);
+    if (computerAvailable(deps as AppDeps)) await seedBuiltinSkills(tx, owner);
     return { botId: bot.id, hello: await storeGreeting(tx, owner, bot) };
   });
   await announceMessage(deps, hello);
@@ -299,19 +299,17 @@ export async function duplicateBot(
       toolPolicy: bot.toolPolicy,
     });
 
-    const skills = await tx
+    // The copy has the same Skills turned off as its source.
+    const blocks = await tx
       .select()
-      .from(schema.botSkills)
-      .where(and(eq(schema.botSkills.botId, bot.id), eq(schema.botSkills.enabled, true)));
-    if (skills.length) {
-      await tx.insert(schema.botSkills).values(
-        skills.map((s) => ({
-          workspaceId: s.workspaceId,
-          botId: copy.id,
-          skillId: s.skillId,
-          enabled: true,
-        })),
-      );
+      .from(schema.botSkillBlocks)
+      .where(eq(schema.botSkillBlocks.botId, bot.id));
+    if (blocks.length) {
+      await tx
+        .insert(schema.botSkillBlocks)
+        .values(
+          blocks.map((b) => ({ workspaceId: b.workspaceId, botId: copy.id, skillId: b.skillId })),
+        );
     }
 
     const connectors = await tx

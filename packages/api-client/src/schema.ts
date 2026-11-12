@@ -9230,7 +9230,7 @@ export interface paths {
       };
     };
     put?: never;
-    /** Write a Skill, enabled for every one of the owner's Bots */
+    /** Write a Skill, on for every one of the owner's Bots */
     post: {
       parameters: {
         query?: never;
@@ -9650,7 +9650,7 @@ export interface paths {
     };
     trace?: never;
   };
-  '/api/v1/skills/{id}/bots': {
+  '/api/v1/skills/{id}/blocked-bots': {
     parameters: {
       query?: never;
       header?: never;
@@ -9658,7 +9658,7 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Replace the Bots that have the Skill enabled */
+    /** Replace the Bots the Skill is turned off for; it stays on for every other Bot */
     put: {
       parameters: {
         query?: never;
@@ -9670,7 +9670,7 @@ export interface paths {
       };
       requestBody: {
         content: {
-          'application/json': components['schemas']['SkillBots'];
+          'application/json': components['schemas']['SkillBlockedBots'];
         };
       };
       responses: {
@@ -9702,106 +9702,6 @@ export interface paths {
           };
         };
         /** @description No such Skill or Bot */
-        404: {
-          headers: {
-            [name: string]: unknown;
-          };
-          content: {
-            'application/problem+json': components['schemas']['Problem'];
-          };
-        };
-      };
-    };
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/api/v1/bots/{id}/skills': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** The Bot's enabled Skills */
-    get: {
-      parameters: {
-        query?: never;
-        header?: never;
-        path: {
-          id: string;
-        };
-        cookie?: never;
-      };
-      requestBody?: never;
-      responses: {
-        /** @description The enabled Skills */
-        200: {
-          headers: {
-            [name: string]: unknown;
-          };
-          content: {
-            'application/json': components['schemas']['BotSkills'];
-          };
-        };
-        /** @description Not signed in */
-        401: {
-          headers: {
-            [name: string]: unknown;
-          };
-          content: {
-            'application/problem+json': components['schemas']['Problem'];
-          };
-        };
-        /** @description No such Bot */
-        404: {
-          headers: {
-            [name: string]: unknown;
-          };
-          content: {
-            'application/problem+json': components['schemas']['Problem'];
-          };
-        };
-      };
-    };
-    /** Replace the Bot's enabled Skills */
-    put: {
-      parameters: {
-        query?: never;
-        header?: never;
-        path: {
-          id: string;
-        };
-        cookie?: never;
-      };
-      requestBody: {
-        content: {
-          'application/json': components['schemas']['BotSkills'];
-        };
-      };
-      responses: {
-        /** @description The enabled Skills */
-        200: {
-          headers: {
-            [name: string]: unknown;
-          };
-          content: {
-            'application/json': components['schemas']['BotSkills'];
-          };
-        };
-        /** @description Not signed in */
-        401: {
-          headers: {
-            [name: string]: unknown;
-          };
-          content: {
-            'application/problem+json': components['schemas']['Problem'];
-          };
-        };
-        /** @description No such Bot or Skill */
         404: {
           headers: {
             [name: string]: unknown;
@@ -14083,13 +13983,15 @@ export interface components {
       /** Format: uuid */
       createdFromRunId: string | null;
       origin: components['schemas']['SkillOrigin'];
-      /** @description Bots that have the Skill enabled */
+      /** @description The owner's Bots it is on for: all but the blocked ones */
       usedBy: {
         /** Format: uuid */
         id: string;
         name: string;
         handle: string;
       }[];
+      /** @description The owner's Bots it is turned off for */
+      blockedBotIds: string[];
       /** Format: date-time */
       createdAt: string;
       /** Format: date-time */
@@ -14176,13 +14078,9 @@ export interface components {
       /** @description Markdown */
       content?: string;
     };
-    SkillBots: {
-      /** @description The Bots that have it enabled */
+    SkillBlockedBots: {
+      /** @description The Bots the Skill is turned off for */
       botIds: string[];
-    };
-    BotSkills: {
-      /** @description The enabled Skills */
-      skillIds: string[];
     };
     WebhookEndpoint: {
       /** Format: uuid */

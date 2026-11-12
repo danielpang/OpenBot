@@ -511,7 +511,7 @@ describe('routines', () => {
     expect(await after.json()).toMatchObject({ enabled: false, nextRunAt: null });
   });
 
-  it('runs only a Skill the Bot has enabled, and says why when it cannot (S2)', async () => {
+  it('runs only a Skill that is on for the Bot, and says why when it cannot (S2)', async () => {
     const { bot, model } = await newBot('Skilled', [[{ text: 'Report done.' }]]);
     const newSkill = async (name: string) => {
       const res = await call('POST', '/skills', {
@@ -534,10 +534,13 @@ describe('routines', () => {
       expect(body.code).toBe('SKILL_UNAVAILABLE');
       expect(JSON.stringify(body)).toMatch(message);
     };
-    // New Skills start enabled for every Bot; turned off here, it is refused.
-    await call('PUT', `/bots/${bot.id}/skills`, { skillIds: [] });
-    await refused(ready.id, /not enabled for this Bot/);
-    await call('PUT', `/bots/${bot.id}/skills`, { skillIds: [ready.id] });
+    const block = (skillId: string, botIds: string[]) =>
+      call('PUT', `/skills/${skillId}/blocked-bots`, { botIds });
+    // Skills are on by default; turned off for this Bot, it is refused.
+    await block(ready.id, [bot.id]);
+    await block(other.id, [bot.id]);
+    await refused(ready.id, /turned off for this Bot/);
+    await block(ready.id, []);
     const routine = await newRoutine(bot.id, {
       name: 'Report',
       skillId: ready.id,
@@ -549,7 +552,7 @@ describe('routines', () => {
     expect((await call('PATCH', `/routines/${routine.id}`, { name: 'Report' })).status).toBe(200);
 
     // The Skill is turned off: due slots record a failure, start no run and post one event row.
-    await call('PUT', `/bots/${bot.id}/skills`, { skillIds: [] });
+    await block(ready.id, [bot.id]);
     const due = () =>
       t.db
         .update(schema.routines)
@@ -563,7 +566,7 @@ describe('routines', () => {
     expect(records).toHaveLength(2);
     for (const record of records) {
       expect(record).toMatchObject({ status: 'failed', runId: null });
-      expect(record.exception).toMatch(/"Weekly report" is not enabled for this Bot/);
+      expect(record.exception).toMatch(/"Weekly report" is turned off for this Bot/);
     }
     const events = (await messagesOf(bot.chatId)).flatMap((m) =>
       (m.parts as MessagePart[]).filter((p) => p.type === 'event' && p.kind === 'routine_skipped'),
@@ -578,8 +581,8 @@ describe('routines', () => {
     expect(now.status).toBe(409);
     expect(await now.json()).toMatchObject({ code: 'SKILL_UNAVAILABLE' });
 
-    // Enabled again: it runs, with the Skill in full.
-    await call('PUT', `/bots/${bot.id}/skills`, { skillIds: [ready.id] });
+    // On again: it runs, with the Skill in full.
+    await block(ready.id, []);
     expect((await call('POST', `/routines/${routine.id}/run-now`)).status).toBe(201);
     await until(() => expect(model.calls).toHaveLength(1));
     expect(promptText(model.calls[0]!)).toContain(

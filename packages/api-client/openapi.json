@@ -7343,7 +7343,15 @@
               },
               "required": ["id", "name", "handle"]
             },
-            "description": "Bots that have the Skill enabled"
+            "description": "The owner's Bots it is on for: all but the blocked ones"
+          },
+          "blockedBotIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The owner's Bots it is turned off for"
           },
           "createdAt": {
             "type": "string",
@@ -7364,6 +7372,7 @@
           "createdFromRunId",
           "origin",
           "usedBy",
+          "blockedBotIds",
           "createdAt",
           "updatedAt"
         ]
@@ -7600,7 +7609,7 @@
         },
         "additionalProperties": false
       },
-      "SkillBots": {
+      "SkillBlockedBots": {
         "type": "object",
         "properties": {
           "botIds": {
@@ -7610,26 +7619,10 @@
               "format": "uuid"
             },
             "maxItems": 500,
-            "description": "The Bots that have it enabled"
+            "description": "The Bots the Skill is turned off for"
           }
         },
         "required": ["botIds"],
-        "additionalProperties": false
-      },
-      "BotSkills": {
-        "type": "object",
-        "properties": {
-          "skillIds": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "maxItems": 500,
-            "description": "The enabled Skills"
-          }
-        },
-        "required": ["skillIds"],
         "additionalProperties": false
       },
       "WebhookEndpoint": {
@@ -18836,7 +18829,7 @@
       },
       "post": {
         "tags": ["skills"],
-        "summary": "Write a Skill, enabled for every one of the owner's Bots",
+        "summary": "Write a Skill, on for every one of the owner's Bots",
         "security": [
           {
             "session": []
@@ -19301,10 +19294,10 @@
         }
       }
     },
-    "/api/v1/skills/{id}/bots": {
+    "/api/v1/skills/{id}/blocked-bots": {
       "put": {
         "tags": ["skills"],
-        "summary": "Replace the Bots that have the Skill enabled",
+        "summary": "Replace the Bots the Skill is turned off for; it stays on for every other Bot",
         "security": [
           {
             "session": []
@@ -19329,7 +19322,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SkillBots"
+                "$ref": "#/components/schemas/SkillBlockedBots"
               }
             }
           }
@@ -19367,128 +19360,6 @@
           },
           "404": {
             "description": "No such Skill or Bot",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/bots/{id}/skills": {
-      "get": {
-        "tags": ["bots"],
-        "summary": "The Bot's enabled Skills",
-        "security": [
-          {
-            "session": []
-          },
-          {
-            "apiKey": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The enabled Skills",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BotSkills"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Not signed in",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No such Bot",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": ["bots"],
-        "summary": "Replace the Bot's enabled Skills",
-        "security": [
-          {
-            "session": []
-          },
-          {
-            "apiKey": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BotSkills"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The enabled Skills",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BotSkills"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Not signed in",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No such Bot or Skill",
             "content": {
               "application/problem+json": {
                 "schema": {

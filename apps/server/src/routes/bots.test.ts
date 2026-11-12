@@ -367,10 +367,9 @@ describe('/api/v1/bots', () => {
         { workspaceId, ownerId: aliceId, name: 'Off', slug: 'off' },
       ])
       .returning();
-    await db.insert(schema.botSkills).values([
-      { workspaceId, botId: source.id, skillId: on!.id, enabled: true },
-      { workspaceId, botId: source.id, skillId: off!.id, enabled: false },
-    ]);
+    await db
+      .insert(schema.botSkillBlocks)
+      .values({ workspaceId, botId: source.id, skillId: off!.id });
     await db.insert(schema.routines).values([
       {
         workspaceId,
@@ -414,11 +413,13 @@ describe('/api/v1/bots', () => {
       state: { state: 'idle' },
     });
 
-    const skills = await db
+    // The copy has the same Skills turned off: 'Off' only.
+    const blocks = await db
       .select()
-      .from(schema.botSkills)
-      .where(eq(schema.botSkills.botId, copy.id));
-    expect(skills.map((s) => s.skillId)).toEqual([on!.id]);
+      .from(schema.botSkillBlocks)
+      .where(eq(schema.botSkillBlocks.botId, copy.id));
+    expect(blocks.map((b) => b.skillId)).toEqual([off!.id]);
+    expect(on).toBeTruthy();
     const routines = await db
       .select()
       .from(schema.routines)

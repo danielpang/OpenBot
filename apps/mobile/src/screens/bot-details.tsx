@@ -11,7 +11,6 @@ import { useBots, type Bot } from './data';
 import { AcceptEdits } from '../components/accept-edits';
 import { BotAppearance } from './bot-appearance';
 import { BotModel } from './bot-model';
-import { BotSkills } from '../skills/bot-skills';
 import { RunSteps } from './run-activity';
 
 type Tab = 'Activity' | 'Artifacts' | 'Routines' | 'About';
@@ -283,9 +282,6 @@ function About({ bot }: { bot: Bot }) {
             .map(([name, policy]) => `${name} · ${policy}`)
             .join('\n') || 'Default tool policies'}
         </Label>
-      </Section>
-      <Section title="Skills">
-        <BotSkills botId={bot.id} />
       </Section>
       <Button
         title={bot.pinned ? 'Unpin Bot' : 'Pin Bot'}

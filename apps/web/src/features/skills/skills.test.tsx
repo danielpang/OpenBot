@@ -4,7 +4,6 @@ import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { matchSkills, type Skill } from './api.js';
-import { BotSkillsForm } from './bot-skills.js';
 import { SkillBotsForm } from './skill-bots.js';
 import { SkillEditor, SkillList, usedByText } from './skills-page.js';
 
@@ -22,7 +21,6 @@ const server = vi.hoisted(() => {
     state.requests.push({ method: request.method, path, body });
     if (state.reply) return state.reply;
     if (request.method === 'DELETE') return new Response(null, { status: 204 });
-    if (path.endsWith('/skills') && request.method === 'PUT') return Response.json(body);
     return Response.json({ id: 'new-1', usedBy: [], ...body }, { status: 201 });
   };
   return state;
@@ -78,6 +76,7 @@ const skill = (overrides: Partial<Skill> = {}): Skill => ({
   createdFromRunId: null,
   origin: null,
   usedBy: [],
+  blockedBotIds: [],
   createdAt: '2026-10-18T00:00:00.000Z',
   updatedAt: '2026-10-18T00:00:00.000Z',
   ...overrides,
@@ -189,13 +188,13 @@ describe('Skills library', () => {
       />,
     );
     const rows = [...host.querySelectorAll('li')].map((li) => li.textContent);
-    expect(rows).toEqual(['Weekly reportFridaysUsed by Ada', 'TriageNot enabled for any Bot']);
+    expect(rows).toEqual(['Weekly reportFridaysUsed by Ada', 'TriageTurned off for every Bot']);
     act(() => host.querySelectorAll('button')[1]!.click());
     expect(open).toHaveBeenCalledWith('s2');
   });
 
   it('words "used by" and matches the / query', () => {
-    expect(usedByText([])).toBe('Not enabled for any Bot');
+    expect(usedByText([])).toBe('Turned off for every Bot');
     expect(usedByText([{ name: 'Ada' }, { name: 'Bo' }, { name: 'Cy' }])).toBe(
       'Used by Ada, Bo and Cy',
     );
@@ -220,49 +219,29 @@ describe('Skills library', () => {
   });
 });
 
-describe('<BotSkillsForm>', () => {
-  it("replaces the Bot's enabled Skills", async () => {
-    render(
-      <BotSkillsForm
-        botId="b1"
-        skills={[skill(), skill({ id: 's2', name: 'Triage' })]}
-        enabled={['s1']}
-      />,
-    );
-    expect(button('Save Skills')!.disabled).toBe(true);
-    const boxes = host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
-    expect([...boxes].map((b) => b.checked)).toEqual([true, false]);
-    act(() => boxes[0]!.click());
-    act(() => boxes[1]!.click());
-    await click('Save Skills');
-    await settle();
-    expect(server.requests).toEqual([
-      { method: 'PUT', path: '/api/v1/bots/b1/skills', body: { skillIds: ['s2'] } },
-    ]);
-  });
-});
-
 describe('<SkillBotsForm>', () => {
-  it('turns the Skill off for a Bot from the Skill', async () => {
+  it('turns the Skill off for the unticked Bots and back on for the ticked ones', async () => {
     render(
       <SkillBotsForm
         skillId="s1"
         bots={[
           { id: 'b1', name: 'Ada', handle: 'ada' },
           { id: 'b2', name: 'Bo', handle: 'bo' },
+          { id: 'b3', name: 'Cy', handle: 'cy' },
         ]}
-        enabled={['b1', 'b2']}
+        blocked={['b3']}
       />,
     );
-    expect(host.textContent).toContain('New Skills start on for every Bot.');
+    expect(host.textContent).toContain('On for every Bot, including new ones.');
     expect(button('Save Bots')!.disabled).toBe(true);
     const boxes = host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
-    expect([...boxes].map((b) => b.checked)).toEqual([true, true]);
+    expect([...boxes].map((b) => b.checked)).toEqual([true, true, false]);
     act(() => boxes[0]!.click());
+    act(() => boxes[2]!.click());
     await click('Save Bots');
     await settle();
     expect(server.requests).toEqual([
-      { method: 'PUT', path: '/api/v1/skills/s1/bots', body: { botIds: ['b2'] } },
+      { method: 'PUT', path: '/api/v1/skills/s1/blocked-bots', body: { botIds: ['b1'] } },
     ]);
   });
 });
