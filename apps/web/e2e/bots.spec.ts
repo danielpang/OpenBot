@@ -44,7 +44,7 @@ test('create a Bot from a name and an icon, and it asks what to work on', async 
   const response = await saved;
   expect(response.ok()).toBe(true);
   expect((await response.json()).avatar.shape).toBe('rounded');
-  await expect(save).toHaveAttribute('aria-busy', 'false');
+  await expect(save).not.toHaveAttribute('data-save-state', 'saving');
   await expect(save).toBeDisabled();
   await page.reload();
   await expect(
