@@ -53,17 +53,9 @@ type SkillsDeps = Pick<AppDeps, 'db' | 'config'>;
 
 export type SkillRow = typeof schema.skills.$inferSelect;
 
-export interface SkillUser {
-  id: string;
-  name: string;
-  handle: string;
-}
-
 export interface SkillRecord {
   skill: SkillRow;
-  /** The owner's Bots it is on for ("used by"): every one not blocked. */
-  usedBy: SkillUser[];
-  /** The owner's Bots it is turned off for. */
+  /** The owner's Bots it is turned off for; it is on for every other one. */
   blockedBotIds: string[];
 }
 
@@ -159,40 +151,20 @@ async function freeSlug(tx: Db, owner: Owner, base: string, except?: string): Pr
 const blockOf = (skillId: AnyColumn | string, botId: AnyColumn) =>
   and(eq(schema.botSkillBlocks.skillId, skillId), eq(schema.botSkillBlocks.botId, botId));
 
-/** Each Skill's "used by" (its owner's Bots, less the blocked ones) and its blocks. */
-async function withUsers(db: Db, rows: SkillRow[]): Promise<SkillRecord[]> {
+/** Each Skill with the Bots it is turned off for, from one read of their blocks. */
+async function withBlocks(db: Db, rows: SkillRow[]): Promise<SkillRecord[]> {
   const ids = rows.map((r) => r.id);
-  if (!ids.length) return [];
-  const bots = await db
-    .select({
-      skillId: schema.skills.id,
-      id: schema.bots.id,
-      name: schema.bots.name,
-      handle: schema.bots.handle,
-      blocked: schema.botSkillBlocks.id,
-    })
-    .from(schema.skills)
-    .innerJoin(
-      schema.bots,
-      and(
-        eq(schema.bots.ownerId, schema.skills.ownerId),
-        eq(schema.bots.workspaceId, schema.skills.workspaceId),
-      ),
-    )
-    .leftJoin(schema.botSkillBlocks, blockOf(schema.skills.id, schema.bots.id))
-    .where(inArray(schema.skills.id, ids))
-    .orderBy(asc(schema.bots.name));
-  const users = new Map<string, SkillUser[]>();
+  const blocks = ids.length
+    ? await db
+        .select({ skillId: schema.botSkillBlocks.skillId, botId: schema.botSkillBlocks.botId })
+        .from(schema.botSkillBlocks)
+        .where(inArray(schema.botSkillBlocks.skillId, ids))
+    : [];
   const blocked = new Map<string, string[]>();
-  for (const { skillId, blocked: block, ...bot } of bots) {
-    if (block) blocked.set(skillId, [...(blocked.get(skillId) ?? []), bot.id]);
-    else users.set(skillId, [...(users.get(skillId) ?? []), bot]);
+  for (const { skillId, botId } of blocks) {
+    blocked.set(skillId, [...(blocked.get(skillId) ?? []), botId]);
   }
-  return rows.map((skill) => ({
-    skill,
-    usedBy: users.get(skill.id) ?? [],
-    blockedBotIds: blocked.get(skill.id) ?? [],
-  }));
+  return rows.map((skill) => ({ skill, blockedBotIds: blocked.get(skill.id) ?? [] }));
 }
 
 async function ownedSkill(db: Db, owner: Owner, skillId: string): Promise<SkillRow> {
@@ -221,11 +193,11 @@ export async function listSkills(db: Db, owner: Owner): Promise<SkillRecord[]> {
       and(eq(schema.skills.ownerId, owner.id), eq(schema.skills.workspaceId, owner.workspaceId)),
     )
     .orderBy(desc(schema.skills.updatedAt), asc(schema.skills.name));
-  return withUsers(db, rows);
+  return withBlocks(db, rows);
 }
 
 export async function getSkill(db: Db, owner: Owner, skillId: string): Promise<SkillRecord> {
-  const [record] = await withUsers(db, [await ownedSkill(db, owner, skillId)]);
+  const [record] = await withBlocks(db, [await ownedSkill(db, owner, skillId)]);
   return record!;
 }
 
@@ -252,8 +224,8 @@ export async function createSkill(
       .returning();
     return row!;
   });
-  const [record] = await withUsers(deps.db, [row]);
-  return record!;
+  // A new Skill has no blocks: it is on for every Bot.
+  return { skill: row, blockedBotIds: [] };
 }
 
 /**
@@ -342,7 +314,7 @@ export async function createImportedSkills(
     }
     return out;
   });
-  return withUsers(deps.db, rows);
+  return rows.map((skill) => ({ skill, blockedBotIds: [] }));
 }
 
 export async function updateSkill(

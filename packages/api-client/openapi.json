@@ -7325,33 +7325,13 @@
           "origin": {
             "$ref": "#/components/schemas/SkillOrigin"
           },
-          "usedBy": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "format": "uuid"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "handle": {
-                  "type": "string"
-                }
-              },
-              "required": ["id", "name", "handle"]
-            },
-            "description": "The owner's Bots it is on for: all but the blocked ones"
-          },
           "blockedBotIds": {
             "type": "array",
             "items": {
               "type": "string",
               "format": "uuid"
             },
-            "description": "The owner's Bots it is turned off for"
+            "description": "The owner's Bots it is turned off for; it is on for every other Bot"
           },
           "createdAt": {
             "type": "string",
@@ -7371,7 +7351,6 @@
           "source",
           "createdFromRunId",
           "origin",
-          "usedBy",
           "blockedBotIds",
           "createdAt",
           "updatedAt"

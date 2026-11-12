@@ -13983,14 +13983,7 @@ export interface components {
       /** Format: uuid */
       createdFromRunId: string | null;
       origin: components['schemas']['SkillOrigin'];
-      /** @description The owner's Bots it is on for: all but the blocked ones */
-      usedBy: {
-        /** Format: uuid */
-        id: string;
-        name: string;
-        handle: string;
-      }[];
-      /** @description The owner's Bots it is turned off for */
+      /** @description The owner's Bots it is turned off for; it is on for every other Bot */
       blockedBotIds: string[];
       /** Format: date-time */
       createdAt: string;

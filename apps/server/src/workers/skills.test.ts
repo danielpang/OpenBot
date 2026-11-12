@@ -10,7 +10,7 @@ import { registerSkillHooks } from '../services/skills.js';
 import { createTestApp, isGreeting, type TestApp } from '../test-app.js';
 import { createRunWorker, type RunModel } from './runs.js';
 
-// Skills in runs (S1 to S3, plan 5.3 item 4, 10.1): the enabled Skills index
+// Skills in runs (S1 to S3, plan 5.3 item 4, 10.1): the index of Skills on for the Bot
 // in the system prompt, the content of a `/` reference for that turn, and
 // save_skill drafting from the finished run with the small model's double.
 

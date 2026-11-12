@@ -49,12 +49,9 @@ const SkillSchema = z
     source: z.enum(['manual', 'saved_from_run', 'demonstration', 'imported']),
     createdFromRunId: z.uuid().nullable(),
     origin: SkillOriginSchema.nullable(),
-    usedBy: z
-      .array(z.object({ id: z.uuid(), name: z.string(), handle: z.string() }))
-      .openapi({ description: "The owner's Bots it is on for: all but the blocked ones" }),
-    blockedBotIds: z
-      .array(z.uuid())
-      .openapi({ description: "The owner's Bots it is turned off for" }),
+    blockedBotIds: z.array(z.uuid()).openapi({
+      description: "The owner's Bots it is turned off for; it is on for every other Bot",
+    }),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
@@ -156,7 +153,7 @@ const githubProblems = {
   504: problemResponse('GitHub took too long'),
 };
 
-function toSkill({ skill, usedBy, blockedBotIds }: SkillRecord): z.infer<typeof SkillSchema> {
+function toSkill({ skill, blockedBotIds }: SkillRecord): z.infer<typeof SkillSchema> {
   const origin = skillOrigin(skill.origin);
   return {
     id: skill.id,
@@ -177,7 +174,6 @@ function toSkill({ skill, usedBy, blockedBotIds }: SkillRecord): z.infer<typeof 
       license: origin.license,
       importedAt: origin.importedAt,
     },
-    usedBy,
     blockedBotIds,
     createdAt: skill.createdAt.toISOString(),
     updatedAt: skill.updatedAt.toISOString(),

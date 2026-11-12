@@ -53,12 +53,13 @@ const bot = {
 let root: Root;
 let host: HTMLElement;
 let sent: ReturnType<typeof vi.fn<() => void>>;
-const skill = (name: string, slug: string, usedBy = ['b1']) => ({
+/** A Skill on for the Bots in `on` (of b1 and b2): blocked for the others. */
+const skill = (name: string, slug: string, on = ['b1', 'b2']) => ({
   id: `skill-${slug}`,
   name,
   slug,
   summary: `When ${name}`,
-  usedBy: usedBy.map((id) => ({ id, name: id, handle: id })),
+  blockedBotIds: ['b1', 'b2'].filter((id) => !on.includes(id)),
 });
 
 let client: QueryClient;
@@ -145,7 +146,7 @@ describe('<Composer>', () => {
     server.skills = [
       skill('Weekly report', 'weekly-report'),
       skill('Release notes', 'release-notes'),
-      // Not offered: a Skill only another Bot has enabled (S2), or none.
+      // Not offered: a Skill on only for another Bot (S2), or for none.
       skill('Elsewhere', 'elsewhere', ['b2']),
       skill('Unused', 'unused', []),
     ];
@@ -175,7 +176,7 @@ describe('<Composer>', () => {
     expect(host.textContent).not.toContain('/release-notes');
   });
 
-  it('offers the Skills enabled for any Bot of a group', async () => {
+  it('offers the Skills on for any Bot of a group', async () => {
     server.skills = [
       skill('Mine', 'mine'),
       skill('Theirs', 'theirs', ['b2']),

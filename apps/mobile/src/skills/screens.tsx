@@ -6,6 +6,7 @@ import { File } from 'expo-file-system';
 import { unwrap } from '@openbots/api-client';
 import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbots/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { botsQueryOptions } from '../api/bots';
 import { useApi } from '../api/provider';
 import {
   Button,
@@ -26,7 +27,7 @@ import {
   parseSkillFile,
   plural,
   skillsQuery,
-  usedByText,
+  availabilityText,
   type Picked,
   type Skill,
   type SkillImportPreview,
@@ -52,6 +53,7 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
 export function SkillsScreen() {
   const api = useApi();
   const query = useQuery(skillsQuery(api));
+  const bots = useQuery(botsQueryOptions(api)).data?.items;
   const skills = query.data?.items ?? [];
   return (
     <Page>
@@ -80,7 +82,7 @@ export function SkillsScreen() {
       {skills.length ? (
         <Section title={plural(skills.length, 'Skill', 'Skills')}>
           {skills.map((skill) => (
-            <SkillRow key={skill.id} skill={skill} />
+            <SkillRow key={skill.id} skill={skill} bots={bots} />
           ))}
         </Section>
       ) : null}
@@ -88,7 +90,14 @@ export function SkillsScreen() {
   );
 }
 
-function SkillRow({ skill }: { skill: Skill }) {
+function SkillRow({
+  skill,
+  bots,
+}: {
+  skill: Skill;
+  /** The owner's Bots, once loaded, to say which ones the Skill is on for. */
+  bots?: readonly { id: string; name: string }[];
+}) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -110,8 +119,12 @@ function SkillRow({ skill }: { skill: Skill }) {
           </Label>
         ) : null}
         <Label muted size={12}>
-          {usedByText(skill.usedBy)}
-          {skill.origin ? `. Imported from ${skill.origin.repo}` : ''}
+          {[
+            bots && availabilityText(skill.blockedBotIds, bots),
+            skill.origin && `Imported from ${skill.origin.repo}`,
+          ]
+            .filter(Boolean)
+            .join('. ')}
         </Label>
       </Card>
     </Pressable>
@@ -144,6 +157,7 @@ export function SkillEditorScreen({ isNew = false }: { isNew?: boolean }) {
 
 export function SkillEditor({ skill }: { skill?: Skill }) {
   const api = useApi();
+  const bots = useQuery({ ...botsQueryOptions(api), enabled: !!skill }).data?.items;
   const cache = useQueryClient();
   const [name, setName] = useState(skill?.name ?? '');
   const [content, setContent] = useState(skill?.content ?? '');
@@ -199,16 +213,10 @@ export function SkillEditor({ skill }: { skill?: Skill }) {
   });
 
   function confirmDelete() {
-    Alert.alert(
-      `Delete ${skill!.name}?`,
-      skill!.usedBy.length
-        ? `${usedByText(skill!.usedBy)}. Deleting it removes it for every Bot.`
-        : 'This removes it from your library.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete for every Bot', style: 'destructive', onPress: () => remove.mutate() },
-      ],
-    );
+    Alert.alert(`Delete ${skill!.name}?`, 'This removes it from your library and from every Bot.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete for every Bot', style: 'destructive', onPress: () => remove.mutate() },
+    ]);
   }
 
   const busy = save.isPending || remove.isPending;
@@ -216,9 +224,11 @@ export function SkillEditor({ skill }: { skill?: Skill }) {
     <Page>
       <Stack.Screen options={{ title: skill ? skill.name : 'New Skill' }} />
       {skill ? (
-        <Label muted size={13}>
-          {usedByText(skill.usedBy)}
-        </Label>
+        bots ? (
+          <Label muted size={13}>
+            {availabilityText(skill.blockedBotIds, bots)}
+          </Label>
+        ) : null
       ) : (
         <View style={{ gap: 8 }}>
           <Button

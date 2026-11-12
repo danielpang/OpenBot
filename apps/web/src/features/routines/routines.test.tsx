@@ -93,12 +93,12 @@ const run = (patch: Partial<RoutineRun> = {}): RoutineRun => ({
   ...patch,
 });
 
-/** A Skill this Bot has enabled, unless `patch` says otherwise. */
+/** A Skill on for this Bot, unless `patch` says otherwise. */
 const skill = (patch: Record<string, unknown> = {}) => ({
   id: SKILL,
   name: 'Triage',
   slug: 'triage',
-  usedBy: [{ id: BOT, name: 'Grace', handle: 'grace' }],
+  blockedBotIds: [],
   ...patch,
 });
 
@@ -411,12 +411,20 @@ describe('the Routine editor', () => {
     });
   });
 
-  it('offers only Skills this Bot has enabled (S2)', async () => {
+  it('offers only Skills that are on for this Bot (S2)', async () => {
     server.routines = [routine({ skillId: '00000000-0000-4000-8000-0000000000f3' })];
     server.skills = [
       skill(),
-      skill({ id: '00000000-0000-4000-8000-0000000000f3', name: 'Elsewhere', usedBy: [] }),
-      skill({ id: '00000000-0000-4000-8000-0000000000f4', name: 'Other Bot', usedBy: [] }),
+      skill({
+        id: '00000000-0000-4000-8000-0000000000f3',
+        name: 'Elsewhere',
+        blockedBotIds: [BOT],
+      }),
+      skill({
+        id: '00000000-0000-4000-8000-0000000000f4',
+        name: 'Other Bot',
+        blockedBotIds: [BOT],
+      }),
     ];
     render(<RoutinesTab botId={BOT} />);
     await until(() => !!button('Edit'), 'the Routine');

@@ -27,15 +27,10 @@ export function SkillBots({ skill }: { skill: Skill }) {
     onMutate: async (blockedBotIds) => {
       await cache.cancelQueries({ queryKey: key });
       const previous = cache.getQueryData(key);
-      if (previous && bots.data) {
-        const usedBy = bots.data.items
-          .filter((b) => !blockedBotIds.includes(b.id))
-          .map(({ id, name, handle }) => ({ id, name, handle }));
+      if (previous) {
         cache.setQueryData(key, {
           ...previous,
-          items: previous.items.map((s) =>
-            s.id === skill.id ? { ...s, usedBy, blockedBotIds } : s,
-          ),
+          items: previous.items.map((s) => (s.id === skill.id ? { ...s, blockedBotIds } : s)),
         });
       }
       return { previous };

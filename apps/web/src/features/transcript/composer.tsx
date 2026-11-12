@@ -21,7 +21,7 @@ import { activeTrigger, detectLinks, replaceTrigger, type Trigger } from './comp
 // are added), links noted under the draft, `/` for the Skills picker (the
 // Skills on for one of the chat's Bots, S2; the chosen Skill rides
 // along as the message's `skill_ref` and its content is loaded for that turn by
-// each Bot that has it enabled) and `@` for the mention
+// each Bot it is on for) and `@` for the mention
 // picker: the chat's Bots, in a group `@everyone` (C5) and the Bots a
 // mention would add to it (C4). Sending while
 // the Bot is busy is an ordinary post; the server steers the run with it (C3).
@@ -31,7 +31,7 @@ type MentionBot = Pick<Bot, 'id' | 'handle' | 'name' | 'avatar'>;
 /** A row of the `@` picker. */
 export type MentionOption = { kind: 'bot'; bot: MentionBot; adds: boolean } | { kind: 'everyone' };
 
-type SkillChoice = Pick<Skill, 'id' | 'name' | 'slug' | 'summary' | 'usedBy'>;
+type SkillChoice = Pick<Skill, 'id' | 'name' | 'slug' | 'summary' | 'blockedBotIds'>;
 
 /** A row of either picker. */
 export type PickerOption = MentionOption | { kind: 'skill'; skill: SkillChoice };

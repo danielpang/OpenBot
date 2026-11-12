@@ -18,13 +18,20 @@ export const skillsQuery = (api: Client) =>
     queryFn: () => unwrap(api.GET('/api/v1/skills')),
   });
 
-/** "Used by Ada and Scout", or that it is turned off for every Bot. */
-export function usedByText(bots: readonly { name: string }[]): string {
-  if (!bots.length) return 'Turned off for every Bot';
-  const names = bots.map((b) => b.name);
-  const list =
-    names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-  return `Used by ${list}`;
+/**
+ * Where a Skill is on: no Bots yet, on for every Bot, off for some (named),
+ * or off for all of them. Every Skill is on for a Bot not in `blockedBotIds`.
+ */
+export function availabilityText(
+  blockedBotIds: readonly string[],
+  bots: readonly { id: string; name: string }[],
+): string {
+  if (!bots.length) return 'No Bots hired yet';
+  const off = bots.filter((b) => blockedBotIds.includes(b.id)).map((b) => b.name);
+  if (!off.length) return 'On for every Bot';
+  if (off.length === bots.length) return 'Turned off for every Bot';
+  const list = off.length === 1 ? off[0] : `${off.slice(0, -1).join(', ')} and ${off.at(-1)}`;
+  return `Off for ${list}`;
 }
 
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

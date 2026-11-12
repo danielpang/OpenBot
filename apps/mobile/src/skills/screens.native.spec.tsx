@@ -55,7 +55,6 @@ const skill = {
   source: 'manual',
   createdFromRunId: null,
   origin: null,
-  usedBy: [{ id: 'bot-1', name: 'Ada', handle: 'ada' }],
   blockedBotIds: ['bot-2'],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -87,10 +86,10 @@ function show(node: React.ReactElement) {
 }
 
 describe('Skills library', () => {
-  it('lists Skills with the Bots that use them and opens one', async () => {
+  it('lists Skills with where they are on and opens one', async () => {
     show(<SkillsScreen />);
     const open = await screen.findByRole('button', { name: 'Open Weekly report' });
-    expect(screen.getByText('Used by Ada')).toBeTruthy();
+    expect(await screen.findByText('Off for Bo')).toBeTruthy();
     fireEvent.press(open);
     expect(mockPush).toHaveBeenCalledWith(`/skills/${skill.id}`);
     fireEvent.press(screen.getByRole('button', { name: 'Import from GitHub' }));

@@ -128,7 +128,7 @@ export async function createBot(deps: BotsDeps, owner: Owner, input: BotInput): 
       toolPolicy: input.toolPolicy ?? {},
     });
     await audit(tx, owner, 'bot.create', bot.id, { handle, name: bot.name });
-    // "Working in a repository" (CA12), enabled for it, where Bots can code:
+    // "Working in a repository" (CA12), on for all Bots, where Bots can code:
     // `code_task` is offered only on an install with a computer.
     if (computerAvailable(deps as AppDeps)) await seedBuiltinSkills(tx, owner);
     return { botId: bot.id, hello: await storeGreeting(tx, owner, bot) };

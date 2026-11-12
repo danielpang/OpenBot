@@ -34,7 +34,7 @@ const PostMessageSchema = z
     mentionEveryone: z.boolean().optional(),
     threadRootId: z.uuid().optional().openapi({ description: 'Reply in this thread' }),
     skillId: z.uuid().optional().openapi({
-      description: "A Skill referenced with `/`: enabled for one of the chat's Bots",
+      description: "A Skill referenced with `/`: on for one of the chat's Bots",
     }),
   })
   .openapi('PostMessage');
