@@ -83,7 +83,13 @@ export async function startFakeModel({ wordDelayMs = 60 } = {}): Promise<FakeMod
       };
       const text = (m: ChatMessage | undefined) =>
         typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content ?? '');
-      const lastUser = text(body.messages.filter((m) => m.role === 'user').at(-1));
+      // The newest thing someone said: the run's context message (memories and
+      // the like, packages/agent context/assemble.ts) follows the transcript.
+      const lastUser = text(
+        body.messages
+          .filter((m) => m.role === 'user' && !text(m).includes('[system] Context for this run'))
+          .at(-1),
+      );
       const toolResult = body.messages.at(-1)?.role === 'tool' ? text(body.messages.at(-1)) : null;
       const askUser = body.tools?.find((t) => t.function.name.includes('ask_user'));
       const destroy = body.tools?.find((t) => t.function.name.endsWith('delete_everything'));
