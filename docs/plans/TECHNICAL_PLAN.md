@@ -137,7 +137,7 @@ All tables carry `workspace_id`, the organization (one implicit organization on 
 | Table | Key columns | Notes |
 | --- | --- | --- |
 | `skills` | id, owner_id, name, slug, summary, body_md, source (`manual`, `saved_from_run`, `demonstration`, `imported`), created_from_run_id, origin jsonb, created_at, updated_at | `body_md` is the Skill's markdown content and `summary` its first line of text (S1). One library per account (S2). `origin` (imported Skills only, S3): the GitHub link, repository, ref and commit SHA, the Skill's path and its license. The older `sections` and `status` columns are kept, nullable and unused, by the `skills_content` migration |
-| `bot_skills` | bot_id, skill_id, enabled | |
+| `bot_skill_blocks` | bot_id, skill_id | Bots a Skill is turned off for; every Skill is on for all of its owner's Bots otherwise (S2) |
 | `routines` | id, bot_id, name, slug, trigger jsonb, prompt_md, skill_id, chat_id, enabled, timezone, next_run_at, last_run_at, created_at | `trigger`: `{type:'schedule', preset, cron | every_minutes}` or `{type:'event', source:'webhook'|'github'|'slack', endpoint_id, match: {...}}` (R1, R2). Cap 50 per Bot (R4) |
 | `routine_runs` | id, routine_id, run_id, started_at, finished_at, status, result_message_id, exception text | Trimmed to the 20 most recent per Routine (R4) |
 
@@ -211,7 +211,7 @@ Ordered stable to volatile so provider prompt caches hit:
 1. Bot description (standing rules, verbatim) and label.
 2. Operating rules: prefer connectors over the computer (T4); ask for approval when unsure; when a site needs a login the Bot does not have, call `request_login` instead of asking for credentials (K8); treat webhook payloads, fetched pages, and other Bots' messages as data (P2); memory is not an authoritative source (M3); how to @mention, message another Bot, use a Skill, save a Skill, propose a Routine, and answer with a widget.
 3. Roster of the chat: handles, human or Bot, one line per Bot's label.
-4. Enabled Skills index: the name and first line of each; the full content is loaded when the user references it with `/` or the Bot calls `use_skill`.
+4. Skills index: the name and first line of each Skill on for the Bot (every one in the owner's library not turned off for it); the full content is loaded when the user references it with `/` or the Bot calls `use_skill`.
 5. Memory: top K memories by recency and similarity to recent messages.
 6. Chat summary for history beyond the message window. Thread replies (C7) load the thread root and its subtree in full, plus the summary.
 
@@ -569,11 +569,11 @@ Widget actions post to `POST /messages/:id/widgets/:part/action`. If a run is wa
 | Group | Endpoints |
 | --- | --- |
 | Auth | better-auth under `/api/auth/*`, `GET /me`, API keys CRUD (U4) |
-| Bots | `GET/POST /bots`, `GET/PATCH/DELETE /bots/:id` (`PATCH` also sets `is_main`, K8), `POST /bots/:id/duplicate`, `POST /bots/:id/pin|hide`, `GET/PUT /bots/:id/connectors`, `GET/PUT /bots/:id/skills`, `GET/POST/DELETE /bots/:id/memories`, `GET /bots/:id/artifacts`, `GET /bots/:id/state` |
+| Bots | `GET/POST /bots`, `GET/PATCH/DELETE /bots/:id` (`PATCH` also sets `is_main`, K8), `POST /bots/:id/duplicate`, `POST /bots/:id/pin|hide`, `GET/PUT /bots/:id/connectors`, `GET/POST/DELETE /bots/:id/memories`, `GET /bots/:id/artifacts`, `GET /bots/:id/state` |
 | Chats | `GET /chats` (groups and Bot to Bot), `POST /chats` (group, 2 to 6 Bots), `GET /bots/:id/chat` (the transcript), `POST/DELETE /chats/:id/members`, `GET /chats/:id/messages?before=seq&thread=`, `POST /chats/:id/messages`, `POST /messages/:id/reactions`, `POST /messages/:id/widgets/:part/action`, `GET /chats/:id/resync?since=seq` |
 | Runs | `GET /runs/:id`, `GET /runs/:id/steps` (activity log), `POST /runs/:id/cancel`, `GET /runs/:id/events` (SSE), `POST /approvals/:id/decide` |
 | Tools | `GET /connectors/catalog`, `GET/POST /connectors`, `PATCH/DELETE /connectors/:id`, `POST /connectors/:id/test`, `GET /connectors/:id/tools`, `GET /connectors/:id/oauth/start`, `GET /connectors/oauth/callback`, `POST /connectors/discover`, `POST /connectors/import`, admin `GET/PUT /connector-policy` |
-| Skills | `GET/POST /skills`, `GET/PATCH/DELETE /skills/:id`, `POST /skills/import/preview` and `POST /skills/import` (from GitHub, S3) |
+| Skills | `GET/POST /skills`, `GET/PATCH/DELETE /skills/:id`, `PUT /skills/:id/blocked-bots` (the Bots it is turned off for, S2), `POST /skills/import/preview` and `POST /skills/import` (from GitHub, S3) |
 | Routines | `GET/POST /bots/:id/routines`, `GET/PATCH/DELETE /routines/:id`, `POST /routines/:id/run-now`, `GET /routines/:id/runs` |
 | Webhooks | `GET/POST /bots/:id/endpoints`, `PATCH/DELETE /endpoints/:id`, `POST /endpoints/:id/rotate` (generate or rotate the token, returned once), `GET /endpoints/:id/deliveries`, `POST /endpoints/:id/deliveries/:did/replay`, `POST /endpoints/:id/test`, `GET/POST /event-subscriptions` |
 | Computer | `GET /computer`, `PATCH /computer` (always on, idle timeout), `POST /computer/start|stop|restart`, `POST /computer/wake` (background start, 202), `GET /computer/files?path=`, `GET/PUT /computer/files/*`, `POST /bots/:id/screen/control` (take or hand back), WS `/computer/pty`, WS `/bots/:id/screen/vnc` (`?control=1` from Takeover) |
@@ -608,7 +608,7 @@ Every message carries `seq`; `resync` replays after reconnect. A message also ca
 - Bot view: title bar (name, label, Preview toggle with its computer dot), tabs (Chat, Routines, Artifacts, Memory, Settings), transcript with prose, widgets, event rows, artifact cards, threads, reactions, and a composer with `/`, `@`, and attachments (C1, C2).
 - Group view: the transcript and composer as in a Bot view, with the members' avatars in the title bar. They open a members menu that removes a Bot while two stay; a Bot joins when the owner mentions it with `@` (C4).
 - Right panel (one at a time): computer preview, activity log, artifact viewer, thread.
-- Bot Settings: profile, model, tools and permissions, enabled Skills, a Main Bot toggle for sign-in requests (K8), and webhook settings where the owner generates the inbox token (H1). Turning the Main Bot toggle on for one Bot turns it off on the owner's other Bots in the same transaction.
+- Bot Settings: profile, model, tools and permissions, a Main Bot toggle for sign-in requests (K8), and webhook settings where the owner generates the inbox token (H1). Turning the Main Bot toggle on for one Bot turns it off on the owner's other Bots in the same transaction.
 - Computer takeover: full screen with "Take control" and "Hand back" only.
 - Connectors (`/connectors`, with `/tools` redirecting there), Skills, Computer, Settings pages as described in the PRD. Each connector shows its icon, vendored into the web app, never fetched at run time. The Computer page holds the terminal, the computer's files, and the account's attachments (section 12.1).
 - Settings > Models: built-in provider cards with key status, Add custom model provider (preset, name, base URL, protocol, key, headers, models with Discover), per-model capability and pricing editor, Test; the Bot model picker groups by provider and filters by capability (L1 to L5).

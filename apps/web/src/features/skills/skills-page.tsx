@@ -13,6 +13,7 @@ import type { SVGProps } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import {
+  availabilityText,
   createSkill,
   deleteSkill,
   skillsQuery,
@@ -20,19 +21,23 @@ import {
   type Skill,
   type SkillOrigin,
 } from './api.js';
+import { botsQuery } from '../bots/queries.js';
 import { ImportSkillsDialog } from './import-dialog.js';
+import { SkillBots } from './skill-bots.js';
 
 // The Skills library page (S1 to S3, plan 10.1): every Skill in the account's
-// library with the Bots that use it, and an editor for its name and content.
-// Bots get a Skill once it is enabled in their Settings.
+// library with the Bots that use it, an editor for its name and content, and
+// the Bots it is turned off for. Every Skill is on for all of the owner's
+// Bots unless its page turns it off for one.
 
 export const SKILLS_HELP =
-  'Instructions your Bots can follow. Enable them per Bot in its Settings, or type / in a chat.';
+  'Instructions your Bots can follow. Every Skill is on for all your Bots; open one to turn it off for a Bot. Type / in a chat to use one.';
 
 type Selected = { kind: 'new' } | { kind: 'skill'; id: string } | null;
 
 export function SkillsPage() {
   const { data, error } = useQuery(skillsQuery);
+  const bots = useQuery(botsQuery);
   const [selected, setSelected] = useState<Selected>(null);
   const [importing, setImporting] = useState(false);
   const skills = data?.items ?? [];
@@ -54,12 +59,15 @@ export function SkillsPage() {
         )}
       </div>
       {selected?.kind === 'new' || open ? (
-        <SkillEditor
-          key={open?.id ?? 'new'}
-          skill={open}
-          onSaved={(skill) => setSelected({ kind: 'skill', id: skill.id })}
-          onClose={() => setSelected(null)}
-        />
+        <>
+          <SkillEditor
+            key={open?.id ?? 'new'}
+            skill={open}
+            onSaved={(skill) => setSelected({ kind: 'skill', id: skill.id })}
+            onClose={() => setSelected(null)}
+          />
+          {open && <SkillBots skill={open} />}
+        </>
       ) : (
         <>
           {error && <p className="text-sm text-destructive">{error.message}</p>}
@@ -67,7 +75,11 @@ export function SkillsPage() {
             <p className="text-sm text-muted-foreground">No Skills yet.</p>
           )}
           {skills.length > 0 && (
-            <SkillList skills={skills} onOpen={(id) => setSelected({ kind: 'skill', id })} />
+            <SkillList
+              skills={skills}
+              bots={bots.data?.items}
+              onOpen={(id) => setSelected({ kind: 'skill', id })}
+            />
           )}
         </>
       )}
@@ -85,9 +97,12 @@ export function SkillsPage() {
 
 export function SkillList({
   skills,
+  bots,
   onOpen,
 }: {
   skills: readonly Skill[];
+  /** The owner's Bots, once loaded, to say which ones each Skill is on for. */
+  bots?: readonly { id: string; name: string }[];
   onOpen(id: string): void;
 }) {
   return (
@@ -102,23 +117,18 @@ export function SkillList({
             <span className="font-medium">{skill.name}</span>
             {skill.summary && <span className="text-muted-foreground">{skill.summary}</span>}
             <span className="text-xs text-muted-foreground">
-              {usedByText(skill.usedBy)}
-              {skill.origin && `. Imported from ${skill.origin.repo}`}
+              {[
+                bots && availabilityText(skill.blockedBotIds, bots),
+                skill.origin && `Imported from ${skill.origin.repo}`,
+              ]
+                .filter(Boolean)
+                .join('. ')}
             </span>
           </button>
         </li>
       ))}
     </ul>
   );
-}
-
-/** "Used by Ada and Scout", or that no Bot has it enabled. */
-export function usedByText(bots: readonly { name: string }[]): string {
-  if (!bots.length) return 'Not enabled for any Bot';
-  const names = bots.map((b) => b.name);
-  const list =
-    names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-  return `Used by ${list}`;
 }
 
 /** The editor (S1): name, content, save, delete. */
@@ -168,7 +178,6 @@ export function SkillEditor({
         <IconButton label="Back" onClick={onClose}>
           <BackIcon />
         </IconButton>
-        {skill && <span className="text-xs text-muted-foreground">{usedByText(skill.usedBy)}</span>}
       </div>
       {skill?.origin && <SkillOriginNote origin={skill.origin} />}
       <label className="flex flex-col gap-1.5 text-sm">
@@ -246,7 +255,8 @@ export function SkillOriginNote({ origin }: { origin: SkillOrigin }) {
         {origin.repo}/{origin.path}
       </a>{' '}
       at {origin.ref} ({origin.sha.slice(0, 7)}).
-      {origin.license && ` License: ${origin.license}.`} Read it before you enable it.
+      {origin.license && ` License: ${origin.license}.`} It is on for every Bot: read it, and turn
+      it off below for any Bot that should not use it.
     </p>
   );
 }

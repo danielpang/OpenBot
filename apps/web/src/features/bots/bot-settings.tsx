@@ -14,7 +14,6 @@ import { useNavigate } from '@tanstack/react-router';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useSavedCheckbox } from '../../app/saved-checkbox.js';
 import { SettingsPanel, SettingsRow, SettingsSection } from '../../app/settings-layout.js';
-import { BotSkills } from '../skills/bot-skills.js';
 import { BotTools } from '../tools/bot-tools.js';
 import { BotInbox } from '../webhooks/endpoints.js';
 import { BotModelFields } from './bot-model.js';
@@ -24,8 +23,9 @@ import { DeleteBotDialog } from './delete-bot-dialog.js';
 import { botsQuery, takenAvatars, updateBot, useBotActions, type Bot } from './queries.js';
 
 // The Bot's Settings tab (B3): profile, model, the main Bot toggle (K8),
-// tools and permissions (T1, T5), enabled Skills (S2), the webhook inbox
-// (H1), usage (plan 5.8), Duplicate (B5) and Delete (B7).
+// tools and permissions (T1, T5), the webhook inbox (H1), usage (plan 5.8),
+// Duplicate (B5) and Delete (B7). Which Skills a Bot may use is set on each
+// Skill's page (S2), not here.
 
 export const DESCRIPTION_HELP = 'Rules that always apply. Give one-off tasks in the chat.';
 
@@ -127,10 +127,6 @@ function BotSettingsForm({ bot }: { bot: Bot }) {
         description="Choose whether each tool runs, asks you first, or is refused."
       >
         <BotTools bot={bot} />
-      </SettingsSection>
-
-      <SettingsSection title="Skills" description="Skills from your library this Bot may use.">
-        <BotSkills botId={bot.id} />
       </SettingsSection>
 
       <SettingsSection title="Webhook inbox">

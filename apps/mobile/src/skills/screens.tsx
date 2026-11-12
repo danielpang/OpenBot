@@ -6,6 +6,7 @@ import { File } from 'expo-file-system';
 import { unwrap } from '@openbots/api-client';
 import { SKILL_CONTENT_MAX, SKILL_NAME_MAX } from '@openbots/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { botsQueryOptions } from '../api/bots';
 import { useApi } from '../api/provider';
 import {
   Button,
@@ -26,20 +27,21 @@ import {
   parseSkillFile,
   plural,
   skillsQuery,
-  usedByText,
+  availabilityText,
   type Picked,
   type Skill,
   type SkillImportPreview,
   type SkillOrigin,
 } from './data';
+import { SkillBots } from './skill-bots';
 
 // The Skills library on iOS (S1, S3): list the account's Skills, write a new
 // one or fill it from a markdown file in Files, edit or delete one, and
-// import Skills from a GitHub link. Bots use a Skill once it is enabled for
-// them in Bot details → About.
+// import Skills from a GitHub link. Every Skill is on for all of the owner's
+// Bots; the Skill's own screen turns it off for a Bot.
 
 export const SKILLS_HELP =
-  'Instructions your Bots can follow. Enable them for a Bot in Bot details → About, or type / in a chat.';
+  'Instructions your Bots can follow. Every Skill is on for all your Bots; open one to turn it off for a Bot. Type / in a chat to use one.';
 export const IMPORT_HELP =
   'Link a GitHub repository, folder or SKILL.md file. For a private repository, add the GitHub connector on your computer first.';
 
@@ -51,6 +53,7 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
 export function SkillsScreen() {
   const api = useApi();
   const query = useQuery(skillsQuery(api));
+  const bots = useQuery(botsQueryOptions(api)).data?.items;
   const skills = query.data?.items ?? [];
   return (
     <Page>
@@ -79,7 +82,7 @@ export function SkillsScreen() {
       {skills.length ? (
         <Section title={plural(skills.length, 'Skill', 'Skills')}>
           {skills.map((skill) => (
-            <SkillRow key={skill.id} skill={skill} />
+            <SkillRow key={skill.id} skill={skill} bots={bots} />
           ))}
         </Section>
       ) : null}
@@ -87,7 +90,14 @@ export function SkillsScreen() {
   );
 }
 
-function SkillRow({ skill }: { skill: Skill }) {
+function SkillRow({
+  skill,
+  bots,
+}: {
+  skill: Skill;
+  /** The owner's Bots, once loaded, to say which ones the Skill is on for. */
+  bots?: readonly { id: string; name: string }[];
+}) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -109,8 +119,12 @@ function SkillRow({ skill }: { skill: Skill }) {
           </Label>
         ) : null}
         <Label muted size={12}>
-          {usedByText(skill.usedBy)}
-          {skill.origin ? `. Imported from ${skill.origin.repo}` : ''}
+          {[
+            bots && availabilityText(skill.blockedBotIds, bots),
+            skill.origin && `Imported from ${skill.origin.repo}`,
+          ]
+            .filter(Boolean)
+            .join('. ')}
         </Label>
       </Card>
     </Pressable>
@@ -143,6 +157,7 @@ export function SkillEditorScreen({ isNew = false }: { isNew?: boolean }) {
 
 export function SkillEditor({ skill }: { skill?: Skill }) {
   const api = useApi();
+  const bots = useQuery({ ...botsQueryOptions(api), enabled: !!skill }).data?.items;
   const cache = useQueryClient();
   const [name, setName] = useState(skill?.name ?? '');
   const [content, setContent] = useState(skill?.content ?? '');
@@ -198,16 +213,10 @@ export function SkillEditor({ skill }: { skill?: Skill }) {
   });
 
   function confirmDelete() {
-    Alert.alert(
-      `Delete ${skill!.name}?`,
-      skill!.usedBy.length
-        ? `${usedByText(skill!.usedBy)}. Deleting it removes it for every Bot.`
-        : 'This removes it from your library.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete for every Bot', style: 'destructive', onPress: () => remove.mutate() },
-      ],
-    );
+    Alert.alert(`Delete ${skill!.name}?`, 'This removes it from your library and from every Bot.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete for every Bot', style: 'destructive', onPress: () => remove.mutate() },
+    ]);
   }
 
   const busy = save.isPending || remove.isPending;
@@ -215,9 +224,11 @@ export function SkillEditor({ skill }: { skill?: Skill }) {
     <Page>
       <Stack.Screen options={{ title: skill ? skill.name : 'New Skill' }} />
       {skill ? (
-        <Label muted size={13}>
-          {usedByText(skill.usedBy)}
-        </Label>
+        bots ? (
+          <Label muted size={13}>
+            {availabilityText(skill.blockedBotIds, bots)}
+          </Label>
+        ) : null
       ) : (
         <View style={{ gap: 8 }}>
           <Button
@@ -277,6 +288,7 @@ export function SkillEditor({ skill }: { skill?: Skill }) {
       />
       {skill ? (
         <>
+          <SkillBots skill={skill} />
           <ErrorNote error={remove.error} />
           <Button
             title="Delete"
@@ -298,7 +310,8 @@ export function SkillOriginNote({ origin }: { origin: SkillOrigin }) {
     <Card style={{ gap: 6, padding: 14 }}>
       <Label muted size={13}>
         Imported from {origin.repo}/{origin.path} at {origin.ref} ({origin.sha.slice(0, 7)}).
-        {origin.license ? ` License: ${origin.license}.` : ''} Read it before you enable it.
+        {origin.license ? ` License: ${origin.license}.` : ''} It is on for every Bot: read it, and
+        turn it off below for any Bot that should not use it.
       </Label>
       <Button
         title="View on GitHub"

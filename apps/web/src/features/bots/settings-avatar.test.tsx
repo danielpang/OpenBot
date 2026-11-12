@@ -21,7 +21,6 @@ const BOT = '00000000-0000-4000-8000-0000000000b1';
 
 // The other sections load their own data; this test is about the profile form.
 vi.mock('../tools/bot-tools.js', () => ({ BotTools: () => null }));
-vi.mock('../skills/bot-skills.js', () => ({ BotSkills: () => null }));
 vi.mock('../webhooks/endpoints.js', () => ({ BotInbox: () => null }));
 vi.mock('./bot-usage.js', () => ({ BotUsageSection: () => null }));
 vi.mock('./bot-model.js', () => ({ BotModelFields: () => null }));

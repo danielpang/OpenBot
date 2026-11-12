@@ -10,7 +10,7 @@ import { registerSkillHooks } from '../services/skills.js';
 import { createTestApp, isGreeting, type TestApp } from '../test-app.js';
 import { createRunWorker, type RunModel } from './runs.js';
 
-// Skills in runs (S1 to S3, plan 5.3 item 4, 10.1): the enabled Skills index
+// Skills in runs (S1 to S3, plan 5.3 item 4, 10.1): the index of Skills on for the Bot
 // in the system prompt, the content of a `/` reference for that turn, and
 // save_skill drafting from the finished run with the small model's double.
 
@@ -89,13 +89,12 @@ describe('Skills in runs', () => {
       return runs;
     });
 
-  it('puts the enabled Skills in the index and a referenced one in full in that turn', async () => {
+  it('puts the Skills on for the Bot in the index and a referenced one in full in that turn', async () => {
     const { bot, model } = await newBot('Indexer', [[{ text: 'Sure.' }], [{ text: 'Again.' }]]);
     const report = await skill('Weekly report', 'Fridays.\n\n1. Collect the week');
-    const bare = await skill('Bare', '');
-    const notEnabled = await skill('Elsewhere', 'Other Bots.');
-    expect(notEnabled.id).toBeTruthy();
-    await call('PUT', `/bots/${bot.id}/skills`, { skillIds: [report.id, bare.id] });
+    await skill('Bare', '');
+    const elsewhere = await skill('Elsewhere', 'Other Bots.');
+    await call('PUT', `/skills/${elsewhere.id}/blocked-bots`, { botIds: [bot.id] });
 
     await call('POST', `/chats/${bot.chatId}/messages`, { text: 'Do it', skillId: report.id });
     await settled(bot.id, 1);
@@ -120,7 +119,6 @@ describe('Skills in runs', () => {
       .update(schema.skills)
       .set({ source: 'imported', origin: { kind: 'github', repo: 'acme/skills' } })
       .where(eq(schema.skills.id, imported.id));
-    await call('PUT', `/bots/${bot.id}/skills`, { skillIds: [imported.id] });
     await call('POST', `/chats/${bot.chatId}/messages`, { text: 'Go', skillId: imported.id });
     await settled(bot.id, 1);
     expect(promptText(model.calls[0]!)).toContain(
@@ -128,11 +126,12 @@ describe('Skills in runs', () => {
     );
   });
 
-  it('loads a / reference in a group only for the Bots that have the Skill enabled (S2)', async () => {
+  it('loads a / reference in a group only for the Bots the Skill is on for (S2)', async () => {
     const { bot: a, model: aModel } = await newBot('Holder', [[{ text: 'On it.' }]]);
     const { bot: b, model: bModel } = await newBot('Bystander', [[{ text: 'Watching.' }]]);
     const plan = await skill('Launch plan', 'Before a launch.\n\nEvery step has an owner.');
-    await call('PUT', `/bots/${a.id}/skills`, { skillIds: [plan.id] });
+    // On by default; turned off for the second Bot.
+    await call('PUT', `/skills/${plan.id}/blocked-bots`, { botIds: [b.id] });
     const res = await call('POST', '/chats', { botIds: [a.id, b.id] });
     const chat = (await res.json()) as { id: string };
     const sent = await call('POST', `/chats/${chat.id}/messages`, {

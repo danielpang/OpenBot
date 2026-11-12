@@ -100,7 +100,7 @@ describe('app', () => {
         '/api/v1/routines/{id}/runs',
         '/api/v1/skills',
         '/api/v1/skills/{id}',
-        '/api/v1/bots/{id}/skills',
+        '/api/v1/skills/{id}/blocked-bots',
         '/api/v1/bots/{id}/endpoints',
         '/api/v1/endpoints/{id}',
         '/api/v1/endpoints/{id}/rotate',

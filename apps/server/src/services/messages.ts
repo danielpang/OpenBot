@@ -309,7 +309,7 @@ export async function postUserMessage(
 
   const parts: MessagePart[] = [];
   if (input.skillId) {
-    // Only a Skill one of the chat's Bots has enabled (S2).
+    // Only a Skill that is on for one of the chat's Bots (S2).
     const skill = await referableSkill(db, owner, input.skillId, await chatBotIds(db, chat!));
     parts.push({ type: 'skill_ref', skill_id: skill.id, name: skill.name });
   }

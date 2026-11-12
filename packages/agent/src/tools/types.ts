@@ -72,7 +72,7 @@ export interface DraftedSkill {
 
 /** The owner's Skills library as the run's Bot sees it (S2, plan 10.1). */
 export interface SkillServices {
-  /** An enabled Skill by name or slug; throws when the Bot has none by that name. */
+  /** A Skill on for the Bot, by name or slug; throws when the Bot has none by that name. */
   load(name: string): Promise<LoadedSkill>;
   /** Drafts a Skill from the finished work in this chat with the small model and stores it. */
   draft(input: { name?: string; notes?: string }): Promise<DraftedSkill>;

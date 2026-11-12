@@ -89,7 +89,6 @@ const SAMPLE_BODIES: Record<string, unknown> = {
   'post /api/v1/bots/{id}/memories': { content: 'a fact', kind: 'fact' },
   'patch /api/v1/bots/{id}/memories/{memoryId}': { content: 'changed' },
   'put /api/v1/bots/{id}/connectors': { items: [] },
-  'put /api/v1/bots/{id}/skills': { skillIds: [] },
   'post /api/v1/bots/{id}/screen/control': { action: 'take' },
   'post /api/v1/bots/{id}/routines': {
     name: 'Daily',
@@ -110,6 +109,7 @@ const SAMPLE_BODIES: Record<string, unknown> = {
   'put /api/v1/artifacts/{id}': { content: 'overwritten' },
   'patch /api/v1/routines/{id}': { name: 'Taken' },
   'patch /api/v1/skills/{id}': { name: 'Taken' },
+  'put /api/v1/skills/{id}/blocked-bots': { botIds: [] },
   'patch /api/v1/endpoints/{id}': { slug: 'taken' },
   'post /api/v1/endpoints/{id}/test': { payload: {} },
   'patch /api/v1/event-subscriptions/{id}': { enabled: false },
@@ -536,7 +536,7 @@ describe('organizations are isolated (plan 21.3)', () => {
     const refused = async (res: Response | Promise<Response>) =>
       expect([403, 404]).toContain((await res).status);
     await refused(
-      call(carolInB, 'put', `/api/v1/bots/${mine.id}/skills`, { skillIds: [ids.skill] }),
+      call(carolInB, 'put', `/api/v1/skills/${ids.skill}/blocked-bots`, { botIds: [mine.id] }),
     );
     await refused(
       call(carolInB, 'put', `/api/v1/bots/${mine.id}/connectors`, {

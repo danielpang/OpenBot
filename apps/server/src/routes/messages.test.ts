@@ -206,9 +206,6 @@ describe('chats and messages', () => {
           slug: 'triage',
         })
         .returning();
-      await db
-        .insert(schema.botSkills)
-        .values({ workspaceId: workspace.id, botId: ada.id, skillId: skill!.id });
       const message = await post(ada.chatId, {
         text: 'look',
         attachments: [image!.id, doc!.id],
@@ -222,7 +219,7 @@ describe('chats and messages', () => {
       ]);
     });
 
-    it('references only a Skill one of the chat Bots has enabled with / (S2)', async () => {
+    it('references only a Skill that is on for one of the chat Bots with / (S2)', async () => {
       const { db } = t;
       const workspace = await ensureWorkspace(db);
       const insert = async (slug: string) =>
@@ -234,20 +231,22 @@ describe('chats and messages', () => {
         )[0]!;
       const graces = await insert('graces-ref');
       const off = await insert('off-ref');
-      await db.insert(schema.botSkills).values([
-        { workspaceId: workspace.id, botId: grace.id, skillId: graces.id },
-        { workspaceId: workspace.id, botId: ada.id, skillId: off.id, enabled: false },
+      // Both are turned off for Ada; graces-ref stays on for Grace.
+      await db.insert(schema.botSkillBlocks).values([
+        { workspaceId: workspace.id, botId: ada.id, skillId: graces.id },
+        { workspaceId: workspace.id, botId: ada.id, skillId: off.id },
       ]);
       const refuse = async (chatId: string, skillId: string, title: string) => {
         const res = await call(alice, 'POST', `/chats/${chatId}/messages`, { text: 'x', skillId });
         expect(res.status).toBe(400);
         expect(await res.json()).toMatchObject({ code: 'SKILL_UNAVAILABLE', title });
       };
-      const enable = "Enable the Skill in the Bot's Settings before using it with /";
+      const enable =
+        "This Skill is turned off for the Bots in this chat. Turn it on for one on the Skill's page before using it with /";
       await refuse(ada.chatId, graces.id, enable);
       await refuse(ada.chatId, off.id, enable);
 
-      // In a group, a Skill any member Bot has enabled.
+      // In a group, a Skill that is on for any member Bot.
       const res = await call(alice, 'POST', '/chats', { botIds: [ada.id, grace.id] });
       const groupChat = (await res.json()) as Chat;
       const message = await post(groupChat.id, { text: 'go', skillId: graces.id });

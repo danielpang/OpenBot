@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { matchSkills, type Skill } from './api.js';
-import { BotSkillsForm } from './bot-skills.js';
-import { SkillEditor, SkillList, usedByText } from './skills-page.js';
+import { availabilityText, matchSkills, type Skill } from './api.js';
+import { SkillBotsForm } from './skill-bots.js';
+import { SkillEditor, SkillList } from './skills-page.js';
 
 const server = vi.hoisted(() => {
   const state = {
@@ -21,8 +21,7 @@ const server = vi.hoisted(() => {
     state.requests.push({ method: request.method, path, body });
     if (state.reply) return state.reply;
     if (request.method === 'DELETE') return new Response(null, { status: 204 });
-    if (path.endsWith('/skills') && request.method === 'PUT') return Response.json(body);
-    return Response.json({ id: 'new-1', usedBy: [], ...body }, { status: 201 });
+    return Response.json({ id: 'new-1', blockedBotIds: [], ...body }, { status: 201 });
   };
   return state;
 });
@@ -76,7 +75,7 @@ const skill = (overrides: Partial<Skill> = {}): Skill => ({
   source: 'manual',
   createdFromRunId: null,
   origin: null,
-  usedBy: [],
+  blockedBotIds: [],
   createdAt: '2026-10-18T00:00:00.000Z',
   updatedAt: '2026-10-18T00:00:00.000Z',
   ...overrides,
@@ -137,7 +136,7 @@ describe('<SkillEditor>', () => {
       />,
     );
     expect(host.textContent).toContain(
-      'Imported from acme/skills/pdf/SKILL.md at main (abcdef1). License: MIT. Read it before you enable it.',
+      'Imported from acme/skills/pdf/SKILL.md at main (abcdef1). License: MIT. It is on for every Bot: read it, and turn it off below for any Bot that should not use it.',
     );
   });
 
@@ -159,13 +158,7 @@ describe('<SkillEditor>', () => {
 
   it('asks once more before deleting', async () => {
     const close = vi.fn();
-    render(
-      <SkillEditor
-        skill={skill({ usedBy: [{ id: 'b1', name: 'Ada', handle: 'ada' }] })}
-        onClose={close}
-      />,
-    );
-    expect(host.textContent).toContain('Used by Ada');
+    render(<SkillEditor skill={skill()} onClose={close} />);
     await click('Delete');
     expect(server.requests).toEqual([]);
     await click('Delete for every Bot');
@@ -176,36 +169,42 @@ describe('<SkillEditor>', () => {
 });
 
 describe('Skills library', () => {
-  it('lists each Skill with its summary and the Bots that use it', () => {
+  it('lists each Skill with its summary and where it is on', () => {
     const open = vi.fn();
     render(
       <SkillList
-        skills={[
-          skill({ usedBy: [{ id: 'b1', name: 'Ada', handle: 'ada' }] }),
-          skill({ id: 's2', name: 'Triage', summary: '' }),
+        skills={[skill(), skill({ id: 's2', name: 'Triage', summary: '', blockedBotIds: ['b1'] })]}
+        bots={[
+          { id: 'b1', name: 'Ada' },
+          { id: 'b2', name: 'Bo' },
         ]}
         onOpen={open}
       />,
     );
     const rows = [...host.querySelectorAll('li')].map((li) => li.textContent);
-    expect(rows).toEqual(['Weekly reportFridaysUsed by Ada', 'TriageNot enabled for any Bot']);
+    expect(rows).toEqual(['Weekly reportFridaysOn for every Bot', 'TriageOff for Ada']);
     act(() => host.querySelectorAll('button')[1]!.click());
     expect(open).toHaveBeenCalledWith('s2');
   });
 
-  it('words "used by" and matches the / query', () => {
-    expect(usedByText([])).toBe('Not enabled for any Bot');
-    expect(usedByText([{ name: 'Ada' }, { name: 'Bo' }, { name: 'Cy' }])).toBe(
-      'Used by Ada, Bo and Cy',
-    );
-    const ada = [{ id: 'b1', name: 'Ada', handle: 'ada' }];
-    const list = [
-      skill({ name: 'Zeta', slug: 'zeta', usedBy: ada }),
-      skill({ name: 'Weekly report', slug: 'weekly-report', usedBy: ada }),
-      skill({ name: 'Alpha week', slug: 'alpha-week', usedBy: ada }),
-      skill({ name: 'Other week', slug: 'other-week' }),
+  it('words where a Skill is on and matches the / query', () => {
+    const bots = [
+      { id: 'b1', name: 'Ada' },
+      { id: 'b2', name: 'Bo' },
+      { id: 'b3', name: 'Cy' },
     ];
-    // Only Skills enabled for one of the chat's Bots (S2).
+    expect(availabilityText([], [])).toBe('No Bots hired yet');
+    expect(availabilityText(['b1'], [])).toBe('No Bots hired yet');
+    expect(availabilityText([], bots)).toBe('On for every Bot');
+    expect(availabilityText(['b1', 'b3'], bots)).toBe('Off for Ada and Cy');
+    expect(availabilityText(['b1', 'b2', 'b3'], bots)).toBe('Turned off for every Bot');
+    const list = [
+      skill({ name: 'Zeta', slug: 'zeta', blockedBotIds: ['b2'] }),
+      skill({ name: 'Weekly report', slug: 'weekly-report', blockedBotIds: ['b2'] }),
+      skill({ name: 'Alpha week', slug: 'alpha-week', blockedBotIds: ['b2'] }),
+      skill({ name: 'Other week', slug: 'other-week', blockedBotIds: ['b1', 'b2'] }),
+    ];
+    // Only Skills on for one of the chat's Bots (S2).
     expect(matchSkills(list, 'WEEK', ['b1']).map((s) => s.name)).toEqual([
       'Alpha week',
       'Weekly report',
@@ -219,24 +218,29 @@ describe('Skills library', () => {
   });
 });
 
-describe('<BotSkillsForm>', () => {
-  it("replaces the Bot's enabled Skills", async () => {
+describe('<SkillBotsForm>', () => {
+  it('turns the Skill off for the unticked Bots and back on for the ticked ones', async () => {
     render(
-      <BotSkillsForm
-        botId="b1"
-        skills={[skill(), skill({ id: 's2', name: 'Triage' })]}
-        enabled={['s1']}
+      <SkillBotsForm
+        skillId="s1"
+        bots={[
+          { id: 'b1', name: 'Ada', handle: 'ada' },
+          { id: 'b2', name: 'Bo', handle: 'bo' },
+          { id: 'b3', name: 'Cy', handle: 'cy' },
+        ]}
+        blocked={['b3']}
       />,
     );
-    expect(button('Save Skills')!.disabled).toBe(true);
+    expect(host.textContent).toContain('On for every Bot, including new ones.');
+    expect(button('Save Bots')!.disabled).toBe(true);
     const boxes = host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
-    expect([...boxes].map((b) => b.checked)).toEqual([true, false]);
+    expect([...boxes].map((b) => b.checked)).toEqual([true, true, false]);
     act(() => boxes[0]!.click());
-    act(() => boxes[1]!.click());
-    await click('Save Skills');
+    act(() => boxes[2]!.click());
+    await click('Save Bots');
     await settle();
     expect(server.requests).toEqual([
-      { method: 'PUT', path: '/api/v1/bots/b1/skills', body: { skillIds: ['s2'] } },
+      { method: 'PUT', path: '/api/v1/skills/s1/blocked-bots', body: { botIds: ['b1'] } },
     ]);
   });
 });

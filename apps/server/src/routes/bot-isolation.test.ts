@@ -20,7 +20,6 @@ const SAMPLE_BODIES: Record<string, unknown> = {
   'post /api/v1/bots/{id}/memories': { content: 'a fact', kind: 'fact' },
   'patch /api/v1/bots/{id}/memories/{memoryId}': { content: 'changed' },
   'put /api/v1/bots/{id}/connectors': { items: [] },
-  'put /api/v1/bots/{id}/skills': { skillIds: [] },
   'post /api/v1/bots/{id}/screen/control': { action: 'take' },
   'post /api/v1/bots/{id}/routines': {
     name: 'Daily',

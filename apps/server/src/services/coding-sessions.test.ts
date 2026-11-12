@@ -27,6 +27,7 @@ import { runCoderLogin, UNEXPECTED_LOGIN_HOST } from './coder-login-driver.js';
 import { sessionLogPath } from './coder-state.js';
 import { storeFile } from './files.js';
 import { recordEntry } from './coder-transcript.js';
+import { skillIndex } from './skills.js';
 import { coderContextFor, coderServices } from './coder-tool.js';
 import { resumeIfCoderWidgetDone } from './coder-widget-actions.js';
 import { sessionBranch } from './repos-checkout.js';
@@ -194,7 +195,7 @@ describe('coding agents', () => {
       .set({ status: 'settled' })
       .where(eq(schema.codingSessions.botId, bot.id));
 
-  it('seeds "Working in a repository" once per library and enables it for each new Bot', async () => {
+  it('seeds "Working in a repository" once per library, on for every Bot', async () => {
     const res = await call(dana, 'POST', '/bots', { name: 'Second Bot', modelConfig: null });
     expect(res.status).toBe(201);
     const second = (await res.json()) as { id: string };
@@ -202,14 +203,11 @@ describe('coding agents', () => {
     const builtin = skills.filter((s) => s.slug === 'working-in-a-repository');
     expect(builtin).toHaveLength(1);
     expect(builtin[0]).toMatchObject({ name: 'Working in a repository', source: 'manual' });
+    // Nothing turns it off, so both Bots have it in their index.
     for (const botId of [bot.id, second.id]) {
-      const [enabled] = await t.db
-        .select()
-        .from(schema.botSkills)
-        .where(
-          and(eq(schema.botSkills.botId, botId), eq(schema.botSkills.skillId, builtin[0]!.id)),
-        );
-      expect(enabled?.enabled).toBe(true);
+      expect((await skillIndex(t.db, botId)).map((s) => s.name)).toContain(
+        'Working in a repository',
+      );
     }
   });
 

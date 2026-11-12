@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initialPicks, parseSkillFile, usedByText } from './data';
+import { availabilityText, initialPicks, parseSkillFile } from './data';
 
 describe('parseSkillFile', () => {
   it('reads the Agent Skills frontmatter and puts the description first', () => {
@@ -74,12 +74,17 @@ describe('initialPicks', () => {
   });
 });
 
-describe('usedByText', () => {
-  it('lists the Bots', () => {
-    expect(usedByText([])).toBe('Not enabled for any Bot');
-    expect(usedByText([{ name: 'Ada' }])).toBe('Used by Ada');
-    expect(usedByText([{ name: 'Ada' }, { name: 'Bo' }, { name: 'Cy' }])).toBe(
-      'Used by Ada, Bo and Cy',
-    );
+describe('availabilityText', () => {
+  const bots = [
+    { id: 'b1', name: 'Ada' },
+    { id: 'b2', name: 'Bo' },
+    { id: 'b3', name: 'Cy' },
+  ];
+  it('says where a Skill is on', () => {
+    expect(availabilityText([], [])).toBe('No Bots hired yet');
+    expect(availabilityText([], bots)).toBe('On for every Bot');
+    expect(availabilityText(['b2'], bots)).toBe('Off for Bo');
+    expect(availabilityText(['b1', 'b2'], bots)).toBe('Off for Ada and Bo');
+    expect(availabilityText(['b1', 'b2', 'b3'], bots)).toBe('Turned off for every Bot');
   });
 });

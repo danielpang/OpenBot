@@ -1,5 +1,5 @@
 // Built-in Skills (CA12): written here and seeded into the owner's library by
-// the server, enabled for new Bots. Each one's text is also kept as markdown
+// the server, on for all of the owner's Bots. Each one's text is also kept as markdown
 // beside this file (skills.test.ts checks the two match), so it reads and
 // diffs as a document.
 

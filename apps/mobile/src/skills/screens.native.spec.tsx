@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SkillEditorScreen, SkillImportScreen, SkillsScreen } from './screens';
-import { BotSkills } from './bot-skills';
 
 type Call = (...args: unknown[]) => Promise<unknown>;
 const mockGet = jest.fn<Call>();
@@ -56,19 +55,21 @@ const skill = {
   source: 'manual',
   createdFromRunId: null,
   origin: null,
-  usedBy: [{ id: 'bot-1', name: 'Ada', handle: 'ada' }],
+  blockedBotIds: ['bot-2'],
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
-let enabled: string[];
+const bots = [
+  { id: 'bot-1', name: 'Ada', handle: 'ada' },
+  { id: 'bot-2', name: 'Bo', handle: 'bo' },
+];
 const caches: QueryClient[] = [];
 
 beforeEach(() => {
   jest.clearAllMocks();
   delete mockParams.id;
-  enabled = [];
   mockGet.mockImplementation(async (path) =>
-    ok(path === '/api/v1/skills' ? { items: [skill] } : { skillIds: enabled }),
+    ok(path === '/api/v1/skills' ? { items: [skill] } : { items: bots }),
   );
 });
 afterEach(() => {
@@ -85,10 +86,10 @@ function show(node: React.ReactElement) {
 }
 
 describe('Skills library', () => {
-  it('lists Skills with the Bots that use them and opens one', async () => {
+  it('lists Skills with where they are on and opens one', async () => {
     show(<SkillsScreen />);
     const open = await screen.findByRole('button', { name: 'Open Weekly report' });
-    expect(screen.getByText('Used by Ada')).toBeTruthy();
+    expect(await screen.findByText('Off for Bo')).toBeTruthy();
     fireEvent.press(open);
     expect(mockPush).toHaveBeenCalledWith(`/skills/${skill.id}`);
     fireEvent.press(screen.getByRole('button', { name: 'Import from GitHub' }));
@@ -130,6 +131,27 @@ describe('Skill editor', () => {
       body: { name: 'Monthly report', content: skill.content },
     });
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
+  });
+});
+
+describe("A Skill's Bots", () => {
+  it('turns the Skill off for a Bot by blocking it, and back on', async () => {
+    mockParams.id = skill.id;
+    mockPut.mockResolvedValue(ok(skill));
+    show(<SkillEditorScreen />);
+    const ada = await screen.findByLabelText('Use for Ada');
+    expect(ada.props.value).toBe(true);
+    expect(screen.getByLabelText('Use for Bo').props.value).toBe(false);
+    await act(async () => fireEvent(screen.getByLabelText('Use for Bo'), 'valueChange', true));
+    expect(mockPut).toHaveBeenLastCalledWith('/api/v1/skills/{id}/blocked-bots', {
+      params: { path: { id: skill.id } },
+      body: { botIds: [] },
+    });
+    await act(async () => fireEvent(screen.getByLabelText('Use for Ada'), 'valueChange', false));
+    expect(mockPut).toHaveBeenLastCalledWith('/api/v1/skills/{id}/blocked-bots', {
+      params: { path: { id: skill.id } },
+      body: { botIds: expect.arrayContaining(['bot-1']) },
+    });
   });
 });
 
@@ -176,19 +198,5 @@ describe('Import from GitHub', () => {
       },
     });
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith(`/skills/${skill.id}`));
-  });
-});
-
-describe('Bot Skills', () => {
-  it('enables a Skill for the Bot', async () => {
-    mockPut.mockResolvedValue(ok({ skillIds: [skill.id] }));
-    show(<BotSkills botId="bot-1" />);
-    const toggle = await screen.findByLabelText('Enable Weekly report');
-    expect(toggle.props.value).toBe(false);
-    await act(async () => fireEvent(toggle, 'valueChange', true));
-    expect(mockPut).toHaveBeenCalledWith('/api/v1/bots/{id}/skills', {
-      params: { path: { id: 'bot-1' } },
-      body: { skillIds: [skill.id] },
-    });
   });
 });

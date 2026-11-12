@@ -4,7 +4,7 @@ import { queryOptions } from '@tanstack/react-query';
 
 // The Skills library on iOS: the same endpoints and cache keys as the web app.
 // Every Skill change invalidates the `['skills']` prefix, which covers the
-// library, each Bot's enabled Skills and the "used by" lists.
+// library, its "used by" lists and each Skill's blocked Bots.
 
 export type Skill = components['schemas']['Skill'];
 export type SkillOrigin = NonNullable<Skill['origin']>;
@@ -18,19 +18,20 @@ export const skillsQuery = (api: Client) =>
     queryFn: () => unwrap(api.GET('/api/v1/skills')),
   });
 
-export const botSkillsQuery = (api: Client, botId: string) =>
-  queryOptions({
-    queryKey: ['skills', 'bot', botId] as const,
-    queryFn: () => unwrap(api.GET('/api/v1/bots/{id}/skills', { params: { path: { id: botId } } })),
-  });
-
-/** "Used by Ada and Scout", or that no Bot has it enabled. */
-export function usedByText(bots: readonly { name: string }[]): string {
-  if (!bots.length) return 'Not enabled for any Bot';
-  const names = bots.map((b) => b.name);
-  const list =
-    names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-  return `Used by ${list}`;
+/**
+ * Where a Skill is on: no Bots yet, on for every Bot, off for some (named),
+ * or off for all of them. Every Skill is on for a Bot not in `blockedBotIds`.
+ */
+export function availabilityText(
+  blockedBotIds: readonly string[],
+  bots: readonly { id: string; name: string }[],
+): string {
+  if (!bots.length) return 'No Bots hired yet';
+  const off = bots.filter((b) => blockedBotIds.includes(b.id)).map((b) => b.name);
+  if (!off.length) return 'On for every Bot';
+  if (off.length === bots.length) return 'Turned off for every Bot';
+  const list = off.length === 1 ? off[0] : `${off.slice(0, -1).join(', ')} and ${off.at(-1)}`;
+  return `Off for ${list}`;
 }
 
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
