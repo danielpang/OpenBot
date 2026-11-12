@@ -30,7 +30,8 @@ import { OPERATING_RULES } from './rules.js';
 // caches hit: (1) description and label, (2) operating rules, (3) the chat's
 // roster, (4) the enabled Skills index, then (5) memories and (6) the chat
 // summary, then the last messages. Items 1 to 4 form the first system block,
-// which carries the Anthropic cache breakpoint; 5 and 6 change every run and
+// which carries the Anthropic cache breakpoint (the loop adds a second on the
+// last message of each step, run/execute.ts); 5 and 6 change every run and
 // form the second, with the full content of any Skill the owner referenced
 // with `/` for this turn (plan 10.1). A run answering in a thread (C7) gets the thread root and
 // all its replies instead of the last messages, plus the summary. Attachments

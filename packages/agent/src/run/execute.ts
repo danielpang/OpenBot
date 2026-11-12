@@ -273,7 +273,11 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
     await input.recordStep({
       type: 'llm',
       label: thoughtLabel(durationMs),
-      payload: { finishReason: step.finishReason, cachedInputTokens: stepUsage.cached },
+      payload: {
+        finishReason: step.finishReason,
+        cachedInputTokens: stepUsage.cached,
+        cacheWriteTokens: stepUsage.cacheWrite,
+      },
       tokensIn: stepUsage.in,
       tokensOut: stepUsage.out,
       durationMs,
@@ -318,6 +322,8 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
     prepareStep: async ({ messages, responseMessages }) => {
       stepStartedAt = Date.now();
       priorResponses = responseMessages.length;
+      // The SDK hands back what the last step sent, breakpoint included.
+      messages = uncached(messages);
       const active = activeTools();
       const offer = active ? { activeTools: active } : {};
       const steer = await input.drainSteering();
@@ -347,7 +353,7 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
         ];
       }
       await input.checkpoint?.step(lastMessages, { ...usage });
-      return { ...offer, messages: lastMessages };
+      return { ...offer, messages: cacheTail(lastMessages) };
     },
     onStepFinish,
   });
@@ -499,6 +505,41 @@ export async function executeRun(input: ExecuteRunInput): Promise<RunOutcome> {
   return { status: 'completed', usage, text };
 }
 
+// Prompt caching for the loop. The first system block's breakpoint (context/
+// assemble.ts) covers the tools and the stable instructions; this one covers
+// the rest. It sits on the last message of each step's request, so the next
+// step reads everything this one sent from the cache and pays in full only
+// for what was added since. Anthropic allows four breakpoints and finds the
+// previous step's entry by looking back from the newest, so the breakpoint
+// moves: only the last message carries it. Other providers ignore it.
+const CACHE_TAIL = { type: 'ephemeral' } as const;
+
+/** The messages with the cache breakpoint on the last one. */
+export function cacheTail(messages: ModelMessage[]): ModelMessage[] {
+  const last = messages.at(-1);
+  if (!last) return messages;
+  const providerOptions = {
+    ...last.providerOptions,
+    anthropic: { ...last.providerOptions?.anthropic, cacheControl: CACHE_TAIL },
+  };
+  return [...messages.slice(0, -1), { ...last, providerOptions } as ModelMessage];
+}
+
+/** The messages without `cacheTail`'s breakpoint, as checkpoints and the next step want them. */
+export function uncached(messages: ModelMessage[]): ModelMessage[] {
+  return messages.map((message) => {
+    const anthropic = message.providerOptions?.anthropic;
+    if (!anthropic || !('cacheControl' in anthropic)) return message;
+    const { cacheControl: _, ...rest } = anthropic;
+    const { anthropic: __, ...others } = message.providerOptions!;
+    const providerOptions = { ...others, ...(Object.keys(rest).length ? { anthropic: rest } : {}) };
+    const { providerOptions: ___, ...bare } = message;
+    return (
+      Object.keys(providerOptions).length ? { ...bare, providerOptions } : bare
+    ) as ModelMessage;
+  });
+}
+
 /** Tools the model already called in these messages; a resumed run keeps offering them. */
 function calledTools(messages: ModelMessage[], names: ToolNameMap): string[] {
   const out: string[] = [];
@@ -514,6 +555,7 @@ function tokens(usage: LanguageModelUsage) {
     in: usage.inputTokens ?? 0,
     out: usage.outputTokens ?? 0,
     cached: usage.inputTokenDetails?.cacheReadTokens ?? 0,
+    cacheWrite: usage.inputTokenDetails?.cacheWriteTokens ?? 0,
   };
 }
 

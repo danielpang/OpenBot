@@ -238,6 +238,40 @@ describe('executeRun', () => {
     });
   });
 
+  it('moves one cache breakpoint to the last message of each step', async () => {
+    const checkpoints: ExecuteRunInput['messages'][] = [];
+    const h = harness(
+      [
+        [{ tool: 'remember', args: { kind: 'fact', content: 'On db-2' }, id: 'c1' }],
+        [{ tool: 'remember', args: { kind: 'fact', content: 'Port 5432' }, id: 'c2' }],
+        [{ text: 'Noted.' }],
+      ],
+      {
+        checkpoint: {
+          step: async (messages) => void checkpoints.push(messages),
+          started: async () => {},
+          finished: async () => {},
+        },
+      },
+    );
+    expect((await executeRun(h.input)).status).toBe('completed');
+    const marked = (messages: { role: string; providerOptions?: unknown }[]) =>
+      messages.flatMap((m, index) =>
+        (m.providerOptions as { anthropic?: { cacheControl?: unknown } })?.anthropic?.cacheControl
+          ? [index]
+          : [],
+      );
+    expect(h.model.calls).toHaveLength(3);
+    for (const call of h.model.calls) {
+      // Each request ends where the next one's cached prefix ends.
+      const messages = call.prompt.filter((m) => m.role !== 'system');
+      expect(marked(messages)).toEqual([messages.length - 1]);
+    }
+    // What a takeover resumes from carries none, so breakpoints never pile up.
+    expect(checkpoints).toHaveLength(3);
+    for (const messages of checkpoints) expect(marked(messages)).toEqual([]);
+  });
+
   it('posts a widget for show_widget and reports bad props to the model', async () => {
     const status = { title: 'Launch', items: [{ label: 'Post', status: 'done' }] };
     const h = harness([
