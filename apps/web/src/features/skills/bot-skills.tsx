@@ -1,8 +1,7 @@
-import { SaveButton, useSaveState } from '@openbots/ui';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { useState } from 'react';
 import { botSkillsQuery, putBotSkills, skillsQuery, type Skill } from './api.js';
+import { ChecklistForm } from './checklist-form.js';
 
 // The Bot Settings "Skills" section (S2): which Skills from the account's
 // library this Bot may use. Enabled Skills go in the Bot's Skills index.
@@ -44,56 +43,17 @@ export function BotSkillsForm({
   enabled: readonly string[];
 }) {
   const queryClient = useQueryClient();
-  const [chosen, setChosen] = useState(() => new Set(enabled));
-  const changed = chosen.size !== enabled.length || enabled.some((id) => !chosen.has(id));
-  const save = useMutation({
-    mutationFn: () => putBotSkills(botId, [...chosen]),
-    // Also refreshes the library's "used by".
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
-  });
-  const saved = useSaveState(save);
-
-  function toggle(id: string, on: boolean) {
-    const next = new Set(chosen);
-    if (on) next.add(id);
-    else next.delete(id);
-    setChosen(next);
-  }
-
   return (
-    <div className="flex flex-col gap-3">
-      <ul className="divide-y rounded-lg border bg-card" aria-label="Enabled Skills">
-        {skills.map((skill) => (
-          <li key={skill.id}>
-            <label className="flex cursor-pointer items-start gap-3 px-4 py-3 text-foreground">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={chosen.has(skill.id)}
-                onChange={(e) => toggle(skill.id, e.target.checked)}
-              />
-              <span className="flex flex-col gap-0.5">
-                <span className="font-medium">{skill.name}</span>
-                {skill.summary && (
-                  <span className="text-xs text-muted-foreground">{skill.summary}</span>
-                )}
-              </span>
-            </label>
-          </li>
-        ))}
-      </ul>
-      {save.error && <p className="text-destructive">{save.error.message}</p>}
-      <div>
-        <SaveButton
-          type="button"
-          size="sm"
-          state={saved.state}
-          disabled={!changed}
-          onClick={() => save.mutate()}
-        >
-          Save Skills
-        </SaveButton>
-      </div>
-    </div>
+    <ChecklistForm
+      items={skills.map((s) => ({ id: s.id, title: s.name, detail: s.summary }))}
+      enabled={enabled}
+      label="Enabled Skills"
+      saveLabel="Save Skills"
+      onSave={async (ids) => {
+        await putBotSkills(botId, ids);
+        // Also refreshes the library's "used by".
+        await queryClient.invalidateQueries({ queryKey: ['skills'] });
+      }}
+    />
   );
 }

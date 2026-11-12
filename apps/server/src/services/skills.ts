@@ -409,34 +409,7 @@ export async function setBotSkills(
   botId: string,
   skillIds: string[],
 ): Promise<string[]> {
-  await assertBotOwner(db, owner, botId);
-  const ids = [...new Set(skillIds)];
-  await db.transaction(async (tx) => {
-    if (ids.length) {
-      const owned = await tx
-        .select({ id: schema.skills.id })
-        .from(schema.skills)
-        .where(and(inArray(schema.skills.id, ids), libraryOf(owner)));
-      if (owned.length !== ids.length) throw notFound('Skill not found');
-    }
-    await tx
-      .delete(schema.botSkills)
-      .where(
-        and(
-          eq(schema.botSkills.botId, botId),
-          ...(ids.length ? [notInArray(schema.botSkills.skillId, ids)] : []),
-        ),
-      );
-    if (ids.length) {
-      await tx
-        .insert(schema.botSkills)
-        .values(ids.map((skillId) => ({ workspaceId: owner.workspaceId, botId, skillId })))
-        .onConflictDoUpdate({
-          target: [schema.botSkills.botId, schema.botSkills.skillId],
-          set: { enabled: true },
-        });
-    }
-  });
+  await replaceEnabled(db, owner, { botId, skillIds });
   return getBotSkills(db, owner, botId);
 }
 
@@ -450,41 +423,84 @@ export async function setSkillBots(
   skillId: string,
   botIds: string[],
 ): Promise<SkillRecord> {
-  await ownedSkill(db, owner, skillId);
-  const ids = [...new Set(botIds)];
+  await replaceEnabled(db, owner, { skillId, botIds });
+  return getSkill(db, owner, skillId);
+}
+
+/** One side of `bot_skills`: a Bot's enabled Skills, or the Bots a Skill is enabled for. */
+type Enablement = { botId: string; skillIds: string[] } | { skillId: string; botIds: string[] };
+
+/**
+ * Replaces one side of `bot_skills` with exactly the ids given. Every id must
+ * be the owner's (the fixed side's checked first), or the call is 404 and
+ * nothing changes. Rows are locked (`FOR KEY SHARE`) as they are checked, so
+ * a Bot or Skill deleted meanwhile waits for this transaction instead of
+ * failing its inserts.
+ */
+async function replaceEnabled(db: Db, owner: Owner, side: Enablement): Promise<void> {
+  const bySkill = 'skillId' in side;
+  const botIds = bySkill ? [...new Set(side.botIds)] : [side.botId];
+  const skillIds = bySkill ? [side.skillId] : [...new Set(side.skillIds)];
   await db.transaction(async (tx) => {
-    if (ids.length) {
-      const owned = await tx
+    const lockBots = async () => {
+      if (!botIds.length) return;
+      const rows = await tx
         .select({ id: schema.bots.id })
         .from(schema.bots)
         .where(
           and(
-            inArray(schema.bots.id, ids),
+            inArray(schema.bots.id, botIds),
             eq(schema.bots.ownerId, owner.id),
             eq(schema.bots.workspaceId, owner.workspaceId),
           ),
-        );
-      if (owned.length !== ids.length) throw notFound('Bot not found');
+        )
+        .for('key share');
+      if (rows.length !== botIds.length) throw notFound('Bot not found');
+    };
+    const lockSkills = async () => {
+      if (!skillIds.length) return;
+      const rows = await tx
+        .select({ id: schema.skills.id })
+        .from(schema.skills)
+        .where(and(inArray(schema.skills.id, skillIds), libraryOf(owner)))
+        .for('key share');
+      if (rows.length !== skillIds.length) throw notFound('Skill not found');
+    };
+    if (bySkill) {
+      await lockSkills();
+      await lockBots();
+    } else {
+      await lockBots();
+      await lockSkills();
     }
+
+    const { botSkills } = schema;
     await tx
-      .delete(schema.botSkills)
+      .delete(botSkills)
       .where(
-        and(
-          eq(schema.botSkills.skillId, skillId),
-          ...(ids.length ? [notInArray(schema.botSkills.botId, ids)] : []),
-        ),
+        bySkill
+          ? and(
+              eq(botSkills.skillId, side.skillId),
+              ...(botIds.length ? [notInArray(botSkills.botId, botIds)] : []),
+            )
+          : and(
+              eq(botSkills.botId, side.botId),
+              ...(skillIds.length ? [notInArray(botSkills.skillId, skillIds)] : []),
+            ),
       );
-    if (ids.length) {
+    const rows = botIds.flatMap((botId) =>
+      skillIds.map((skillId) => ({ workspaceId: owner.workspaceId, botId, skillId })),
+    );
+    if (rows.length) {
       await tx
-        .insert(schema.botSkills)
-        .values(ids.map((botId) => ({ workspaceId: owner.workspaceId, botId, skillId })))
+        .insert(botSkills)
+        .values(rows)
         .onConflictDoUpdate({
-          target: [schema.botSkills.botId, schema.botSkills.skillId],
+          target: [botSkills.botId, botSkills.skillId],
           set: { enabled: true },
         });
     }
   });
-  return getSkill(db, owner, skillId);
 }
 
 // For runs (plan 5.3 item 4, 10.1)
