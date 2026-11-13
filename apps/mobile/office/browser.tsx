@@ -13,15 +13,16 @@ declare global {
   }
 }
 
+const HOME_ZOOM = 1.4;
+
 function App() {
   const [bots, setBots] = useState(window.__officeBots);
   useEffect(() => {
     window.__officeReceive = setBots;
-    // The Mac app sits the office low under a wide sky. A phone is tall, so center it,
-    // letting the city and its ground carry on above and below.
-    document.querySelector('svg.office')?.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   }, []);
-  return <Office bots={bots} />;
+  // A phone is tall, so the office is centered and zoomed in, with the city and its ground
+  // carrying on above and below. It doesn't turn; a drag moves it and a pinch zooms.
+  return <Office bots={bots} align="middle" turnable={false} homeZoom={HOME_ZOOM} />;
 }
 
 createRoot(document.getElementById('office')!).render(<App />);

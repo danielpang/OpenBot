@@ -801,7 +801,22 @@ type Drag = {
   moved: boolean;
 };
 
-export function Office({ bots, caption }: { bots: readonly Bot[]; caption?: ReactNode }) {
+export function Office({
+  bots,
+  caption,
+  turnable = true,
+  homeZoom = 1,
+  align = 'bottom',
+}: {
+  bots: readonly Bot[];
+  caption?: ReactNode;
+  /** False on a phone: a drag moves the office instead of turning it. */
+  turnable?: boolean;
+  /** How far the home view is zoomed in, about the top of the room so it grows downward. */
+  homeZoom?: number;
+  /** Where the drawing sits in a frame taller than it: low under the sky, or centered. */
+  align?: 'bottom' | 'middle';
+}) {
   const navigate = useNavigate();
   const [angle, setAngle] = useState(0);
   // Null until the user moves the view: then the camera is `home`, which
@@ -815,6 +830,9 @@ export function Office({ bots, caption }: { bots: readonly Bot[]; caption?: Reac
   const frame = useRef<HTMLDivElement>(null);
   const area = usePageArea(frame);
   const drag = useRef<Drag | null>(null);
+  // Fingers on the office, and the pinch they started, for zooming by touch.
+  const touches = useRef(new Map<number, [number, number]>());
+  const pinch = useRef<{ distance: number; camera: Camera } | null>(null);
   const dragged = useRef(false);
   const tween = useRef(0);
 
@@ -868,17 +886,25 @@ export function Office({ bots, caption }: { bots: readonly Bot[]; caption?: Reac
    * low on the page but all of it, and room for the caption, in the frame.
    */
   const home = useMemo<Camera>(() => {
-    const floor = Math.max(
-      ...[
-        [0, 0],
-        [layout.width, 0],
-        [0, layout.depth],
-        [layout.width, layout.depth],
-      ].map(([x = 0, y = 0]) => view.project(x, y, -14)[1]),
-    );
+    const corners4 = [
+      [0, 0],
+      [layout.width, 0],
+      [0, layout.depth],
+      [layout.width, layout.depth],
+    ];
+    const floor = Math.max(...corners4.map(([x = 0, y = 0]) => view.project(x, y, -14)[1]));
     const up = Math.max(0, SKY_MARGIN - skyTop);
-    return { scale: 1, x: 0, y: Math.max(0, Math.min(up, view.height - FLOOR_MARGIN - floor)) };
-  }, [layout, view, skyTop]);
+    const base = { scale: 1, x: 0, y: Math.max(0, Math.min(up, view.height - FLOOR_MARGIN - floor)) };
+    if (homeZoom === 1) return base;
+    const roomTop = Math.min(...corners4.map(([x = 0, y = 0]) => view.project(x, y, WALL)[1]));
+    const middle = (bounds.roomLeft + bounds.roomRight) / 2;
+    return clamp(
+      zoomAbout(base, homeZoom, base.x + middle, base.y + roomTop),
+      view.width,
+      view.height,
+      bounds,
+    );
+  }, [layout, view, skyTop, homeZoom, bounds]);
   homeRef.current = home;
   // A stored view keeps to the limits as the office turns under it.
   const camera = stored ? clamp(stored, width, height, bounds) : home;
@@ -966,7 +992,9 @@ export function Office({ bots, caption }: { bots: readonly Bot[]; caption?: Reac
       for (const animation of element.getAnimations?.() ?? []) animation.startTime = 0;
     }
   });
-  const turnBy = (step: number) => turnTo(Math.round((angle + step) / TURN_STEP) * TURN_STEP);
+  const turnBy = (step: number) => {
+    if (turnable) turnTo(Math.round((angle + step) / TURN_STEP) * TURN_STEP);
+  };
 
   /** A point of the frame, from the screen. */
   const framePoint = useCallback((clientX: number, clientY: number): [number, number] => {
@@ -1008,19 +1036,41 @@ export function Office({ bots, caption }: { bots: readonly Bot[]; caption?: Reac
 
   function onPointerDown(event: PointerEvent<SVGSVGElement>) {
     if (event.button !== 0 && event.button !== 2) return;
+    if (event.pointerType === 'touch') {
+      touches.current.set(event.pointerId, [event.clientX, event.clientY]);
+      if (touches.current.size === 2) {
+        // A second finger turns the drag into a pinch.
+        const [a, b] = [...touches.current.values()] as [[number, number], [number, number]];
+        pinch.current = { distance: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, camera };
+        drag.current = null;
+        dragged.current = true;
+        return;
+      }
+    }
     cancelAnimationFrame(tween.current);
     dragged.current = false;
     drag.current = {
       id: event.pointerId,
       x: event.clientX,
       y: event.clientY,
-      mode: event.shiftKey || event.button === 2 ? 'move' : 'turn',
+      mode: !turnable || event.shiftKey || event.button === 2 ? 'move' : 'turn',
       camera,
       angle,
       moved: false,
     };
   }
   function onPointerMove(event: PointerEvent<SVGSVGElement>) {
+    if (touches.current.has(event.pointerId)) {
+      touches.current.set(event.pointerId, [event.clientX, event.clientY]);
+    }
+    const p = pinch.current;
+    if (p && touches.current.size >= 2) {
+      const [a, b] = [...touches.current.values()] as [[number, number], [number, number]];
+      const [mx, my] = framePoint((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+      const factor = Math.hypot(a[0] - b[0], a[1] - b[1]) / p.distance;
+      setCamera(clamp(zoomAbout(p.camera, factor, mx, my), width, height, bounds));
+      return;
+    }
     const d = drag.current;
     if (!d || d.id !== event.pointerId) return;
     const dx = event.clientX - d.x;
@@ -1045,8 +1095,10 @@ export function Office({ bots, caption }: { bots: readonly Bot[]; caption?: Reac
       ),
     );
   }
-  const endDrag = () => {
+  const endDrag = (event: PointerEvent<SVGSVGElement>) => {
     drag.current = null;
+    touches.current.delete(event.pointerId);
+    if (touches.current.size < 2) pinch.current = null;
   };
 
   const open = (bot: Bot) => {
@@ -1131,7 +1183,7 @@ export function Office({ bots, caption }: { bots: readonly Bot[]; caption?: Reac
           }}
           data-dragging={drag.current?.moved ? drag.current.mode : undefined}
           viewBox={`0 0 ${width.toFixed(0)} ${height.toFixed(0)}`}
-          preserveAspectRatio="xMidYMax meet"
+          preserveAspectRatio={align === 'middle' ? 'xMidYMid meet' : 'xMidYMax meet'}
           role="group"
           aria-label={
             bots.length

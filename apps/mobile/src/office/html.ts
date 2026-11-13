@@ -7,7 +7,7 @@ const DARK = `--background:oklch(0.145 0 0);--foreground:oklch(0.985 0 0);--card
 // The few layout utilities the office's markup uses. Its view controls are for a mouse
 // and keyboard; on the phone it turns by dragging. Centered on a tall screen, the city
 // shows past the drawing, and the ground's colors (office-css.ts) fill in below it.
-const BASE = `html,body,#office{margin:0;width:100%;height:100%;overflow:hidden;background:var(--background);color:var(--foreground);font-family:-apple-system,system-ui,sans-serif;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.fixed{position:fixed}.inset-0{inset:0}.overflow-hidden{overflow:hidden}.absolute{position:absolute}[role=toolbar]{display:none}svg.office{overflow:visible}.office-frame>div.absolute::before{content:'';position:absolute;left:0;right:0;bottom:0;height:40%;background:#d4d9d2}.office-frame[data-time=night]>div.absolute::before{background:#252a3c}`;
+const BASE = `html,body,#office{margin:0;width:100%;height:100%;overflow:hidden;background:var(--background);color:var(--foreground);font-family:-apple-system,system-ui,sans-serif;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.fixed{position:fixed}.inset-0{inset:0}.overflow-hidden{overflow:hidden}.absolute{position:absolute}[role=toolbar]{display:none}svg.office{overflow:visible;top:7%!important}.office-frame>div.absolute::before{content:'';position:absolute;left:0;right:0;bottom:0;height:40%;background:#d4d9d2}.office-frame[data-time=night]>div.absolute::before{background:#252a3c}`;
 
 /** JSON that is safe inside an inline script. */
 export const scriptJSON = (value: unknown) =>
