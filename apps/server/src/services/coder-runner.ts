@@ -289,7 +289,7 @@ export async function runSession(
   const claimed = claim;
   if (!claimed) return;
   const runner = new SessionRunner(deps, claimed, options);
-  live.set(sessionId, {
+  const entry: LiveSession = {
     workspaceId: claimed.workspaceId,
     get computerId() {
       return runner.computerId;
@@ -299,11 +299,14 @@ export async function runSession(
         deps.logger.warn({ err: error, sessionId }, 'coder control failed'),
       );
     },
-  });
+  };
+  live.set(sessionId, entry);
   try {
     await runner.run();
   } finally {
-    live.delete(sessionId);
+    // A follow-up turn can claim the session once this one settles, while this
+    // run is still telling the Bot. Its entry is the one that hears approvals now.
+    if (live.get(sessionId) === entry) live.delete(sessionId);
   }
 }
 

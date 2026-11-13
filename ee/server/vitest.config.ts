@@ -9,5 +9,12 @@ export default defineProject({
   ...shared,
   resolve: { conditions },
   ssr: { resolve: { conditions } },
-  test: { ...shared.test, hookTimeout: 30_000, setupFiles: ['./src/test-setup.ts'] },
+  // Sign-up flows make many requests per test; under CI's parallel turbo run
+  // they outgrow the 5s default though each takes well under a second alone.
+  test: {
+    ...shared.test,
+    hookTimeout: 30_000,
+    testTimeout: 30_000,
+    setupFiles: ['./src/test-setup.ts'],
+  },
 });

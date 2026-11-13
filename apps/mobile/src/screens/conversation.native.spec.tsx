@@ -35,7 +35,13 @@ jest.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: { id: 'chat
 jest.mock('@openbots/api-client', () => ({ unwrap: jest.fn() }));
 jest.mock('../api/provider', () => ({ useApi: () => ({}) }));
 jest.mock('../components/glass', () => ({ useGlassEnabled: () => mockGlass }));
-jest.mock('../transcript/transcript', () => ({ Transcript: () => null }));
+let mockListReady: (() => void) | undefined;
+jest.mock('../transcript/transcript', () => ({
+  Transcript: ({ onListReady }: { onListReady?: () => void }) => {
+    mockListReady = onListReady;
+    return null;
+  },
+}));
 jest.mock('./group-members', () => ({
   GroupMembers: ({ visible }: { visible: boolean }) => {
     mockMembersVisible = visible;
@@ -69,6 +75,16 @@ describe('conversation navigation', () => {
     expect(mockPush).toHaveBeenCalledWith('/bot/bot-1/details');
     expect(mockOptions.headerTransparent).toBe(true);
     expect(mockOptions.headerStyle.backgroundColor).toBe('transparent');
+  });
+
+  it.each([
+    ['bot', BotScreen],
+    ['chat', ChatScreen],
+  ])('applies the soft header edge once the %s list has laid out', (_, Screen) => {
+    render(<Screen />);
+    // The native edge is applied when the option changes, so it must change after the list exists.
+    expect(mockOptions.scrollEdgeEffects.top).toBe('automatic');
+    act(() => mockListReady?.());
     expect(mockOptions.scrollEdgeEffects.top).toBe('soft');
   });
 
