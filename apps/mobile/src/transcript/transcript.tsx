@@ -44,6 +44,8 @@ type TranscriptProps = {
   targetSeq?: number;
   /** A group's Bots, in join order. A Bot's own chat is recognised without it. */
   members?: Bot[];
+  /** Called once the list has laid out, so the screen can apply its header edge to it. */
+  onListReady?: () => void;
 };
 
 // Remount per conversation so its scroll position, reveal and jump state, unsent
@@ -60,6 +62,7 @@ function ConversationTranscript({
   targetMessageId,
   targetSeq,
   members,
+  onListReady,
 }: TranscriptProps) {
   const c = useTheme();
   const safe = useSafeAreaInsets();
@@ -268,6 +271,7 @@ function ConversationTranscript({
             }}
             onLoad={() => {
               setListReady(true);
+              onListReady?.();
               if (!hasTarget) void settle(pinToEnd);
             }}
             onStartReached={() => {

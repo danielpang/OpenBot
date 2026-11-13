@@ -1,11 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  LayoutAnimation,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  type TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
 import { unwrap } from '@openbots/api-client';
@@ -19,6 +24,10 @@ import { Button, Empty, ErrorNote, Field, Icon, Label, Page, Section, row } from
 import { useTheme } from '../theme';
 import { groupTitle, useBots, useChats, useGroupLimit, type Bot } from './data';
 
+// On iOS, a pull past the top this far opens search, and this far refreshes.
+const PULL_TO_SEARCH = 40;
+const PULL_TO_REFRESH = 110;
+
 export function BotsScreen({
   sidebar = false,
   selected,
@@ -31,8 +40,65 @@ export function BotsScreen({
   const bots = useBots();
   const chats = useChats();
   const [search, setSearch] = useState('');
+  const hostName = mobile.host?.name?.trim();
   const [create, setCreate] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const gap = sidebar ? 20 : 28;
+  // On iOS one pull from the top does two things, by distance: a short pull opens search
+  // with the keyboard up, a long one refreshes. The native refresh control fires too
+  // early to leave room for search, so iOS measures the pull itself.
+  const pullGestures = Platform.OS === 'ios';
+  const [searchShown, setSearchShown] = useState(!pullGestures);
+  const [pull, setPull] = useState<'none' | 'search' | 'refresh'>('none');
+  // The offset the list rests at when scrolled to the top. It depends on the safe area
+  // the system applies, so it is learned from where drags begin rather than assumed.
+  const restY = useRef<number | undefined>(undefined);
+  const searchInput = useRef<TextInput>(null);
+  // Opened by a pull and nothing typed yet: the list is covered so only search is in view.
+  const searchCovering = pullGestures && searchShown && !search;
+  useEffect(() => {
+    if (!pullGestures || !searchShown) return;
+    // Focus once the field is laid out, so the keyboard reliably comes up.
+    const focus = setTimeout(() => searchInput.current?.focus(), 50);
+    return () => clearTimeout(focus);
+  }, [pullGestures, searchShown]);
+  function closeSearch() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSearchShown(false);
+  }
+  const dragFromTop = useRef(false);
+  function pullDistance(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    return (restY.current ?? 0) - event.nativeEvent.contentOffset.y;
+  }
+  function beginPull(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    const y = event.nativeEvent.contentOffset.y;
+    if (restY.current === undefined || y < restY.current) restY.current = y;
+    dragFromTop.current = y <= restY.current + 1;
+  }
+  function trackPull(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    if (!dragFromTop.current) return;
+    const distance = pullDistance(event);
+    // Once far enough to refresh, it stays a refresh, as with the native control.
+    const next =
+      pull === 'refresh' || distance >= PULL_TO_REFRESH
+        ? 'refresh'
+        : distance >= PULL_TO_SEARCH && !searchShown
+          ? 'search'
+          : 'none';
+    if (next !== pull) setPull(next);
+  }
+  function endPull(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    if (!dragFromTop.current) return;
+    dragFromTop.current = false;
+    const action = pull;
+    setPull('none');
+    if (action === 'refresh') void refreshManually();
+    // Judge search on release, so pulling back up cancels it.
+    else if (!searchShown && pullDistance(event) >= PULL_TO_SEARCH) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setSearchShown(true);
+    }
+  }
   async function refreshManually() {
     if (!mobile.transport) {
       mobile.refresh();
@@ -96,23 +162,65 @@ export function BotsScreen({
       </Pressable>
     );
   }
+  function searchField() {
+    return (
+      <Field
+        accessibilityLabel="Search Bots and groups"
+        placeholder="Search Bots and groups"
+        value={search}
+        onChangeText={setSearch}
+        ref={searchInput}
+        returnKeyType="search"
+        // Put away again once it is dismissed without a search.
+        onBlur={() => {
+          if (pullGestures && !search) closeSearch();
+        }}
+      />
+    );
+  }
   return (
     <Page scroll={false}>
       <ScrollView
         contentInsetAdjustmentBehavior={sidebar ? 'never' : 'automatic'}
+        onScrollBeginDrag={pullGestures ? beginPull : undefined}
+        onScroll={pullGestures ? trackPull : undefined}
+        scrollEventThrottle={pullGestures ? 16 : undefined}
+        onScrollEndDrag={pullGestures ? endPull : undefined}
         keyboardShouldPersistTaps="handled"
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing && mobile.connected}
-            onRefresh={() => void refreshManually()}
-          />
+          pullGestures ? undefined : (
+            <RefreshControl
+              refreshing={refreshing && mobile.connected}
+              onRefresh={() => void refreshManually()}
+            />
+          )
         }
         contentContainerStyle={{
           padding: sidebar ? 14 : 22,
           paddingBottom: 50,
-          gap: sidebar ? 20 : 28,
+          gap,
+          flexGrow: 1,
         }}
       >
+        {pullGestures ? (
+          // Sits in the space a pull opens above the list, saying what letting go will do.
+          <View
+            pointerEvents="none"
+            style={{ position: 'absolute', top: -44, left: 0, right: 0, alignItems: 'center' }}
+          >
+            {pull === 'refresh' ? (
+              // Far enough to refresh: the spinner starts here and carries on once released.
+              <ActivityIndicator accessibilityLabel="Release to refresh" />
+            ) : pull === 'search' ? (
+              <Label muted size={13}>
+                Release to search
+              </Label>
+            ) : null}
+          </View>
+        ) : null}
+        {pullGestures && refreshing && mobile.connected ? (
+          <ActivityIndicator accessibilityLabel="Refreshing" />
+        ) : null}
         <View style={row.between}>
           <View style={{ flex: 1 }}>
             <Label size={sidebar ? 24 : 32} weight="700">
@@ -140,12 +248,17 @@ export function BotsScreen({
                 }}
               />
               <Label muted size={13}>
-                {mobile.host?.name ?? 'OpenBots'}
-                {mobile.connected
-                  ? ' · Connected'
-                  : mobile.connectionFailed
-                    ? ' · Disconnected'
-                    : ''}
+                {/* The title already says OpenBots, so a host by that name isn't repeated. */}
+                {[
+                  hostName && hostName.toLowerCase() !== 'openbots' ? hostName : undefined,
+                  mobile.connected
+                    ? 'Connected'
+                    : mobile.connectionFailed
+                      ? 'Disconnected'
+                      : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </Label>
             </View>
           </View>
@@ -155,12 +268,8 @@ export function BotsScreen({
             onPress={() => setCreate(true)}
           />
         </View>
-        <Field
-          accessibilityLabel="Search Bots and groups"
-          placeholder="Search Bots and groups"
-          value={search}
-          onChangeText={setSearch}
-        />
+        {searchShown ? searchField() : null}
+        <View style={{ flexGrow: 1, gap }}>
         {mobile.connected ? (
           <ErrorNote error={bots.error} onRetry={() => void bots.refetch()} />
         ) : null}
@@ -220,6 +329,24 @@ export function BotsScreen({
             }
           />
         ) : null}
+          {searchCovering ? (
+            // Covers the list behind a freshly opened search. Tapping it closes search.
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close search"
+              onPress={() => searchInput.current?.blur()}
+              style={{
+                position: 'absolute',
+                top: -gap / 2,
+                bottom: -50,
+                left: sidebar ? -14 : -22,
+                right: sidebar ? -14 : -22,
+                backgroundColor: c.background,
+                opacity: 0.94,
+              }}
+            />
+          ) : null}
+        </View>
       </ScrollView>
       <CreateSheet visible={create} onClose={() => setCreate(false)} bots={bots.data ?? []} />
     </Page>

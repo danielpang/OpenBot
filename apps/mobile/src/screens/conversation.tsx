@@ -11,7 +11,6 @@ import { groupTitle, useBots, useChats } from './data';
 import { GroupMembers } from './group-members';
 
 export function BotScreen() {
-  const header = useConversationHeader();
   const { id, message, seq, thread, threadRootId } = useLocalSearchParams<{
     id: string;
     message?: string;
@@ -19,6 +18,9 @@ export function BotScreen() {
     thread?: string;
     threadRootId?: string;
   }>();
+  const [readyFor, setReadyFor] = useState<string>();
+  const listKey = `${id}:${threadRootId ?? thread ?? ''}`;
+  const header = useConversationHeader(readyFor === listKey);
   const api = useApi();
   const bots = useBots();
   const bot = bots.data?.find((bot) => bot.id === id);
@@ -59,6 +61,7 @@ export function BotScreen() {
           targetMessageId={message}
           targetSeq={parseTargetSeq(seq)}
           threadRootId={threadRootId ?? thread}
+          onListReady={() => setReadyFor(listKey)}
         />
       ) : (
         <Page>
@@ -73,7 +76,6 @@ export function BotScreen() {
   );
 }
 export function ChatScreen() {
-  const header = useConversationHeader();
   const [membersOpen, setMembersOpen] = useState(false);
   const { id, thread, threadRootId, message, seq, title } = useLocalSearchParams<{
     id: string;
@@ -83,6 +85,9 @@ export function ChatScreen() {
     message?: string;
     title?: string;
   }>();
+  const [readyFor, setReadyFor] = useState<string>();
+  const listKey = `${id}:${threadRootId ?? thread ?? ''}`;
+  const header = useConversationHeader(readyFor === listKey);
   const bots = useBots();
   const chats = useChats();
   const chat = chats.data?.find((chat) => chat.id === id);
@@ -131,6 +136,7 @@ export function ChatScreen() {
         threadRootId={threadRootId ?? thread}
         targetMessageId={message}
         targetSeq={parseTargetSeq(seq)}
+        onListReady={() => setReadyFor(listKey)}
       />
       {chat?.type === 'group' ? (
         <GroupMembers

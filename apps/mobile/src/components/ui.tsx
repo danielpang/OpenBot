@@ -1,4 +1,4 @@
-import { useContext, type PropsWithChildren, type ReactNode } from 'react';
+import { useContext, type PropsWithChildren, type ReactNode, type RefObject } from 'react';
 import { ConnectionErrorsContext, isConnectionError } from '../api/connection-state';
 import {
   ActivityIndicator,
@@ -112,10 +112,11 @@ export function Button({
     </Pressable>
   );
 }
-export function Field(props: TextInputProps) {
+export function Field({ ref, ...props }: TextInputProps & { ref?: RefObject<TextInput | null> }) {
   const c = useTheme();
   return (
     <TextInput
+      ref={ref}
       placeholderTextColor={c.mutedForeground}
       {...props}
       style={[
