@@ -7,14 +7,15 @@
   "scripts": {
     "dev": "node --dns-result-order=ipv4first node_modules/expo/bin/cli start --dev-client",
     "ios": "node --dns-result-order=ipv4first node_modules/expo/bin/cli run:ios",
-    "ios:release": "node scripts/build-preview.mjs && expo run:ios --configuration Release",
+    "ios:release": "node scripts/build-preview.mjs && node scripts/build-office.mjs && expo run:ios --configuration Release",
     "prebuild": "expo prebuild --platform ios",
-    "build": "node scripts/build-preview.mjs && expo export --platform ios",
+    "build": "node scripts/build-preview.mjs && node scripts/build-office.mjs && expo export --platform ios",
     "typecheck": "tsc --noEmit",
     "lint": "eslint app src plugins app.config.ts",
     "test": "vitest run && jest --runInBand",
     "check:sdk": "expo install --check",
     "build:preview": "node scripts/build-preview.mjs",
+    "build:office": "node scripts/build-office.mjs",
     "test:components": "jest --runInBand"
   },
   "dependencies": {

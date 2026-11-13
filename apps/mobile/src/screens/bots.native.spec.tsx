@@ -43,6 +43,13 @@ jest.mock('expo-router', () => ({
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 59, left: 0, right: 0, bottom: 34 }),
 }));
+let mockOffice: { visible: boolean; onOpenBot: (id: string) => void } | undefined;
+jest.mock('../office/office-sheet', () => ({
+  OfficeSheet: (props: { visible: boolean; onOpenBot: (id: string) => void }) => {
+    mockOffice = props;
+    return null;
+  },
+}));
 jest.mock('@openbots/api-client', () => ({ unwrap: jest.fn() }));
 jest.mock('@openbots/avatars', () => ({
   generate: () => ({ svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"/>' }),
@@ -238,6 +245,43 @@ describe('pull down to search on iOS', () => {
     fireEvent.changeText(search()!, 'chief');
     fireEvent(search()!, 'blur');
     expect(search()).toBeTruthy();
+  });
+});
+
+describe('the office past the end of the list on iOS', () => {
+  // A list 1000 tall in a 700 tall view, which settles at 383 with the tab bar below it.
+  const at = (event: string, y: number, target?: number) =>
+    fireEvent(screen.UNSAFE_getByType(ScrollView), event, {
+      nativeEvent: {
+        contentOffset: { x: 0, y },
+        contentSize: { width: 393, height: 1000 },
+        layoutMeasurement: { width: 393, height: 700 },
+        velocity: { x: 0, y: 0 },
+        ...(target === undefined ? {} : { targetContentOffset: { x: 0, y: target } }),
+      },
+    });
+
+  it('opens on a long pull past the end, and a tapped Bot opens its chat', () => {
+    render(<BotsScreen />);
+    at('scrollBeginDrag', REST);
+    at('scrollEndDrag', REST);
+    at('scrollBeginDrag', 383);
+    at('scroll', 383 + 130);
+    expect(screen.getByText('Release to visit the office')).toBeTruthy();
+    at('scrollEndDrag', 383 + 130, 383);
+    expect(mockOffice?.visible).toBe(true);
+    act(() => mockOffice!.onOpenBot('bot-1'));
+    expect(mockOffice?.visible).toBe(false);
+    expect(mockPush).toHaveBeenCalledWith('/bot/bot-1');
+  });
+
+  it('stays closed for a short bounce at the end or an ordinary scroll', () => {
+    render(<BotsScreen />);
+    at('scrollBeginDrag', 383);
+    at('scrollEndDrag', 383 + 60, 383);
+    at('scrollBeginDrag', 100);
+    at('scrollEndDrag', 200, 600);
+    expect(mockOffice?.visible).toBe(false);
   });
 });
 

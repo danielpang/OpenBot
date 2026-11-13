@@ -21,12 +21,15 @@ import { useApi, useMobile } from '../api/provider';
 import { BotAvatar } from '../components/bot-avatar';
 import { GlassIconButton } from '../components/glass';
 import { Button, Empty, ErrorNote, Field, Icon, Label, Page, Section, row } from '../components/ui';
+import { OfficeSheet } from '../office/office-sheet';
 import { useTheme } from '../theme';
 import { groupTitle, useBots, useChats, useGroupLimit, type Bot } from './data';
 
 // On iOS, a pull past the top this far opens search, and this far refreshes.
 const PULL_TO_SEARCH = 40;
 const PULL_TO_REFRESH = 110;
+// How far past the end of the list a pull must go to open the office.
+const PULL_TO_OFFICE = 120;
 
 export function BotsScreen({
   sidebar = false,
@@ -67,6 +70,20 @@ export function BotsScreen({
     setSearchShown(false);
   }
   const dragFromTop = useRef(false);
+  // Pulling up past the end of the list opens the office, an easter egg from the Mac app.
+  const [officeOpen, setOfficeOpen] = useState(false);
+  const [pastEnd, setPastEnd] = useState(false);
+  // The space the tab bar and home indicator take below the list. Learned from where iOS
+  // settles a pull past the end; this guess only places the hint before then.
+  const bottomInset = useRef(83);
+  function beyondEnd({ contentOffset, contentSize, layoutMeasurement }: NativeScrollEvent) {
+    if (!contentSize || !layoutMeasurement) return -Infinity;
+    const end = Math.max(
+      restY.current ?? 0,
+      contentSize.height - layoutMeasurement.height + bottomInset.current,
+    );
+    return contentOffset.y - end;
+  }
   function pullDistance(event: NativeSyntheticEvent<NativeScrollEvent>) {
     return (restY.current ?? 0) - event.nativeEvent.contentOffset.y;
   }
@@ -76,6 +93,8 @@ export function BotsScreen({
     dragFromTop.current = y <= restY.current + 1;
   }
   function trackPull(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    const office = beyondEnd(event.nativeEvent) >= PULL_TO_OFFICE;
+    if (office !== pastEnd) setPastEnd(office);
     if (!dragFromTop.current) return;
     const distance = pullDistance(event);
     // Once far enough to refresh, it stays a refresh, as with the native control.
@@ -88,6 +107,18 @@ export function BotsScreen({
     if (next !== pull) setPull(next);
   }
   function endPull(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    setPastEnd(false);
+    const { contentOffset, contentSize, layoutMeasurement, targetContentOffset } =
+      event.nativeEvent;
+    // iOS reports where the list will settle, so past the end is measured exactly here.
+    if (targetContentOffset && contentOffset.y - targetContentOffset.y >= PULL_TO_OFFICE) {
+      if (contentSize && layoutMeasurement && targetContentOffset.y > (restY.current ?? 0)) {
+        bottomInset.current =
+          targetContentOffset.y - (contentSize.height - layoutMeasurement.height);
+      }
+      setOfficeOpen(true);
+      return;
+    }
     if (!dragFromTop.current) return;
     dragFromTop.current = false;
     const action = pull;
@@ -347,7 +378,26 @@ export function BotsScreen({
             />
           ) : null}
         </View>
+        {pullGestures && pastEnd ? (
+          <View
+            pointerEvents="none"
+            style={{ position: 'absolute', bottom: -40, left: 0, right: 0, alignItems: 'center' }}
+          >
+            <Label muted size={13}>
+              Release to visit the office
+            </Label>
+          </View>
+        ) : null}
       </ScrollView>
+      <OfficeSheet
+        visible={officeOpen}
+        bots={(bots.data ?? []).filter((bot) => !bot.hidden)}
+        onClose={() => setOfficeOpen(false)}
+        onOpenBot={(id) => {
+          setOfficeOpen(false);
+          openConversation('bot', id);
+        }}
+      />
       <CreateSheet visible={create} onClose={() => setCreate(false)} bots={bots.data ?? []} />
     </Page>
   );
